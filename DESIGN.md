@@ -211,12 +211,22 @@ The diagonal corridor advancing exactly one tile per step is the happy accident 
 makes corridor routing ([§9.4](#94-corridor-routing)) a grid walk rather than a line
 algorithm.
 
-The one thing that does **not** align: corridors run on the dome's centre line, and
-`conn_points` puts them 4 lines either side of it — so a horizontal corridor straddles
-two tile rows by 4 lines each. That is harmless (corridors are drawn at absolute
-positions, and occupancy simply marks both rows), but it is the reason corridor
-redraw rectangles are computed in lines, not tiles. An optional art tidy-up to snap
-connectors onto the 8-line half-tile grid is listed as [ASSET-6](#12-asset-gaps).
+Corridors used **not** to align: they run on the dome's centre line, and `conn_points`
+put them 4 lines either side of it, so a horizontal corridor straddled two tile rows
+by 4 lines each. [ASSET-6](#12-asset-gaps) has since fixed that for the axis-aligned
+doors, and **corridor redraw rectangles can now be computed in tiles, not lines**:
+
+| Door | Corridor | Rule |
+|---|---|---|
+| `n`, `s` | vertical | `x` is a multiple of 4 px (2 bytes) |
+| `e`, `w` | horizontal | `y` is a multiple of 8 lines |
+| diagonals | diagonal | exempt — already one tile per step |
+
+The diagonals are exempt on purpose, not by omission. On an axis-aligned door the
+snap is **tangential**: it changes the radius by `d²/2r`, a fraction of a pixel. On a
+diagonal door the same shift has a radial component of `0.707·d`, and the ring is
+only 8 visual pixels thick — the door leaves the ring. Verification 12 in the
+generator enforces the rule and its exemption.
 
 ### 3.4 Anchors are centres
 
@@ -1252,12 +1262,10 @@ Everything below is a change request against `CPCArt/planetbase/`, pulled in by
 `sync-assets.sh`.
 
 **ASSET-1, 2, 7 and 8 are delivered** (CPCArt `97b9653`, synced here as `f959f9e`).
-**ASSET-3, 4 and 5 are delivered too** (CPCArt `e3145b2`). Only ASSET-6 remains, and
-it is cosmetic — but see [§4.2](#42-the-eight-banks): two banks are now over capacity
-and need a decision before any of this can be assembled.
-They are kept in the table with their sizes because the memory map in
-[§4.3](#43-the-8000-page-and-its-arenas) is built on those numbers. ASSET-3, 4 and 5
-remain outstanding; ASSET-6 is cosmetic.
+**ASSET-3, 4, 5 and 6 are delivered too.** Every asset gap in this table is now
+closed, and [§4.2](#42-the-eight-banks) shows every bank fitting. The rows are kept
+with their sizes because the memory map in
+[§4.3](#43-the-8000-page-and-its-arenas) is built on those numbers.
 
 | # | Asset | Size | Why |
 |---|---|---|---|
@@ -1266,7 +1274,7 @@ remain outstanding; ASSET-6 is cosmetic.
 | ✅ **ASSET-3** | **Four slot figures** — biologist, medic, guard, constructor bot — raising `SLOT_FIGS` 5 → 9 | +1,536 B | Five roles and three bot types share four figures today. |
 | ✅ **ASSET-4** | **4×8 font**, 96 glyphs, 2 colours (a 6×8 set is also built) | 1,536 B | Mode 0 at 8 px gives 20 columns. The HUD needs 40. |
 | ✅ **ASSET-5** | **Landing pad**, 4×4 tiles *opaque*, plus a ship sprite | 1,536 B | Ships, colonist arrival and trade are the mid-game. |
-| **ASSET-6** | *Optional:* move `conn_points` and corridor lanes onto the 8-line half-tile grid | 0 B | Tidies corridor/tile alignment ([§3.3](#33-the-grid-is-not-a-choice)). Cosmetic. |
+| ✅ **ASSET-6** | Move `conn_points` and corridor lanes onto the 8-line half-tile grid | 0 B | [§3.3](#33-the-grid-is-not-a-choice). Delivered — but it was **not** cosmetic; see below. |
 | ✅ **ASSET-7** | **Palette re-plan**: four pens reserved for terrain, icons re-quantised to five; four planet palette variants | 64 B | [§8.6](#86-palette). Buys four planets for nothing. |
 | ✅ **ASSET-8** | Pin the sprite build to **`--quads nw`** | −22,272 B | [§4.4](#44---quads-nw-is-mandatory). The `all` build does not fit. |
 
@@ -1287,6 +1295,14 @@ Delivery notes, for the record:
   are indistinguishable at 6×6 visual pixels, and the figure you must find in an
   emergency is the medic, not the hauler. Verification 11 now refuses to build if any
   two figures share a dominant pen.
+- **ASSET-6 was not cosmetic and not free.** Snapping every connector pushed the
+  medium dome's `sw` door off the ring, because on a diagonal the snap is radial and
+  the ring is 8 visual pixels thick; only the axis-aligned doors can be snapped. And
+  once those moved, four colonist slots on the small dome touched a door by a single
+  line — at that radius 22.5° is ~11 visual pixels while door and slot are 8 each.
+  Slot placement is therefore now **computed against the doors**: a slot whose nominal
+  angle collides slides along the ring, same radius, until it clears. Both failures
+  were caught by existing verifications, not by inspection.
 - **ASSET-5's pad is opaque, not masked** — this spec said masked. A poured slab
   replaces the terrain instead of sitting on it, so the mask bought nothing and cost
   1,024 bytes; the octagon is painted on a square pad rather than cut out of one.
