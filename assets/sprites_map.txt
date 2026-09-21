@@ -270,30 +270,31 @@
   ore_overlay_0         #538C    128  8x16 px        mask+data  έδαφος
   ore_overlay_1         #540C    128  8x16 px        mask+data  έδαφος
   tile_base             #548C     16                            πίνακες εδάφους
-  planet_pens           #549C     16                            πίνακες εδάφους
-# structures            #54AC      -                            (ομάδα)
-  solar_s               #54AC    128  8x16 px        mask+data  εξωτερικές δομές
-  solar_m               #552C    512  16x32 px       mask+data  εξωτερικές δομές
-  solar_l               #572C   1152  24x48 px       mask+data  εξωτερικές δομές
-  solar_xl              #5BAC   2048  32x64 px       mask+data  εξωτερικές δομές
-  turbine_s             #63AC    128  8x16 px        mask+data  εξωτερικές δομές
-  turbine_m             #642C    512  16x32 px       mask+data  εξωτερικές δομές
-  turbine_l             #662C   1152  24x48 px       mask+data  εξωτερικές δομές
-  collector_s           #6AAC    128  8x16 px        mask+data  εξωτερικές δομές
-  collector_m           #6B2C    512  16x32 px       mask+data  εξωτερικές δομές
-  collector_l           #6D2C   1152  24x48 px       mask+data  εξωτερικές δομές
-  extractor_s           #71AC    128  8x16 px        mask+data  εξωτερικές δομές
-  extractor_m           #722C    512  16x32 px       mask+data  εξωτερικές δομές
-  extractor_l           #742C   1152  24x48 px       mask+data  εξωτερικές δομές
-  mine                  #78AC   2048  32x64 px       mask+data  εξωτερικές δομές
-  airlock               #80AC    512  16x32 px       mask+data  εξωτερικές δομές
-  struct_dims           #82AC     48                            πίνακες δομών
-  machine_count         #82DC      3                            πίνακες δωματίου
-  machine_slots         #82DF     48                            πίνακες δωματίου
-  machine_rules         #830F     10                            πίνακες δωματίου
-  interior_ofs          #8319      6                            πίνακες δωματίου
-  palette_fw            #831F     16                            παλέτα
-  sprites_pad           #832F    209                            στοίχιση
+  tile_variants         #549C      8                            πίνακες εδάφους
+  planet_pens           #54A4     16                            πίνακες εδάφους
+# structures            #54B4      -                            (ομάδα)
+  solar_s               #54B4    128  8x16 px        mask+data  εξωτερικές δομές
+  solar_m               #5534    512  16x32 px       mask+data  εξωτερικές δομές
+  solar_l               #5734   1152  24x48 px       mask+data  εξωτερικές δομές
+  solar_xl              #5BB4   2048  32x64 px       mask+data  εξωτερικές δομές
+  turbine_s             #63B4    128  8x16 px        mask+data  εξωτερικές δομές
+  turbine_m             #6434    512  16x32 px       mask+data  εξωτερικές δομές
+  turbine_l             #6634   1152  24x48 px       mask+data  εξωτερικές δομές
+  collector_s           #6AB4    128  8x16 px        mask+data  εξωτερικές δομές
+  collector_m           #6B34    512  16x32 px       mask+data  εξωτερικές δομές
+  collector_l           #6D34   1152  24x48 px       mask+data  εξωτερικές δομές
+  extractor_s           #71B4    128  8x16 px        mask+data  εξωτερικές δομές
+  extractor_m           #7234    512  16x32 px       mask+data  εξωτερικές δομές
+  extractor_l           #7434   1152  24x48 px       mask+data  εξωτερικές δομές
+  mine                  #78B4   2048  32x64 px       mask+data  εξωτερικές δομές
+  airlock               #80B4    512  16x32 px       mask+data  εξωτερικές δομές
+  struct_dims           #82B4     48                            πίνακες δομών
+  machine_count         #82E4      3                            πίνακες δωματίου
+  machine_slots         #82E7     48                            πίνακες δωματίου
+  machine_rules         #8317     10                            πίνακες δωματίου
+  interior_ofs          #8321      6                            πίνακες δωματίου
+  palette_fw            #8327     16                            παλέτα
+  sprites_pad           #8337    201                            στοίχιση
   flip_mode0            #8400    256                            πίνακας καθρεφτισμού
 
   ΣΥΝΟΛΟ                       34048

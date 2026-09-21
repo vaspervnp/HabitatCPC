@@ -42,6 +42,7 @@ TILE_H      equ 16
 TILE_SZ     equ 64          ; αδιαφανές
 AUTOTILE    equ 16          ; παραλλαγές σε βουνό και νερό
 ORE_OVL_SZ  equ 128         ; ore_overlay — ΜΕ ΜΑΣΚΑ, πάνω από βουνό
+TER_VARMASK equ 1           ; variant AND (tile_variants[class]-1)
 TER_CLASSES equ 8           ; ground, dust, rock, mountain, water, deepwater, crater, foundation
 PLANETS     equ 4           ; desert, ice, storm, barren
 
@@ -4253,6 +4254,14 @@ tile_base:
     dw #528C   ; 6 crater      2 παραλλαγές
     dw #530C   ; 7 foundation  2 παραλλαγές
 
+; --- παραλλαγές ανά κλάση εδάφους ---
+; Όλα είναι δυνάμεις του 2, οπότε:  variant AND (count-1)
+; Χωρίς αυτό το mask, decor 2-3 σε crater/foundation δείχνει
+; στα tiles της ΕΠΟΜΕΝΗΣ κλάσης.
+tile_variants:
+    db 4,4,4,16,16,4,2,2
+    ; ground, dust, rock, mountain, water, deepwater, crater, foundation
+
 ; --- planet_pens + planet*4 -> FW για τα pens 7, 11, 12, 14 ---
 planet_pens:
     db  15,  3, 25, 10   ; 0 desert  άμμος και σκουριά
@@ -4924,9 +4933,9 @@ palette_fw:
     ; pen 14  FW 10  Cyan          ΕΔΑΦΟΣ — νερό / πάγος
     ; pen 15  FW 16  Pink          εικονίδια
 
-; --- 209 bytes γέμισμα για τη σελίδα του flip_mode0 ---
+; --- 201 bytes γέμισμα για τη σελίδα του flip_mode0 ---
 sprites_pad:
-    defs 209,#00
+    defs 201,#00
 
 ; --- flip_mode0[b] = b με ανταλλαγμένα pixels ---
 align 256

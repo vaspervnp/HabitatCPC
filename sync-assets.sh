@@ -39,6 +39,15 @@ if [ -n "$(find "$SRC/tools" -type f -newer "$BIN" -print -quit 2>/dev/null)" ];
   exit 1
 fi
 
+# Το build ΠΡΕΠΕΙ να είναι --quads nw: με --quads all τα δεδομένα δεν χωράνε στον
+# χάρτη μνήμης (DESIGN §4.4). Η γεννήτρια βάζει αυτή την επικεφαλίδα μόνο στο nw.
+if ! grep -q "ΜΟΝΟ το τεταρτημόριο nw" "$SRC/build/sprites/sprites.asm"; then
+  echo "ΣΦΑΛΜΑ: το build δεν είναι --quads nw." >&2
+  echo "Με --quads all τα δεδομένα δεν χωράνε (DESIGN §4.4). Ξαναχτίσε:" >&2
+  echo "  python3 $SRC/tools/make_all.py" >&2
+  exit 1
+fi
+
 echo "== αντιγράφω =="
 rm -rf "$DST/aseprite" "$DST/preview"
 mkdir -p "$DST/aseprite" "$DST/preview"
