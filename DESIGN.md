@@ -378,8 +378,8 @@ unambiguous, which at 4 px they are not.
 
 ### 4.4 `--quads nw` is mandatory
 
-`assets/sprites.bin` is **34,048 bytes**, built with `--quads nw` — of which 7,424 are
-dome and ring quadrants. The same set built with `--quads all` is 56,320 bytes, with
+`assets/sprites.bin` is **36,608 bytes**, built with `--quads nw` — of which 7,424 are
+dome and ring quadrants. The same set built with `--quads all` is 58,880 bytes, with
 29,696 in quadrants. **The full build does not fit this memory map; the `nw` build
 fits.**
 

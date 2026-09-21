@@ -1,0 +1,6 @@
+# Παράγονται από το tools/ — δεν μπαίνουν στο repo.
+build/
+tests/rasmoutput.sym
+tests/golden/*_actual.png
+__pycache__/
+*.pyc
