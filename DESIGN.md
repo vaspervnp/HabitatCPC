@@ -1193,7 +1193,7 @@ Everything below is a change request against `CPCArt/planetbase/`, pulled in by
 
 | # | Asset | Size | Why |
 |---|---|---|---|
-| **ASSET-1** | **Terrain tiles**, 4 bytes × 16 lines opaque: ground ×4, dust ×4, rock ×4, mountain autotile ×16, water autotile ×16, crater ×2, foundation ×4; ore overlay ×2 masked | ≈ 3,584 B | There is no ground in the asset set. Nothing can be drawn without it. |
+| **ASSET-1** | **Terrain tiles**, 4 bytes × 16 lines opaque: ground ×4, dust ×4, rock ×4, mountain autotile ×16, shallow water autotile ×16, deep water fill ×4, crater ×2, foundation ×2; ore overlay ×2 masked | 3,584 B | There is no ground in the asset set. Nothing can be drawn without it. |
 | **ASSET-2** | **Four room icons** — Factory, Lab, Medbay, Lounge — at all three sizes | 1,600 B | Six of the ten machines currently have no room to live in. |
 | **ASSET-3** | **Four slot figures** — biologist, medic, guard, constructor bot — raising `SLOT_FIGS` 5 → 9 | +1,536 B | Five roles and three bot types share four figures today. |
 | **ASSET-4** | **4×8 font**, 96 glyphs, 2 colours | 1,536 B | Mode 0 at 8 px gives 20 columns. The HUD needs 40. |
