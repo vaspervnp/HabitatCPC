@@ -1,0 +1,138 @@
+{ "frames": [
+   {
+    "filename": "planetbase_plants_cpc_mode0 0.aseprite",
+    "frame": { "x": 0, "y": 0, "w": 12, "h": 22 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 12, "h": 22 },
+    "sourceSize": { "w": 12, "h": 22 },
+    "duration": 100
+   },
+   {
+    "filename": "planetbase_plants_cpc_mode0 1.aseprite",
+    "frame": { "x": 12, "y": 0, "w": 12, "h": 22 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 12, "h": 22 },
+    "sourceSize": { "w": 12, "h": 22 },
+    "duration": 100
+   },
+   {
+    "filename": "planetbase_plants_cpc_mode0 2.aseprite",
+    "frame": { "x": 24, "y": 0, "w": 12, "h": 22 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 12, "h": 22 },
+    "sourceSize": { "w": 12, "h": 22 },
+    "duration": 100
+   },
+   {
+    "filename": "planetbase_plants_cpc_mode0 3.aseprite",
+    "frame": { "x": 36, "y": 0, "w": 12, "h": 22 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 12, "h": 22 },
+    "sourceSize": { "w": 12, "h": 22 },
+    "duration": 100
+   },
+   {
+    "filename": "planetbase_plants_cpc_mode0 4.aseprite",
+    "frame": { "x": 48, "y": 0, "w": 12, "h": 22 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 12, "h": 22 },
+    "sourceSize": { "w": 12, "h": 22 },
+    "duration": 100
+   },
+   {
+    "filename": "planetbase_plants_cpc_mode0 5.aseprite",
+    "frame": { "x": 60, "y": 0, "w": 12, "h": 22 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 12, "h": 22 },
+    "sourceSize": { "w": 12, "h": 22 },
+    "duration": 100
+   },
+   {
+    "filename": "planetbase_plants_cpc_mode0 6.aseprite",
+    "frame": { "x": 72, "y": 0, "w": 12, "h": 22 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 12, "h": 22 },
+    "sourceSize": { "w": 12, "h": 22 },
+    "duration": 100
+   },
+   {
+    "filename": "planetbase_plants_cpc_mode0 7.aseprite",
+    "frame": { "x": 84, "y": 0, "w": 12, "h": 22 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 12, "h": 22 },
+    "sourceSize": { "w": 12, "h": 22 },
+    "duration": 100
+   },
+   {
+    "filename": "planetbase_plants_cpc_mode0 8.aseprite",
+    "frame": { "x": 96, "y": 0, "w": 12, "h": 22 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 12, "h": 22 },
+    "sourceSize": { "w": 12, "h": 22 },
+    "duration": 100
+   },
+   {
+    "filename": "planetbase_plants_cpc_mode0 9.aseprite",
+    "frame": { "x": 108, "y": 0, "w": 12, "h": 22 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 12, "h": 22 },
+    "sourceSize": { "w": 12, "h": 22 },
+    "duration": 100
+   },
+   {
+    "filename": "planetbase_plants_cpc_mode0 10.aseprite",
+    "frame": { "x": 120, "y": 0, "w": 12, "h": 22 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 12, "h": 22 },
+    "sourceSize": { "w": 12, "h": 22 },
+    "duration": 100
+   },
+   {
+    "filename": "planetbase_plants_cpc_mode0 11.aseprite",
+    "frame": { "x": 132, "y": 0, "w": 12, "h": 22 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 12, "h": 22 },
+    "sourceSize": { "w": 12, "h": 22 },
+    "duration": 100
+   }
+ ],
+ "meta": {
+  "app": "https://www.aseprite.org/",
+  "version": "1.3.18.5-dev",
+  "image": "planetbase_plants_cpc_mode0_sheet.png",
+  "format": "I8",
+  "size": { "w": 144, "h": 22 },
+  "scale": "1",
+  "frameTags": [
+   { "name": "plant_peas", "from": 0, "to": 0, "direction": "forward", "color": "#000000ff" },
+   { "name": "plant_rice", "from": 1, "to": 1, "direction": "forward", "color": "#000000ff" },
+   { "name": "plant_potatoes", "from": 2, "to": 2, "direction": "forward", "color": "#000000ff" },
+   { "name": "plant_wheat", "from": 3, "to": 3, "direction": "forward", "color": "#000000ff" },
+   { "name": "plant_maize", "from": 4, "to": 4, "direction": "forward", "color": "#000000ff" },
+   { "name": "plant_tomatoes", "from": 5, "to": 5, "direction": "forward", "color": "#000000ff" },
+   { "name": "plant_lettuce", "from": 6, "to": 6, "direction": "forward", "color": "#000000ff" },
+   { "name": "plant_onions", "from": 7, "to": 7, "direction": "forward", "color": "#000000ff" },
+   { "name": "plant_radishes", "from": 8, "to": 8, "direction": "forward", "color": "#000000ff" },
+   { "name": "plant_mushrooms", "from": 9, "to": 9, "direction": "forward", "color": "#000000ff" },
+   { "name": "plant_medicinal", "from": 10, "to": 10, "direction": "forward", "color": "#000000ff" },
+   { "name": "plant_tree", "from": 11, "to": 11, "direction": "forward", "color": "#000000ff" }
+  ],
+  "layers": [
+   { "name": "plants", "opacity": 255, "blendMode": "normal" }
+  ],
+  "slices": [
+  ]
+ }
+}
