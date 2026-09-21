@@ -204,7 +204,7 @@ The tile size was derived from the art, not imposed on it. Every sprite in
 | structure `s` | 4 × 16 | 1 × 1 |
 | structure `m` | 8 × 32 | 2 × 2 |
 | structure `l` | 12 × 48 | 3 × 3 |
-| structure `xl` (`solar_xl`, `mine`) | 16 × 64 | 4 × 4 |
+| structure `xl` (`mine`, `pad`) | 16 × 64 | 4 × 4 |
 | diagonal corridor step `(CORR_D_SX, CORR_D_SY)` | 4 × 16 | **1 × 1** |
 
 The diagonal corridor advancing exactly one tile per step is the happy accident that
@@ -298,7 +298,7 @@ must always be reachable is in bank 0 (`&0000–&3FFF`) or bank 2 (`&8000–&BFF
 | window | 4 | **world plane** 128×128×1 byte | 16,384 | 0 |
 | window | 5 | **next-hop matrix** `NEXTHOP[128][128]` | 16,384 | 0 |
 | window | 6 | dome+ring `nw` quadrants 7,424 · slot figures 3,456 · entity tables 4,096 · job board 256 · path workspace 512 | 15,744 | 640 |
-| window | 7 | external structures 14,336 · plants 1,584 · text 1,024 · audio 2,048 | 18,992 | **−2,608** |
+| window | 7 | external structures 11,264 · plants 1,584 · text 1,024 · audio 2,048 | 15,920 | 464 |
 | `&8000–&BFFF` | 2 | HUD screen page 3,200 + graphics arenas 12,951 | 16,151 | 233 |
 | `&C000–&FFFF` | 3 | play-area screen | 16,384 | 0 |
 
@@ -306,21 +306,25 @@ Every bank is spoken for. The two matrices in banks 1 and 5 are the clearest ans
 to "what is the extra 64 KB actually *for*": they turn pathfinding from a per-agent
 search into a single table read ([§6.4](#64-routing)).
 
-**Bank 7 is over capacity, and that is the one live problem.** ASSET-3 landed exactly
-on its 3,456-byte budget, so bank 6 is fine at 640 slack, and the font was built at
-4 px, so bank 2 closes at 233 with the `s` room icons intact. The numbers above are
-measured from `assets/sprites_map.txt`, not estimated.
+**Every bank now fits, and the numbers above are measured from
+`assets/sprites_map.txt` rather than estimated.** ASSET-3 landed exactly on its
+3,456-byte budget, so bank 6 holds at 640 slack; the font was built at 4 px, so
+bank 2 closes at 233 with the `s` room icons intact; and bank 7 came back from
+2,608 over to **464 slack** by two decisions taken together:
 
-**Bank 7 is 2,608 over.** The landing pad (2,048, masked) and ship (512) came in at
-2,560, and the airlock's 512 was never added to this table — it was 48 over before
-either of them arrived. Dropping `solar_xl` (2,048) leaves it 560 over; dropping four
-plant species too (528) leaves it 32 over. The combination that clears it with room
-to spare is **`solar_xl` plus making the pad opaque** — a square apron instead of a
-masked octagon saves 1,024 and ends at 464 slack. That trades Planetbase's round pad
-for a built one, which is a look decision, not a memory one.
+- **`solar_xl` is gone** (−2,048). The solar panel now has three sizes, not four.
+  `struct_dims` still reserves four slots per structure, so the fourth reads `0,0`.
+- **The landing pad is opaque** (−1,024). It is a poured slab that *replaces* the
+  terrain rather than sitting on it, so it needs no mask — the octagon is painted
+  on a square pad instead of being cut out of one. Its corners cannot imitate
+  terrain anyway, because the terrain pens change per planet.
 
-That decision is not the generator's to make, so the assets are delivered and the
-bank left honest rather than quietly trimmed.
+Bank 7 was 48 bytes over even before the pad and ship arrived: the airlock's 512
+was never added to this table when it was delivered. That is corrected above.
+
+Slack is thin — about 1.3 KB across the three windows. The next cheap cuts, in order:
+four plant species (528 B), the `s` room-icon set (864 B), moving `plants` into
+bank 6. The font's lowercase is **not** on that list ([§4.3](#43-the-8000-page-and-its-arenas)).
 
 ### 4.3 The `&8000` page and its arenas
 
@@ -1261,7 +1265,7 @@ remain outstanding; ASSET-6 is cosmetic.
 | ✅ **ASSET-2** | **Four room icons** — Factory, Lab, Medbay, Lounge — at all three sizes | 1,600 B | Six of the ten machines currently have no room to live in. |
 | ✅ **ASSET-3** | **Four slot figures** — biologist, medic, guard, constructor bot — raising `SLOT_FIGS` 5 → 9 | +1,536 B | Five roles and three bot types share four figures today. |
 | ✅ **ASSET-4** | **4×8 font**, 96 glyphs, 2 colours (a 6×8 set is also built) | 1,536 B | Mode 0 at 8 px gives 20 columns. The HUD needs 40. |
-| ✅ **ASSET-5** | **Landing pad**, 4×4 tiles masked, plus a ship sprite | 2,560 B | Ships, colonist arrival and trade are the mid-game. |
+| ✅ **ASSET-5** | **Landing pad**, 4×4 tiles *opaque*, plus a ship sprite | 1,536 B | Ships, colonist arrival and trade are the mid-game. |
 | **ASSET-6** | *Optional:* move `conn_points` and corridor lanes onto the 8-line half-tile grid | 0 B | Tidies corridor/tile alignment ([§3.3](#33-the-grid-is-not-a-choice)). Cosmetic. |
 | ✅ **ASSET-7** | **Palette re-plan**: four pens reserved for terrain, icons re-quantised to five; four planet palette variants | 64 B | [§8.6](#86-palette). Buys four planets for nothing. |
 | ✅ **ASSET-8** | Pin the sprite build to **`--quads nw`** | −22,272 B | [§4.4](#44---quads-nw-is-mandatory). The `all` build does not fit. |
@@ -1283,6 +1287,11 @@ Delivery notes, for the record:
   are indistinguishable at 6×6 visual pixels, and the figure you must find in an
   emergency is the medic, not the hauler. Verification 11 now refuses to build if any
   two figures share a dominant pen.
+- **ASSET-5's pad is opaque, not masked** — this spec said masked. A poured slab
+  replaces the terrain instead of sitting on it, so the mask bought nothing and cost
+  1,024 bytes; the octagon is painted on a square pad rather than cut out of one.
+  Whether a structure is masked is now a column of `STRUCTURES`, not a constant, and
+  the pad is the only one set to `False`.
 - **ASSET-4 ships at 4 px, as specified** — 40 columns, 1,536 bytes. A full 6×8 set
   was also built and is one constant away in `tools/font.py`; it reads better but
   costs 768 bytes and a third of the HUD width. The **lowercase glyphs stay** in

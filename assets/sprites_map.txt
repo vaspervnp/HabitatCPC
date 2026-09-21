@@ -372,28 +372,27 @@
   solar_s               #5AB4    128  8x16 px        mask+data  εξωτερικές δομές
   solar_m               #5B34    512  16x32 px       mask+data  εξωτερικές δομές
   solar_l               #5D34   1152  24x48 px       mask+data  εξωτερικές δομές
-  solar_xl              #61B4   2048  32x64 px       mask+data  εξωτερικές δομές
-  turbine_s             #69B4    128  8x16 px        mask+data  εξωτερικές δομές
-  turbine_m             #6A34    512  16x32 px       mask+data  εξωτερικές δομές
-  turbine_l             #6C34   1152  24x48 px       mask+data  εξωτερικές δομές
-  collector_s           #70B4    128  8x16 px        mask+data  εξωτερικές δομές
-  collector_m           #7134    512  16x32 px       mask+data  εξωτερικές δομές
-  collector_l           #7334   1152  24x48 px       mask+data  εξωτερικές δομές
-  extractor_s           #77B4    128  8x16 px        mask+data  εξωτερικές δομές
-  extractor_m           #7834    512  16x32 px       mask+data  εξωτερικές δομές
-  extractor_l           #7A34   1152  24x48 px       mask+data  εξωτερικές δομές
-  mine                  #7EB4   2048  32x64 px       mask+data  εξωτερικές δομές
-  airlock               #86B4    512  16x32 px       mask+data  εξωτερικές δομές
-  pad                   #88B4   2048  32x64 px       mask+data  εξωτερικές δομές
-  ship                  #90B4    512  16x32 px       mask+data  εξωτερικές δομές
-  struct_dims           #92B4     64                            πίνακες δομών
-  machine_count         #92F4      3                            πίνακες δωματίου
-  machine_slots         #92F7     48                            πίνακες δωματίου
-  machine_rules         #9327     10                            πίνακες δωματίου
-  interior_ofs          #9331      6                            πίνακες δωματίου
-  font_gfx              #9337   1536                            γραμματοσειρά
-  palette_fw            #9937     16                            παλέτα
-  sprites_pad           #9947    185                            στοίχιση
-  flip_mode0            #9A00    256                            πίνακας καθρεφτισμού
+  turbine_s             #61B4    128  8x16 px        mask+data  εξωτερικές δομές
+  turbine_m             #6234    512  16x32 px       mask+data  εξωτερικές δομές
+  turbine_l             #6434   1152  24x48 px       mask+data  εξωτερικές δομές
+  collector_s           #68B4    128  8x16 px        mask+data  εξωτερικές δομές
+  collector_m           #6934    512  16x32 px       mask+data  εξωτερικές δομές
+  collector_l           #6B34   1152  24x48 px       mask+data  εξωτερικές δομές
+  extractor_s           #6FB4    128  8x16 px        mask+data  εξωτερικές δομές
+  extractor_m           #7034    512  16x32 px       mask+data  εξωτερικές δομές
+  extractor_l           #7234   1152  24x48 px       mask+data  εξωτερικές δομές
+  mine                  #76B4   2048  32x64 px       mask+data  εξωτερικές δομές
+  airlock               #7EB4    512  16x32 px       mask+data  εξωτερικές δομές
+  pad                   #80B4   1024  32x64 px       αδιαφανές  εξωτερικές δομές
+  ship                  #84B4    512  16x32 px       mask+data  εξωτερικές δομές
+  struct_dims           #86B4     64                            πίνακες δομών
+  machine_count         #86F4      3                            πίνακες δωματίου
+  machine_slots         #86F7     48                            πίνακες δωματίου
+  machine_rules         #8727     10                            πίνακες δωματίου
+  interior_ofs          #8731      6                            πίνακες δωματίου
+  font_gfx              #8737   1536                            γραμματοσειρά
+  palette_fw            #8D37     16                            παλέτα
+  sprites_pad           #8D47    185                            στοίχιση
+  flip_mode0            #8E00    256                            πίνακας καθρεφτισμού
 
-  ΣΥΝΟΛΟ                       39680
+  ΣΥΝΟΛΟ                       36608
