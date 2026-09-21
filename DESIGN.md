@@ -321,27 +321,39 @@ That leaves **eight independent arenas of 1,648 bytes each = 13,184 bytes.** Not
 may straddle an arena boundary, so only small sprites go here — which is exactly what
 these are:
 
-| In the arenas | Bytes |
-|---|---|
-| Terrain tiles ([ASSET-1](#12-asset-gaps)) | 3,584 |
-| Room icons, 12 types × 3 sizes | 4,800 |
-| Machines, 10 types | 1,320 |
-| Corridors + connectors | 896 |
-| 4×8 font, 96 glyphs ([ASSET-4](#12-asset-gaps)) | 1,536 |
-| Cursor and UI chrome | 512 |
-| Data tables (`machine_slots`, `conn_points`, `corr_slots`, …) | 240 |
-| **Total** | **12,888** |
+| In the arenas | Bytes | |
+|---|---|---|
+| Terrain tiles ([ASSET-1](#12-asset-gaps)) | 3,584 | delivered |
+| Room icons, 12 types × 3 sizes | 4,800 | delivered |
+| Machines, 10 types | 1,320 | delivered |
+| Corridors + connectors | 896 | delivered |
+| Data tables (`machine_slots`, `conn_points`, `corr_slots`, `tile_base`, `tile_variants`, `planet_pens`, …) | 271 | delivered |
+| 4×8 font, 96 glyphs ([ASSET-4](#12-asset-gaps)) | 1,536 | *estimate* |
+| Cursor and UI chrome | 512 | *estimate* |
+| **Total** | **12,919** | |
+
+Delivered art and tables are **10,871**; the remaining 2,048 are the two estimates.
+Against 13,184 that leaves **265 bytes of slack** — and only if the font and cursor
+come in at their guesses. A 4×8 font at 96 glyphs is 1,536 bytes exactly, so the
+cursor is the one with room to surprise.
 
 Largest single item is a 200-byte `icon_l`, so bin-packing eight 1,648-byte arenas is
 trivial. `flip_mode0` must be 256-byte aligned and lives in bank 6 with the quadrants
 it serves.
 
+If the slack goes, the cheapest cut is the `s` room-icon set (12 × 72 = 864 bytes):
+the small dome is 4×4 tiles and could carry the `m` icon scaled down in the blit, or
+no icon at all.
+
 ### 4.4 `--quads nw` is mandatory
 
-`assets/sprites.bin` is 50,432 bytes built with `--quads all`, of which 29,696 are dome
-and ring quadrants. Built with `--quads nw` the whole set is 28,160 bytes and the
-quadrants are 7,424. **The full build does not fit this memory map; the `nw` build fits
-with room to spare.**
+`assets/sprites.bin` is **34,048 bytes**, built with `--quads nw` — of which 7,424 are
+dome and ring quadrants. The same set built with `--quads all` is 56,320 bytes, with
+29,696 in quadrants. **The full build does not fit this memory map; the `nw` build
+fits.**
+
+> Earlier revisions of this section quoted 50,432 / 28,160. Those predate the terrain
+> tiles (+3,584), the four room icons (+1,600) and the airlock structure (+512).
 
 The cost is that `ne`, `sw` and `se` are generated at blit time — reversed pair order
 and a `flip_mode0` lookup per byte, per `assets/SPRITES.md` §3. That is roughly 40%
@@ -349,8 +361,10 @@ slower for three quadrants out of four. Since dome quadrants are drawn only when
 dome is built or repaired — and that work is already spread over frames
 ([§6.9](#69-construction)) — 22 KB is worth far more than the microseconds.
 
-**Action:** the asset sync must be pinned to `--quads nw`. Today `sync-assets.sh`
-pulls the default build.
+**Done.** `--quads nw` is now the generator's default, *and* `sync-assets.sh` refuses
+to copy a build that was not made with it — it checks for the header the generator
+writes only in the `nw` build. A stray `--quads all` can no longer reach this repo
+silently.
 
 ---
 
@@ -637,6 +651,31 @@ External structures are never corridor-connected. Reaching one means leaving thr
 airlock and walking — which is exactly why airlock placement is a real decision, and why
 a sandstorm that kills people outdoors has teeth.
 
+#### The airlock is now a structure too — and that is a choice to make
+
+The asset set has gained a standalone **`airlock` structure**: 16×32 px (one tile wide,
+two tall), masked, with two opposed doors and a hazard band, symmetric top-to-bottom so
+a corridor can meet it from either side. This document was written when `airlock` was
+only a *room type* — a whole dome spent on being a door.
+
+Two readings, and they are not compatible:
+
+| | Airlock is a **dome** (as written) | Airlock is a **structure** (new sprite) |
+|---|---|---|
+| Cost to the player | a whole dome, 1–8 machine slots wasted | one tile, cheap |
+| Node graph | an airlock dome is an ordinary node | the **only** corridor-connected external structure |
+| Placement decision | which dome to sacrifice | where the base meets the outside |
+| Art | `icon_airlock` inside a dome | the structure sprite |
+
+**Recommendation: the structure.** It is how Planetbase does it — the wiki notes an
+airlock connects to exactly one interior structure — and it stops a 6×6-tile dome being
+spent on a doorway. The `airlock` room type and its three icons then become redundant
+and could be reclaimed (index 7, 400 bytes across the three sizes), though leaving them
+costs nothing and keeps every index stable.
+
+Until this is decided, the `airlock` structure sprite ships unused. It is
+[§15](#15-open-risks).
+
 ### 6.3 Movement
 
 An agent is in one of two states, and nothing else:
@@ -807,7 +846,7 @@ drawn (`assets/SPRITES.md` §4).
 | Oxygen | `oxygen` | `oxygen` (small domes only) | life support |
 | Greenhouse | `greenhouse` | 12 plant species | starch, vegetables, medicine, morale |
 | Storage | `storage` | — | stock capacity 100 / 300 / 600 |
-| Airlock | `airlock` | — | the only route outdoors |
+| Airlock | `airlock` | — | the only route outdoors — **but see [§6.2](#62-the-node-graph)**: this may become a structure instead of a dome |
 | **Factory** | *new* | `iron`, `bioplastic`, `spares`, `robots`, `weapons` | refining and manufacture |
 | **Lab** | *new* | `processors`, `vitromeat` | high-tech goods |
 | **Medbay** | *new* | `medical` | healing, medicine |
@@ -1189,23 +1228,36 @@ list resets. A save is never allowed to be lossy.
 ## 12. Asset gaps
 
 Everything below is a change request against `CPCArt/planetbase/`, pulled in by
-`sync-assets.sh`. Habitat cannot be built without the first four.
+`sync-assets.sh`.
+
+**ASSET-1, 2, 7 and 8 are delivered** (CPCArt `97b9653`, synced here as `f959f9e`).
+They are kept in the table with their sizes because the memory map in
+[§4.3](#43-the-8000-page-and-its-arenas) is built on those numbers. ASSET-3, 4 and 5
+remain outstanding; ASSET-6 is cosmetic.
 
 | # | Asset | Size | Why |
 |---|---|---|---|
-| **ASSET-1** | **Terrain tiles**, 4 bytes × 16 lines opaque: ground ×4, dust ×4, rock ×4, mountain autotile ×16, shallow water autotile ×16, deep water fill ×4, crater ×2, foundation ×2; ore overlay ×2 masked | 3,584 B | There is no ground in the asset set. Nothing can be drawn without it. |
-| **ASSET-2** | **Four room icons** — Factory, Lab, Medbay, Lounge — at all three sizes | 1,600 B | Six of the ten machines currently have no room to live in. |
+| ✅ **ASSET-1** | **Terrain tiles**, 4 bytes × 16 lines opaque: ground ×4, dust ×4, rock ×4, mountain autotile ×16, shallow water autotile ×16, deep water fill ×4, crater ×2, foundation ×2; ore overlay ×2 masked | 3,584 B | There is no ground in the asset set. Nothing can be drawn without it. |
+| ✅ **ASSET-2** | **Four room icons** — Factory, Lab, Medbay, Lounge — at all three sizes | 1,600 B | Six of the ten machines currently have no room to live in. |
 | **ASSET-3** | **Four slot figures** — biologist, medic, guard, constructor bot — raising `SLOT_FIGS` 5 → 9 | +1,536 B | Five roles and three bot types share four figures today. |
 | **ASSET-4** | **4×8 font**, 96 glyphs, 2 colours | 1,536 B | Mode 0 at 8 px gives 20 columns. The HUD needs 40. |
 | **ASSET-5** | **Landing pad**, 4×4 tiles masked, plus a ship sprite | ≈ 2,300 B | Ships, colonist arrival and trade are the mid-game. |
 | **ASSET-6** | *Optional:* move `conn_points` and corridor lanes onto the 8-line half-tile grid | 0 B | Tidies corridor/tile alignment ([§3.3](#33-the-grid-is-not-a-choice)). Cosmetic. |
-| **ASSET-7** | **Palette re-plan**: four pens reserved for terrain, icons re-quantised to five; four planet palette variants | 64 B | [§8.6](#86-palette). Buys four planets for nothing. |
-| **ASSET-8** | Pin the sprite build to **`--quads nw`** | −22,272 B | [§4.4](#44---quads-nw-is-mandatory). The `all` build does not fit. |
+| ✅ **ASSET-7** | **Palette re-plan**: four pens reserved for terrain, icons re-quantised to five; four planet palette variants | 64 B | [§8.6](#86-palette). Buys four planets for nothing. |
+| ✅ **ASSET-8** | Pin the sprite build to **`--quads nw`** | −22,272 B | [§4.4](#44---quads-nw-is-mandatory). The `all` build does not fit. |
 
-Also worth correcting: `assets/SPRITES.md` §5 says corridor slots have "two variants",
-but `sprites.asm` declares `SLOT_FIGS equ 5` (empty, colonist, carrier, driller,
-engineer) with `SLOT_STRIDE 80` and `SLOT_BANK 640`. The assembly is right; the prose
-is stale.
+Delivery notes, for the record:
+
+- **ASSET-7 came in at 16 bytes, not 64.** Only the four terrain pens change per
+  planet, so `planet_pens` is 4 planets × 4 pens, not four whole palettes.
+- **A new `tile_variants` table** (8 bytes) was added that this document did not ask
+  for. The world byte gives 2 bits of decor, i.e. 0–3, but `crater` and `foundation`
+  have only 2 variants each — without a mask, decor 2–3 on a crater indexes into
+  `tile_foundation_0`. All counts are powers of two, so the engine does
+  `variant AND (tile_variants[class] - 1)`. The generator refuses to build if a count
+  ever stops being a power of two.
+- The stale "two variants" prose in `assets/SPRITES.md` §5 is fixed; it now documents
+  all five (`SLOT_FIGS 5`, `SLOT_STRIDE 80`, `SLOT_BANK 640`).
 
 ---
 
@@ -1271,6 +1323,8 @@ order, and do not build gameplay on top of a scroll that has not been proven on 
 | Routing rebuild latency of ≈ 5 s after a network change | Low | Stale routes are inefficient, never invalid ([§6.4](#64-routing)). If it grates: cache paths for the 16 busiest pairs and rebuild those first. |
 | 3.5 s world generation feels long on a cassette-era machine | Low | Real progress bar, music keeps playing. It is still faster than loading the game was. |
 | A seed produces a technically valid but miserable map | Low | Feature anchors guarantee the necessities; the headless seed sweep ([§13](#13-build-and-test)) finds the rest. |
+| **Airlock: dome or structure?** The asset set now has both an `icon_airlock` room type and a standalone `airlock` structure sprite; the node graph in [§6.2](#62-the-node-graph) only models the dome | Medium | Decide before the node graph is written — it changes what an *outdoor edge* connects to. Recommendation and the comparison are in [§6.2](#62-the-node-graph). Cheap either way: the unused half is 400–512 bytes. |
+| Memory map slack is **265 bytes** once the font and cursor land, and both are still estimates ([§4.3](#43-the-8000-page-and-its-arenas)) | Medium | The `s` room-icon set (864 B) is the named cut. Measure the font before committing to 96 glyphs. |
 | Balance | Certain | Every number in [§6.5](#65-economy) is a first guess. The recipe table exists so that rebalancing is a data edit, not a code edit. |
 
 ---
