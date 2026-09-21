@@ -119,17 +119,26 @@ Consequences, computed once here and referred to throughout:
 
 | Operation | Bytes | Cost | Frames |
 |---|---|---|---|
-| One terrain tile | 64 opaque | ≈ 320 µs | 0.016 |
-| One viewport column (10 tiles) | 640 | ≈ 3,200 µs | 0.16 |
-| One viewport row (20 tiles) | 1,280 | ≈ 6,400 µs | 0.32 |
-| Full play area (200 tiles) | 12,800 | ≈ 64,000 µs | **3.2** |
+| One terrain tile | 64 opaque | **929 µs measured** | 0.047 |
+| One viewport column (10 tiles) | 640 | **9,300 µs** | 0.47 |
+| One viewport row (20 tiles) | 1,280 | **18,600 µs** | 0.93 |
+| Full play area (200 tiles) | 12,800 | **185,700 µs** | **9.3** |
 | One colonist slot | 16 opaque | ≈ 64 µs | 0.003 |
 | One machine / plant | 132 opaque | ≈ 530 µs | 0.027 |
 | Small dome, ring + dome, all 4 quadrants | 2,048 masked data | ≈ 28,700 µs | **1.4** |
 | Medium dome, likewise | 4,608 | ≈ 64,500 µs | **3.2** |
 | Large dome, likewise | 8,192 | ≈ 114,700 µs | **5.7** |
 
-Read the last three rows carefully — **drawing one large dome costs almost six
+> **The tile rows are measured, not estimated** — `tests/test_tiles.py` times ten
+> full passes on the emulator. The original estimate was 320 µs, derived from
+> "64 bytes × 4 µs, plus stepping". It was wrong by 2.9×, for two reasons the
+> arithmetic did not include: per-line address stepping costs 40 T-states on top
+> of 64 spent copying, and the CPC's gate array contention puts real throughput
+> about 22% below nominal 4 MHz. Splitting the measurement: **579 µs is the blit
+> and the loop, 350 µs is the per-tile logic** (class, variant, autotile, ore).
+> See [§8.3](#83-the-tile-pass).
+
+Read the dome rows carefully — **drawing one large dome costs almost six
 frames.** That single fact drives the whole architecture: nothing may ever be
 redrawn wholesale, and the one time it must (at construction) the work is split
 across frames. `assets/SPRITES.md` §8 already gives the minimal-redraw table; this
@@ -267,7 +276,10 @@ One byte per tile holds everything about that tile that is not in an object list
 | 4–5 | occupancy | 0 free · 1 structure · 2 corridor · 3 blocked / reserved |
 | 6–7 | decor | 4 art variants; doubles as the water animation phase |
 
-**The autotile variant is deliberately not stored.** It is recomputed at draw time
+**The autotile variant is deliberately not stored.** Which classes autotile is not
+stored either: a class with 16 variants in `tile_variants` is autotiled, anything
+else takes its variant from the decor bits. The rule falls out of the data, so
+there is no second table to keep in step. It is recomputed at draw time
 from the four orthogonal neighbours — four bank reads and a 16-entry lookup, ≈ 60 µs
 per tile against a 320 µs blit. Paying 19% more per tile to free 4 bits of world
 state is a good trade, and it means terrain edits never have to fix up their
@@ -1076,9 +1088,33 @@ Per tile: read the world byte from bank 4, unpack class and decor, read the four
 orthogonal neighbours, index a 16-entry autotile table, and blit 4 bytes × 16 lines
 opaque.
 
-The line stepping is nearly free. Within a character row, line *n+1* is at address
-*+ &800*, so eight consecutive lines are `ld a,h / add a,8 / ld h,a` — 11 T-states —
-and only the crossing into the next character row needs the full computation.
+The line stepping is *not* nearly free, which is where the original estimate went
+wrong. Within a character row line *n+1* is at *+&800*, so the high byte alone
+advances — but **`ldi` increments DE, and when a tile's four bytes straddle a
+256-byte boundary the low byte wraps and carries into the high byte.** An early
+version saved only the column byte and restored it, leaving the carry in place;
+the destination then drifted one page per line and wrote into the engine's own
+code and stack. It survived an isolated test because the address chosen for that
+test did not straddle. The whole of DE must be saved and restored — 24 T-states
+per line that are not negotiable.
+
+Measured cost, from `tests/test_tiles.py`:
+
+| | µs per tile |
+|---|---|
+| `blit_tile` plus the column loop | 579 |
+| class, variant, autotile, ore overlay | 350 |
+| **total** | **929** |
+
+A scroll step costs one column — 0.47 frames — which is the number that matters,
+and it is comfortable. A full redraw is 9.3 frames and is already sliced
+([§7.4](#74-batched-work-outside-the-wheel)).
+
+**If it ever needs to be faster,** the identified win is blitting *tile pairs*:
+eight bytes per line instead of four halves the per-line overhead per byte, worth
+about 19% of the blit. It is not taken now — the viewport is 20 tiles wide so
+pairing divides evenly, but it couples adjacent tiles' source lookups and the
+current cost does not justify that.
 
 Objects covering a tile (occupancy ≠ 0) still get their terrain drawn first; the dome
 and structure sprites are masked and composite over it, which is exactly what those
