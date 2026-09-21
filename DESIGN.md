@@ -307,17 +307,19 @@ must always be reachable is in bank 0 (`&0000–&3FFF`) or bank 2 (`&8000–&BFF
 | window | 1 | **distance matrix** `DIST[128][128]` | 16,384 | 0 |
 | window | 4 | **world plane** 128×128×1 byte | 16,384 | 0 |
 | window | 5 | **next-hop matrix** `NEXTHOP[128][128]` | 16,384 | 0 |
-| window | 6 | dome+ring `nw` quadrants 7,424 · slot figures 3,456 · entity tables 4,096 · job board 256 · path workspace 512 | 15,744 | 640 |
-| window | 7 | external structures 11,264 · plants 1,584 · text 1,024 · audio 2,048 | 15,920 | 464 |
-| `&8000–&BFFF` | 2 | HUD screen page 3,200 + graphics arenas 12,951 | 16,151 | 233 |
+| window | 6 | `flip_mode0` 256 · dome+ring `nw` quadrants 7,424 · slot figures 3,456 · entity tables 4,096 · job board 256 · path workspace 512 | 16,000 | 384 |
+| window | 7 | external structures 11,264 · plants 1,584 · `plant_ptr` 24 · text 1,024 · audio 2,048 | 15,944 | 440 |
+| `&8000–&BFFF` | 2 | HUD screen page 3,200 + graphics arenas 12,787 | 15,987 | 397 |
 | `&C000–&FFFF` | 3 | play-area screen | 16,384 | 0 |
 
 Every bank is spoken for. The two matrices in banks 1 and 5 are the clearest answer
 to "what is the extra 64 KB actually *for*": they turn pathfinding from a per-agent
 search into a single table read ([§6.4](#64-routing)).
 
-**Every bank now fits, and the numbers above are measured from
-`assets/sprites_map.txt` rather than estimated.** ASSET-3 landed exactly on its
+**Every bank now fits, and the numbers above are produced by `tools/pack.py`,
+which lays the assets out for real and refuses to build if anything overflows.**
+`tests/test_pack.py` then checks the result structurally and
+`tests/test_pack_z80.py` draws from all three regions on real hardware. ASSET-3 landed exactly on its
 3,456-byte budget, so bank 6 holds at 640 slack; the font was built at 4 px, so
 bank 2 closes at 233 with the `s` room icons intact; and bank 7 came back from
 2,608 over to **464 slack** by two decisions taken together:
@@ -349,18 +351,34 @@ these are:
 
 | In the arenas | Bytes | |
 |---|---|---|
-| Terrain tiles ([ASSET-1](#12-asset-gaps)) | 3,584 | delivered |
-| Room icons, 12 types × 3 sizes | 4,800 | delivered |
-| Machines, 10 types | 1,320 | delivered |
+| Terrain tiles, 9 runs (per class + ore overlay) | 3,584 | delivered |
+| Room icons, 36 separate runs | 4,800 | delivered |
+| Machines, 10 separate runs | 1,320 | delivered |
 | Corridors + connectors | 896 | delivered |
-| Data tables (`machine_slots`, `conn_points`, `corr_slots`, `tile_base`, `tile_variants`, `planet_pens`, …) | 303 | delivered |
-| 4×8 font, 96 glyphs ([ASSET-4](#12-asset-gaps)) | 1,536 | delivered |
-| Cursor and UI chrome | 512 | *estimate* |
-| **Total** | **12,951** | |
+| 4×8 font, 96 glyphs | 1,536 | delivered |
+| Asset tables (`machine_slots`, `conn_points`, `corr_slots`, `tile_variants`, `planet_pens`, …) | 287 | delivered |
+| Generated pointer tables (`tile_ptr`, `icon_{s,m,l}_ptr`, `mach_ptr`) | 108 | generated |
+| Cursor and UI chrome | 256 | *reserve, still a guess* |
+| **Total** | **12,787** | |
 
-Delivered art and tables are **12,439**; only the 512-byte cursor is still a guess.
-Against 13,184 that leaves **233 bytes of slack**, and the cursor is now the only
-thing left that can surprise. A 4×8 font at 96 glyphs is 1,536 bytes exactly.
+**The icons could not stay contiguous.** `SPRITES.md` §6 indexes them as
+`room_icons_l + type*ICON_L_SZ`, which needs 2,400 bytes in one piece — and an
+arena is 1,648. So `tools/pack.py` places each icon wherever it fits and emits a
+**pointer table** instead. That is not a concession: `*200` and `*72` are not
+shifts, so a table lookup is also the faster indexing. The same applies to
+machines and plants (`*132`). `tile_base` is likewise replaced by `tile_ptr`,
+holding real addresses rather than offsets into a single block that no longer
+exists.
+
+**The slack is real but fragmented.** Measured free space per arena is
+`[0, 0, 0, 1, 0, 4, 0, 392]` — 397 bytes in total, but seven arenas are full and
+essentially all of it is in arena 7. Anything new larger than 392 bytes will not
+fit, whatever the total says. Adding 512 bytes of UI art makes the packer fail on
+a *64-byte* run, which is what the packer is for: it reports
+`ο χώρος υπάρχει αλλά είναι κομματιασμένος` rather than silently corrupting a sprite.
+
+Delivered art and tables are **12,423**; only the 256-byte cursor is still a guess.
+Against 13,184 that leaves **397 bytes of slack** — see the fragmentation note above.
 
 **The lowercase glyphs are not a candidate for cutting.** Dropping a-z would free
 416 bytes at this width, which makes it the obvious saving and the wrong one — the

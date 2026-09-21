@@ -20,8 +20,12 @@ python3 tools/mkslices.py \
     ring_s_nw ring_m_nw ring_l_nw \
     flip_mode0 >/dev/null
 echo "  build/slices/: $(ls build/slices | wc -l) αρχεία"
+python3 tools/pack.py >/dev/null
+echo "  build/: page2.bin bank6.bin bank7.bin layout.asm layout.txt"
 
 [ "${1:-}" = "--gen" ] && exit 0
 
 echo "== δοκιμές =="
+python3 tests/test_pack.py
 python3 tests/test_blit.py
+python3 tests/test_pack_z80.py
