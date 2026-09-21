@@ -298,17 +298,34 @@ must always be reachable is in bank 0 (`&0000–&3FFF`) or bank 2 (`&8000–&BFF
 | window | 4 | **world plane** 128×128×1 byte | 16,384 | 0 |
 | window | 5 | **next-hop matrix** `NEXTHOP[128][128]` | 16,384 | 0 |
 | window | 6 | dome+ring `nw` quadrants 7,424 · slot figures 3,456 · entity tables 4,096 · job board 256 · path workspace 512 | 15,744 | 640 |
-| window | 7 | external structures 11,264 · plants 1,584 · text 1,024 · audio 2,048 | 15,920 | 464 |
-| `&8000–&BFFF` | 2 | HUD screen page 3,200 + graphics arenas 12,888 | 16,088 | 296 |
+| window | 7 | external structures 14,336 · plants 1,584 · text 1,024 · audio 2,048 | 18,992 | **−2,608** |
+| `&8000–&BFFF` | 2 | HUD screen page 3,200 + graphics arenas 13,719 | 16,919 | **−535** |
 | `&C000–&FFFF` | 3 | play-area screen | 16,384 | 0 |
 
 Every bank is spoken for. The two matrices in banks 1 and 5 are the clearest answer
 to "what is the extra 64 KB actually *for*": they turn pathfinding from a per-agent
 search into a single table read ([§6.4](#64-routing)).
 
-Slack is thin — under 1.5 KB total. Cheap ways to buy more, in order of preference:
-drop `solar_xl` (2,048 B), drop four plant species (528 B), move `plants` into bank 6's
-slack and the slot figures into an arena.
+**Two banks are now over capacity, and that is the live problem.** ASSET-3 landed
+exactly on its 3,456-byte budget, so bank 6 is fine at 640 slack. The other two
+assets did not, and the numbers above are measured from `assets/sprites_map.txt`,
+not estimated:
+
+- **Bank 7 is 2,608 over.** The landing pad (2,048, masked) and ship (512) came in
+  at 2,560, and the airlock's 512 was never added to this table. Dropping `solar_xl`
+  (2,048) leaves it 560 over; dropping four plant species too (528) leaves it 32
+  over. The one combination that clears it with room to spare is **`solar_xl` plus
+  making the pad opaque** — a square apron instead of a masked octagon saves 1,024
+  and ends at 464 slack. That trades Planetbase's round pad for a built one.
+- **Bank 2 is 535 over**, entirely because the font is 6 px wide rather than 4:
+  2,304 instead of 1,536. The named cut — the `s` room-icon set, 864 B — clears it
+  at 329 slack. Going back to the 4 px font also clears it, at 233, and buys back
+  40 HUD columns; the cost is that `M`, `N` and `W` are not reliably distinct with
+  three ink pixels. Both sets are built and live in `tools/font.py`; the choice is
+  the `WIDTH` constant.
+
+Neither decision is the generator's to make — both are gameplay or legibility calls,
+so the assets are delivered and the banks left honest rather than quietly trimmed.
 
 ### 4.3 The `&8000` page and its arenas
 
@@ -328,22 +345,29 @@ these are:
 | Machines, 10 types | 1,320 | delivered |
 | Corridors + connectors | 896 | delivered |
 | Data tables (`machine_slots`, `conn_points`, `corr_slots`, `tile_base`, `tile_variants`, `planet_pens`, …) | 271 | delivered |
-| 4×8 font, 96 glyphs ([ASSET-4](#12-asset-gaps)) | 1,536 | *estimate* |
+| 6×8 font, 96 glyphs ([ASSET-4](#12-asset-gaps)) | 2,304 | delivered |
 | Cursor and UI chrome | 512 | *estimate* |
-| **Total** | **12,919** | |
+| **Total** | **13,719** | |
 
-Delivered art and tables are **10,871**; the remaining 2,048 are the two estimates.
-Against 13,184 that leaves **265 bytes of slack** — and only if the font and cursor
-come in at their guesses. A 4×8 font at 96 glyphs is 1,536 bytes exactly, so the
-cursor is the one with room to surprise.
+Delivered art and tables are **13,207**; only the 512-byte cursor is still a guess.
+Against 13,184 that is **535 bytes over**, all of it the font: at 6 px it is 2,304
+bytes rather than the 1,536 a 4 px font would cost.
+
+**The lowercase glyphs are not a candidate for cutting.** Dropping a-z would free
+624 bytes and close the gap on its own, which makes it the obvious saving and the
+wrong one — the alert line is the game's voice and reads as shouting in all caps.
+The cut list below deliberately excludes it.
 
 Largest single item is a 200-byte `icon_l`, so bin-packing eight 1,648-byte arenas is
 trivial. `flip_mode0` must be 256-byte aligned and lives in bank 6 with the quadrants
 it serves.
 
-If the slack goes, the cheapest cut is the `s` room-icon set (12 × 72 = 864 bytes):
-the small dome is 4×4 tiles and could carry the `m` icon scaled down in the blit, or
-no icon at all.
+The cheapest cut is the `s` room-icon set (12 × 72 = 864 bytes): the small dome is
+4×4 tiles and could carry the `m` icon scaled down in the blit, or no icon at all.
+That clears the 535 and leaves **329**. The alternative is the 4 px font, which
+frees 768 and leaves **233** — less slack, but it buys back 40 HUD columns, and the
+`s` icons survive. The price is that `M`, `N` and `W` are never reliably distinct in
+three ink pixels. Both font sets are built; the choice is one constant.
 
 ### 4.4 `--quads nw` is mandatory
 
@@ -1231,6 +1255,9 @@ Everything below is a change request against `CPCArt/planetbase/`, pulled in by
 `sync-assets.sh`.
 
 **ASSET-1, 2, 7 and 8 are delivered** (CPCArt `97b9653`, synced here as `f959f9e`).
+**ASSET-3, 4 and 5 are delivered too** (CPCArt `e3145b2`). Only ASSET-6 remains, and
+it is cosmetic — but see [§4.2](#42-the-eight-banks): two banks are now over capacity
+and need a decision before any of this can be assembled.
 They are kept in the table with their sizes because the memory map in
 [§4.3](#43-the-8000-page-and-its-arenas) is built on those numbers. ASSET-3, 4 and 5
 remain outstanding; ASSET-6 is cosmetic.
@@ -1239,9 +1266,9 @@ remain outstanding; ASSET-6 is cosmetic.
 |---|---|---|---|
 | ✅ **ASSET-1** | **Terrain tiles**, 4 bytes × 16 lines opaque: ground ×4, dust ×4, rock ×4, mountain autotile ×16, shallow water autotile ×16, deep water fill ×4, crater ×2, foundation ×2; ore overlay ×2 masked | 3,584 B | There is no ground in the asset set. Nothing can be drawn without it. |
 | ✅ **ASSET-2** | **Four room icons** — Factory, Lab, Medbay, Lounge — at all three sizes | 1,600 B | Six of the ten machines currently have no room to live in. |
-| **ASSET-3** | **Four slot figures** — biologist, medic, guard, constructor bot — raising `SLOT_FIGS` 5 → 9 | +1,536 B | Five roles and three bot types share four figures today. |
-| **ASSET-4** | **4×8 font**, 96 glyphs, 2 colours | 1,536 B | Mode 0 at 8 px gives 20 columns. The HUD needs 40. |
-| **ASSET-5** | **Landing pad**, 4×4 tiles masked, plus a ship sprite | ≈ 2,300 B | Ships, colonist arrival and trade are the mid-game. |
+| ✅ **ASSET-3** | **Four slot figures** — biologist, medic, guard, constructor bot — raising `SLOT_FIGS` 5 → 9 | +1,536 B | Five roles and three bot types share four figures today. |
+| ✅ **ASSET-4** | **6×8 font**, 96 glyphs, 2 colours (a 4×8 set is also built) | 2,304 B | Mode 0 at 8 px gives 20 columns. The HUD needs 40. |
+| ✅ **ASSET-5** | **Landing pad**, 4×4 tiles masked, plus a ship sprite | 2,560 B | Ships, colonist arrival and trade are the mid-game. |
 | **ASSET-6** | *Optional:* move `conn_points` and corridor lanes onto the 8-line half-tile grid | 0 B | Tidies corridor/tile alignment ([§3.3](#33-the-grid-is-not-a-choice)). Cosmetic. |
 | ✅ **ASSET-7** | **Palette re-plan**: four pens reserved for terrain, icons re-quantised to five; four planet palette variants | 64 B | [§8.6](#86-palette). Buys four planets for nothing. |
 | ✅ **ASSET-8** | Pin the sprite build to **`--quads nw`** | −22,272 B | [§4.4](#44---quads-nw-is-mandatory). The `all` build does not fit. |
@@ -1257,7 +1284,15 @@ Delivery notes, for the record:
   `variant AND (tile_variants[class] - 1)`. The generator refuses to build if a count
   ever stops being a power of two.
 - The stale "two variants" prose in `assets/SPRITES.md` §5 is fixed; it now documents
-  all five (`SLOT_FIGS 5`, `SLOT_STRIDE 80`, `SLOT_BANK 640`).
+  all nine (`SLOT_FIGS 9`, `SLOT_STRIDE 144`, `SLOT_BANK 1152`).
+- **ASSET-3 swapped two pens this document did not specify.** The medic takes bright
+  red (8) and the carrier bot the dark red (13), not the other way round: the two reds
+  are indistinguishable at 6×6 visual pixels, and the figure you must find in an
+  emergency is the medic, not the hauler. Verification 11 now refuses to build if any
+  two figures share a dominant pen.
+- **ASSET-4 is 6 px wide, not 4.** That was a deliberate change of this spec: 26
+  columns instead of 40, 2,304 bytes instead of 1,536. Both sets are built and the
+  4 px one is one constant away. The **lowercase glyphs stay** in either case.
 
 ---
 

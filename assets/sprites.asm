@@ -58,13 +58,21 @@ ICON_L_H    equ 20
 ICON_L_SZ   equ 200 
 SLOT_W      equ 2           ; θέση αποίκου στον διάδρομο
 SLOT_H      equ 8
+FONT_W      equ 6           ; pixel πλάτος κελιού
+FONT_H      equ 8           ; γραμμές ανά κελί
+FONT_BYTES  equ 3           ; bytes ανά γραμμή γλύφου
+FONT_SIZE   equ 24          ; bytes ανά γλύφο
+FONT_FIRST  equ 32          ; ο πρώτος γλύφος είναι το κενό
+FONT_GLYPHS equ 96          ; ASCII 32..127
+FONT_COLS   equ 26           ; στήλες κειμένου στα 160 pixel
+            ; γλύφος: font_gfx + (ch - FONT_FIRST) * FONT_SIZE
 SLOT_SIZE   equ 16          ; bytes ανά παραλλαγή
-SLOT_FIGS   equ 5           ; παραλλαγές: κενή, colonist, carrier, driller, engineer
-SLOT_STRIDE equ 80          ; όλες οι παραλλαγές μιας θέσης
-SLOT_BANK   equ 640         ; bytes ανά μέγεθος θόλου
+SLOT_FIGS   equ 9           ; παραλλαγές: κενή, colonist, biologist, medic, guard, carrier, driller, engineer, constructor
+SLOT_STRIDE equ 144          ; όλες οι παραλλαγές μιας θέσης
+SLOT_BANK   equ 1152         ; bytes ανά μέγεθος θόλου
 CORR_SLOTS  equ 8
             ; corr_slot_gfx + size*SLOT_BANK + slot*SLOT_STRIDE
-            ; + fig*SLOT_SIZE   (fig: 0 κενή, 1 άποικος, 2..4 ρομπότ)
+            ; + fig*SLOT_SIZE   (0 κενή· 1-4 άποικοι· 5-8 ρομπότ)
 
 CORR_H_W    equ 4
 CORR_H_H    equ 8
@@ -85,7 +93,7 @@ PLANT_TYPES equ 12          ; plants + type*PLANT_SIZE
 
 ; Εξωτερικές δομές: αυτοτελή κτίσματα στο έδαφος, ΟΧΙ μηχανές θόλου.
 ; Κάθε παραλλαγή έχει δική της ετικέτα· διαστάσεις στο struct_dims.
-STRUCT_KINDS equ 6          ; solar, turbine, collector, extractor, mine, airlock
+STRUCT_KINDS equ 8          ; solar, turbine, collector, extractor, mine, airlock, pad, ship
             ;  0 peas       starch
             ;  1 rice       starch
             ;  2 potatoes   starch
@@ -1324,15 +1332,48 @@ slot_s_0_colonist:
     db #78,#38   ; YWY,
     db #D8,#30   ; cW,,
 
-; slot_s_0_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
-slot_s_0_carrier:
+; slot_s_0_biologist — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_0_biologist:
     db #B0,#70   ; W,,W
-    db #03,#12   ; RRR,
+    db #E1,#30   ; WG,,
+    db #E1,#30   ; WG,,
+    db #C3,#92   ; GGG,
+    db #C3,#92   ; GGG,
+    db #C9,#30   ; cG,,
+    db #D2,#92   ; GWG,
+    db #D8,#30   ; cW,,
+
+; slot_s_0_medic — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_0_medic:
+    db #B0,#70   ; W,,W
+    db #A1,#30   ; WR,,
     db #03,#12   ; RRR,
     db #89,#30   ; cR,,
     db #03,#12   ; RRR,
     db #52,#12   ; RWR,
     db #52,#12   ; RWR,
+    db #D8,#30   ; cW,,
+
+; slot_s_0_guard — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_0_guard:
+    db #B0,#70   ; W,,W
+    db #C0,#90   ; bbb,
+    db #E0,#30   ; Wb,,
+    db #C0,#90   ; bbb,
+    db #C0,#90   ; bbb,
+    db #C8,#30   ; cb,,
+    db #D0,#90   ; bWb,
+    db #D8,#30   ; cW,,
+
+; slot_s_0_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_0_carrier:
+    db #B0,#70   ; W,,W
+    db #F3,#B2   ; rrr,
+    db #F3,#B2   ; rrr,
+    db #D9,#30   ; cr,,
+    db #F3,#B2   ; rrr,
+    db #F2,#B2   ; rWr,
+    db #F2,#B2   ; rWr,
     db #D8,#30   ; cW,,
 
 ; slot_s_0_driller — 4 x 8 pixels, αδιαφανές, 16 bytes
@@ -1357,6 +1398,17 @@ slot_s_0_engineer:
     db #5A,#1A   ; CWC,
     db #D8,#30   ; cW,,
 
+; slot_s_0_constructor — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_0_constructor:
+    db #B0,#70   ; W,,W
+    db #98,#30   ; c,,,
+    db #CC,#98   ; ccc,
+    db #CC,#30   ; cc,,
+    db #CC,#98   ; ccc,
+    db #D8,#98   ; cWc,
+    db #D8,#98   ; cWc,
+    db #D8,#30   ; cW,,
+
 ; slot_s_1_empty — 4 x 8 pixels, αδιαφανές, 16 bytes
 slot_s_1_empty:
     db #30,#70   ; ,,,W
@@ -1379,15 +1431,48 @@ slot_s_1_colonist:
     db #78,#38   ; YWY,
     db #CC,#B0   ; ccW,
 
-; slot_s_1_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
-slot_s_1_carrier:
+; slot_s_1_biologist — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_1_biologist:
     db #30,#70   ; ,,,W
-    db #03,#12   ; RRR,
+    db #61,#30   ; ,G,,
+    db #61,#30   ; ,G,,
+    db #C3,#92   ; GGG,
+    db #C3,#92   ; GGG,
+    db #61,#30   ; ,G,,
+    db #D2,#92   ; GWG,
+    db #CC,#B0   ; ccW,
+
+; slot_s_1_medic — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_1_medic:
+    db #30,#70   ; ,,,W
+    db #21,#30   ; ,R,,
     db #03,#12   ; RRR,
     db #21,#30   ; ,R,,
     db #03,#12   ; RRR,
     db #12,#12   ; R,R,
     db #52,#12   ; RWR,
+    db #CC,#B0   ; ccW,
+
+; slot_s_1_guard — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_1_guard:
+    db #30,#70   ; ,,,W
+    db #C0,#90   ; bbb,
+    db #60,#30   ; ,b,,
+    db #C0,#90   ; bbb,
+    db #C0,#90   ; bbb,
+    db #60,#30   ; ,b,,
+    db #D0,#90   ; bWb,
+    db #CC,#B0   ; ccW,
+
+; slot_s_1_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_1_carrier:
+    db #30,#70   ; ,,,W
+    db #F3,#B2   ; rrr,
+    db #F3,#B2   ; rrr,
+    db #71,#30   ; ,r,,
+    db #F3,#B2   ; rrr,
+    db #B2,#B2   ; r,r,
+    db #F2,#B2   ; rWr,
     db #CC,#B0   ; ccW,
 
 ; slot_s_1_driller — 4 x 8 pixels, αδιαφανές, 16 bytes
@@ -1412,6 +1497,17 @@ slot_s_1_engineer:
     db #5A,#1A   ; CWC,
     db #CC,#B0   ; ccW,
 
+; slot_s_1_constructor — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_1_constructor:
+    db #30,#70   ; ,,,W
+    db #98,#30   ; c,,,
+    db #CC,#98   ; ccc,
+    db #64,#30   ; ,c,,
+    db #CC,#98   ; ccc,
+    db #98,#98   ; c,c,
+    db #D8,#98   ; cWc,
+    db #CC,#B0   ; ccW,
+
 ; slot_s_2_empty — 4 x 8 pixels, αδιαφανές, 16 bytes
 slot_s_2_empty:
     db #00,#B0   ;   W,
@@ -1434,15 +1530,48 @@ slot_s_2_colonist:
     db #38,#38   ; Y,Y,
     db #30,#70   ; ,,,W
 
-; slot_s_2_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
-slot_s_2_carrier:
+; slot_s_2_biologist — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_2_biologist:
     db #00,#B0   ;   W,
-    db #03,#12   ; RRR,
+    db #41,#30   ;  G,,
+    db #E1,#30   ; WG,,
+    db #C3,#92   ; GGG,
+    db #C3,#92   ; GGG,
+    db #61,#30   ; ,G,,
+    db #92,#92   ; G,G,
+    db #30,#70   ; ,,,W
+
+; slot_s_2_medic — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_2_medic:
+    db #00,#B0   ;   W,
+    db #01,#30   ;  R,,
     db #03,#12   ; RRR,
     db #21,#30   ; ,R,,
     db #03,#12   ; RRR,
     db #12,#12   ; R,R,
     db #12,#12   ; R,R,
+    db #30,#70   ; ,,,W
+
+; slot_s_2_guard — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_2_guard:
+    db #00,#B0   ;   W,
+    db #C0,#90   ; bbb,
+    db #E0,#30   ; Wb,,
+    db #C0,#90   ; bbb,
+    db #C0,#90   ; bbb,
+    db #60,#30   ; ,b,,
+    db #90,#90   ; b,b,
+    db #30,#70   ; ,,,W
+
+; slot_s_2_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_2_carrier:
+    db #00,#B0   ;   W,
+    db #F3,#B2   ; rrr,
+    db #F3,#B2   ; rrr,
+    db #71,#30   ; ,r,,
+    db #F3,#B2   ; rrr,
+    db #B2,#B2   ; r,r,
+    db #B2,#B2   ; r,r,
     db #30,#70   ; ,,,W
 
 ; slot_s_2_driller — 4 x 8 pixels, αδιαφανές, 16 bytes
@@ -1467,6 +1596,17 @@ slot_s_2_engineer:
     db #1A,#1A   ; C,C,
     db #30,#70   ; ,,,W
 
+; slot_s_2_constructor — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_2_constructor:
+    db #00,#B0   ;   W,
+    db #D8,#30   ; cW,,
+    db #CC,#98   ; ccc,
+    db #64,#30   ; ,c,,
+    db #CC,#98   ; ccc,
+    db #98,#98   ; c,c,
+    db #98,#98   ; c,c,
+    db #30,#70   ; ,,,W
+
 ; slot_s_3_empty — 4 x 8 pixels, αδιαφανές, 16 bytes
 slot_s_3_empty:
     db #00,#B0   ;   W,
@@ -1489,15 +1629,48 @@ slot_s_3_colonist:
     db #78,#38   ; YWY,
     db #B0,#30   ; W,,,
 
-; slot_s_3_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
-slot_s_3_carrier:
+; slot_s_3_biologist — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_3_biologist:
     db #00,#B0   ;   W,
-    db #03,#12   ; RRR,
+    db #41,#30   ;  G,,
+    db #41,#30   ;  G,,
+    db #C3,#92   ; GGG,
+    db #C3,#92   ; GGG,
+    db #41,#30   ;  G,,
+    db #D2,#92   ; GWG,
+    db #B0,#30   ; W,,,
+
+; slot_s_3_medic — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_3_medic:
+    db #00,#B0   ;   W,
+    db #01,#30   ;  R,,
     db #03,#12   ; RRR,
     db #01,#30   ;  R,,
     db #03,#12   ; RRR,
     db #52,#12   ; RWR,
     db #52,#12   ; RWR,
+    db #B0,#30   ; W,,,
+
+; slot_s_3_guard — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_3_guard:
+    db #00,#B0   ;   W,
+    db #C0,#90   ; bbb,
+    db #40,#30   ;  b,,
+    db #C0,#90   ; bbb,
+    db #C0,#90   ; bbb,
+    db #40,#30   ;  b,,
+    db #D0,#90   ; bWb,
+    db #B0,#30   ; W,,,
+
+; slot_s_3_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_3_carrier:
+    db #00,#B0   ;   W,
+    db #F3,#B2   ; rrr,
+    db #F3,#B2   ; rrr,
+    db #51,#30   ;  r,,
+    db #F3,#B2   ; rrr,
+    db #F2,#B2   ; rWr,
+    db #F2,#B2   ; rWr,
     db #B0,#30   ; W,,,
 
 ; slot_s_3_driller — 4 x 8 pixels, αδιαφανές, 16 bytes
@@ -1522,6 +1695,17 @@ slot_s_3_engineer:
     db #5A,#1A   ; CWC,
     db #B0,#30   ; W,,,
 
+; slot_s_3_constructor — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_3_constructor:
+    db #00,#B0   ;   W,
+    db #D8,#30   ; cW,,
+    db #CC,#98   ; ccc,
+    db #44,#30   ;  c,,
+    db #CC,#98   ; ccc,
+    db #D8,#98   ; cWc,
+    db #D8,#98   ; cWc,
+    db #B0,#30   ; W,,,
+
 ; slot_s_4_empty — 4 x 8 pixels, αδιαφανές, 16 bytes
 slot_s_4_empty:
     db #B0,#30   ; W,,,
@@ -1544,15 +1728,48 @@ slot_s_4_colonist:
     db #78,#38   ; YWY,
     db #00,#B0   ;   W,
 
-; slot_s_4_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
-slot_s_4_carrier:
+; slot_s_4_biologist — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_4_biologist:
     db #B0,#30   ; W,,,
-    db #03,#12   ; RRR,
+    db #41,#30   ;  G,,
+    db #41,#30   ;  G,,
+    db #C3,#92   ; GGG,
+    db #C3,#92   ; GGG,
+    db #41,#30   ;  G,,
+    db #D2,#92   ; GWG,
+    db #00,#B0   ;   W,
+
+; slot_s_4_medic — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_4_medic:
+    db #B0,#30   ; W,,,
+    db #01,#30   ;  R,,
     db #03,#12   ; RRR,
     db #01,#30   ;  R,,
     db #03,#12   ; RRR,
     db #52,#12   ; RWR,
     db #52,#12   ; RWR,
+    db #00,#B0   ;   W,
+
+; slot_s_4_guard — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_4_guard:
+    db #B0,#30   ; W,,,
+    db #C0,#90   ; bbb,
+    db #40,#30   ;  b,,
+    db #C0,#90   ; bbb,
+    db #C0,#90   ; bbb,
+    db #40,#30   ;  b,,
+    db #D0,#90   ; bWb,
+    db #00,#B0   ;   W,
+
+; slot_s_4_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_4_carrier:
+    db #B0,#30   ; W,,,
+    db #F3,#B2   ; rrr,
+    db #F3,#B2   ; rrr,
+    db #51,#30   ;  r,,
+    db #F3,#B2   ; rrr,
+    db #F2,#B2   ; rWr,
+    db #F2,#B2   ; rWr,
     db #00,#B0   ;   W,
 
 ; slot_s_4_driller — 4 x 8 pixels, αδιαφανές, 16 bytes
@@ -1577,6 +1794,17 @@ slot_s_4_engineer:
     db #5A,#1A   ; CWC,
     db #00,#B0   ;   W,
 
+; slot_s_4_constructor — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_4_constructor:
+    db #B0,#30   ; W,,,
+    db #D8,#30   ; cW,,
+    db #CC,#98   ; ccc,
+    db #44,#30   ;  c,,
+    db #CC,#98   ; ccc,
+    db #D8,#98   ; cWc,
+    db #D8,#98   ; cWc,
+    db #00,#B0   ;   W,
+
 ; slot_s_5_empty — 4 x 8 pixels, αδιαφανές, 16 bytes
 slot_s_5_empty:
     db #30,#70   ; ,,,W
@@ -1599,15 +1827,48 @@ slot_s_5_colonist:
     db #78,#38   ; YWY,
     db #00,#B0   ;   W,
 
-; slot_s_5_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
-slot_s_5_carrier:
+; slot_s_5_biologist — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_5_biologist:
     db #30,#70   ; ,,,W
-    db #03,#12   ; RRR,
+    db #61,#30   ; ,G,,
+    db #61,#30   ; ,G,,
+    db #C3,#92   ; GGG,
+    db #C3,#92   ; GGG,
+    db #E1,#30   ; WG,,
+    db #D2,#92   ; GWG,
+    db #00,#B0   ;   W,
+
+; slot_s_5_medic — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_5_medic:
+    db #30,#70   ; ,,,W
+    db #21,#30   ; ,R,,
     db #03,#12   ; RRR,
     db #21,#30   ; ,R,,
     db #03,#12   ; RRR,
     db #12,#12   ; R,R,
     db #52,#12   ; RWR,
+    db #00,#B0   ;   W,
+
+; slot_s_5_guard — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_5_guard:
+    db #30,#70   ; ,,,W
+    db #C0,#90   ; bbb,
+    db #60,#30   ; ,b,,
+    db #C0,#90   ; bbb,
+    db #C0,#90   ; bbb,
+    db #E0,#30   ; Wb,,
+    db #D0,#90   ; bWb,
+    db #00,#B0   ;   W,
+
+; slot_s_5_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_5_carrier:
+    db #30,#70   ; ,,,W
+    db #F3,#B2   ; rrr,
+    db #F3,#B2   ; rrr,
+    db #71,#30   ; ,r,,
+    db #F3,#B2   ; rrr,
+    db #B2,#B2   ; r,r,
+    db #F2,#B2   ; rWr,
     db #00,#B0   ;   W,
 
 ; slot_s_5_driller — 4 x 8 pixels, αδιαφανές, 16 bytes
@@ -1632,6 +1893,17 @@ slot_s_5_engineer:
     db #5A,#1A   ; CWC,
     db #00,#B0   ;   W,
 
+; slot_s_5_constructor — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_5_constructor:
+    db #30,#70   ; ,,,W
+    db #98,#30   ; c,,,
+    db #CC,#98   ; ccc,
+    db #64,#30   ; ,c,,
+    db #CC,#98   ; ccc,
+    db #98,#98   ; c,c,
+    db #D8,#98   ; cWc,
+    db #00,#B0   ;   W,
+
 ; slot_s_6_empty — 4 x 8 pixels, αδιαφανές, 16 bytes
 slot_s_6_empty:
     db #CC,#B0   ; ccW,
@@ -1654,15 +1926,48 @@ slot_s_6_colonist:
     db #38,#38   ; Y,Y,
     db #30,#70   ; ,,,W
 
-; slot_s_6_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
-slot_s_6_carrier:
+; slot_s_6_biologist — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_6_biologist:
     db #CC,#B0   ; ccW,
-    db #03,#12   ; RRR,
+    db #E1,#30   ; WG,,
+    db #61,#30   ; ,G,,
+    db #C3,#92   ; GGG,
+    db #C3,#92   ; GGG,
+    db #61,#30   ; ,G,,
+    db #92,#92   ; G,G,
+    db #30,#70   ; ,,,W
+
+; slot_s_6_medic — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_6_medic:
+    db #CC,#B0   ; ccW,
+    db #A1,#30   ; WR,,
     db #03,#12   ; RRR,
     db #21,#30   ; ,R,,
     db #03,#12   ; RRR,
     db #12,#12   ; R,R,
     db #12,#12   ; R,R,
+    db #30,#70   ; ,,,W
+
+; slot_s_6_guard — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_6_guard:
+    db #CC,#B0   ; ccW,
+    db #C0,#90   ; bbb,
+    db #60,#30   ; ,b,,
+    db #C0,#90   ; bbb,
+    db #C0,#90   ; bbb,
+    db #60,#30   ; ,b,,
+    db #90,#90   ; b,b,
+    db #30,#70   ; ,,,W
+
+; slot_s_6_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_6_carrier:
+    db #CC,#B0   ; ccW,
+    db #F3,#B2   ; rrr,
+    db #F3,#B2   ; rrr,
+    db #71,#30   ; ,r,,
+    db #F3,#B2   ; rrr,
+    db #B2,#B2   ; r,r,
+    db #B2,#B2   ; r,r,
     db #30,#70   ; ,,,W
 
 ; slot_s_6_driller — 4 x 8 pixels, αδιαφανές, 16 bytes
@@ -1687,6 +1992,17 @@ slot_s_6_engineer:
     db #1A,#1A   ; C,C,
     db #30,#70   ; ,,,W
 
+; slot_s_6_constructor — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_6_constructor:
+    db #CC,#B0   ; ccW,
+    db #D8,#30   ; cW,,
+    db #CC,#98   ; ccc,
+    db #64,#30   ; ,c,,
+    db #CC,#98   ; ccc,
+    db #98,#98   ; c,c,
+    db #98,#98   ; c,c,
+    db #30,#70   ; ,,,W
+
 ; slot_s_7_empty — 4 x 8 pixels, αδιαφανές, 16 bytes
 slot_s_7_empty:
     db #D8,#30   ; cW,,
@@ -1709,15 +2025,48 @@ slot_s_7_colonist:
     db #38,#38   ; Y,Y,
     db #B0,#70   ; W,,W
 
-; slot_s_7_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
-slot_s_7_carrier:
+; slot_s_7_biologist — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_7_biologist:
     db #D8,#30   ; cW,,
-    db #03,#12   ; RRR,
+    db #C9,#30   ; cG,,
+    db #C9,#30   ; cG,,
+    db #C3,#92   ; GGG,
+    db #C3,#92   ; GGG,
+    db #E1,#30   ; WG,,
+    db #92,#92   ; G,G,
+    db #B0,#70   ; W,,W
+
+; slot_s_7_medic — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_7_medic:
+    db #D8,#30   ; cW,,
+    db #89,#30   ; cR,,
     db #03,#12   ; RRR,
     db #89,#30   ; cR,,
     db #03,#12   ; RRR,
     db #12,#12   ; R,R,
     db #12,#12   ; R,R,
+    db #B0,#70   ; W,,W
+
+; slot_s_7_guard — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_7_guard:
+    db #D8,#30   ; cW,,
+    db #C0,#90   ; bbb,
+    db #C8,#30   ; cb,,
+    db #C0,#90   ; bbb,
+    db #C0,#90   ; bbb,
+    db #E0,#30   ; Wb,,
+    db #90,#90   ; b,b,
+    db #B0,#70   ; W,,W
+
+; slot_s_7_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_7_carrier:
+    db #D8,#30   ; cW,,
+    db #F3,#B2   ; rrr,
+    db #F3,#B2   ; rrr,
+    db #D9,#30   ; cr,,
+    db #F3,#B2   ; rrr,
+    db #B2,#B2   ; r,r,
+    db #B2,#B2   ; r,r,
     db #B0,#70   ; W,,W
 
 ; slot_s_7_driller — 4 x 8 pixels, αδιαφανές, 16 bytes
@@ -1742,6 +2091,17 @@ slot_s_7_engineer:
     db #1A,#1A   ; C,C,
     db #B0,#70   ; W,,W
 
+; slot_s_7_constructor — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_s_7_constructor:
+    db #D8,#30   ; cW,,
+    db #D8,#30   ; cW,,
+    db #CC,#98   ; ccc,
+    db #CC,#30   ; cc,,
+    db #CC,#98   ; ccc,
+    db #98,#98   ; c,c,
+    db #98,#98   ; c,c,
+    db #B0,#70   ; W,,W
+
 ; slot_m_0_empty — 4 x 8 pixels, αδιαφανές, 16 bytes
 slot_m_0_empty:
     db #30,#70   ; ,,,W
@@ -1764,15 +2124,48 @@ slot_m_0_colonist:
     db #78,#38   ; YWY,
     db #D8,#30   ; cW,,
 
-; slot_m_0_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
-slot_m_0_carrier:
+; slot_m_0_biologist — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_0_biologist:
     db #30,#70   ; ,,,W
-    db #03,#52   ; RRRW
+    db #61,#70   ; ,G,W
+    db #E1,#70   ; WG,W
+    db #C3,#D2   ; GGGW
+    db #C3,#92   ; GGG,
+    db #E1,#30   ; WG,,
+    db #D2,#92   ; GWG,
+    db #D8,#30   ; cW,,
+
+; slot_m_0_medic — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_0_medic:
+    db #30,#70   ; ,,,W
+    db #21,#70   ; ,R,W
     db #03,#52   ; RRRW
     db #A1,#70   ; WR,W
     db #03,#12   ; RRR,
     db #12,#12   ; R,R,
     db #52,#12   ; RWR,
+    db #D8,#30   ; cW,,
+
+; slot_m_0_guard — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_0_guard:
+    db #30,#70   ; ,,,W
+    db #C0,#D0   ; bbbW
+    db #E0,#70   ; Wb,W
+    db #C0,#D0   ; bbbW
+    db #C0,#90   ; bbb,
+    db #E0,#30   ; Wb,,
+    db #D0,#90   ; bWb,
+    db #D8,#30   ; cW,,
+
+; slot_m_0_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_0_carrier:
+    db #30,#70   ; ,,,W
+    db #F3,#F2   ; rrrW
+    db #F3,#F2   ; rrrW
+    db #F1,#70   ; Wr,W
+    db #F3,#B2   ; rrr,
+    db #B2,#B2   ; r,r,
+    db #F2,#B2   ; rWr,
     db #D8,#30   ; cW,,
 
 ; slot_m_0_driller — 4 x 8 pixels, αδιαφανές, 16 bytes
@@ -1797,6 +2190,17 @@ slot_m_0_engineer:
     db #5A,#1A   ; CWC,
     db #D8,#30   ; cW,,
 
+; slot_m_0_constructor — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_0_constructor:
+    db #30,#70   ; ,,,W
+    db #98,#70   ; c,,W
+    db #CC,#D8   ; cccW
+    db #E4,#70   ; Wc,W
+    db #CC,#98   ; ccc,
+    db #98,#98   ; c,c,
+    db #D8,#98   ; cWc,
+    db #D8,#30   ; cW,,
+
 ; slot_m_1_empty — 4 x 8 pixels, αδιαφανές, 16 bytes
 slot_m_1_empty:
     db #30,#A0   ; ,,W 
@@ -1819,15 +2223,48 @@ slot_m_1_colonist:
     db #38,#38   ; Y,Y,
     db #D8,#30   ; cW,,
 
-; slot_m_1_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
-slot_m_1_carrier:
+; slot_m_1_biologist — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_1_biologist:
     db #30,#A0   ; ,,W 
-    db #03,#52   ; RRRW
+    db #61,#70   ; ,G,W
+    db #61,#30   ; ,G,,
+    db #C3,#92   ; GGG,
+    db #C3,#92   ; GGG,
+    db #61,#30   ; ,G,,
+    db #92,#92   ; G,G,
+    db #D8,#30   ; cW,,
+
+; slot_m_1_medic — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_1_medic:
+    db #30,#A0   ; ,,W 
+    db #21,#70   ; ,R,W
     db #03,#12   ; RRR,
     db #21,#30   ; ,R,,
     db #03,#12   ; RRR,
     db #12,#12   ; R,R,
     db #12,#12   ; R,R,
+    db #D8,#30   ; cW,,
+
+; slot_m_1_guard — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_1_guard:
+    db #30,#A0   ; ,,W 
+    db #C0,#D0   ; bbbW
+    db #60,#30   ; ,b,,
+    db #C0,#90   ; bbb,
+    db #C0,#90   ; bbb,
+    db #60,#30   ; ,b,,
+    db #90,#90   ; b,b,
+    db #D8,#30   ; cW,,
+
+; slot_m_1_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_1_carrier:
+    db #30,#A0   ; ,,W 
+    db #F3,#F2   ; rrrW
+    db #F3,#B2   ; rrr,
+    db #71,#30   ; ,r,,
+    db #F3,#B2   ; rrr,
+    db #B2,#B2   ; r,r,
+    db #B2,#B2   ; r,r,
     db #D8,#30   ; cW,,
 
 ; slot_m_1_driller — 4 x 8 pixels, αδιαφανές, 16 bytes
@@ -1852,6 +2289,17 @@ slot_m_1_engineer:
     db #1A,#1A   ; C,C,
     db #D8,#30   ; cW,,
 
+; slot_m_1_constructor — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_1_constructor:
+    db #30,#A0   ; ,,W 
+    db #98,#70   ; c,,W
+    db #CC,#98   ; ccc,
+    db #64,#30   ; ,c,,
+    db #CC,#98   ; ccc,
+    db #98,#98   ; c,c,
+    db #98,#98   ; c,c,
+    db #D8,#30   ; cW,,
+
 ; slot_m_2_empty — 4 x 8 pixels, αδιαφανές, 16 bytes
 slot_m_2_empty:
     db #50,#30   ;  W,,
@@ -1874,15 +2322,48 @@ slot_m_2_colonist:
     db #38,#78   ; Y,YW
     db #30,#E4   ; ,,Wc
 
-; slot_m_2_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
-slot_m_2_carrier:
+; slot_m_2_biologist — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_2_biologist:
     db #50,#30   ;  W,,
-    db #03,#12   ; RRR,
+    db #E1,#30   ; WG,,
+    db #61,#30   ; ,G,,
+    db #C3,#92   ; GGG,
+    db #C3,#92   ; GGG,
+    db #61,#30   ; ,G,,
+    db #92,#D2   ; G,GW
+    db #30,#E4   ; ,,Wc
+
+; slot_m_2_medic — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_2_medic:
+    db #50,#30   ;  W,,
+    db #A1,#30   ; WR,,
     db #03,#12   ; RRR,
     db #21,#30   ; ,R,,
     db #03,#12   ; RRR,
     db #12,#12   ; R,R,
     db #12,#52   ; R,RW
+    db #30,#E4   ; ,,Wc
+
+; slot_m_2_guard — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_2_guard:
+    db #50,#30   ;  W,,
+    db #C0,#90   ; bbb,
+    db #60,#30   ; ,b,,
+    db #C0,#90   ; bbb,
+    db #C0,#90   ; bbb,
+    db #60,#30   ; ,b,,
+    db #90,#D0   ; b,bW
+    db #30,#E4   ; ,,Wc
+
+; slot_m_2_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_2_carrier:
+    db #50,#30   ;  W,,
+    db #F3,#B2   ; rrr,
+    db #F3,#B2   ; rrr,
+    db #71,#30   ; ,r,,
+    db #F3,#B2   ; rrr,
+    db #B2,#B2   ; r,r,
+    db #B2,#F2   ; r,rW
     db #30,#E4   ; ,,Wc
 
 ; slot_m_2_driller — 4 x 8 pixels, αδιαφανές, 16 bytes
@@ -1907,6 +2388,17 @@ slot_m_2_engineer:
     db #1A,#5A   ; C,CW
     db #30,#E4   ; ,,Wc
 
+; slot_m_2_constructor — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_2_constructor:
+    db #50,#30   ;  W,,
+    db #98,#30   ; c,,,
+    db #CC,#98   ; ccc,
+    db #64,#30   ; ,c,,
+    db #CC,#98   ; ccc,
+    db #98,#98   ; c,c,
+    db #98,#D8   ; c,cW
+    db #30,#E4   ; ,,Wc
+
 ; slot_m_3_empty — 4 x 8 pixels, αδιαφανές, 16 bytes
 slot_m_3_empty:
     db #B0,#30   ; W,,,
@@ -1929,15 +2421,48 @@ slot_m_3_colonist:
     db #38,#6C   ; Y,Yc
     db #30,#E4   ; ,,Wc
 
-; slot_m_3_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
-slot_m_3_carrier:
+; slot_m_3_biologist — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_3_biologist:
     db #B0,#30   ; W,,,
-    db #03,#12   ; RRR,
+    db #E1,#30   ; WG,,
+    db #E1,#70   ; WG,W
+    db #C3,#D2   ; GGGW
+    db #C3,#D2   ; GGGW
+    db #61,#70   ; ,G,W
+    db #92,#C6   ; G,Gc
+    db #30,#E4   ; ,,Wc
+
+; slot_m_3_medic — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_3_medic:
+    db #B0,#30   ; W,,,
+    db #A1,#30   ; WR,,
     db #03,#52   ; RRRW
     db #A1,#70   ; WR,W
     db #03,#52   ; RRRW
     db #12,#52   ; R,RW
     db #12,#46   ; R,Rc
+    db #30,#E4   ; ,,Wc
+
+; slot_m_3_guard — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_3_guard:
+    db #B0,#30   ; W,,,
+    db #C0,#90   ; bbb,
+    db #E0,#70   ; Wb,W
+    db #C0,#D0   ; bbbW
+    db #C0,#D0   ; bbbW
+    db #60,#70   ; ,b,W
+    db #90,#C4   ; b,bc
+    db #30,#E4   ; ,,Wc
+
+; slot_m_3_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_3_carrier:
+    db #B0,#30   ; W,,,
+    db #F3,#B2   ; rrr,
+    db #F3,#F2   ; rrrW
+    db #F1,#70   ; Wr,W
+    db #F3,#F2   ; rrrW
+    db #B2,#F2   ; r,rW
+    db #B2,#E6   ; r,rc
     db #30,#E4   ; ,,Wc
 
 ; slot_m_3_driller — 4 x 8 pixels, αδιαφανές, 16 bytes
@@ -1962,6 +2487,17 @@ slot_m_3_engineer:
     db #1A,#4E   ; C,Cc
     db #30,#E4   ; ,,Wc
 
+; slot_m_3_constructor — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_3_constructor:
+    db #B0,#30   ; W,,,
+    db #98,#30   ; c,,,
+    db #CC,#D8   ; cccW
+    db #E4,#70   ; Wc,W
+    db #CC,#D8   ; cccW
+    db #98,#D8   ; c,cW
+    db #98,#CC   ; c,cc
+    db #30,#E4   ; ,,Wc
+
 ; slot_m_4_empty — 4 x 8 pixels, αδιαφανές, 16 bytes
 slot_m_4_empty:
     db #30,#E4   ; ,,Wc
@@ -1984,15 +2520,48 @@ slot_m_4_colonist:
     db #38,#38   ; Y,Y,
     db #B0,#30   ; W,,,
 
-; slot_m_4_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
-slot_m_4_carrier:
+; slot_m_4_biologist — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_4_biologist:
     db #30,#E4   ; ,,Wc
-    db #03,#46   ; RRRc
+    db #61,#E4   ; ,GWc
+    db #61,#70   ; ,G,W
+    db #C3,#D2   ; GGGW
+    db #C3,#D2   ; GGGW
+    db #E1,#70   ; WG,W
+    db #92,#92   ; G,G,
+    db #B0,#30   ; W,,,
+
+; slot_m_4_medic — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_4_medic:
+    db #30,#E4   ; ,,Wc
+    db #21,#E4   ; ,RWc
     db #03,#52   ; RRRW
     db #21,#70   ; ,R,W
     db #03,#52   ; RRRW
     db #12,#52   ; R,RW
     db #12,#12   ; R,R,
+    db #B0,#30   ; W,,,
+
+; slot_m_4_guard — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_4_guard:
+    db #30,#E4   ; ,,Wc
+    db #C0,#C4   ; bbbc
+    db #60,#70   ; ,b,W
+    db #C0,#D0   ; bbbW
+    db #C0,#D0   ; bbbW
+    db #E0,#70   ; Wb,W
+    db #90,#90   ; b,b,
+    db #B0,#30   ; W,,,
+
+; slot_m_4_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_4_carrier:
+    db #30,#E4   ; ,,Wc
+    db #F3,#E6   ; rrrc
+    db #F3,#F2   ; rrrW
+    db #71,#70   ; ,r,W
+    db #F3,#F2   ; rrrW
+    db #B2,#F2   ; r,rW
+    db #B2,#B2   ; r,r,
     db #B0,#30   ; W,,,
 
 ; slot_m_4_driller — 4 x 8 pixels, αδιαφανές, 16 bytes
@@ -2017,6 +2586,17 @@ slot_m_4_engineer:
     db #1A,#1A   ; C,C,
     db #B0,#30   ; W,,,
 
+; slot_m_4_constructor — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_4_constructor:
+    db #30,#E4   ; ,,Wc
+    db #98,#E4   ; c,Wc
+    db #CC,#D8   ; cccW
+    db #64,#70   ; ,c,W
+    db #CC,#D8   ; cccW
+    db #98,#D8   ; c,cW
+    db #98,#98   ; c,c,
+    db #B0,#30   ; W,,,
+
 ; slot_m_5_empty — 4 x 8 pixels, αδιαφανές, 16 bytes
 slot_m_5_empty:
     db #30,#E4   ; ,,Wc
@@ -2039,15 +2619,48 @@ slot_m_5_colonist:
     db #38,#38   ; Y,Y,
     db #50,#30   ;  W,,
 
-; slot_m_5_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
-slot_m_5_carrier:
+; slot_m_5_biologist — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_5_biologist:
     db #30,#E4   ; ,,Wc
-    db #03,#52   ; RRRW
+    db #61,#70   ; ,G,W
+    db #61,#30   ; ,G,,
+    db #C3,#92   ; GGG,
+    db #C3,#92   ; GGG,
+    db #61,#30   ; ,G,,
+    db #92,#92   ; G,G,
+    db #50,#30   ;  W,,
+
+; slot_m_5_medic — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_5_medic:
+    db #30,#E4   ; ,,Wc
+    db #21,#70   ; ,R,W
     db #03,#12   ; RRR,
     db #21,#30   ; ,R,,
     db #03,#12   ; RRR,
     db #12,#12   ; R,R,
     db #12,#12   ; R,R,
+    db #50,#30   ;  W,,
+
+; slot_m_5_guard — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_5_guard:
+    db #30,#E4   ; ,,Wc
+    db #C0,#D0   ; bbbW
+    db #60,#30   ; ,b,,
+    db #C0,#90   ; bbb,
+    db #C0,#90   ; bbb,
+    db #60,#30   ; ,b,,
+    db #90,#90   ; b,b,
+    db #50,#30   ;  W,,
+
+; slot_m_5_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_5_carrier:
+    db #30,#E4   ; ,,Wc
+    db #F3,#F2   ; rrrW
+    db #F3,#B2   ; rrr,
+    db #71,#30   ; ,r,,
+    db #F3,#B2   ; rrr,
+    db #B2,#B2   ; r,r,
+    db #B2,#B2   ; r,r,
     db #50,#30   ;  W,,
 
 ; slot_m_5_driller — 4 x 8 pixels, αδιαφανές, 16 bytes
@@ -2072,6 +2685,17 @@ slot_m_5_engineer:
     db #1A,#1A   ; C,C,
     db #50,#30   ;  W,,
 
+; slot_m_5_constructor — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_5_constructor:
+    db #30,#E4   ; ,,Wc
+    db #98,#70   ; c,,W
+    db #CC,#98   ; ccc,
+    db #64,#30   ; ,c,,
+    db #CC,#98   ; ccc,
+    db #98,#98   ; c,c,
+    db #98,#98   ; c,c,
+    db #50,#30   ;  W,,
+
 ; slot_m_6_empty — 4 x 8 pixels, αδιαφανές, 16 bytes
 slot_m_6_empty:
     db #D8,#30   ; cW,,
@@ -2094,15 +2718,48 @@ slot_m_6_colonist:
     db #38,#78   ; Y,YW
     db #30,#A0   ; ,,W 
 
-; slot_m_6_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
-slot_m_6_carrier:
+; slot_m_6_biologist — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_6_biologist:
     db #D8,#30   ; cW,,
-    db #03,#12   ; RRR,
+    db #E1,#30   ; WG,,
+    db #61,#30   ; ,G,,
+    db #C3,#92   ; GGG,
+    db #C3,#92   ; GGG,
+    db #61,#30   ; ,G,,
+    db #92,#D2   ; G,GW
+    db #30,#A0   ; ,,W 
+
+; slot_m_6_medic — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_6_medic:
+    db #D8,#30   ; cW,,
+    db #A1,#30   ; WR,,
     db #03,#12   ; RRR,
     db #21,#30   ; ,R,,
     db #03,#12   ; RRR,
     db #12,#12   ; R,R,
     db #12,#52   ; R,RW
+    db #30,#A0   ; ,,W 
+
+; slot_m_6_guard — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_6_guard:
+    db #D8,#30   ; cW,,
+    db #C0,#90   ; bbb,
+    db #60,#30   ; ,b,,
+    db #C0,#90   ; bbb,
+    db #C0,#90   ; bbb,
+    db #60,#30   ; ,b,,
+    db #90,#D0   ; b,bW
+    db #30,#A0   ; ,,W 
+
+; slot_m_6_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_6_carrier:
+    db #D8,#30   ; cW,,
+    db #F3,#B2   ; rrr,
+    db #F3,#B2   ; rrr,
+    db #71,#30   ; ,r,,
+    db #F3,#B2   ; rrr,
+    db #B2,#B2   ; r,r,
+    db #B2,#F2   ; r,rW
     db #30,#A0   ; ,,W 
 
 ; slot_m_6_driller — 4 x 8 pixels, αδιαφανές, 16 bytes
@@ -2127,6 +2784,17 @@ slot_m_6_engineer:
     db #1A,#5A   ; C,CW
     db #30,#A0   ; ,,W 
 
+; slot_m_6_constructor — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_6_constructor:
+    db #D8,#30   ; cW,,
+    db #98,#30   ; c,,,
+    db #CC,#98   ; ccc,
+    db #64,#30   ; ,c,,
+    db #CC,#98   ; ccc,
+    db #98,#98   ; c,c,
+    db #98,#D8   ; c,cW
+    db #30,#A0   ; ,,W 
+
 ; slot_m_7_empty — 4 x 8 pixels, αδιαφανές, 16 bytes
 slot_m_7_empty:
     db #D8,#30   ; cW,,
@@ -2149,15 +2817,48 @@ slot_m_7_colonist:
     db #38,#78   ; Y,YW
     db #30,#70   ; ,,,W
 
-; slot_m_7_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
-slot_m_7_carrier:
+; slot_m_7_biologist — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_7_biologist:
     db #D8,#30   ; cW,,
-    db #03,#12   ; RRR,
+    db #C9,#30   ; cG,,
+    db #E1,#30   ; WG,,
+    db #C3,#92   ; GGG,
+    db #C3,#D2   ; GGGW
+    db #E1,#70   ; WG,W
+    db #92,#D2   ; G,GW
+    db #30,#70   ; ,,,W
+
+; slot_m_7_medic — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_7_medic:
+    db #D8,#30   ; cW,,
+    db #89,#30   ; cR,,
     db #03,#12   ; RRR,
     db #A1,#30   ; WR,,
     db #03,#52   ; RRRW
     db #12,#52   ; R,RW
     db #12,#52   ; R,RW
+    db #30,#70   ; ,,,W
+
+; slot_m_7_guard — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_7_guard:
+    db #D8,#30   ; cW,,
+    db #C0,#90   ; bbb,
+    db #E0,#30   ; Wb,,
+    db #C0,#90   ; bbb,
+    db #C0,#D0   ; bbbW
+    db #E0,#70   ; Wb,W
+    db #90,#D0   ; b,bW
+    db #30,#70   ; ,,,W
+
+; slot_m_7_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_7_carrier:
+    db #D8,#30   ; cW,,
+    db #F3,#B2   ; rrr,
+    db #F3,#B2   ; rrr,
+    db #F1,#30   ; Wr,,
+    db #F3,#F2   ; rrrW
+    db #B2,#F2   ; r,rW
+    db #B2,#F2   ; r,rW
     db #30,#70   ; ,,,W
 
 ; slot_m_7_driller — 4 x 8 pixels, αδιαφανές, 16 bytes
@@ -2182,6 +2883,17 @@ slot_m_7_engineer:
     db #1A,#5A   ; C,CW
     db #30,#70   ; ,,,W
 
+; slot_m_7_constructor — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_m_7_constructor:
+    db #D8,#30   ; cW,,
+    db #D8,#30   ; cW,,
+    db #CC,#98   ; ccc,
+    db #E4,#30   ; Wc,,
+    db #CC,#D8   ; cccW
+    db #98,#D8   ; c,cW
+    db #98,#D8   ; c,cW
+    db #30,#70   ; ,,,W
+
 ; slot_l_0_empty — 4 x 8 pixels, αδιαφανές, 16 bytes
 slot_l_0_empty:
     db #30,#A0   ; ,,W 
@@ -2204,15 +2916,48 @@ slot_l_0_colonist:
     db #38,#78   ; Y,YW
     db #B0,#70   ; W,,W
 
-; slot_l_0_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
-slot_l_0_carrier:
+; slot_l_0_biologist — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_0_biologist:
     db #30,#A0   ; ,,W 
-    db #03,#02   ; RRR 
+    db #61,#A0   ; ,GW 
+    db #61,#70   ; ,G,W
+    db #C3,#D2   ; GGGW
+    db #C3,#D2   ; GGGW
+    db #E1,#70   ; WG,W
+    db #92,#D2   ; G,GW
+    db #B0,#70   ; W,,W
+
+; slot_l_0_medic — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_0_medic:
+    db #30,#A0   ; ,,W 
+    db #21,#A0   ; ,RW 
     db #03,#52   ; RRRW
     db #21,#70   ; ,R,W
     db #03,#52   ; RRRW
     db #12,#52   ; R,RW
     db #12,#52   ; R,RW
+    db #B0,#70   ; W,,W
+
+; slot_l_0_guard — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_0_guard:
+    db #30,#A0   ; ,,W 
+    db #C0,#80   ; bbb 
+    db #60,#70   ; ,b,W
+    db #C0,#D0   ; bbbW
+    db #C0,#D0   ; bbbW
+    db #E0,#70   ; Wb,W
+    db #90,#D0   ; b,bW
+    db #B0,#70   ; W,,W
+
+; slot_l_0_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_0_carrier:
+    db #30,#A0   ; ,,W 
+    db #F3,#A2   ; rrr 
+    db #F3,#F2   ; rrrW
+    db #71,#70   ; ,r,W
+    db #F3,#F2   ; rrrW
+    db #B2,#F2   ; r,rW
+    db #B2,#F2   ; r,rW
     db #B0,#70   ; W,,W
 
 ; slot_l_0_driller — 4 x 8 pixels, αδιαφανές, 16 bytes
@@ -2237,6 +2982,17 @@ slot_l_0_engineer:
     db #1A,#5A   ; C,CW
     db #B0,#70   ; W,,W
 
+; slot_l_0_constructor — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_0_constructor:
+    db #30,#A0   ; ,,W 
+    db #98,#A0   ; c,W 
+    db #CC,#D8   ; cccW
+    db #64,#70   ; ,c,W
+    db #CC,#D8   ; cccW
+    db #98,#D8   ; c,cW
+    db #98,#D8   ; c,cW
+    db #B0,#70   ; W,,W
+
 ; slot_l_1_empty — 4 x 8 pixels, αδιαφανές, 16 bytes
 slot_l_1_empty:
     db #30,#30   ; ,,,,
@@ -2259,15 +3015,48 @@ slot_l_1_colonist:
     db #6C,#38   ; YcY,
     db #0C,#D8   ; ..cW
 
-; slot_l_1_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
-slot_l_1_carrier:
+; slot_l_1_biologist — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_1_biologist:
     db #30,#30   ; ,,,,
-    db #03,#12   ; RRR,
+    db #61,#30   ; ,G,,
+    db #61,#30   ; ,G,,
+    db #C3,#92   ; GGG,
+    db #C3,#92   ; GGG,
+    db #E1,#30   ; WG,,
+    db #C6,#92   ; GcG,
+    db #0C,#D8   ; ..cW
+
+; slot_l_1_medic — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_1_medic:
+    db #30,#30   ; ,,,,
+    db #21,#30   ; ,R,,
     db #03,#12   ; RRR,
     db #21,#30   ; ,R,,
     db #03,#12   ; RRR,
     db #52,#12   ; RWR,
     db #46,#12   ; RcR,
+    db #0C,#D8   ; ..cW
+
+; slot_l_1_guard — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_1_guard:
+    db #30,#30   ; ,,,,
+    db #C0,#90   ; bbb,
+    db #60,#30   ; ,b,,
+    db #C0,#90   ; bbb,
+    db #C0,#90   ; bbb,
+    db #E0,#30   ; Wb,,
+    db #C4,#90   ; bcb,
+    db #0C,#D8   ; ..cW
+
+; slot_l_1_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_1_carrier:
+    db #30,#30   ; ,,,,
+    db #F3,#B2   ; rrr,
+    db #F3,#B2   ; rrr,
+    db #71,#30   ; ,r,,
+    db #F3,#B2   ; rrr,
+    db #F2,#B2   ; rWr,
+    db #E6,#B2   ; rcr,
     db #0C,#D8   ; ..cW
 
 ; slot_l_1_driller — 4 x 8 pixels, αδιαφανές, 16 bytes
@@ -2292,6 +3081,17 @@ slot_l_1_engineer:
     db #4E,#1A   ; CcC,
     db #0C,#D8   ; ..cW
 
+; slot_l_1_constructor — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_1_constructor:
+    db #30,#30   ; ,,,,
+    db #98,#30   ; c,,,
+    db #CC,#98   ; ccc,
+    db #64,#30   ; ,c,,
+    db #CC,#98   ; ccc,
+    db #D8,#98   ; cWc,
+    db #CC,#98   ; ccc,
+    db #0C,#D8   ; ..cW
+
 ; slot_l_2_empty — 4 x 8 pixels, αδιαφανές, 16 bytes
 slot_l_2_empty:
     db #50,#30   ;  W,,
@@ -2314,15 +3114,48 @@ slot_l_2_colonist:
     db #38,#78   ; Y,YW
     db #30,#E4   ; ,,Wc
 
-; slot_l_2_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
-slot_l_2_carrier:
+; slot_l_2_biologist — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_2_biologist:
     db #50,#30   ;  W,,
-    db #03,#12   ; RRR,
+    db #E1,#30   ; WG,,
+    db #61,#30   ; ,G,,
+    db #C3,#92   ; GGG,
+    db #C3,#92   ; GGG,
+    db #61,#30   ; ,G,,
+    db #92,#D2   ; G,GW
+    db #30,#E4   ; ,,Wc
+
+; slot_l_2_medic — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_2_medic:
+    db #50,#30   ;  W,,
+    db #A1,#30   ; WR,,
     db #03,#12   ; RRR,
     db #21,#30   ; ,R,,
     db #03,#12   ; RRR,
     db #12,#12   ; R,R,
     db #12,#52   ; R,RW
+    db #30,#E4   ; ,,Wc
+
+; slot_l_2_guard — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_2_guard:
+    db #50,#30   ;  W,,
+    db #C0,#90   ; bbb,
+    db #60,#30   ; ,b,,
+    db #C0,#90   ; bbb,
+    db #C0,#90   ; bbb,
+    db #60,#30   ; ,b,,
+    db #90,#D0   ; b,bW
+    db #30,#E4   ; ,,Wc
+
+; slot_l_2_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_2_carrier:
+    db #50,#30   ;  W,,
+    db #F3,#B2   ; rrr,
+    db #F3,#B2   ; rrr,
+    db #71,#30   ; ,r,,
+    db #F3,#B2   ; rrr,
+    db #B2,#B2   ; r,r,
+    db #B2,#F2   ; r,rW
     db #30,#E4   ; ,,Wc
 
 ; slot_l_2_driller — 4 x 8 pixels, αδιαφανές, 16 bytes
@@ -2347,6 +3180,17 @@ slot_l_2_engineer:
     db #1A,#5A   ; C,CW
     db #30,#E4   ; ,,Wc
 
+; slot_l_2_constructor — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_2_constructor:
+    db #50,#30   ;  W,,
+    db #98,#30   ; c,,,
+    db #CC,#98   ; ccc,
+    db #64,#30   ; ,c,,
+    db #CC,#98   ; ccc,
+    db #98,#98   ; c,c,
+    db #98,#D8   ; c,cW
+    db #30,#E4   ; ,,Wc
+
 ; slot_l_3_empty — 4 x 8 pixels, αδιαφανές, 16 bytes
 slot_l_3_empty:
     db #50,#30   ;  W,,
@@ -2369,15 +3213,48 @@ slot_l_3_colonist:
     db #38,#78   ; Y,YW
     db #B0,#70   ; W,,W
 
-; slot_l_3_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
-slot_l_3_carrier:
+; slot_l_3_biologist — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_3_biologist:
     db #50,#30   ;  W,,
-    db #03,#12   ; RRR,
+    db #41,#30   ;  G,,
+    db #E1,#30   ; WG,,
+    db #C3,#92   ; GGG,
+    db #C3,#D2   ; GGGW
+    db #E1,#70   ; WG,W
+    db #92,#D2   ; G,GW
+    db #B0,#70   ; W,,W
+
+; slot_l_3_medic — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_3_medic:
+    db #50,#30   ;  W,,
+    db #01,#30   ;  R,,
     db #03,#12   ; RRR,
     db #A1,#30   ; WR,,
     db #03,#52   ; RRRW
     db #12,#52   ; R,RW
     db #12,#52   ; R,RW
+    db #B0,#70   ; W,,W
+
+; slot_l_3_guard — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_3_guard:
+    db #50,#30   ;  W,,
+    db #C0,#90   ; bbb,
+    db #E0,#30   ; Wb,,
+    db #C0,#90   ; bbb,
+    db #C0,#D0   ; bbbW
+    db #E0,#70   ; Wb,W
+    db #90,#D0   ; b,bW
+    db #B0,#70   ; W,,W
+
+; slot_l_3_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_3_carrier:
+    db #50,#30   ;  W,,
+    db #F3,#B2   ; rrr,
+    db #F3,#B2   ; rrr,
+    db #F1,#30   ; Wr,,
+    db #F3,#F2   ; rrrW
+    db #B2,#F2   ; r,rW
+    db #B2,#F2   ; r,rW
     db #B0,#70   ; W,,W
 
 ; slot_l_3_driller — 4 x 8 pixels, αδιαφανές, 16 bytes
@@ -2402,6 +3279,17 @@ slot_l_3_engineer:
     db #1A,#5A   ; C,CW
     db #B0,#70   ; W,,W
 
+; slot_l_3_constructor — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_3_constructor:
+    db #50,#30   ;  W,,
+    db #D8,#30   ; cW,,
+    db #CC,#98   ; ccc,
+    db #E4,#30   ; Wc,,
+    db #CC,#D8   ; cccW
+    db #98,#D8   ; c,cW
+    db #98,#D8   ; c,cW
+    db #B0,#70   ; W,,W
+
 ; slot_l_4_empty — 4 x 8 pixels, αδιαφανές, 16 bytes
 slot_l_4_empty:
     db #B0,#70   ; W,,W
@@ -2424,15 +3312,48 @@ slot_l_4_colonist:
     db #78,#38   ; YWY,
     db #50,#30   ;  W,,
 
-; slot_l_4_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
-slot_l_4_carrier:
+; slot_l_4_biologist — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_4_biologist:
     db #B0,#70   ; W,,W
-    db #03,#52   ; RRRW
+    db #E1,#70   ; WG,W
+    db #E1,#70   ; WG,W
+    db #C3,#D2   ; GGGW
+    db #C3,#92   ; GGG,
+    db #E1,#30   ; WG,,
+    db #D2,#92   ; GWG,
+    db #50,#30   ;  W,,
+
+; slot_l_4_medic — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_4_medic:
+    db #B0,#70   ; W,,W
+    db #A1,#70   ; WR,W
     db #03,#52   ; RRRW
     db #A1,#70   ; WR,W
     db #03,#12   ; RRR,
     db #12,#12   ; R,R,
     db #52,#12   ; RWR,
+    db #50,#30   ;  W,,
+
+; slot_l_4_guard — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_4_guard:
+    db #B0,#70   ; W,,W
+    db #C0,#D0   ; bbbW
+    db #E0,#70   ; Wb,W
+    db #C0,#D0   ; bbbW
+    db #C0,#90   ; bbb,
+    db #E0,#30   ; Wb,,
+    db #D0,#90   ; bWb,
+    db #50,#30   ;  W,,
+
+; slot_l_4_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_4_carrier:
+    db #B0,#70   ; W,,W
+    db #F3,#F2   ; rrrW
+    db #F3,#F2   ; rrrW
+    db #F1,#70   ; Wr,W
+    db #F3,#B2   ; rrr,
+    db #B2,#B2   ; r,r,
+    db #F2,#B2   ; rWr,
     db #50,#30   ;  W,,
 
 ; slot_l_4_driller — 4 x 8 pixels, αδιαφανές, 16 bytes
@@ -2457,6 +3378,17 @@ slot_l_4_engineer:
     db #5A,#1A   ; CWC,
     db #50,#30   ;  W,,
 
+; slot_l_4_constructor — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_4_constructor:
+    db #B0,#70   ; W,,W
+    db #98,#70   ; c,,W
+    db #CC,#D8   ; cccW
+    db #E4,#70   ; Wc,W
+    db #CC,#98   ; ccc,
+    db #98,#98   ; c,c,
+    db #D8,#98   ; cWc,
+    db #50,#30   ;  W,,
+
 ; slot_l_5_empty — 4 x 8 pixels, αδιαφανές, 16 bytes
 slot_l_5_empty:
     db #30,#E4   ; ,,Wc
@@ -2479,15 +3411,48 @@ slot_l_5_colonist:
     db #38,#38   ; Y,Y,
     db #50,#30   ;  W,,
 
-; slot_l_5_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
-slot_l_5_carrier:
+; slot_l_5_biologist — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_5_biologist:
     db #30,#E4   ; ,,Wc
-    db #03,#52   ; RRRW
+    db #61,#70   ; ,G,W
+    db #61,#30   ; ,G,,
+    db #C3,#92   ; GGG,
+    db #C3,#92   ; GGG,
+    db #61,#30   ; ,G,,
+    db #92,#92   ; G,G,
+    db #50,#30   ;  W,,
+
+; slot_l_5_medic — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_5_medic:
+    db #30,#E4   ; ,,Wc
+    db #21,#70   ; ,R,W
     db #03,#12   ; RRR,
     db #21,#30   ; ,R,,
     db #03,#12   ; RRR,
     db #12,#12   ; R,R,
     db #12,#12   ; R,R,
+    db #50,#30   ;  W,,
+
+; slot_l_5_guard — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_5_guard:
+    db #30,#E4   ; ,,Wc
+    db #C0,#D0   ; bbbW
+    db #60,#30   ; ,b,,
+    db #C0,#90   ; bbb,
+    db #C0,#90   ; bbb,
+    db #60,#30   ; ,b,,
+    db #90,#90   ; b,b,
+    db #50,#30   ;  W,,
+
+; slot_l_5_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_5_carrier:
+    db #30,#E4   ; ,,Wc
+    db #F3,#F2   ; rrrW
+    db #F3,#B2   ; rrr,
+    db #71,#30   ; ,r,,
+    db #F3,#B2   ; rrr,
+    db #B2,#B2   ; r,r,
+    db #B2,#B2   ; r,r,
     db #50,#30   ;  W,,
 
 ; slot_l_5_driller — 4 x 8 pixels, αδιαφανές, 16 bytes
@@ -2512,6 +3477,17 @@ slot_l_5_engineer:
     db #1A,#1A   ; C,C,
     db #50,#30   ;  W,,
 
+; slot_l_5_constructor — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_5_constructor:
+    db #30,#E4   ; ,,Wc
+    db #98,#70   ; c,,W
+    db #CC,#98   ; ccc,
+    db #64,#30   ; ,c,,
+    db #CC,#98   ; ccc,
+    db #98,#98   ; c,c,
+    db #98,#98   ; c,c,
+    db #50,#30   ;  W,,
+
 ; slot_l_6_empty — 4 x 8 pixels, αδιαφανές, 16 bytes
 slot_l_6_empty:
     db #0C,#D8   ; ..cW
@@ -2534,15 +3510,48 @@ slot_l_6_colonist:
     db #38,#38   ; Y,Y,
     db #30,#30   ; ,,,,
 
-; slot_l_6_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
-slot_l_6_carrier:
+; slot_l_6_biologist — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_6_biologist:
     db #0C,#D8   ; ..cW
-    db #03,#12   ; RRR,
+    db #C9,#B0   ; cGW,
+    db #E1,#30   ; WG,,
+    db #C3,#92   ; GGG,
+    db #C3,#92   ; GGG,
+    db #61,#30   ; ,G,,
+    db #92,#92   ; G,G,
+    db #30,#30   ; ,,,,
+
+; slot_l_6_medic — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_6_medic:
+    db #0C,#D8   ; ..cW
+    db #89,#B0   ; cRW,
     db #03,#12   ; RRR,
     db #21,#30   ; ,R,,
     db #03,#12   ; RRR,
     db #12,#12   ; R,R,
     db #12,#12   ; R,R,
+    db #30,#30   ; ,,,,
+
+; slot_l_6_guard — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_6_guard:
+    db #0C,#D8   ; ..cW
+    db #C0,#90   ; bbb,
+    db #E0,#30   ; Wb,,
+    db #C0,#90   ; bbb,
+    db #C0,#90   ; bbb,
+    db #60,#30   ; ,b,,
+    db #90,#90   ; b,b,
+    db #30,#30   ; ,,,,
+
+; slot_l_6_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_6_carrier:
+    db #0C,#D8   ; ..cW
+    db #F3,#B2   ; rrr,
+    db #F3,#B2   ; rrr,
+    db #71,#30   ; ,r,,
+    db #F3,#B2   ; rrr,
+    db #B2,#B2   ; r,r,
+    db #B2,#B2   ; r,r,
     db #30,#30   ; ,,,,
 
 ; slot_l_6_driller — 4 x 8 pixels, αδιαφανές, 16 bytes
@@ -2567,6 +3576,17 @@ slot_l_6_engineer:
     db #1A,#1A   ; C,C,
     db #30,#30   ; ,,,,
 
+; slot_l_6_constructor — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_6_constructor:
+    db #0C,#D8   ; ..cW
+    db #CC,#B0   ; ccW,
+    db #CC,#98   ; ccc,
+    db #64,#30   ; ,c,,
+    db #CC,#98   ; ccc,
+    db #98,#98   ; c,c,
+    db #98,#98   ; c,c,
+    db #30,#30   ; ,,,,
+
 ; slot_l_7_empty — 4 x 8 pixels, αδιαφανές, 16 bytes
 slot_l_7_empty:
     db #B0,#70   ; W,,W
@@ -2589,15 +3609,48 @@ slot_l_7_colonist:
     db #38,#28   ; Y,Y 
     db #30,#A0   ; ,,W 
 
-; slot_l_7_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
-slot_l_7_carrier:
+; slot_l_7_biologist — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_7_biologist:
     db #B0,#70   ; W,,W
-    db #03,#52   ; RRRW
+    db #E1,#70   ; WG,W
+    db #E1,#70   ; WG,W
+    db #C3,#D2   ; GGGW
+    db #C3,#D2   ; GGGW
+    db #61,#70   ; ,G,W
+    db #92,#82   ; G,G 
+    db #30,#A0   ; ,,W 
+
+; slot_l_7_medic — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_7_medic:
+    db #B0,#70   ; W,,W
+    db #A1,#70   ; WR,W
     db #03,#52   ; RRRW
     db #A1,#70   ; WR,W
     db #03,#52   ; RRRW
     db #12,#52   ; R,RW
     db #12,#02   ; R,R 
+    db #30,#A0   ; ,,W 
+
+; slot_l_7_guard — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_7_guard:
+    db #B0,#70   ; W,,W
+    db #C0,#D0   ; bbbW
+    db #E0,#70   ; Wb,W
+    db #C0,#D0   ; bbbW
+    db #C0,#D0   ; bbbW
+    db #60,#70   ; ,b,W
+    db #90,#80   ; b,b 
+    db #30,#A0   ; ,,W 
+
+; slot_l_7_carrier — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_7_carrier:
+    db #B0,#70   ; W,,W
+    db #F3,#F2   ; rrrW
+    db #F3,#F2   ; rrrW
+    db #F1,#70   ; Wr,W
+    db #F3,#F2   ; rrrW
+    db #B2,#F2   ; r,rW
+    db #B2,#A2   ; r,r 
     db #30,#A0   ; ,,W 
 
 ; slot_l_7_driller — 4 x 8 pixels, αδιαφανές, 16 bytes
@@ -2620,6 +3673,17 @@ slot_l_7_engineer:
     db #0F,#5A   ; CCCW
     db #1A,#5A   ; C,CW
     db #1A,#0A   ; C,C 
+    db #30,#A0   ; ,,W 
+
+; slot_l_7_constructor — 4 x 8 pixels, αδιαφανές, 16 bytes
+slot_l_7_constructor:
+    db #B0,#70   ; W,,W
+    db #98,#70   ; c,,W
+    db #CC,#D8   ; cccW
+    db #E4,#70   ; Wc,W
+    db #CC,#D8   ; cccW
+    db #98,#D8   ; c,cW
+    db #98,#88   ; c,c 
     db #30,#A0   ; ,,W 
 
 ; --- θέσεις αποίκων πάνω στον δακτύλιο ---
@@ -4245,14 +5309,14 @@ ore_overlay_1:
 ;     του μπλοκ. Πραγματική διεύθυνση = base + tile_base[class].
 ;     tile_base[class] + variant*TILE_SZ ---
 tile_base:
-    dw #468C   ; 0 ground      4 παραλλαγές
-    dw #478C   ; 1 dust        4 παραλλαγές
-    dw #488C   ; 2 rock        4 παραλλαγές
-    dw #498C   ; 3 mountain   16 autotile
-    dw #4D8C   ; 4 water      16 autotile
-    dw #518C   ; 5 deepwater   4 παραλλαγές
-    dw #528C   ; 6 crater      2 παραλλαγές
-    dw #530C   ; 7 foundation  2 παραλλαγές
+    dw #4C8C   ; 0 ground      4 παραλλαγές
+    dw #4D8C   ; 1 dust        4 παραλλαγές
+    dw #4E8C   ; 2 rock        4 παραλλαγές
+    dw #4F8C   ; 3 mountain   16 autotile
+    dw #538C   ; 4 water      16 autotile
+    dw #578C   ; 5 deepwater   4 παραλλαγές
+    dw #588C   ; 6 crater      2 παραλλαγές
+    dw #590C   ; 7 foundation  2 παραλλαγές
 
 ; --- παραλλαγές ανά κλάση εδάφους ---
 ; Όλα είναι δυνάμεις του 2, οπότε:  variant AND (count-1)
@@ -4860,6 +5924,108 @@ airlock:
     db #FF,#00,#FF,#00,#AA,#50,#00,#30,#00,#30,#55,#A0,#FF,#00,#FF,#00   ;      W,,,,W     
     db #FF,#00,#FF,#00,#AA,#50,#00,#30,#00,#30,#55,#A0,#FF,#00,#FF,#00   ;      W,,,,W     
 
+; pad — 32 x 64 pixels, mask+data, 2048 bytes
+pad:
+    db #FF,#00,#FF,#00,#FF,#00,#FF,#00,#AA,#50,#00,#F0,#00,#F0,#00,#F0,#00,#F0,#00,#F0,#00,#F0,#55,#A0,#FF,#00,#FF,#00,#FF,#00,#FF,#00   ;          WWWWWWWWWWWWWW         
+    db #FF,#00,#FF,#00,#FF,#00,#FF,#00,#AA,#50,#00,#F0,#00,#F0,#00,#F0,#00,#F0,#00,#F0,#00,#F0,#55,#A0,#FF,#00,#FF,#00,#FF,#00,#FF,#00   ;          WWWWWWWWWWWWWW         
+    db #FF,#00,#FF,#00,#FF,#00,#FF,#00,#00,#F0,#00,#C0,#00,#C0,#00,#C0,#00,#C0,#00,#C0,#00,#C0,#00,#F0,#FF,#00,#FF,#00,#FF,#00,#FF,#00   ;         WWbbbbbbbbbbbbWW        
+    db #FF,#00,#FF,#00,#FF,#00,#FF,#00,#00,#E0,#00,#C0,#00,#C0,#00,#C0,#00,#C0,#00,#C0,#00,#C0,#00,#D0,#FF,#00,#FF,#00,#FF,#00,#FF,#00   ;         WbbbbbbbbbbbbbbW        
+    db #FF,#00,#FF,#00,#FF,#00,#AA,#50,#00,#E0,#00,#70,#00,#70,#00,#70,#00,#70,#00,#70,#00,#70,#00,#D0,#55,#A0,#FF,#00,#FF,#00,#FF,#00   ;        WWb,W,W,W,W,W,WbWW       
+    db #FF,#00,#FF,#00,#FF,#00,#AA,#50,#00,#D0,#00,#70,#00,#70,#00,#70,#00,#70,#00,#70,#00,#70,#00,#60,#55,#A0,#FF,#00,#FF,#00,#FF,#00   ;        WbW,W,W,W,W,W,W,bW       
+    db #FF,#00,#FF,#00,#FF,#00,#00,#F0,#00,#90,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#E0,#00,#F0,#FF,#00,#FF,#00,#FF,#00   ;       WWb,,,,,,,,,,,,,WbWW      
+    db #FF,#00,#FF,#00,#FF,#00,#00,#E0,#00,#B0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#B0,#00,#D0,#FF,#00,#FF,#00,#FF,#00   ;       WbW,,,,,,,,,,,,,W,bW      
+    db #FF,#00,#FF,#00,#AA,#14,#00,#E0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#70,#00,#D0,#55,#28,#FF,#00,#FF,#00   ;      YWb,,,,,,,,,,,,,,,WbWY     
+    db #FF,#00,#FF,#00,#AA,#14,#00,#D0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#70,#00,#60,#55,#28,#FF,#00,#FF,#00   ;      YbW,,,,,,,,,,,,,,,W,bY     
+    db #FF,#00,#FF,#00,#00,#3C,#00,#90,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#E0,#00,#3C,#FF,#00,#FF,#00   ;     YYb,,,,,,,,,,,,,,,,,WbYY    
+    db #FF,#00,#FF,#00,#00,#68,#00,#B0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#B0,#00,#94,#FF,#00,#FF,#00   ;     YbW,,,,,,,,,,,,,,,,,W,bY    
+    db #FF,#00,#AA,#50,#00,#E0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#70,#00,#D0,#55,#A0,#FF,#00   ;    WWb,,,,,,,,,,,,,,,,,,,WbWW   
+    db #FF,#00,#AA,#50,#00,#D0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#70,#00,#60,#55,#A0,#FF,#00   ;    WbW,,,,,,,,,,,,,,,,,,,W,bW   
+    db #FF,#00,#00,#F0,#00,#90,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#E0,#00,#F0,#FF,#00   ;   WWb,,,,,,,,,,,,,,,,,,,,,WbWW  
+    db #FF,#00,#00,#E0,#00,#B0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#B0,#00,#D0,#FF,#00   ;   WbW,,,,,,,,,,,,,,,,,,,,,W,bW  
+    db #AA,#50,#00,#E0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#70,#00,#D0,#55,#A0   ;  WWb,,,,,,,,,,,,,,,,,,,,,,,WbWW 
+    db #AA,#50,#00,#D0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#70,#00,#60,#55,#A0   ;  WbW,,,,,,,,,,,,,,,,,,,,,,,W,bW 
+    db #00,#F0,#00,#90,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#E0,#00,#F0   ; WWb,,,,,,,,,,,,,,,,,,,,,,,,,WbWW
+    db #00,#E0,#00,#B0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#34,#00,#38,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#B0,#00,#D0   ; WbW,,,,,,,,,,,,YY,,,,,,,,,,,W,bW
+    db #00,#E0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#34,#00,#38,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#70,#00,#D0   ; Wb,,,,,,,,,,,,,YY,,,,,,,,,,,,WbW
+    db #00,#E0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#34,#00,#38,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#70,#00,#D0   ; Wb,,,,,,,,,,,,,YY,,,,,,,,,,,,WbW
+    db #00,#E0,#00,#B0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#34,#00,#38,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#D0   ; WbW,,,,,,,,,,,,YY,,,,,,,,,,,,,bW
+    db #00,#E0,#00,#B0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#34,#00,#38,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#D0   ; WbW,,,,,,,,,,,,YY,,,,,,,,,,,,,bW
+    db #00,#E0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#34,#00,#38,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#70,#00,#D0   ; Wb,,,,,,,,,,,,,YY,,,,,,,,,,,,WbW
+    db #00,#E0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#34,#00,#38,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#70,#00,#D0   ; Wb,,,,,,,,,,,,,YY,,,,,,,,,,,,WbW
+    db #00,#E0,#00,#B0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#34,#00,#38,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#D0   ; WbW,,,,,,,,,,,,YY,,,,,,,,,,,,,bW
+    db #00,#E0,#00,#B0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#34,#00,#38,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#D0   ; WbW,,,,,,,,,,,,YY,,,,,,,,,,,,,bW
+    db #00,#E0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#34,#00,#38,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#70,#00,#D0   ; Wb,,,,,,,,,,,,,YY,,,,,,,,,,,,WbW
+    db #00,#E0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#34,#00,#38,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#70,#00,#D0   ; Wb,,,,,,,,,,,,,YY,,,,,,,,,,,,WbW
+    db #00,#E0,#00,#B0,#00,#30,#00,#30,#00,#34,#00,#3C,#00,#3C,#00,#3C,#00,#3C,#00,#3C,#00,#3C,#00,#38,#00,#30,#00,#30,#00,#30,#00,#D0   ; WbW,,,,,,YYYYYYYYYYYYYY,,,,,,,bW
+    db #00,#E0,#00,#B0,#00,#30,#00,#30,#00,#34,#00,#3C,#00,#3C,#00,#3C,#00,#3C,#00,#3C,#00,#3C,#00,#38,#00,#30,#00,#30,#00,#30,#00,#D0   ; WbW,,,,,,YYYYYYYYYYYYYY,,,,,,,bW
+    db #00,#E0,#00,#30,#00,#30,#00,#30,#00,#34,#00,#3C,#00,#3C,#00,#3C,#00,#3C,#00,#3C,#00,#3C,#00,#38,#00,#30,#00,#30,#00,#70,#00,#D0   ; Wb,,,,,,,YYYYYYYYYYYYYY,,,,,,WbW
+    db #00,#E0,#00,#30,#00,#30,#00,#30,#00,#34,#00,#3C,#00,#3C,#00,#3C,#00,#3C,#00,#3C,#00,#3C,#00,#38,#00,#30,#00,#30,#00,#70,#00,#D0   ; Wb,,,,,,,YYYYYYYYYYYYYY,,,,,,WbW
+    db #00,#E0,#00,#B0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#34,#00,#38,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#D0   ; WbW,,,,,,,,,,,,YY,,,,,,,,,,,,,bW
+    db #00,#E0,#00,#B0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#34,#00,#38,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#D0   ; WbW,,,,,,,,,,,,YY,,,,,,,,,,,,,bW
+    db #00,#E0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#34,#00,#38,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#70,#00,#D0   ; Wb,,,,,,,,,,,,,YY,,,,,,,,,,,,WbW
+    db #00,#E0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#34,#00,#38,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#70,#00,#D0   ; Wb,,,,,,,,,,,,,YY,,,,,,,,,,,,WbW
+    db #00,#E0,#00,#B0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#34,#00,#38,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#D0   ; WbW,,,,,,,,,,,,YY,,,,,,,,,,,,,bW
+    db #00,#E0,#00,#B0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#34,#00,#38,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#D0   ; WbW,,,,,,,,,,,,YY,,,,,,,,,,,,,bW
+    db #00,#E0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#34,#00,#38,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#70,#00,#D0   ; Wb,,,,,,,,,,,,,YY,,,,,,,,,,,,WbW
+    db #00,#E0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#34,#00,#38,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#70,#00,#D0   ; Wb,,,,,,,,,,,,,YY,,,,,,,,,,,,WbW
+    db #00,#E0,#00,#B0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#34,#00,#38,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#D0   ; WbW,,,,,,,,,,,,YY,,,,,,,,,,,,,bW
+    db #00,#E0,#00,#B0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#34,#00,#38,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#D0   ; WbW,,,,,,,,,,,,YY,,,,,,,,,,,,,bW
+    db #00,#E0,#00,#70,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#34,#00,#38,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#70,#00,#D0   ; Wb,W,,,,,,,,,,,YY,,,,,,,,,,,,WbW
+    db #00,#F0,#00,#D0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#60,#00,#F0   ; WWbW,,,,,,,,,,,,,,,,,,,,,,,,,bWW
+    db #AA,#50,#00,#90,#00,#B0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#E0,#55,#A0   ;  Wb,W,,,,,,,,,,,,,,,,,,,,,,,WbW 
+    db #AA,#50,#00,#E0,#00,#B0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#D0,#55,#A0   ;  WWbW,,,,,,,,,,,,,,,,,,,,,,,bWW 
+    db #FF,#00,#00,#E0,#00,#70,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#70,#00,#D0,#FF,#00   ;   Wb,W,,,,,,,,,,,,,,,,,,,,,WbW  
+    db #FF,#00,#00,#F0,#00,#D0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#60,#00,#F0,#FF,#00   ;   WWbW,,,,,,,,,,,,,,,,,,,,,bWW  
+    db #FF,#00,#AA,#50,#00,#90,#00,#B0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#E0,#55,#A0,#FF,#00   ;    Wb,W,,,,,,,,,,,,,,,,,,,WbW   
+    db #FF,#00,#AA,#50,#00,#E0,#00,#B0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#D0,#55,#A0,#FF,#00   ;    WWbW,,,,,,,,,,,,,,,,,,,bWW   
+    db #FF,#00,#FF,#00,#00,#68,#00,#70,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#70,#00,#94,#FF,#00,#FF,#00   ;     Yb,W,,,,,,,,,,,,,,,,,WbY    
+    db #FF,#00,#FF,#00,#00,#3C,#00,#D0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#60,#00,#3C,#FF,#00,#FF,#00   ;     YYbW,,,,,,,,,,,,,,,,,bYY    
+    db #FF,#00,#FF,#00,#AA,#14,#00,#90,#00,#B0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#E0,#55,#28,#FF,#00,#FF,#00   ;      Yb,W,,,,,,,,,,,,,,,WbY     
+    db #FF,#00,#FF,#00,#AA,#14,#00,#E0,#00,#B0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#D0,#55,#28,#FF,#00,#FF,#00   ;      YWbW,,,,,,,,,,,,,,,bWY     
+    db #FF,#00,#FF,#00,#FF,#00,#00,#E0,#00,#70,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#70,#00,#D0,#FF,#00,#FF,#00,#FF,#00   ;       Wb,W,,,,,,,,,,,,,WbW      
+    db #FF,#00,#FF,#00,#FF,#00,#00,#F0,#00,#D0,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#30,#00,#60,#00,#F0,#FF,#00,#FF,#00,#FF,#00   ;       WWbW,,,,,,,,,,,,,bWW      
+    db #FF,#00,#FF,#00,#FF,#00,#AA,#50,#00,#90,#00,#B0,#00,#B0,#00,#B0,#00,#B0,#00,#B0,#00,#B0,#00,#E0,#55,#A0,#FF,#00,#FF,#00,#FF,#00   ;        Wb,W,W,W,W,W,W,WbW       
+    db #FF,#00,#FF,#00,#FF,#00,#AA,#50,#00,#E0,#00,#B0,#00,#B0,#00,#B0,#00,#B0,#00,#B0,#00,#B0,#00,#D0,#55,#A0,#FF,#00,#FF,#00,#FF,#00   ;        WWbW,W,W,W,W,W,bWW       
+    db #FF,#00,#FF,#00,#FF,#00,#FF,#00,#00,#E0,#00,#C0,#00,#C0,#00,#C0,#00,#C0,#00,#C0,#00,#C0,#00,#D0,#FF,#00,#FF,#00,#FF,#00,#FF,#00   ;         WbbbbbbbbbbbbbbW        
+    db #FF,#00,#FF,#00,#FF,#00,#FF,#00,#00,#F0,#00,#C0,#00,#C0,#00,#C0,#00,#C0,#00,#C0,#00,#C0,#00,#F0,#FF,#00,#FF,#00,#FF,#00,#FF,#00   ;         WWbbbbbbbbbbbbWW        
+    db #FF,#00,#FF,#00,#FF,#00,#FF,#00,#AA,#50,#00,#F0,#00,#F0,#00,#F0,#00,#F0,#00,#F0,#00,#F0,#55,#A0,#FF,#00,#FF,#00,#FF,#00,#FF,#00   ;          WWWWWWWWWWWWWW         
+    db #FF,#00,#FF,#00,#FF,#00,#FF,#00,#AA,#50,#00,#F0,#00,#F0,#00,#F0,#00,#F0,#00,#F0,#00,#F0,#55,#A0,#FF,#00,#FF,#00,#FF,#00,#FF,#00   ;          WWWWWWWWWWWWWW         
+
+; ship — 16 x 32 pixels, mask+data, 512 bytes
+ship:
+    db #FF,#00,#FF,#00,#FF,#00,#00,#F0,#00,#F0,#FF,#00,#FF,#00,#FF,#00   ;       WWWW      
+    db #FF,#00,#FF,#00,#FF,#00,#00,#F0,#00,#F0,#FF,#00,#FF,#00,#FF,#00   ;       WWWW      
+    db #FF,#00,#FF,#00,#FF,#00,#00,#F0,#00,#F0,#FF,#00,#FF,#00,#FF,#00   ;       WWWW      
+    db #FF,#00,#FF,#00,#FF,#00,#00,#F0,#00,#F0,#FF,#00,#FF,#00,#FF,#00   ;       WWWW      
+    db #FF,#00,#FF,#00,#FF,#00,#00,#F0,#00,#F0,#FF,#00,#FF,#00,#FF,#00   ;       WWWW      
+    db #FF,#00,#FF,#00,#FF,#00,#00,#0F,#00,#0F,#FF,#00,#FF,#00,#FF,#00   ;       CCCC      
+    db #FF,#00,#FF,#00,#FF,#00,#00,#0C,#00,#0C,#FF,#00,#FF,#00,#FF,#00   ;       ....      
+    db #FF,#00,#FF,#00,#FF,#00,#00,#0C,#00,#0C,#FF,#00,#FF,#00,#FF,#00   ;       ....      
+    db #FF,#00,#FF,#00,#FF,#00,#00,#0C,#00,#0C,#FF,#00,#FF,#00,#FF,#00   ;       ....      
+    db #FF,#00,#FF,#00,#FF,#00,#00,#0C,#00,#0C,#FF,#00,#FF,#00,#FF,#00   ;       ....      
+    db #FF,#00,#FF,#00,#FF,#00,#00,#0C,#00,#0C,#FF,#00,#FF,#00,#FF,#00   ;       ....      
+    db #FF,#00,#FF,#00,#FF,#00,#00,#0C,#00,#0C,#FF,#00,#FF,#00,#FF,#00   ;       ....      
+    db #FF,#00,#FF,#00,#FF,#00,#00,#0C,#00,#0C,#FF,#00,#FF,#00,#FF,#00   ;       ....      
+    db #FF,#00,#FF,#00,#FF,#00,#00,#0C,#00,#0C,#FF,#00,#FF,#00,#FF,#00   ;       ....      
+    db #AA,#44,#00,#8D,#00,#0F,#00,#0F,#00,#0F,#00,#0F,#00,#4E,#55,#88   ;  ccCCCCCCCCCCcc 
+    db #AA,#44,#00,#8D,#00,#0F,#00,#0F,#00,#0F,#00,#0F,#00,#4E,#55,#88   ;  ccCCCCCCCCCCcc 
+    db #AA,#44,#00,#8D,#00,#0F,#00,#0F,#00,#0F,#00,#0F,#00,#4E,#55,#88   ;  ccCCCCCCCCCCcc 
+    db #AA,#44,#00,#8D,#00,#0F,#00,#0F,#00,#0F,#00,#0F,#00,#4E,#55,#88   ;  ccCCCCCCCCCCcc 
+    db #AA,#44,#00,#8D,#00,#0F,#00,#0F,#00,#0F,#00,#0F,#00,#4E,#55,#88   ;  ccCCCCCCCCCCcc 
+    db #AA,#44,#00,#8D,#00,#0F,#00,#0F,#00,#0F,#00,#0F,#00,#4E,#55,#88   ;  ccCCCCCCCCCCcc 
+    db #AA,#44,#00,#8D,#00,#0F,#00,#0F,#00,#0F,#00,#0F,#00,#4E,#55,#88   ;  ccCCCCCCCCCCcc 
+    db #AA,#44,#00,#8D,#00,#0F,#00,#0F,#00,#0F,#00,#0F,#00,#4E,#55,#88   ;  ccCCCCCCCCCCcc 
+    db #AA,#44,#00,#8D,#00,#0F,#00,#0F,#00,#0F,#00,#0F,#00,#4E,#55,#88   ;  ccCCCCCCCCCCcc 
+    db #FF,#00,#FF,#00,#AA,#05,#00,#0F,#00,#0F,#55,#0A,#FF,#00,#FF,#00   ;      CCCCCC     
+    db #FF,#00,#FF,#00,#AA,#05,#00,#0F,#00,#0F,#55,#0A,#FF,#00,#FF,#00   ;      CCCCCC     
+    db #FF,#00,#FF,#00,#AA,#05,#00,#0F,#00,#0F,#55,#0A,#FF,#00,#FF,#00   ;      CCCCCC     
+    db #FF,#00,#FF,#00,#AA,#05,#00,#0F,#00,#0F,#55,#0A,#FF,#00,#FF,#00   ;      CCCCCC     
+    db #FF,#00,#FF,#00,#AA,#05,#00,#0F,#00,#0F,#55,#0A,#FF,#00,#FF,#00   ;      CCCCCC     
+    db #FF,#00,#AA,#51,#00,#F3,#00,#0F,#00,#0F,#00,#F3,#55,#A2,#FF,#00   ;    rrrCCCCrrr   
+    db #FF,#00,#AA,#51,#00,#F3,#00,#0F,#00,#0F,#00,#F3,#55,#A2,#FF,#00   ;    rrrCCCCrrr   
+    db #FF,#00,#AA,#01,#00,#03,#00,#0F,#00,#0F,#00,#03,#55,#02,#FF,#00   ;    RRRCCCCRRR   
+    db #FF,#00,#AA,#01,#00,#03,#00,#0F,#00,#0F,#00,#03,#55,#02,#FF,#00   ;    RRRCCCCRRR   
+
 ; --- διαστάσεις εξωτερικών δομών, 4 θέσεις ανά δομή ---
 ; struct_dims + kind*8 + size*2 -> (w bytes, h)· 0,0 = δεν υπάρχει
 struct_dims:
@@ -4869,6 +6035,8 @@ struct_dims:
     db   4, 16,  8, 32, 12, 48,  0,  0   ; extractor — αντλία νερού
     db  16, 64,  0,  0,  0,  0,  0,  0   ; mine — ορυχείο — ένα μέγεθος
     db   8, 32,  0,  0,  0,  0,  0,  0   ; airlock — αεροθάλαμος — ένα μέγεθος
+    db  16, 64,  0,  0,  0,  0,  0,  0   ; pad — πλατφόρμα προσγείωσης
+    db   8, 32,  0,  0,  0,  0,  0,  0   ; ship — σκάφος — κάτοψη
 
 machine_count:
     db 1,4,8
@@ -4913,6 +6081,876 @@ interior_ofs:
     db 252,220   ; m
     db 251,246   ; l
 
+; --- γραμματοσειρά HUD 6x8, 96 γλύφοι, ASCII 32..127 ---
+; γλύφος: font_gfx + (ch - FONT_FIRST) * FONT_SIZE
+; 26 στήλες στα 160 pixel· η τελευταία στήλη κάθε κελιού
+; είναι το διάστιχο, εκτός από τις μπάρες που ενώνονται.
+font_gfx:
+    ;  32 κενό
+    db #00,#00,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  33 «!»
+    db #00,#00,#00
+    db #00,#A0,#00
+    db #00,#A0,#00
+    db #00,#A0,#00
+    db #00,#00,#00
+    db #00,#A0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  34 «"»
+    db #00,#00,#00
+    db #50,#50,#00
+    db #50,#50,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  35 «#»
+    db #00,#00,#00
+    db #50,#50,#00
+    db #F0,#F0,#A0
+    db #50,#50,#00
+    db #F0,#F0,#A0
+    db #50,#50,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  36 «$»
+    db #00,#A0,#00
+    db #50,#F0,#A0
+    db #F0,#00,#00
+    db #50,#F0,#00
+    db #00,#50,#A0
+    db #F0,#F0,#00
+    db #00,#A0,#00
+    db #00,#00,#00
+    ;  37 «%»
+    db #00,#00,#00
+    db #F0,#00,#A0
+    db #00,#50,#00
+    db #00,#A0,#00
+    db #50,#00,#00
+    db #A0,#50,#A0
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  38 «&»
+    db #00,#00,#00
+    db #50,#A0,#00
+    db #A0,#50,#00
+    db #50,#A0,#00
+    db #A0,#50,#00
+    db #50,#A0,#A0
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  39 «'»
+    db #00,#00,#00
+    db #00,#A0,#00
+    db #00,#A0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  40 «(»
+    db #00,#00,#00
+    db #00,#50,#00
+    db #00,#A0,#00
+    db #00,#A0,#00
+    db #00,#A0,#00
+    db #00,#50,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  41 «)»
+    db #00,#00,#00
+    db #50,#00,#00
+    db #00,#A0,#00
+    db #00,#A0,#00
+    db #00,#A0,#00
+    db #50,#00,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  42 «*»
+    db #00,#00,#00
+    db #A0,#A0,#A0
+    db #50,#F0,#00
+    db #F0,#F0,#A0
+    db #50,#F0,#00
+    db #A0,#A0,#A0
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  43 «+»
+    db #00,#00,#00
+    db #00,#00,#00
+    db #00,#A0,#00
+    db #50,#F0,#00
+    db #00,#A0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  44 «,»
+    db #00,#00,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    db #00,#A0,#00
+    db #00,#A0,#00
+    db #50,#00,#00
+    db #00,#00,#00
+    ;  45 «-»
+    db #00,#00,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    db #50,#F0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  46 «.»
+    db #00,#00,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    db #00,#A0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  47 «/»
+    db #00,#00,#00
+    db #00,#00,#A0
+    db #00,#50,#00
+    db #00,#A0,#00
+    db #50,#00,#00
+    db #A0,#00,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  48 «0»
+    db #00,#00,#00
+    db #50,#F0,#00
+    db #A0,#50,#A0
+    db #A0,#A0,#A0
+    db #F0,#00,#A0
+    db #50,#F0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  49 «1»
+    db #00,#00,#00
+    db #00,#A0,#00
+    db #50,#A0,#00
+    db #00,#A0,#00
+    db #00,#A0,#00
+    db #50,#F0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  50 «2»
+    db #00,#00,#00
+    db #50,#F0,#00
+    db #A0,#00,#A0
+    db #00,#F0,#00
+    db #50,#00,#00
+    db #F0,#F0,#A0
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  51 «3»
+    db #00,#00,#00
+    db #F0,#F0,#00
+    db #00,#00,#A0
+    db #50,#F0,#00
+    db #00,#00,#A0
+    db #F0,#F0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  52 «4»
+    db #00,#00,#00
+    db #A0,#50,#00
+    db #A0,#50,#00
+    db #F0,#F0,#A0
+    db #00,#50,#00
+    db #00,#50,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  53 «5»
+    db #00,#00,#00
+    db #F0,#F0,#A0
+    db #A0,#00,#00
+    db #F0,#F0,#00
+    db #00,#00,#A0
+    db #F0,#F0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  54 «6»
+    db #00,#00,#00
+    db #50,#F0,#00
+    db #A0,#00,#00
+    db #F0,#F0,#00
+    db #A0,#00,#A0
+    db #50,#F0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  55 «7»
+    db #00,#00,#00
+    db #F0,#F0,#A0
+    db #00,#00,#A0
+    db #00,#50,#00
+    db #00,#A0,#00
+    db #00,#A0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  56 «8»
+    db #00,#00,#00
+    db #50,#F0,#00
+    db #A0,#00,#A0
+    db #50,#F0,#00
+    db #A0,#00,#A0
+    db #50,#F0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  57 «9»
+    db #00,#00,#00
+    db #50,#F0,#00
+    db #A0,#00,#A0
+    db #50,#F0,#A0
+    db #00,#00,#A0
+    db #50,#F0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  58 «:»
+    db #00,#00,#00
+    db #00,#00,#00
+    db #00,#A0,#00
+    db #00,#00,#00
+    db #00,#A0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  59 «;»
+    db #00,#00,#00
+    db #00,#00,#00
+    db #00,#A0,#00
+    db #00,#00,#00
+    db #00,#A0,#00
+    db #00,#A0,#00
+    db #50,#00,#00
+    db #00,#00,#00
+    ;  60 «<»
+    db #00,#00,#00
+    db #00,#50,#00
+    db #00,#A0,#00
+    db #50,#00,#00
+    db #00,#A0,#00
+    db #00,#50,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  61 «=»
+    db #00,#00,#00
+    db #00,#00,#00
+    db #50,#F0,#00
+    db #00,#00,#00
+    db #50,#F0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  62 «>»
+    db #00,#00,#00
+    db #50,#00,#00
+    db #00,#A0,#00
+    db #00,#50,#00
+    db #00,#A0,#00
+    db #50,#00,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  63 «?»
+    db #00,#00,#00
+    db #50,#F0,#00
+    db #A0,#00,#A0
+    db #00,#F0,#00
+    db #00,#00,#00
+    db #00,#A0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  64 «@»
+    db #00,#00,#00
+    db #50,#F0,#00
+    db #A0,#50,#A0
+    db #A0,#F0,#A0
+    db #A0,#00,#00
+    db #50,#F0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  65 «A»
+    db #00,#00,#00
+    db #50,#F0,#00
+    db #A0,#00,#A0
+    db #F0,#F0,#A0
+    db #A0,#00,#A0
+    db #A0,#00,#A0
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  66 «B»
+    db #00,#00,#00
+    db #F0,#F0,#00
+    db #A0,#00,#A0
+    db #F0,#F0,#00
+    db #A0,#00,#A0
+    db #F0,#F0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  67 «C»
+    db #00,#00,#00
+    db #50,#F0,#00
+    db #A0,#00,#A0
+    db #A0,#00,#00
+    db #A0,#00,#A0
+    db #50,#F0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  68 «D»
+    db #00,#00,#00
+    db #F0,#A0,#00
+    db #A0,#50,#00
+    db #A0,#00,#A0
+    db #A0,#50,#00
+    db #F0,#A0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  69 «E»
+    db #00,#00,#00
+    db #F0,#F0,#A0
+    db #A0,#00,#00
+    db #F0,#F0,#00
+    db #A0,#00,#00
+    db #F0,#F0,#A0
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  70 «F»
+    db #00,#00,#00
+    db #F0,#F0,#A0
+    db #A0,#00,#00
+    db #F0,#F0,#00
+    db #A0,#00,#00
+    db #A0,#00,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  71 «G»
+    db #00,#00,#00
+    db #50,#F0,#00
+    db #A0,#00,#00
+    db #A0,#50,#A0
+    db #A0,#00,#A0
+    db #50,#F0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  72 «H»
+    db #00,#00,#00
+    db #A0,#00,#A0
+    db #A0,#00,#A0
+    db #F0,#F0,#A0
+    db #A0,#00,#A0
+    db #A0,#00,#A0
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  73 «I»
+    db #00,#00,#00
+    db #50,#F0,#00
+    db #00,#A0,#00
+    db #00,#A0,#00
+    db #00,#A0,#00
+    db #50,#F0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  74 «J»
+    db #00,#00,#00
+    db #00,#F0,#A0
+    db #00,#50,#00
+    db #00,#50,#00
+    db #A0,#50,#00
+    db #50,#A0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  75 «K»
+    db #00,#00,#00
+    db #A0,#00,#A0
+    db #A0,#50,#00
+    db #F0,#A0,#00
+    db #A0,#50,#00
+    db #A0,#00,#A0
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  76 «L»
+    db #00,#00,#00
+    db #A0,#00,#00
+    db #A0,#00,#00
+    db #A0,#00,#00
+    db #A0,#00,#00
+    db #F0,#F0,#A0
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  77 «M»
+    db #00,#00,#00
+    db #A0,#00,#A0
+    db #F0,#50,#A0
+    db #A0,#A0,#A0
+    db #A0,#00,#A0
+    db #A0,#00,#A0
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  78 «N»
+    db #00,#00,#00
+    db #A0,#00,#A0
+    db #F0,#00,#A0
+    db #A0,#A0,#A0
+    db #A0,#50,#A0
+    db #A0,#00,#A0
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  79 «O»
+    db #00,#00,#00
+    db #50,#F0,#00
+    db #A0,#00,#A0
+    db #A0,#00,#A0
+    db #A0,#00,#A0
+    db #50,#F0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  80 «P»
+    db #00,#00,#00
+    db #F0,#F0,#00
+    db #A0,#00,#A0
+    db #F0,#F0,#00
+    db #A0,#00,#00
+    db #A0,#00,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  81 «Q»
+    db #00,#00,#00
+    db #50,#F0,#00
+    db #A0,#00,#A0
+    db #A0,#00,#A0
+    db #A0,#50,#00
+    db #50,#A0,#A0
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  82 «R»
+    db #00,#00,#00
+    db #F0,#F0,#00
+    db #A0,#00,#A0
+    db #F0,#F0,#00
+    db #A0,#50,#00
+    db #A0,#00,#A0
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  83 «S»
+    db #00,#00,#00
+    db #50,#F0,#A0
+    db #A0,#00,#00
+    db #50,#F0,#00
+    db #00,#00,#A0
+    db #F0,#F0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  84 «T»
+    db #00,#00,#00
+    db #F0,#F0,#A0
+    db #00,#A0,#00
+    db #00,#A0,#00
+    db #00,#A0,#00
+    db #00,#A0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  85 «U»
+    db #00,#00,#00
+    db #A0,#00,#A0
+    db #A0,#00,#A0
+    db #A0,#00,#A0
+    db #A0,#00,#A0
+    db #50,#F0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  86 «V»
+    db #00,#00,#00
+    db #A0,#00,#A0
+    db #A0,#00,#A0
+    db #A0,#00,#A0
+    db #50,#50,#00
+    db #00,#A0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  87 «W»
+    db #00,#00,#00
+    db #A0,#00,#A0
+    db #A0,#00,#A0
+    db #A0,#A0,#A0
+    db #F0,#50,#A0
+    db #A0,#00,#A0
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  88 «X»
+    db #00,#00,#00
+    db #A0,#00,#A0
+    db #50,#50,#00
+    db #00,#A0,#00
+    db #50,#50,#00
+    db #A0,#00,#A0
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  89 «Y»
+    db #00,#00,#00
+    db #A0,#00,#A0
+    db #50,#50,#00
+    db #00,#A0,#00
+    db #00,#A0,#00
+    db #00,#A0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  90 «Z»
+    db #00,#00,#00
+    db #F0,#F0,#A0
+    db #00,#50,#00
+    db #00,#A0,#00
+    db #50,#00,#00
+    db #F0,#F0,#A0
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  91 «[»
+    db #00,#00,#00
+    db #00,#F0,#00
+    db #00,#A0,#00
+    db #00,#A0,#00
+    db #00,#A0,#00
+    db #00,#F0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  92 «\»
+    db #00,#00,#00
+    db #A0,#00,#00
+    db #50,#00,#00
+    db #00,#A0,#00
+    db #00,#50,#00
+    db #00,#00,#A0
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  93 «]»
+    db #00,#00,#00
+    db #50,#A0,#00
+    db #00,#A0,#00
+    db #00,#A0,#00
+    db #00,#A0,#00
+    db #50,#A0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  94 «^»
+    db #00,#00,#00
+    db #00,#A0,#00
+    db #50,#50,#00
+    db #A0,#00,#A0
+    db #00,#00,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  95 «_»
+    db #00,#00,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    db #F0,#F0,#A0
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  96 μπάρα γεμάτη
+    db #00,#00,#00
+    db #00,#00,#00
+    db #F0,#F0,#F0
+    db #F0,#F0,#F0
+    db #F0,#F0,#F0
+    db #F0,#F0,#F0
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  97 «a»
+    db #00,#00,#00
+    db #00,#00,#00
+    db #50,#F0,#00
+    db #A0,#00,#A0
+    db #A0,#00,#A0
+    db #50,#F0,#A0
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  98 «b»
+    db #00,#00,#00
+    db #A0,#00,#00
+    db #F0,#F0,#00
+    db #A0,#00,#A0
+    db #A0,#00,#A0
+    db #F0,#F0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ;  99 «c»
+    db #00,#00,#00
+    db #00,#00,#00
+    db #50,#F0,#00
+    db #A0,#00,#00
+    db #A0,#00,#00
+    db #50,#F0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ; 100 «d»
+    db #00,#00,#00
+    db #00,#00,#A0
+    db #50,#F0,#A0
+    db #A0,#00,#A0
+    db #A0,#00,#A0
+    db #50,#F0,#A0
+    db #00,#00,#00
+    db #00,#00,#00
+    ; 101 «e»
+    db #00,#00,#00
+    db #00,#00,#00
+    db #50,#F0,#00
+    db #A0,#00,#A0
+    db #F0,#F0,#00
+    db #50,#F0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ; 102 «f»
+    db #00,#00,#00
+    db #00,#F0,#00
+    db #50,#00,#00
+    db #F0,#F0,#00
+    db #50,#00,#00
+    db #50,#00,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ; 103 «g»
+    db #00,#00,#00
+    db #00,#00,#00
+    db #50,#F0,#A0
+    db #A0,#00,#A0
+    db #50,#F0,#A0
+    db #00,#00,#A0
+    db #F0,#F0,#00
+    db #00,#00,#00
+    ; 104 «h»
+    db #00,#00,#00
+    db #A0,#00,#00
+    db #F0,#F0,#00
+    db #A0,#00,#A0
+    db #A0,#00,#A0
+    db #A0,#00,#A0
+    db #00,#00,#00
+    db #00,#00,#00
+    ; 105 «i»
+    db #00,#00,#00
+    db #00,#A0,#00
+    db #00,#00,#00
+    db #50,#A0,#00
+    db #00,#A0,#00
+    db #50,#F0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ; 106 «j»
+    db #00,#00,#00
+    db #00,#50,#00
+    db #00,#00,#00
+    db #00,#50,#00
+    db #00,#50,#00
+    db #A0,#50,#00
+    db #50,#A0,#00
+    db #00,#00,#00
+    ; 107 «k»
+    db #00,#00,#00
+    db #A0,#00,#00
+    db #A0,#50,#00
+    db #F0,#A0,#00
+    db #A0,#50,#00
+    db #A0,#00,#A0
+    db #00,#00,#00
+    db #00,#00,#00
+    ; 108 «l»
+    db #00,#00,#00
+    db #50,#A0,#00
+    db #00,#A0,#00
+    db #00,#A0,#00
+    db #00,#A0,#00
+    db #50,#F0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ; 109 «m»
+    db #00,#00,#00
+    db #00,#00,#00
+    db #F0,#50,#00
+    db #A0,#A0,#A0
+    db #A0,#A0,#A0
+    db #A0,#00,#A0
+    db #00,#00,#00
+    db #00,#00,#00
+    ; 110 «n»
+    db #00,#00,#00
+    db #00,#00,#00
+    db #F0,#F0,#00
+    db #A0,#00,#A0
+    db #A0,#00,#A0
+    db #A0,#00,#A0
+    db #00,#00,#00
+    db #00,#00,#00
+    ; 111 «o»
+    db #00,#00,#00
+    db #00,#00,#00
+    db #50,#F0,#00
+    db #A0,#00,#A0
+    db #A0,#00,#A0
+    db #50,#F0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ; 112 «p»
+    db #00,#00,#00
+    db #00,#00,#00
+    db #F0,#F0,#00
+    db #A0,#00,#A0
+    db #F0,#F0,#00
+    db #A0,#00,#00
+    db #A0,#00,#00
+    db #00,#00,#00
+    ; 113 «q»
+    db #00,#00,#00
+    db #00,#00,#00
+    db #50,#F0,#A0
+    db #A0,#00,#A0
+    db #50,#F0,#A0
+    db #00,#00,#A0
+    db #00,#00,#A0
+    db #00,#00,#00
+    ; 114 «r»
+    db #00,#00,#00
+    db #00,#00,#00
+    db #A0,#F0,#00
+    db #F0,#00,#00
+    db #A0,#00,#00
+    db #A0,#00,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ; 115 «s»
+    db #00,#00,#00
+    db #00,#00,#00
+    db #50,#F0,#A0
+    db #F0,#00,#00
+    db #00,#50,#A0
+    db #F0,#F0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ; 116 «t»
+    db #00,#00,#00
+    db #50,#00,#00
+    db #F0,#F0,#00
+    db #50,#00,#00
+    db #50,#00,#00
+    db #00,#F0,#A0
+    db #00,#00,#00
+    db #00,#00,#00
+    ; 117 «u»
+    db #00,#00,#00
+    db #00,#00,#00
+    db #A0,#00,#A0
+    db #A0,#00,#A0
+    db #A0,#00,#A0
+    db #50,#F0,#A0
+    db #00,#00,#00
+    db #00,#00,#00
+    ; 118 «v»
+    db #00,#00,#00
+    db #00,#00,#00
+    db #A0,#00,#A0
+    db #A0,#00,#A0
+    db #50,#50,#00
+    db #00,#A0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ; 119 «w»
+    db #00,#00,#00
+    db #00,#00,#00
+    db #A0,#00,#A0
+    db #A0,#A0,#A0
+    db #A0,#A0,#A0
+    db #50,#50,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ; 120 «x»
+    db #00,#00,#00
+    db #00,#00,#00
+    db #A0,#00,#A0
+    db #50,#50,#00
+    db #50,#50,#00
+    db #A0,#00,#A0
+    db #00,#00,#00
+    db #00,#00,#00
+    ; 121 «y»
+    db #00,#00,#00
+    db #00,#00,#00
+    db #A0,#00,#A0
+    db #A0,#00,#A0
+    db #50,#F0,#A0
+    db #00,#00,#A0
+    db #F0,#F0,#00
+    db #00,#00,#00
+    ; 122 «z»
+    db #00,#00,#00
+    db #00,#00,#00
+    db #F0,#F0,#A0
+    db #00,#F0,#00
+    db #50,#A0,#00
+    db #F0,#F0,#A0
+    db #00,#00,#00
+    db #00,#00,#00
+    ; 123 μπάρα άδεια
+    db #00,#00,#00
+    db #00,#00,#00
+    db #F0,#F0,#F0
+    db #00,#00,#00
+    db #00,#00,#00
+    db #F0,#F0,#F0
+    db #00,#00,#00
+    db #00,#00,#00
+    ; 124 μπάρα μισή
+    db #00,#00,#00
+    db #00,#00,#00
+    db #F0,#F0,#F0
+    db #A0,#A0,#A0
+    db #A0,#A0,#A0
+    db #F0,#F0,#F0
+    db #00,#00,#00
+    db #00,#00,#00
+    ; 125 ήλιος — δείκτης ημέρας
+    db #00,#00,#00
+    db #A0,#A0,#A0
+    db #50,#F0,#00
+    db #F0,#50,#A0
+    db #50,#F0,#00
+    db #A0,#A0,#A0
+    db #00,#00,#00
+    db #00,#00,#00
+    ; 126 βέλος πάνω
+    db #00,#00,#00
+    db #00,#A0,#00
+    db #50,#F0,#00
+    db #A0,#A0,#A0
+    db #00,#A0,#00
+    db #00,#A0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+    ; 127 βέλος κάτω
+    db #00,#00,#00
+    db #00,#A0,#00
+    db #00,#A0,#00
+    db #A0,#A0,#A0
+    db #50,#F0,#00
+    db #00,#A0,#00
+    db #00,#00,#00
+    db #00,#00,#00
+
 ; --- 16 firmware colour numbers, pen 0..15 ---
 palette_fw:
     db #00,#01,#0B,#17,#0D,#1A,#18,#0F,#06,#12,#0A,#03,#19,#03,#0A,#10
@@ -4933,9 +6971,9 @@ palette_fw:
     ; pen 14  FW 10  Cyan          ΕΔΑΦΟΣ — νερό / πάγος
     ; pen 15  FW 16  Pink          εικονίδια
 
-; --- 201 bytes γέμισμα για τη σελίδα του flip_mode0 ---
+; --- 185 bytes γέμισμα για τη σελίδα του flip_mode0 ---
 sprites_pad:
-    defs 201,#00
+    defs 185,#00
 
 ; --- flip_mode0[b] = b με ανταλλαγμένα pixels ---
 align 256
