@@ -49,6 +49,8 @@ cp "$SRC"/build/sprites/sprites.asm \
 cp "$SRC"/SPRITES.md "$DST/"
 # Τα ~260 μεμονωμένα PNG ανά sprite δεν αντιγράφονται: πλεονασμός με τα _sheet.png.
 cp "$SRC"/build/sprites/preview/composite*.png \
+   "$SRC"/build/sprites/preview/scene.png \
+   "$SRC"/build/sprites/preview/planet_*.png \
    "$SRC"/build/sprites/preview/sheet.png "$DST/preview/"
 
 REV="$(git -C "$CPCART" rev-parse --short HEAD)"
@@ -70,12 +72,10 @@ edits = [
      "αυτά τα αρχεία και πώς ξαναπαράγονται."),
     ("> **Παράγεται μαζί με τα δεδομένα.** Κάθε αλλαγή στα `tools/` αλλάζει και αυτό το\n"
      "> αρχείο. Οι αριθμοί εδώ ισχύουν για build με τις προεπιλογές\n"
-     "> (`--quads all`, σφιχτά τεταρτημόρια).",
+     "> (`--quads nw`, σφιχτά τεταρτημόρια).",
      "> **Αντίγραφο.** Το πρωτότυπο ζει στο repo `CPCArt` (`planetbase/SPRITES.md`) και\n"
      "> παράγεται μαζί με τα δεδομένα. Οι αριθμοί εδώ ισχύουν για build με τις\n"
-     "> προεπιλογές (`--quads all`, σφιχτά τεταρτημόρια)."),
-    ("Το `build/sprites/sprites_map.txt` έχει offset",
-     "Το [`sprites_map.txt`](sprites_map.txt) έχει offset"),
+     "> προεπιλογές (`--quads nw`, σφιχτά τεταρτημόρια)."),
 ]
 for old, new in edits:
     if old not in text:
@@ -110,7 +110,7 @@ cat > "$DST/README.md" <<MD
 | \`sprites.bin\` | τα ίδια bytes σε raw binary, αν προτιμάς φόρτωση από δίσκο |
 | \`sprites_map.txt\` | offset και μέγεθος κάθε sprite μέσα στο \`.bin\` |
 | \`aseprite/\` | τα spritemaps (\`.aseprite\`) και οι εξαγωγές τους (\`_sheet.png\`, \`_sheet.json\`) |
-| \`preview/\` | \`sheet.png\` με όλα τα sprites, και \`composite_*.png\` με συναρμολογημένους θόλους |
+| \`preview/\` | \`scene.png\` (θόλος, διάδρομος και αεροθάλαμος σε έδαφος), \`planet_*.png\`, \`composite_*.png\`, \`sheet.png\` |
 
 Στο \`preview/\` δεν αντιγράφονται τα ~260 μεμονωμένα PNG ανά sprite — είναι
 πλεονασμός με τα \`_sheet.png\` και ξαναπαράγονται όποτε χρειαστεί.

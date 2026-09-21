@@ -6,7 +6,7 @@
 | | |
 |---|---|
 | Πηγή | repo `CPCArt`, φάκελος `planetbase/` |
-| Έκδοση | `b804c07` |
+| Έκδοση | `894098d` |
 | Συγχρονίστηκε | 2026-09-21 |
 
 ```bash
@@ -22,7 +22,7 @@
 | `sprites.bin` | τα ίδια bytes σε raw binary, αν προτιμάς φόρτωση από δίσκο |
 | `sprites_map.txt` | offset και μέγεθος κάθε sprite μέσα στο `.bin` |
 | `aseprite/` | τα spritemaps (`.aseprite`) και οι εξαγωγές τους (`_sheet.png`, `_sheet.json`) |
-| `preview/` | `sheet.png` με όλα τα sprites, και `composite_*.png` με συναρμολογημένους θόλους |
+| `preview/` | `scene.png` (θόλος, διάδρομος και αεροθάλαμος σε έδαφος), `planet_*.png`, `composite_*.png`, `sheet.png` |
 
 Στο `preview/` δεν αντιγράφονται τα ~260 μεμονωμένα PNG ανά sprite — είναι
 πλεονασμός με τα `_sheet.png` και ξαναπαράγονται όποτε χρειαστεί.
