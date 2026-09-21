@@ -299,33 +299,28 @@ must always be reachable is in bank 0 (`&0000–&3FFF`) or bank 2 (`&8000–&BFF
 | window | 5 | **next-hop matrix** `NEXTHOP[128][128]` | 16,384 | 0 |
 | window | 6 | dome+ring `nw` quadrants 7,424 · slot figures 3,456 · entity tables 4,096 · job board 256 · path workspace 512 | 15,744 | 640 |
 | window | 7 | external structures 14,336 · plants 1,584 · text 1,024 · audio 2,048 | 18,992 | **−2,608** |
-| `&8000–&BFFF` | 2 | HUD screen page 3,200 + graphics arenas 13,719 | 16,919 | **−535** |
+| `&8000–&BFFF` | 2 | HUD screen page 3,200 + graphics arenas 12,951 | 16,151 | 233 |
 | `&C000–&FFFF` | 3 | play-area screen | 16,384 | 0 |
 
 Every bank is spoken for. The two matrices in banks 1 and 5 are the clearest answer
 to "what is the extra 64 KB actually *for*": they turn pathfinding from a per-agent
 search into a single table read ([§6.4](#64-routing)).
 
-**Two banks are now over capacity, and that is the live problem.** ASSET-3 landed
-exactly on its 3,456-byte budget, so bank 6 is fine at 640 slack. The other two
-assets did not, and the numbers above are measured from `assets/sprites_map.txt`,
-not estimated:
+**Bank 7 is over capacity, and that is the one live problem.** ASSET-3 landed exactly
+on its 3,456-byte budget, so bank 6 is fine at 640 slack, and the font was built at
+4 px, so bank 2 closes at 233 with the `s` room icons intact. The numbers above are
+measured from `assets/sprites_map.txt`, not estimated.
 
-- **Bank 7 is 2,608 over.** The landing pad (2,048, masked) and ship (512) came in
-  at 2,560, and the airlock's 512 was never added to this table. Dropping `solar_xl`
-  (2,048) leaves it 560 over; dropping four plant species too (528) leaves it 32
-  over. The one combination that clears it with room to spare is **`solar_xl` plus
-  making the pad opaque** — a square apron instead of a masked octagon saves 1,024
-  and ends at 464 slack. That trades Planetbase's round pad for a built one.
-- **Bank 2 is 535 over**, entirely because the font is 6 px wide rather than 4:
-  2,304 instead of 1,536. The named cut — the `s` room-icon set, 864 B — clears it
-  at 329 slack. Going back to the 4 px font also clears it, at 233, and buys back
-  40 HUD columns; the cost is that `M`, `N` and `W` are not reliably distinct with
-  three ink pixels. Both sets are built and live in `tools/font.py`; the choice is
-  the `WIDTH` constant.
+**Bank 7 is 2,608 over.** The landing pad (2,048, masked) and ship (512) came in at
+2,560, and the airlock's 512 was never added to this table — it was 48 over before
+either of them arrived. Dropping `solar_xl` (2,048) leaves it 560 over; dropping four
+plant species too (528) leaves it 32 over. The combination that clears it with room
+to spare is **`solar_xl` plus making the pad opaque** — a square apron instead of a
+masked octagon saves 1,024 and ends at 464 slack. That trades Planetbase's round pad
+for a built one, which is a look decision, not a memory one.
 
-Neither decision is the generator's to make — both are gameplay or legibility calls,
-so the assets are delivered and the banks left honest rather than quietly trimmed.
+That decision is not the generator's to make, so the assets are delivered and the
+bank left honest rather than quietly trimmed.
 
 ### 4.3 The `&8000` page and its arenas
 
@@ -344,30 +339,28 @@ these are:
 | Room icons, 12 types × 3 sizes | 4,800 | delivered |
 | Machines, 10 types | 1,320 | delivered |
 | Corridors + connectors | 896 | delivered |
-| Data tables (`machine_slots`, `conn_points`, `corr_slots`, `tile_base`, `tile_variants`, `planet_pens`, …) | 271 | delivered |
-| 6×8 font, 96 glyphs ([ASSET-4](#12-asset-gaps)) | 2,304 | delivered |
+| Data tables (`machine_slots`, `conn_points`, `corr_slots`, `tile_base`, `tile_variants`, `planet_pens`, …) | 303 | delivered |
+| 4×8 font, 96 glyphs ([ASSET-4](#12-asset-gaps)) | 1,536 | delivered |
 | Cursor and UI chrome | 512 | *estimate* |
-| **Total** | **13,719** | |
+| **Total** | **12,951** | |
 
-Delivered art and tables are **13,207**; only the 512-byte cursor is still a guess.
-Against 13,184 that is **535 bytes over**, all of it the font: at 6 px it is 2,304
-bytes rather than the 1,536 a 4 px font would cost.
+Delivered art and tables are **12,439**; only the 512-byte cursor is still a guess.
+Against 13,184 that leaves **233 bytes of slack**, and the cursor is now the only
+thing left that can surprise. A 4×8 font at 96 glyphs is 1,536 bytes exactly.
 
 **The lowercase glyphs are not a candidate for cutting.** Dropping a-z would free
-624 bytes and close the gap on its own, which makes it the obvious saving and the
-wrong one — the alert line is the game's voice and reads as shouting in all caps.
-The cut list below deliberately excludes it.
+416 bytes at this width, which makes it the obvious saving and the wrong one — the
+alert line is the game's voice and reads as shouting in all caps.
 
 Largest single item is a 200-byte `icon_l`, so bin-packing eight 1,648-byte arenas is
 trivial. `flip_mode0` must be 256-byte aligned and lives in bank 6 with the quadrants
 it serves.
 
-The cheapest cut is the `s` room-icon set (12 × 72 = 864 bytes): the small dome is
-4×4 tiles and could carry the `m` icon scaled down in the blit, or no icon at all.
-That clears the 535 and leaves **329**. The alternative is the 4 px font, which
-frees 768 and leaves **233** — less slack, but it buys back 40 HUD columns, and the
-`s` icons survive. The price is that `M`, `N` and `W` are never reliably distinct in
-three ink pixels. Both font sets are built; the choice is one constant.
+If the slack goes, the cheapest cut is still the `s` room-icon set (12 × 72 = 864
+bytes): the small dome is 4×4 tiles and could carry the `m` icon scaled down in the
+blit, or no icon at all. The 6×8 font set is also built and one constant away — it
+costs 768 more and drops the HUD to 26 columns, but `M`, `N` and `W` become
+unambiguous, which at 4 px they are not.
 
 ### 4.4 `--quads nw` is mandatory
 
@@ -1267,7 +1260,7 @@ remain outstanding; ASSET-6 is cosmetic.
 | ✅ **ASSET-1** | **Terrain tiles**, 4 bytes × 16 lines opaque: ground ×4, dust ×4, rock ×4, mountain autotile ×16, shallow water autotile ×16, deep water fill ×4, crater ×2, foundation ×2; ore overlay ×2 masked | 3,584 B | There is no ground in the asset set. Nothing can be drawn without it. |
 | ✅ **ASSET-2** | **Four room icons** — Factory, Lab, Medbay, Lounge — at all three sizes | 1,600 B | Six of the ten machines currently have no room to live in. |
 | ✅ **ASSET-3** | **Four slot figures** — biologist, medic, guard, constructor bot — raising `SLOT_FIGS` 5 → 9 | +1,536 B | Five roles and three bot types share four figures today. |
-| ✅ **ASSET-4** | **6×8 font**, 96 glyphs, 2 colours (a 4×8 set is also built) | 2,304 B | Mode 0 at 8 px gives 20 columns. The HUD needs 40. |
+| ✅ **ASSET-4** | **4×8 font**, 96 glyphs, 2 colours (a 6×8 set is also built) | 1,536 B | Mode 0 at 8 px gives 20 columns. The HUD needs 40. |
 | ✅ **ASSET-5** | **Landing pad**, 4×4 tiles masked, plus a ship sprite | 2,560 B | Ships, colonist arrival and trade are the mid-game. |
 | **ASSET-6** | *Optional:* move `conn_points` and corridor lanes onto the 8-line half-tile grid | 0 B | Tidies corridor/tile alignment ([§3.3](#33-the-grid-is-not-a-choice)). Cosmetic. |
 | ✅ **ASSET-7** | **Palette re-plan**: four pens reserved for terrain, icons re-quantised to five; four planet palette variants | 64 B | [§8.6](#86-palette). Buys four planets for nothing. |
@@ -1290,9 +1283,11 @@ Delivery notes, for the record:
   are indistinguishable at 6×6 visual pixels, and the figure you must find in an
   emergency is the medic, not the hauler. Verification 11 now refuses to build if any
   two figures share a dominant pen.
-- **ASSET-4 is 6 px wide, not 4.** That was a deliberate change of this spec: 26
-  columns instead of 40, 2,304 bytes instead of 1,536. Both sets are built and the
-  4 px one is one constant away. The **lowercase glyphs stay** in either case.
+- **ASSET-4 ships at 4 px, as specified** — 40 columns, 1,536 bytes. A full 6×8 set
+  was also built and is one constant away in `tools/font.py`; it reads better but
+  costs 768 bytes and a third of the HUD width. The **lowercase glyphs stay** in
+  either case. At 4 px, `M`, `N`, `W`, `m` and `w` are drawn with a single diagonal
+  rather than two filled rows — two filled rows in three pixels is a solid block.
 
 ---
 
