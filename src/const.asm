@@ -161,3 +161,6 @@ J_DRILL     equ 3
 J_REPAIR    equ 4
 J_HEAL      equ 5
 J_DEFEND    equ 6
+
+; --- ο γράφος κόμβων (§6.2). Εδώ επειδή τον γράφει και το build mode.
+MAX_DEGREE  equ 8

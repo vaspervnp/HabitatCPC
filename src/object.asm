@@ -903,6 +903,7 @@ of_skip:
 ; κατεύθυνση a -> b, και τα οκτώ sprites είναι τέσσερα, το καθένα με δύο φορές.
 ; ---------------------------------------------------------------------------
 ob_corr:
+        ld      (oc_id),a
         ld      l,a
         ld      h,0
         ld      d,h
@@ -919,6 +920,39 @@ ob_corr:
         pop     hl
         or      a
         ret     z                       ; άδεια θέση — τίποτα να αντιγραφεί
+        ld      a,(hl)
+        inc     a
+        ret     z                       ; C_A = 255: ΣΥΝΕΧΕΙΑ διαδρομής — τη
+                                        ; ζωγραφίζει η εγγραφή που την ξεκίνησε
+        ; --- ακολουθεί συνέχεια; Η ερώτηση γίνεται ΕΔΩ, όσο η τράπεζα 6 είναι
+        ; ακόμη στο παράθυρο, και η απάντηση φυλάγεται: μετά το ob_getdome το
+        ; παράθυρο έχει αλλάξει και ο πίνακας διαδρόμων δεν φαίνεται πια.
+        xor     a
+        ld      (oc_cont),a
+        push    hl
+        ld      a,(oc_id)
+        inc     a
+        cp      MAX_CORR
+        jr      nc,occ_nocont           ; τελευταία εγγραφή — δεν έχει επόμενη
+        ld      de,CORR_REC
+        add     hl,de
+        ld      a,(hl)
+        inc     a
+        jr      nz,occ_nocont
+        push    hl
+        ld      de,C_CSTATE
+        add     hl,de
+        ld      a,(hl)
+        pop     hl
+        or      a
+        jr      z,occ_nocont
+        ld      de,oc_cr
+        ld      bc,CORR_REC
+        ldir
+        ld      a,1
+        ld      (oc_cont),a
+occ_nocont:
+        pop     hl
         ld      de,c_rec
         ld      bc,CORR_REC
         ldir
@@ -929,7 +963,14 @@ ob_corr:
         ld      hl,d_id
         cp      (hl)
         call    nz,ob_getdome
-        ; --- ο πίνακας της κατεύθυνσης ---
+        call    oc_setdir
+        ld      a,(oc_diag)
+        or      a
+        jp      nz,ob_corr_d
+        jp      oc_axial
+
+; oc_setdir — γεμίζει sprite, διαστάσεις και βήμα από τον πίνακα corr_dir.
+oc_setdir:
         ld      a,(c_rec+C_DIR)
         and     7
         ld      c,a
@@ -967,8 +1008,9 @@ ob_corr:
         inc     hl
         ld      a,(hl)
         ld      (oc_diag),a
-        or      a
-        jr      nz,ob_corr_d
+        ret
+
+oc_axial:
         ; --- αξονικός: από το σημείο σύνδεσης, προς τα έξω ---
         ld      a,(d_rec+D_SIZE)
         add     a,a
@@ -1040,6 +1082,92 @@ ob_corr_run:
         or      a
         ret     z
         ld      (oc_n),a
+        ; Πού τελειώνει ΑΥΤΟ το τρέξιμο — υπολογισμένο, όχι μετρημένο από τον
+        ; βρόχο: το κουτί μπορεί να είναι όλο εκτός κάδρου και ο βρόχος να μην
+        ; τρέξει καθόλου, ενώ η συνέχεια μπορεί κάλλιστα να φαίνεται.
+        ld      a,(oc_cont)
+        or      a
+        call    nz,oc_last
+        call    oc_run
+        ld      a,(oc_cont)
+        or      a
+        ret     z
+        call    oc_bend
+        jp      oc_run
+
+; oc_last — (oc_lx, oc_ly) = η θέση του ΤΕΛΕΥΤΑΙΟΥ πλακιδίου του τρεξίματος.
+oc_last:
+        ld      a,(oc_n)
+        dec     a
+        ld      (oc_k),a
+        ld      hl,(ob_x)
+        ld      a,(oc_dx)
+        call    ob_addk
+        ld      (oc_lx),hl
+        ld      hl,(ob_y)
+        ld      a,(oc_dy)
+        call    ob_addk
+        ld      (oc_ly),hl
+        ret
+
+; ---------------------------------------------------------------------------
+; oc_bend — η στροφή διαγώνιος -> άξονας (§9.4, και tools/route.py).
+;
+; Το διαγώνιο πλακίδιο είναι δύο tiles φαρδύ και ένα ψηλό, με το σημείο
+; πλέγματός του στο πάνω-αριστερά + (4, 8). Η οριζόντια λωρίδα πιάνει το ΠΑΝΩ
+; μισό της σειράς της, η κάθετη το ΑΡΙΣΤΕΡΟ μισό της στήλης της — γι' αυτό οι
+; δύο στροφές δεν έχουν τον ίδιο τύπο.
+; ---------------------------------------------------------------------------
+oc_bend:
+        ld      a,(oc_dx)
+        ld      (oc_odx),a
+        ld      a,(oc_dy)
+        ld      (oc_ody),a
+        ld      hl,oc_cr
+        ld      de,c_rec
+        ld      bc,CORR_REC
+        ldir
+        call    oc_setdir
+        ld      a,(oc_dx)
+        or      a
+        jr      z,ocb_v
+        ; --- οριζόντια: το πρώτο πλακίδιο κάθεται ΠΑΝΩ στο τελευταίο διαγώνιο,
+        ; στο μισό του που βλέπει προς τον θόλο αφετηρίας.
+        ld      hl,(oc_lx)
+        ld      a,(oc_odx)
+        bit     7,a
+        jr      z,ocb_h1
+        ld      de,4
+        add     hl,de
+ocb_h1:
+        ld      (ob_x),hl
+        ld      hl,(oc_ly)
+        ld      de,8
+        add     hl,de
+        ld      (ob_y),hl
+        jr      ocb_len
+ocb_v:
+        ; --- κάθετη: η λωρίδα περνά από το ΚΕΝΤΡΟ του θόλου προορισμού, που
+        ; είναι ένα σημείο πλέγματος πιο πέρα από το τελευταίο διαγώνιο.
+        ld      hl,(oc_lx)
+        ld      a,(oc_odx)
+        add     a,4
+        call    ob_addsx
+        ld      (ob_x),hl
+        ld      hl,(oc_ly)
+        ld      a,(oc_ody)
+        sra     a
+        call    ob_addsx
+        ld      (ob_y),hl
+ocb_len:
+        ld      a,(c_rec+C_LEN)
+        ld      (oc_n),a
+        ret
+
+oc_run:
+        ld      a,(oc_n)
+        or      a
+        ret     z
         ; --- κουτί οριοθέτησης ολόκληρης της διαδρομής ---
         ; Το cl_lo/cl_hi μπαίνει ΠΡΙΝ το ob_box: το ob_box γυρίζει HL και DE,
         ; και ένα ld hl,(clip_x0) μετά θα τα έτρωγε.
@@ -1261,6 +1389,12 @@ ocs_lp:
         jr      z,ocs_next
         pop     hl
         push    hl
+        ld      a,(hl)
+        inc     a
+        jr      z,ocs_next              ; C_A = 255: ΣΥΝΕΧΕΙΑ διαδρομής — δεν
+                                        ; ξεκινά από θόλο και δεν έχει πόρτα.
+                                        ; Χωρίς αυτό το ocs_set γράφει στο
+                                        ; dome_conn+255, 191 bytes έξω.
         ld      c,(hl)                  ; a
         inc     hl
         ld      e,(hl)                  ; b
@@ -1645,6 +1779,13 @@ oc_oy:      db 0
 oc_diag:    db 0
 oc_k:       db 0
 oc_n:       db 0
+oc_id:      db 0
+oc_cont:    db 0
+oc_odx:     db 0
+oc_ody:     db 0
+oc_lx:      dw 0
+oc_ly:      dw 0
+oc_cr:      defs CORR_REC
 
 om_n:       db 0
 om_slot:    db 0

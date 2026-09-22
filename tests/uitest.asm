@@ -106,6 +106,107 @@ do_snoop:
         ld      (done_flag),a
 ds_hang: jr     ds_hang
 
+; do_plant — σκαλωσιά: γράφει bytes ΣΕ σελιδοποιημένη τράπεζα. Το αντίστροφο
+; του do_snoop, και ο μόνος τρόπος να στηθεί σκηνή που ο έλεγχος θέσης δεν θα
+; επέτρεπε — ο renderer πρέπει να δοκιμαστεί και εκεί που το έδαφος λέει όχι.
+do_plant:
+        ld      a,(snoop_bk)
+        ld      c,a
+        ld      b,GA_PORT/256
+        out     (c),c
+        ld      hl,snoop_buf
+        ld      de,(snoop_ad)
+        ld      a,(snoop_n)
+        ld      c,a
+        ld      b,0
+        ldir
+        ld      bc,GA_PORT + PAGE_B1
+        out     (c),c
+        ld      a,#5A
+        ld      (done_flag),a
+dpl_hang: jr    dpl_hang
+
+; do_link — σκαλωσιά: δρομολογεί και ΤΟΠΟΘΕΤΕΙ, χωρίς να περάσει από τον
+; έλεγχο εδάφους. Ο έλεγχος δοκιμάζεται χωριστά· εδώ δοκιμάζεται η εγγραφή.
+do_link:
+        ld      a,3                     ; CORRIDOR — ό,τι κάνει και το μενού:
+        call    bd_select               ; από εκεί βγαίνει το κόστος ανά πλακίδιο
+        ld      a,(plan_a)
+        ld      (cr_a),a
+        ld      a,(plan_b)
+        ld      (cr_b),a
+        call    cr_plan
+        or      a
+        jr      z,dl_done
+        call    cr_commit
+dl_done:
+        ld      a,#5A
+        ld      (done_flag),a
+dl_hang: jr     dl_hang
+
+; do_cost — σκαλωσιά μέτρησης: δεκαέξι φορές «σβήσε και ξαναζωγράφισε το
+; φάντασμα», ώστε να βγει το κόστος ενός βήματος κέρσορα χωρίς το σκρολάρισμα.
+do_cost:
+        ld      b,16
+dc_lp:
+        push    bc
+        call    ui_hide
+        call    ui_show
+        pop     bc
+        djnz    dc_lp
+        ld      a,#5A
+        ld      (done_flag),a
+dc_hang: jr     dc_hang
+
+; do_plan — σκαλωσιά: δρομολογεί ανάμεσα σε δύο θόλους και γράφει και τα
+; πλακίδια που πατά η διαδρομή, ώστε να συγκριθούν με το tools/route.py.
+do_plan:
+        ld      a,(plan_a)
+        ld      (cr_a),a
+        ld      a,(plan_b)
+        ld      (cr_b),a
+        call    cr_plan
+        ld      hl,walk_buf
+        ld      (walk_p),hl
+        xor     a
+        ld      (walk_n),a
+        ld      a,(cr_n)
+        or      a
+        jr      z,dp_none
+        ld      hl,dp_cb
+        ld      (cr_cb),hl
+        call    cr_walk
+        call    cr_check
+        jr      dp_done
+dp_none:
+        ld      a,255
+dp_done:
+        ld      (plan_bad),a
+        ld      a,#5A
+        ld      (done_flag),a
+dp_hang: jr     dp_hang
+
+dp_cb:
+        ld      a,(walk_n)
+        cp      120
+        ret     nc
+        ld      hl,walk_n
+        inc     (hl)
+        ld      hl,(walk_p)
+        ld      (hl),b
+        inc     hl
+        ld      (hl),c
+        inc     hl
+        ld      (walk_p),hl
+        ret
+
+plan_a:     db 0
+plan_b:     db 0
+plan_bad:   db 0
+walk_p:     dw 0
+walk_n:     db 0
+walk_buf:   defs 240
+
 ready_flag: db 0
 done_flag:  db 0
 snoop_bk:   db PAGE_B6
@@ -127,6 +228,8 @@ goto_st:    db 0
         include "../src/ghost.asm"
         include "../src/input.asm"
         include "../src/build.asm"
+        include "../src/graph.asm"
+        include "../src/route.asm"
         include "../src/ui.asm"
         include "../src/hw.asm"
 

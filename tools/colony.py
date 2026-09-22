@@ -128,6 +128,8 @@ def adjacency(c):
         if c.c(i, S.C_STATE) == S.DS_EMPTY:
             continue
         a, b = c.c(i, S.C_A), c.c(i, S.C_B)
+        if a == 255:
+            continue            # συνέχεια διαδρομής: μία ακμή, όχι δύο (§9.4)
         for u, v in ((a, b), (b, a)):
             if deg[u] < 8:
                 adj[u * 8 + deg[u]] = v
