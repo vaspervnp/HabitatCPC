@@ -37,3 +37,4 @@ python3 tests/test_sim.py
 python3 tests/test_object.py
 python3 tests/test_scroll.py
 python3 tests/test_hud.py
+python3 tests/test_dirty.py

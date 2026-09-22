@@ -517,6 +517,17 @@ ob_fittings:
         jp      ob_figures
 
 ; --- πόρτες: μόνο εκεί που υπάρχει διάδρομος -------------------------------
+; ob_conn_one — ΜΙΑ πόρτα. In: A = κατεύθυνση.
+ob_conn_one:
+        ld      (oc_dir),a
+        ld      a,(d_rec+D_SIZE)
+        add     a,a
+        add     a,a
+        add     a,a
+        add     a,a
+        ld      (oc_base),a
+        jp      ocn_draw
+
 ob_conns:
         ld      a,(d_id)
         ld      e,a
@@ -546,6 +557,16 @@ ocn_shend:
         djnz    ocn_sh
         and     1
         jr      z,ocn_skip
+        call    ocn_draw
+ocn_skip:
+        ld      a,(oc_dir)
+        inc     a
+        cp      8
+        jp      nz,ocn_lp
+        ret
+
+; ocn_draw — μία πόρτα, από τα oc_dir / oc_base.
+ocn_draw:
         ld      a,(oc_dir)
         add     a,a
         ld      c,a
@@ -586,13 +607,7 @@ ocn_shend:
         ld      (ob_h),a
         xor     a
         ld      (ob_fl),a
-        call    ob_blit
-ocn_skip:
-        ld      a,(oc_dir)
-        inc     a
-        cp      8
-        jp      nz,ocn_lp
-        ret
+        jp      ob_blit
 
 ; --- εικονίδιο δωματίου, στο interior_ofs από το ΚΕΝΤΡΟ --------------------
 ob_icon:
@@ -678,6 +693,25 @@ om_notgreen:
 om_go:
         xor     a
 om_lp:
+        call    ob_mach_one
+        ld      a,(om_slot)
+        inc     a
+        ld      hl,om_n
+        cp      (hl)
+        jp      nz,om_lp
+        ld      a,(om_green)
+        or      a
+        ret     z
+        ld      bc,GA_PORT + PAGE_B6
+        out     (c),c
+        ret
+
+; ---------------------------------------------------------------------------
+; ob_mach_one — ΜΙΑ υποδοχή. In: A = υποδοχή· το om_green ορισμένο και η σωστή
+; τράπεζα μέσα. Η λίστα αλλαγών (§8.5) ξαναζωγραφίζει μία υποδοχή όταν μια
+; μηχανή χαλάσει ή ένα φυτό μεγαλώσει, και δεν έχει λόγο να δει τις άλλες επτά.
+; ---------------------------------------------------------------------------
+ob_mach_one:
         ld      (om_slot),a
         ld      e,a
         ld      d,0
@@ -741,18 +775,8 @@ om_tab:
         ld      (ob_h),a
         ld      a,4
         ld      (ob_fl),a
-        call    ob_blit
+        jp      ob_blit
 om_skip:
-        ld      a,(om_slot)
-        inc     a
-        ld      hl,om_n
-        cp      (hl)
-        jp      nz,om_lp
-        ld      a,(om_green)
-        or      a
-        ret     z
-        ld      bc,GA_PORT + PAGE_B6
-        out     (c),c
         ret
 
 ; --- φιγούρες στις θέσεις του δακτυλίου ------------------------------------
@@ -771,16 +795,43 @@ ob_figures:
         ld      a,(d_rec+D_SIZE)
         ld      (of_size),a
         xor     a
+; Η ΚΕΝΗ ΠΑΡΑΛΛΑΓΗ ΠΑΡΑΛΕΙΠΕΤΑΙ ΕΔΩ ΚΑΙ ΜΟΝΟ ΕΔΩ. Στην πλήρη σχεδίαση ο
+; δακτύλιος μόλις ζωγραφίστηκε, οπότε το κενό δεν έχει τι να επαναφέρει. Οταν
+; όμως ΦΕΥΓΕΙ ένας άποικος, η λίστα αλλαγών πρέπει να ζωγραφίσει το κενό — και
+; η πρώτη γραφή είχε τον έλεγχο μέσα στο ob_fig_one, οπότε ο άποικος έμενε
+; ζωγραφισμένος για πάντα σε θόλο που είχε αδειάσει.
 of_lp:
         ld      (of_slot),a
         ld      hl,(of_ptr)
-        ld      a,(of_slot)
         ld      e,a
         ld      d,0
         add     hl,de
         ld      a,(hl)
         or      a
-        jr      z,of_skip
+        jr      z,of_next
+        ld      a,(of_slot)
+        call    ob_fig_one
+of_next:
+        ld      a,(of_slot)
+        inc     a
+        cp      CORR_SLOTS
+        jp      nz,of_lp
+        ret
+
+; ---------------------------------------------------------------------------
+; ob_fig_one — ΜΙΑ θέση δακτυλίου. In: A = θέση· of_ptr και of_size ορισμένα.
+;
+; Η κενή παραλλαγή επαναφέρει ΑΚΡΙΒΩΣ ό,τι υπήρχε εκεί, οπότε ένα αδιαφανές
+; blit 16 bytes αρκεί και για να εμφανιστεί και για να σβηστεί μια φιγούρα.
+; Στην πλήρη σχεδίαση η κενή παραλείπεται — ο δακτύλιος μόλις ζωγραφίστηκε.
+; ---------------------------------------------------------------------------
+ob_fig_one:
+        ld      (of_slot),a
+        ld      hl,(of_ptr)
+        ld      e,a
+        ld      d,0
+        add     hl,de
+        ld      a,(hl)
         ld      (of_fig),a
         ld      a,(of_size)
         add     a,a
@@ -841,12 +892,8 @@ of_lp:
         ld      (ob_h),a
         ld      a,4
         ld      (ob_fl),a
-        call    ob_blit
+        jp      ob_blit
 of_skip:
-        ld      a,(of_slot)
-        inc     a
-        cp      CORR_SLOTS
-        jp      nz,of_lp
         ret
 
 ; ---------------------------------------------------------------------------

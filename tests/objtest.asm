@@ -90,6 +90,126 @@ hu_loop:
         ld      (done_flag),a
 hu_hang: jr     hu_hang
 
+; --- πέμπτη είσοδος: η λίστα αλλαγών ---
+; Η ΙΔΙΑ μετάλλαξη, δύο δρόμοι: μια φορά μέσω της λίστας και μια με πλήρη
+; επανασχεδίαση. Αν διαφέρουν, η «ελάχιστη επανασχεδίαση» του §8.5 δεν είναι
+; ελάχιστη — είναι ελλιπής.
+do_dirty:
+        call    mutate
+        call    dirty_reset
+        call    push_all
+dd_lp:
+        call    dirty_tick
+        ld      hl,dd_ticks
+        inc     (hl)
+        or      a
+        jr      nz,dd_lp
+        ld      a,#5A
+        ld      (done_flag),a
+dd_hang: jr     dd_hang
+
+do_full:
+        call    mutate
+        call    redraw_now
+        ld      a,#5A
+        ld      (done_flag),a
+df_hang: jr     df_hang
+
+; redraw_now — πλήρης σχεδίαση ΧΩΡΙΣ ob_touch: το dome_fig είναι μέρος της
+; μετάλλαξης και δεν πρέπει να ξαναχτιστεί από τους πράκτορες.
+redraw_now:
+        call    ob_clip_full
+        call    view_cam
+        ld      bc,GA_PORT + PAGE_B4
+        out     (c),c
+        call    tile_draw_all
+        ld      bc,GA_PORT + PAGE_B1
+        out     (c),c
+        jp      ob_draw_all
+
+mutate:
+        ld      bc,GA_PORT + PAGE_B6
+        out     (c),c
+        ld      a,8                     ; ο θόλος 0 γίνεται εργοστάσιο
+        ld      (G_dome_tbl + D_ROOM),a
+        ld      a,5                     ; υποδοχή 2: ρομπότ
+        ld      (G_dome_tbl + D_MACH + 2),a
+        ld      a,200
+        ld      (G_dome_tbl + D_HEALTH + 2),a
+        ld      a,3                     ; θόλος 1, υποδοχή 0: όπλα
+        ld      (G_dome_tbl + DOME_REC + D_MACH),a
+        ld      a,200
+        ld      (G_dome_tbl + DOME_REC + D_HEALTH),a
+        ld      bc,GA_PORT + PAGE_B4
+        out     (c),c
+        ld      b,-16                   ; ένα tile γίνεται βουνό με φλέβα
+        ld      c,-9
+        call    tile_addr
+        ld      (hl),3 + 8
+        ld      bc,GA_PORT + PAGE_B1
+        out     (c),c
+        ld      a,4                     ; φρουρός μπαίνει στη θέση 1 του θόλου 0
+        ld      (dome_fig + 1),a
+        xor     a                       ; και κάποιος φεύγει από τη θέση 0 του 1
+        ld      (dome_fig + 8),a
+        ret
+
+push_all:
+        ld      a,DK_ICON
+        ld      b,0
+        ld      c,0
+        call    dirty_push
+        ld      a,DK_MACH
+        ld      b,0
+        ld      c,2
+        call    dirty_push
+        ld      a,DK_MACH
+        ld      b,1
+        ld      c,0
+        call    dirty_push
+        ld      a,DK_SLOT
+        ld      b,0
+        ld      c,1
+        call    dirty_push
+        ld      a,DK_SLOT
+        ld      b,1
+        ld      c,0
+        call    dirty_push
+        ld      a,DK_CONN
+        ld      b,0
+        ld      c,4
+        call    dirty_push
+        ld      a,DK_TILE
+        ld      b,-16
+        ld      c,-9
+        jp      dirty_push
+
+; --- έκτη είσοδος: ΕΝΑ είδος της λίστας, REPS φορές, για να μετρηθεί ---
+do_one:
+        call    mutate
+        ld      a,(oo_kind)
+        ld      (dt_kind),a
+        ld      a,(oo_a)
+        ld      (dt_a),a
+        ld      a,(oo_b)
+        ld      (dt_b),a
+        ld      a,(rep_n)
+        ld      (o1_n),a
+o1_lp:
+        call    dt_dispatch
+        ld      a,(o1_n)
+        dec     a
+        ld      (o1_n),a
+        jr      nz,o1_lp
+        ld      a,#5A
+        ld      (done_flag),a
+o1_hang: jr     o1_hang
+
+oo_kind:    db 0
+oo_a:       db 0
+oo_b:       db 0
+o1_n:       db 0
+dd_ticks:   db 0
 hu_n:       db 0
 rep_n:      db 0
 oo_n:       db 0
@@ -103,6 +223,7 @@ done_flag:  db 0
         include "../src/blit.asm"
         include "../src/tiles.asm"
         include "../src/object.asm"
+        include "../src/dirty.asm"
         include "../src/hud.asm"
         include "../src/view.asm"
         include "../src/hw.asm"
