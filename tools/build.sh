@@ -32,3 +32,4 @@ python3 tests/test_pack_z80.py
 python3 tests/test_tiles.py
 python3 tests/test_worldgen.py
 python3 tests/test_camera.py
+python3 tests/test_routing.py

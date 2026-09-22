@@ -147,6 +147,18 @@ def build_runs(smap, blob):
 
     arena.append(Run("ui_cursor", 256, bytes(256), note="ΔΕΣΜΕΥΣΗ — δεν έχει παραδοθεί"))
 
+    # --- ο γράφος κόμβων και ο πάγκος της BFS -------------------------------
+    # Εδώ, και όχι στην τράπεζα 6, για έναν λόγο που δεν συγχωρεί: η BFS γράφει
+    # τις γραμμές της στις τράπεζες 1 και 5, άρα το παράθυρο &4000 αλλάζει μέσα
+    # στη ρουτίνα. Ο,τι διαβάζει ή γράφει η BFS πρέπει να είναι ΕΚΤΟΣ παραθύρου.
+    # Η τράπεζα 2 είναι πάντα ορατή — και έχει χώρο από το βήμα 5.
+    arena.append(Run("rt_nodes", 256, None, align=256,
+                     note="ΔΕΣΜΕΥΣΗ — node_deg[0..127] + rt_queue[128..255]"))
+    arena.append(Run("rt_row", 256, None, align=256,
+                     note="ΔΕΣΜΕΥΣΗ — rt_dist[0..127] + rt_next[128..255]"))
+    arena.append(Run("node_adj", 1024, None, align=256,
+                     note="ΔΕΣΜΕΥΣΗ — 128 κόμβοι x 8 γείτονες"))
+
     # --- τράπεζα 6 ----------------------------------------------------------
     bank6.append(Run("flip_mode0", 256, blob[smap["flip_mode0"].off:
                                              smap["flip_mode0"].off + 256],
@@ -159,7 +171,9 @@ def build_runs(smap, blob):
                               key=lambda n: smap[n].off)))
     bank6.append(Run("entity_tables", 4096, None, note="ΔΕΣΜΕΥΣΗ — RAM"))
     bank6.append(Run("job_board", 256, None, note="ΔΕΣΜΕΥΣΗ — RAM"))
-    bank6.append(Run("path_work", 512, None, note="ΔΕΣΜΕΥΣΗ — RAM"))
+    # Ο πάγκος διαδρομών ΕΦΥΓΕ από εδώ: η BFS σελιδοποιεί το &4000 όσο τρέχει,
+    # οπότε δεν μπορεί να κρατά τα δεδομένα της σε σελιδοποιημένη τράπεζα.
+    # Ζει τώρα στην τράπεζα 2 (rt_nodes, rt_row, node_adj).
 
     # --- τράπεζα 7 ----------------------------------------------------------
     for n in STRUCTS:
