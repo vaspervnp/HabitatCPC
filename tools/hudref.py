@@ -79,7 +79,7 @@ class Hud:
         self.num(e["alive"], 2)
         self.put("/")
         self.num(e["popcap"], 2)
-        self.text("SOL")
+        self.text(" SOL")
         self.num(e["sol"], 3)
         self.put(" ")
         self.text("DAY" if e["day"] else "NGT")
@@ -96,14 +96,14 @@ class Hud:
     @staticmethod
     def alert(e):
         if e["gameover"]:
-            return "COLONY LOST         "
+            return "COLONY LOST        "
         if not e["pok"]:
-            return "NO POWER            "
+            return "NO POWER           "
         if not e["o2ok"]:
-            return "NO OXYGEN           "
+            return "NO OXYGEN          "
         if e["storm"]:
-            return "SANDSTORM           "
-        return "ALL SYSTEMS OK      "
+            return "SANDSTORM          "
+        return "ALL SYSTEMS OK     "
 
     # --- σε γραμμικά bytes -------------------------------------------
     def to_lines(self):

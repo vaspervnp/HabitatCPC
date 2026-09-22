@@ -18,17 +18,7 @@
 ; Η ΣΥΜΒΑΣΗ ΚΟΜΒΩΝ: κόμβος < 64 είναι ο θόλος με το ίδιο id· από κει και πάνω
 ; είναι η δομή n-64. 64 + 64 = 128, ακριβώς το ταβάνι κόμβων του §6.2.
 
-MAX_JOB     equ 32
-JOB_REC     equ 5
-J_KIND      equ 0
-J_NODE      equ 1
-J_AGENT     equ 2
-J_PRIO      equ 3
-J_AGE       equ 4
-NO_JOB      equ 255
 NO_TASK     equ 255
-J_OPERATE   equ 1
-J_REPAIR    equ 4
 JOB_SCAN    equ 4
 JOB_ASSIGN  equ 4
 JOB_LOOK    equ 32                  ; πράκτορες που εξετάζονται ανά επίσκεψη
