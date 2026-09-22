@@ -163,6 +163,10 @@ wh_table:
         dw econ_events                  ; 15 συμβάντα
 
 wh_on:      db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+; wh_built — «η προσομοίωση τελείωσε ένα κτίριο, η σκηνή δεν το ξέρει ακόμη».
+; Εδώ και όχι στο object.asm: το jobs.asm το σηκώνει και το simtest.asm δεν
+; συνδέει renderer. Ο βρόχος το κατεβάζει όταν ξανασχεδιάσει.
+wh_built:   db 0
 wh_slot:    db 0
 wh_move_n:  db WH_MOVE_DEF            ; §7.3 — οι φέτες μεγαλώνουν, ο τροχός όχι
 wh_decay_n: db WH_NEED_DEF

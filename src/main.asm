@@ -48,9 +48,42 @@ ml_high:
         rra
         jr      nc,ml_high
         call    wheel_tick
+        ld      a,(wh_built)
+        or      a
+        call    nz,ml_built
+        ld      a,(wh_slot)
+        or      a
+        call    z,ml_hud
         call    dirty_tick
         call    ui_tick
-        jr      main_loop
+        jp      main_loop
+
+; ml_built — ένα κτίριο τελείωσε. Πλήρης σχεδίαση, 41 frames.
+;
+; Το §6.9 ζητά αποκάλυψη σε οκτώ κομμάτια, ένα τεταρτημόριο ανά frame. Αυτό
+; είναι μια στιγμιαία παύση 0,8 δευτερολέπτου αντί για αυτό — σπάνια (μία φορά
+; ανά κτίριο) και ειλικρινής· η λίστα βρώμικων ΔΕΝ είναι φθηνότερη εδώ, γιατί
+; ένα tile κάτω από θόλο κοστίζει 99.840 us και ο θόλος έχει δεκαέξι.
+ml_built:
+        xor     a
+        ld      (wh_built),a
+        call    ui_hide
+        call    view_draw
+        jp      ui_show
+
+; ml_hud — το HUD μία φορά ανά περιστροφή τροχού, δηλαδή ανά 320 ms.
+;
+; Ως τώρα ξαναγραφόταν μόνο σε ενέργεια του παίκτη: το νερό έπεφτε 60 -> 0 και
+; η μπάρα δεν κουνιόταν.
+;
+; ΤΟ ΦΑΝΤΑΣΜΑ ΔΕΝ ΑΓΓΙΖΕΤΑΙ. Το HUD ζει στις γραμμές 160-199 και το φάντασμα
+; στο κάδρο, άρα δεν πατά ο ένας τον άλλον· ένα ui_hide/ui_show εδώ έσβηνε τον
+; κέρσορα για τρία frames κάθε 320 ms, που φαίνεται σαν να τρεμοπαίζει.
+; Χρειάζεται μόνο το ui_dirty, γιατί το hud_draw αφήνει τις σειρές 3-4 κενές.
+ml_hud:
+        call    hud_draw
+        call    ui_dirty
+        jp      ui_panel
 
         include "screen.asm"
         include "blit.asm"
@@ -70,6 +103,7 @@ ml_high:
         include "ship.asm"
         include "wheel.asm"
         include "hw.asm"
+        include "newgame.asm"
 
 ; --- ό,τι τρέχει από την ΤΡΑΠΕΖΑ 2 -----------------------------------------
 ; Η τράπεζα 2 φαίνεται πάντα στο &8000, άρα ο κώδικας εκεί είναι απλώς κώδικας.
@@ -78,7 +112,6 @@ ml_high:
         org     PAGE2_CODE
         include "build.asm"
         include "route.asm"
-        include "newgame.asm"
 zz_page2_end:
 
         org     #8000
