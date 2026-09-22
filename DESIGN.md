@@ -1194,6 +1194,29 @@ describes belongs to build mode ([§9.3](#93-build-flow)), which is not written.
 2. On commit: footprint tiles become `foundation`, occupancy `reserved`; a construction
    site node is created; a Build job is posted; the cost in Metal / Bioplastic is
    *reserved*, not yet spent.
+
+**As built, three of those differ, and each for a reason:**
+
+- **The cost is spent at commit, not reserved.** There is no reservation pool in
+  the economy record and inventing one would have meant a second number beside
+  every stock, kept in step by hand. A fake reservation is worse than an honest
+  simplification. What the step *does* keep is the construction: the dome goes in
+  as `DS_BUILDING` with integrity 0 and a Build job is posted against it — which
+  is the first thing in the game to post a job a bot will take, so the Automation
+  milestone of [§10.2](#102-milestones) stops being unreachable by definition.
+- **A corridor is stamped `occupied` but not `foundation`.** It is a half-tile
+  lane lying on the ground; pouring concrete under a whole diagonal would paint
+  four times what it covers. Occupancy still goes down, or a dome gets built on
+  top of a corridor.
+- **A corridor commits as `DS_ACTIVE` and posts no job.** The job board addresses
+  a *node* and a corridor is an *edge* — there is no node to post against.
+  Fixing it means either giving corridors node ids or adding an edge-shaped job
+  kind, and both are changes to [§6.7](#67-jobs) rather than to the build mode.
+  Until then a corridor appears finished the moment it is paid for.
+- **"at least one corridor route must be possible" is not checked** when a dome is
+  placed. It would need the router run against every existing dome on every cursor
+  step; the router is cheap but the answer is also wrong, because the dome the
+  player is about to connect to may not be built yet.
 3. Engineers and constructor bots walk there and work. Progress is a byte.
 4. On completion the object is drawn — and this is the expensive moment: **5.7 frames
    for a large dome** ([§2.2](#22-the-frame-budget)). It is split into 8 chunks, one
@@ -1686,7 +1709,8 @@ This is an asset-side change and is [ASSET-7](#12-asset-gaps).
 ### 9.1 Controls
 
 Keyboard and joystick, both complete — a CPC game that needs both hands on the keyboard
-to pan and build is a chore.
+to pan and build is a chore. **Built**, as the table says; every action has a key *and*
+a joystick alternative, read in one pass over the PSG keyboard matrix.
 
 | Input | Action |
 |---|---|
@@ -1701,6 +1725,20 @@ to pan and build is a chore.
 `TAB` matters more than it looks. In a base that is 6 viewports wide, the thing that is
 killing you is usually off-screen.
 
+**Buttons are read on the edge, the cursor on the level, and that distinction was
+not a style choice.** A `ui_tick` lasts one frame when nothing moves and **3 to 9**
+when the camera scrolls ([§8.2](#82-camera)); a keypress shorter than the tick is
+invisible to an edge test. The test held a direction for twelve ticks and got
+eleven moves. Level-triggered movement also gives auto-repeat for free, at the
+rate of the tick — which is the rate the screen can actually keep up with.
+
+**A cursor step costs 16,224 µs — 0.81 frames — and half of that used to be the
+HUD.** `ui_panel` rewrote rows 3–4 on every step for eighty cells that almost
+always said the same thing; guarding it with a six-byte signature (state,
+selection, validity, link anchor, run count, affordability) took the step from
+29,952 µs to 16,224. With a corridor ghost on screen it is 39,936 µs. Asserted by
+`tests/test_route.py`.
+
 ### 9.2 HUD
 
 Forty lines, five character rows, 80 bytes wide. Mode 0 gives 20 columns with an 8-px
@@ -1714,12 +1752,14 @@ written — which is also why there is no clearing pass. **As built:**
 col 0         10        20        30        39
 row 0   O2 ██████ PWR ██████ H2O ████·· FOD ██····
 row 1   FE120 BI 40 PR 12 SP  8 ME  3 BO  2
-row 2   POP 34/48SOL 17 DAY ALL SYSTEMS OK
-row 3-4 (blank — the selection panel, §9.3)
+row 2   POP 34/48 SOL 17 DAY ALL SYSTEMS OK
+row 3   < DOME L    >  FE 70  BI 35        (the selection panel, §9.3)
+row 4   READY  FIRE TO BUILD
 ```
 
-Four bars of six cells, six stocks of three digits, and a twenty-character alert
-line. Flows (O₂, power) are bars because what matters is the margin; stocks are
+Four bars of six cells, six stocks of three digits, and a **nineteen**-character
+alert line — twenty until row 2 turned out to read `POP 34/48SOL 17`, and the space
+that fixes it had to come from somewhere. Flows (O₂, power) are bars because what matters is the margin; stocks are
 numbers because what matters is the quantity. **A bar turns red below one third**,
 which is the only place in the HUD where a colour carries meaning on its own.
 
@@ -1738,10 +1778,31 @@ Cost: **2.55 frames**, paid after every camera step ([§8.1](#81-screen-layout))
 
 ### 9.3 Build flow
 
-`SPACE` → category (Dome / Corridor / Structure / Demolish) → item → size → a ghost
-follows the cursor, snapped to the correct parity ([§3.4](#34-anchors-are-centres)),
-with invalid footprint tiles tinted. Fire commits, `ESC` backs out. A dome's room type
-is chosen immediately after placement, and can be changed later at a cost.
+`SPACE` → item → a ghost follows the cursor, snapped to the correct parity
+([§3.4](#34-anchors-are-centres)), with invalid footprint tiles tinted. Fire commits,
+`ESC` backs out. A dome's room type is chosen immediately after placement, and can be
+changed later at a cost.
+
+**The menu is flat, not `category → item → size`.** Eleven things — three dome
+sizes, corridor, four energy structures, mine, airlock, landing pad — fit on one
+40-column row with their costs, and left/right cycles them. The tree cost three
+presses where the list costs one, and its only advantage appears at about thirty
+items, which is where it should come back.
+
+**The ghost keeps an undo log, and that is why the cursor is cheap.** Every line
+it writes is recorded with the bytes it covered, and hiding it writes them back —
+so a cursor step costs a box, not a redraw. The log is 1,600 bytes and the drawing
+refuses to write anything it cannot take back, so a very long corridor preview
+truncates rather than corrupting.
+
+**The order inside one step is binding: hide → move → scroll → show.** Undo-log
+addresses are positions in the 2 KB ring ([§8.2](#82-camera)); once the ring has
+rotated under them they name different pixels. Hiding after the scroll leaves a
+trail that never goes away.
+
+Three states, not four: `LOOK`, `MENU`, `PLACE` — and `LINK`, which the corridor
+needs because a corridor has two ends rather than a footprint
+([§9.4](#94-corridor-routing)).
 
 ### 9.4 Corridor routing
 
@@ -1759,6 +1820,68 @@ One gotcha from `assets/SPRITES.md` §6: **diagonal tiles overlap by 8 pixels.**
 them edge-to-edge leaves a visible staircase that the masks were drawn to close. The
 router must step by `(±CORR_D_SX, +CORR_D_SY)`, not by tile width.
 
+**As built: at most two runs, and the bend is the whole problem.** There is no
+90° corner sprite in the set, so a route cannot be an L; the only turn that exists
+is diagonal → axial, and it only works if the pieces land on the same grid.
+
+The diagonal tile is 8×16 — **two tiles wide, one tall** — stepping `(4, 16)`, so
+consecutive tiles overlap by a whole tile and the line they draw passes through the
+lattice points `(4j, 16j)` measured from the dome centre. The horizontal corridor is
+4×8: one tile wide, half a tile tall, sitting in the **top** half of its row. The
+vertical is 2×16: half a tile wide, in the **left** half of its column. Both leave a
+dome through a connector at the middle of a side, so their lane passes exactly through
+the dome's centre — which is why an axial run only exists between centres that share a
+coordinate.
+
+From that, the two turns, and they are **not** symmetric:
+
+| Turn | Diagonal stops at lattice | Axial run starts |
+|---|---|---|
+| → horizontal | `T` = the vertical distance in tiles | one tile **back**, on the last diagonal tile |
+| → vertical | `S − 1`, one step **short** | at that same lattice row, in the destination's column |
+
+The horizontal case can afford to overshoot because the diagonal tile is only one tile
+tall — the lane covers it. The vertical case cannot: the tile is two tiles wide and a
+vertical lane is half a tile, so a diagonal that ran to `S` would leave a tail sticking
+out beside the lane. Both shapes were chosen by **rendering four candidates each and
+looking**, not by algebra; the losing candidates are in the commit that added
+`tools/route.py`.
+
+**Two records, not one.** The corridor record holds a single run, so a bent route is
+written as two adjacent records, the second with `C_A = 255` meaning *continues the
+previous*. The graph ignores it — one edge, not two — and the renderer draws it
+together with the first, from where that one stopped, without knowing anything about
+routing. The door scan ignores it too, which it did not at first: `C_A = 255` indexed
+`dome_conn + 255`, 191 bytes past the array.
+
+**Both directions are tried.** The diagonal is anchored on the lattice of whichever
+dome the route *starts* from, so A→B and B→A are different questions; the router asks
+both and keeps the one that works.
+
+**There is a band it cannot route, and it is the art's limit, not the code's.** The
+turn spends `|S − T|` tiles on the remaining axis and the destination dome eats its own
+radius, so when the two axes differ by less than that radius there is no tile left for
+the axial run and the route is refused — the panel says `NO ROUTE FROM THERE`. The
+uncoverable band is the "nearly diagonal" one, 2–4 tiles wide. Closing it needs a
+corner sprite or a free-floating diagonal anchored between two stubs, i.e. three runs;
+neither is free and the second is a lot of geometry for a case the player can avoid by
+moving the dome two tiles.
+
+**Corridors commit as `DS_ACTIVE`, not `DS_BUILDING`** — see
+[§6.9](#69-construction) for why, and it is a real divergence.
+
+Costed **per tile**: the catalogue's 6 Metal / 3 Bioplastic is the price of one
+corridor tile, because the length is chosen by the geometry and not by the player —
+and the panel shows the total for the route it is previewing, not the unit price,
+for the same reason.
+
+The whole thing has an independent Python twin, `tools/route.py`, and
+`tests/test_route.py` compares the two over every pair of domes in the test colony —
+66 pairs, 20 of them bent — on three things: whether a route exists, which dome it
+starts from, and **which tiles it covers**. Then it compares the *picture*: the Z80's
+screen against the Python renderer at two cameras, one per kind of bend. Moving the
+bend by one tile changes 224 bytes, which is the negative control.
+
 ---
 
 ## 10. Progression
@@ -1773,6 +1896,13 @@ joining them. Four colonists: two workers, one engineer, one biologist. Starting
 Enough to live about two sols without doing anything, which is exactly how long it
 should take to realise you need power before you need anything else.
 
+**None of this exists in Z80 yet.** There is no "new game" routine: the tests load
+a hand-made colony and fill the tables themselves. That matters for one table in
+particular — **the job board's empty value is 255 and zero means `J_BUILD`**, so a
+job table that was never initialised reads as thirty-two Build jobs and the build
+mode finds nowhere to post. Whatever writes the start state must write `NO_JOB`
+across it.
+
 ### 10.2 Milestones
 
 No victory screen — Planetbase's own choice, and the right one for a game about a
@@ -1783,7 +1913,7 @@ colony that either continues or does not.
 | Foothold | 10 colonists, all needs green for one sol | ✅ |
 | Industry | Metal, Bioplastic and Spares produced on site | ✅ |
 | Independence | all ten stocks produced on site; no merchant trade for five sols | ✅ |
-| Automation | 8 bots working | ❌ — no job kind a bot can take exists yet |
+| Automation | 8 bots working | ⚠️ — reachable now: the build mode posts Build jobs |
 | Habitat | 80 colonists, independent, five consecutive sols with no deaths | ✅ |
 
 **"All needs green" is the colony's indicator, not every colonist's bar.** With ninety
@@ -1794,10 +1924,11 @@ food at all — which is what a player would see on the HUD.
 Everything is counted **once per sol**, in one pass, and never inside the hot slots:
 128 agents every 750 revolutions costs nothing. Milestones are sticky; streaks are not.
 
-**Automation cannot fire yet, and that is honest rather than broken.** Bots are
-eligible only for Haul, Drill and Build ([§6.7](#67-jobs)), and none of those job
-kinds is posted by anything yet — Haul and Drill need structures with output,
-Build needs construction sites ([§6.9](#69-construction)).
+**Automation has a source now.** Bots are eligible only for Haul, Drill and Build
+([§6.7](#67-jobs)). Haul and Drill still have no publisher — they need structures
+with output — but **Build does**: every dome or structure the player places posts
+one ([§6.9](#69-construction)). It is the only one of the three that a player can
+cause on purpose, which makes it the right one to have arrived first.
 
 **The sol length is data, not a constant.** A test that wants to watch five sols
 cannot wait 60,000 frames, so `sollen` and `daylen` live in the economy record. The
@@ -1944,6 +2075,9 @@ tests in this document runnable rather than aspirational:
 | Scrolling | equivalence: scroll *k* steps and compare with a full draw at the destination (`test_scroll.py`) |
 | HUD | content against a reference, boundary against a marker, cost against a limit (`test_hud.py`) |
 | Dirty list | equivalence: the same mutation through the list and through a full redraw (`test_dirty.py`) |
+| Input | every action, keyboard and joystick, one edge per press (`test_input.py`) |
+| Build mode | cursor, ghost-leaves-no-trace, validation, placement, payment (`test_build.py`) |
+| Corridor routing | independent Python router compared on every pair of domes, then the *picture* compared at both kinds of bend (`test_route.py`) |
 | Playability of every seed | headless run of N seeds, assert water and ore within 30 tiles of centre |
 
 That last one is the kind of test that is impossible on real hardware and trivial here.
@@ -1961,7 +2095,7 @@ It should be run over a few thousand seeds before release.
 | 4 | World generator; `GENERATING` screen; determinism test green | [§5](#5-procedural-world-generation) |
 | 5 | Camera: CRTC offset scroll + edge redraw + HUD raster split | the riskiest rendering claim ([§15](#15-open-risks)) |
 | 6a | **Renderer**: object pass, camera with strip scrolling, dirty list, HUD | [§8.4](#84-object-pass-and-draw-order), [§8.5](#85-the-dirty-list), [§9.2](#92-hud) |
-| 6b | Build mode: input, ghost, validation, place a dome, corridors | [§9.3](#93-build-flow), [§9.4](#94-corridor-routing) |
+| 6b | **Build mode**: input, ghost, validation, place a dome, corridors | [§9.3](#93-build-flow), [§9.4](#94-corridor-routing) |
 | 7 | Entities, node graph, routing matrices, **the wheel** | [§7](#7-the-batch-scheduler) |
 | 8 | Needs, jobs, production; the colony runs itself | the game exists |
 | 9 | Events, ships, trade, milestones | the game is a game |
@@ -1973,9 +2107,15 @@ order, and do not build gameplay on top of a scroll that has not been proven on 
 
 **Milestone 6 split in two once it was attempted.** It assumed a renderer that
 did not exist: there is no ghost without an object pass, no validation without
-occupancy on screen, and no build menu without a HUD. 6a is that renderer and it
-is done; 6b is the half the player touches. Milestones 7–9 were built before
+occupancy on screen, and no build menu without a HUD. 6a is that renderer; 6b is
+the half the player touches. **Both are done.** Milestones 7–9 were built before
 either, out of order, because they needed no pixels.
+
+What is left before the game is playable end to end is not a milestone in this
+table: it is the **wiring** — the wheel does not push into the dirty list, nothing
+advances a `DS_BUILDING` site to `DS_ACTIVE`, and there is no new-game routine
+([§10.1](#101-start-state)). Each is small; together they are what stands between
+a colony that can be built and a colony that runs.
 
 ---
 
@@ -1999,7 +2139,10 @@ either, out of order, because they needed no pixels.
 | ~~Ships, trade and milestones are unbuilt~~ | ~~Medium~~ | **Built**, except Automation, which waits on bot-eligible jobs ([§10.2](#102-milestones)). |
 | ~~A heavy sim frame plus a scroll column comes to 19.9 ms of 20~~ | High | **Worse than that, and now measured.** A scroll step is 3.0–8.8 frames of world plus 2.55 of HUD ([§8.2](#82-camera)), so it was never going to fit in one frame and does not need to: the dirty list is a budget and the strip fills over several frames. What this costs is **latency, not frame rate** — about a quarter of a second per tile through a dense base. The flow-balance slot still wants the fix described below. |
 | **The flow-balance wheel slot re-scans 64 structures every revolution** | Medium | 7,887 µs for numbers that change slowly. The fix is the one production already took: accumulate during a pass that walks the structures anyway ([§7.2](#72-the-wheel)). |
-| ~~Nothing the player does exists: no build mode, no input, no HUD, nothing drawn since milestone 5~~ | ~~High~~ | **Half resolved.** The colony is drawn, the camera scrolls, the dirty list keeps it honest and the HUD reports. **Still no input and no build mode**: the player watches and cannot act. [§9.1](#91-controls), [§9.3](#93-build-flow), [§9.4](#94-corridor-routing) and [§6.9](#69-construction) are what remains. |
+| ~~Nothing the player does exists: no build mode, no input, no HUD, nothing drawn since milestone 5~~ | ~~High~~ | **Resolved.** The colony is drawn, the camera scrolls, the dirty list keeps it honest, the HUD reports — and the player now moves a cursor, opens a menu, places a dome and routes a corridor between two of them ([§9.1](#91-controls), [§9.3](#93-build-flow), [§9.4](#94-corridor-routing), [§6.9](#69-construction)). |
+| **The two halves have never been assembled into one binary** | Medium | `tests/uitest.asm` links the renderer and the build mode; `tests/simtest.asm` links the economy, entities, jobs and the wheel. Nothing links both, so the combined code size below `&4000` is unmeasured and no call site between them has ever been compiled. This is the same wiring gap as the rows around it, seen from the linker's side. |
+| **Nothing finishes what the player starts** | High | A placed dome goes in as `DS_BUILDING` with integrity 0 and posts a Build job, and then nothing ever advances it: no pass reads that job, works the site and flips it to `DS_ACTIVE`. The colony can be built and cannot be completed. It is the same wiring gap as the row below — [§6.9](#69-construction) step 3 exists as prose only. |
+| **A near-diagonal pair of domes cannot be connected** | Low | The turn in [§9.4](#94-corridor-routing) spends `\|S − T\|` tiles, so when the two axes differ by less than the destination's radius there is no route and the panel says so. The band is 2–4 tiles wide and the player can step out of it by moving the dome. Closing it needs a corner sprite the art does not have. |
 | **Nothing in the simulation pushes into the dirty list yet** | High | The list works and is tested, but the wheel does not call it: no `dirty_push` when a colonist takes a slot, a machine breaks, or a plant grows. Until that wiring exists the screen only changes when the camera does. It is a dozen call sites, and every one of them is a place where the two halves can silently disagree — which is what [§8.5](#85-the-dirty-list)'s equivalence test is for. |
 | **Scrolling is 4 to 8 tiles per second through a built-up base** | Medium | 3.0–3.2 frames per tile in open ground, up to 8.8 in the base, plus 2.55 for the HUD. Playable, not smooth. Three levers, all untaken: move the HUD block instead of redrawing it ([§8.1](#81-screen-layout)), index which objects overlap which strip instead of testing all 224 records, and blit tile pairs ([§8.3](#83-the-tile-pass)). |
 | **A broken machine is invisible on screen** ([ASSET-8](#12-asset-gaps)) | Medium | One sprite per machine, no damaged variant. The economy knows, the alert line knows, the picture does not — wrong way round for a game about watching a colony. 132 bytes per machine would fix it. |

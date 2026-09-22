@@ -279,6 +279,8 @@ FIG_NAMES = ["empty", "colonist", "biologist", "medic", "guard",
 
 def draw_corridor(canvas, a, cam, colony, i, clip):
     d = colony.c(i, C_A)
+    if d == 255:
+        return              # ΣΥΝΕΧΕΙΑ: τη ζωγραφίζει η εγγραφή που την ξεκίνησε
     dr = colony.c(i, C_DIR)
     n = colony.c(i, C_LEN)
     fx, fy, qw, qh, sz = dome_frame(a, cam, colony, d)
@@ -286,12 +288,38 @@ def draw_corridor(canvas, a, cam, colony, i, clip):
     py = a.conn_points[sz * 16 + dr * 2 + 1]
     x, y = corr_origin(fx + px, fy + py, dr, qw, qh, fx, fy, sz)
     sx, sy = CORR_STEP[dr]
-    name = CORR_SPR[dr & 3]
-    rows = a.rows(name)
+    rows = a.rows(CORR_SPR[dr & 3])
     for _ in range(n):
         blit(canvas, rows, x, y, True, clip)
+        lastx, lasty = x, y
         x += sx
         y += sy
+    j = i + 1
+    if j >= MAX_CORR or colony.c(j, C_A) != 255:
+        return
+    if colony.c(j, C_STATE) == DS_EMPTY:
+        return
+    x, y = corr_bend(lastx, lasty, sx, sy, colony.c(j, C_DIR))
+    vx, vy = CORR_STEP[colony.c(j, C_DIR)]
+    rows = a.rows(CORR_SPR[colony.c(j, C_DIR) & 3])
+    for _ in range(colony.c(j, C_LEN)):
+        blit(canvas, rows, x, y, True, clip)
+        x += vx
+        y += vy
+
+
+def corr_bend(lastx, lasty, sx, sy, d1):
+    """Πάνω-αριστερά του πρώτου πλακιδίου ΜΕΤΑ τη στροφή (§9.4).
+
+    Το διαγώνιο πλακίδιο είναι δύο tiles φαρδύ και ένα ψηλό, με το σημείο
+    πλέγματός του στο πάνω-αριστερά + (4, 8). Η οριζόντια λωρίδα πιάνει το
+    ΠΑΝΩ μισό της σειράς της και η κάθετη το ΑΡΙΣΤΕΡΟ μισό της στήλης της —
+    γι' αυτό οι δύο στροφές δεν έχουν τον ίδιο τύπο. Τα δύο σχήματα διαλέχτηκαν
+    κοιτάζοντας, όχι υπολογίζοντας· δες το tools/route.py.
+    """
+    if d1 in (2, 6):                        # -> οριζόντιος
+        return lastx + (0 if sx > 0 else 4), lasty + 8
+    return lastx + 4 + sx, lasty + sy // 2  # -> κάθετος
 
 
 def corr_origin(cx, cy, dr, qw, qh, fx, fy, sz):

@@ -132,3 +132,35 @@ S_STARCH    equ 10
 S_VEG       equ 11
 S_MEDPLANT  equ 12
 S_MEAT      equ 13
+
+; --- οι κλάσεις του world byte (§3.5) ---
+W_GROUND    equ 0
+W_DUST      equ 1
+W_ROCK      equ 2
+W_MOUNTAIN  equ 3
+W_WATER     equ 4
+W_DEEPWATER equ 5
+W_CRATER    equ 6
+W_FOUNDATION equ 7
+W_OCC_MASK  equ #30
+W_OCC_STRUCT equ #10
+
+; --- ο πίνακας εργασιών (§6.7). Εδώ επειδή τον γράφει και το build mode.
+MAX_JOB     equ 32
+JOB_REC     equ 5
+J_KIND      equ 0
+J_NODE      equ 1
+J_AGENT     equ 2
+J_PRIO      equ 3
+J_AGE       equ 4
+NO_JOB      equ 255
+J_BUILD     equ 0
+J_OPERATE   equ 1
+J_HAUL      equ 2
+J_DRILL     equ 3
+J_REPAIR    equ 4
+J_HEAL      equ 5
+J_DEFEND    equ 6
+
+; --- ο γράφος κόμβων (§6.2). Εδώ επειδή τον γράφει και το build mode.
+MAX_DEGREE  equ 8

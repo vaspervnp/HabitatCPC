@@ -452,14 +452,14 @@ txt_pwr:    db "PWR",0
 txt_h2o:    db "H2O",0
 txt_fod:    db "FOD",0
 txt_pop:    db "POP ",0
-txt_sol:    db "SOL",0
+txt_sol:    db " SOL",0
 txt_day:    db "DAY",0
 txt_night:  db "NGT",0
-txt_ok:     db "ALL SYSTEMS OK      ",0
-txt_nopwr:  db "NO POWER            ",0
-txt_noo2:   db "NO OXYGEN           ",0
-txt_storm:  db "SANDSTORM           ",0
-txt_lost:   db "COLONY LOST         ",0
+txt_ok:     db "ALL SYSTEMS OK     ",0
+txt_nopwr:  db "NO POWER           ",0
+txt_noo2:   db "NO OXYGEN          ",0
+txt_storm:  db "SANDSTORM          ",0
+txt_lost:   db "COLONY LOST        ",0
 
 ; δύο γράμματα και ο δείκτης αποθέματος, ανά στήλη της σειράς 1
 stock_row:
