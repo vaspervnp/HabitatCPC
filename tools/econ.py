@@ -115,6 +115,14 @@ class Econ:
         self.day = 1
         self.wind = 2                       # 0..3
         self.rnd = 0xACE1
+        # πίνακας εργασιών (§6.7) και οι δύο περιστροφικοί του δείκτες
+        self.job = bytearray(MAX_JOB * JOB_REC)
+        for j in range(MAX_JOB):
+            self.job[j * JOB_REC + J_KIND] = NO_JOB
+            self.job[j * JOB_REC + J_AGENT] = 255
+        self.job_dome = 0
+        self.job_agent = 0
+        self.dist = None            # ο πίνακας αποστάσεων, δίνεται απ' έξω
 
 
 def dome_field(e, d, f):
@@ -258,12 +266,14 @@ def to_bytes(e):
               e.mach_power, e.o2_prod, e.o2_use, e.acc_power, e.acc_o2):
         out += int(v).to_bytes(2, "little")
     out += bytes([e.power_ok, e.o2_ok, e.prod_dome, e.day, e.wind, e.sol])
+    # (το job_dome/job_agent μπαίνουν στο τέλος, βλ. ECON_BYTES)
     out += int(e.frame).to_bytes(2, "little")
     out += int(e.rnd).to_bytes(2, "little")
+    out += bytes([e.job_dome, e.job_agent])
     return bytes(out)
 
 
-ECON_BYTES = N_STOCK * 2 + 9 * 2 + 6 + 2 + 2        # 28 + 18 + 10 = 56
+ECON_BYTES = N_STOCK * 2 + 9 * 2 + 6 + 2 + 2 + 2    # 28 + 18 + 10 + 2 = 58
 
 
 def populate(e, n_dome=24, n_struct=20, seed=11):
@@ -321,3 +331,128 @@ def populate(e, n_dome=24, n_struct=20, seed=11):
             e.dome[b + D_HEALTH + s] = 0 if (r % 17) == 0 else 200
     e.n_dome = n_dome
     return e
+
+
+# --- ο πίνακας εργασιών (§6.7) --------------------------------------------
+# ΜΙΑ ΣΥΜΒΑΣΗ ΠΟΥ ΤΟ §6.2 ΥΠΟΝΟΕΙ ΧΩΡΙΣ ΝΑ ΤΗ ΛΕΕΙ: το id κόμβου ΕΙΝΑΙ το id
+# θόλου για τους πρώτους 64, και δομή n-64 από κει και πάνω. 64 + 64 = 128,
+# ακριβώς το ταβάνι κόμβων. Χωρίς αυτό δεν υπάρχει τρόπος να πάει κανείς από
+# «εργασία στον κόμβο 12» σε «θόλος 12».
+
+MAX_JOB = 32
+JOB_REC = 5
+J_KIND, J_NODE, J_AGENT, J_PRIO, J_AGE = range(5)
+NO_JOB = 255
+
+J_BUILD, J_OPERATE, J_HAUL, J_DRILL, J_REPAIR, J_HEAL, J_DEFEND = range(7)
+
+# ποιοι ρόλοι δέχονται ποια εργασία — bitmask ανά είδος (§6.7)
+JOB_ROLES = [0x22, 0x05, 0x41, 0x81, 0x02, 0x08, 0x10]
+JOB_PRIO = [5, 3, 2, 4, 6, 8, 9]
+
+JOB_SCAN = 4                # θόλοι ανά επίσκεψη
+JOB_ASSIGN = 4              # αναθέσεις ανά επίσκεψη (§6.7)
+JOB_LOOK = 32               # πράκτορες που εξετάζονται ανά επίσκεψη
+NO_TASK = 255
+
+
+def needs_operators(e, d):
+    """Πόσες μηχανές αυτού του θόλου θέλουν χειριστή."""
+    base = d * DOME_REC
+    if e.dome[base + D_STATE] != DS_ACTIVE:
+        return 0
+    n = 0
+    for s in range(MACHINE_COUNT[e.dome[base + D_SIZE]]):
+        m = e.dome[base + D_MACH + s]
+        if m == NO_MACH or e.dome[base + D_HEALTH + s] == 0:
+            continue
+        if RECIPE[m][9] & MF_OPERATOR:
+            n += 1
+    return n
+
+
+def jobs_tick(e, a, F_ALIVE, F_WORKING):
+    """Θέση 13: μάζεψε, ολοκλήρωσε, δημοσίευσε, ανάθεσε — με αυτή τη σειρά."""
+    jb = e.job
+
+    # 1. όσοι έφυγαν ή πέθαναν αφήνουν την εργασία τους ανοιχτή
+    for j in range(MAX_JOB):
+        b = j * JOB_REC
+        if jb[b + J_KIND] == NO_JOB:
+            continue
+        i = jb[b + J_AGENT]
+        if i == 255:
+            continue
+        if not (a.flags[i] & F_ALIVE) or a.task[i] != j:
+            jb[b + J_AGENT] = 255
+
+    # 2. όποιος έφτασε, πιάνει δουλειά: ο θόλος αποκτά χειριστή
+    for j in range(MAX_JOB):
+        b = j * JOB_REC
+        if jb[b + J_KIND] == NO_JOB:
+            continue
+        i = jb[b + J_AGENT]
+        if i == 255:
+            continue
+        node = jb[b + J_NODE]
+        if a.node[i] != node or a.edge[i] != 255:
+            continue
+        if node < MAX_DOME:
+            e.dome[node * DOME_REC + D_OPS] += 1
+        a.flags[i] |= F_WORKING
+        a.task[i] = NO_TASK
+        jb[b + J_KIND] = NO_JOB
+
+    # 3. δημοσίευση, JOB_SCAN θόλοι ανά επίσκεψη
+    for _ in range(JOB_SCAN):
+        d = e.job_dome
+        e.job_dome = (d + 1) % MAX_DOME
+        want = needs_operators(e, d)
+        if e.dome[d * DOME_REC + D_OPS] >= want:
+            continue
+        if any(jb[k * JOB_REC + J_KIND] == J_OPERATE
+               and jb[k * JOB_REC + J_NODE] == d for k in range(MAX_JOB)):
+            continue
+        for k in range(MAX_JOB):
+            if jb[k * JOB_REC + J_KIND] == NO_JOB:
+                jb[k * JOB_REC + J_KIND] = J_OPERATE
+                jb[k * JOB_REC + J_NODE] = d
+                jb[k * JOB_REC + J_AGENT] = 255
+                jb[k * JOB_REC + J_PRIO] = JOB_PRIO[J_OPERATE]
+                jb[k * JOB_REC + J_AGE] = 0
+                break
+
+    # 4. ανάθεση: ως JOB_ASSIGN, με αύξουσα σειρά ταυτότητας από περιστροφική
+    #    αρχή. Ισοπαλία προτεραιότητας σπάει με το DIST (§6.7).
+    done = 0
+    for step in range(JOB_LOOK):
+        i = (e.job_agent + step) & (MAXAGENT_J - 1)
+        if done >= JOB_ASSIGN:
+            break
+        if not (a.flags[i] & F_ALIVE) or (a.flags[i] & F_WORKING):
+            continue
+        if a.task[i] != NO_TASK:
+            continue
+        rolebit = 1 << a.role[i]
+        best, best_p, best_d = NO_JOB, 0, 255
+        for j in range(MAX_JOB):
+            b = j * JOB_REC
+            k = jb[b + J_KIND]
+            if k == NO_JOB or jb[b + J_AGENT] != 255:
+                continue
+            if not (JOB_ROLES[k] & rolebit):
+                continue
+            p = jb[b + J_PRIO]
+            dist = e.dist[a.node[i] * 128 + jb[b + J_NODE]]
+            if p > best_p or (p == best_p and dist < best_d):
+                best, best_p, best_d = j, p, dist
+        if best == NO_JOB:
+            continue
+        jb[best * JOB_REC + J_AGENT] = i
+        a.task[i] = best
+        a.dest[i] = jb[best * JOB_REC + J_NODE]
+        done += 1
+    e.job_agent = (e.job_agent + JOB_LOOK) & (MAXAGENT_J - 1)
+
+
+MAXAGENT_J = 128

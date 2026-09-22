@@ -153,13 +153,19 @@ def build_runs(smap, blob):
     for r in econ.RECIPE:
         rec += bytes(x & 0xFF for x in r)
     arena.append(Run("recipes", len(rec), bytes(rec), note="παράγεται από econ.py"))
+    # «θέλει χειριστή;» ως πίνακας: ο πίνακας εργασιών το ρωτά για κάθε
+    # μηχανή κάθε θόλου, και ο πολλαπλασιασμός x10 για τη συνταγή ήταν το
+    # ακριβότερο κομμάτι της δημοσίευσης.
+    arena.append(Run("mach_op", len(econ.RECIPE),
+                     bytes(1 if r[9] & econ.MF_OPERATOR else 0
+                           for r in econ.RECIPE), note="παράγεται από econ.py"))
 
     # Η οικονομία και ο πίνακας εργασιών ΕΚΤΟΣ παραθύρου, για δύο λόγους:
     # ο πίνακας εργασιών διαβάζει το DIST (τράπεζα 1) ενώ αναθέτει, και τα
     # αποθέματα τα διαβάζει το HUD σε κάθε frame. Ο,τι διαβάζεται μαζί με
     # σελιδοποιημένο πίνακα δεν μπορεί να ζει στο παράθυρο — το ίδιο μάθημα
     # με τον πάγκο της BFS.
-    arena.append(Run("econ_state", 56, None, note="ΔΕΣΜΕΥΣΗ — αποθέματα και ροές"))
+    arena.append(Run("econ_state", 58, None, note="ΔΕΣΜΕΥΣΗ — αποθέματα και ροές"))
     arena.append(Run("job_tbl", 32 * 5, None, note="ΔΕΣΜΕΥΣΗ — 32 εργασίες"))
 
     # --- ο γράφος κόμβων και ο πάγκος της BFS -------------------------------

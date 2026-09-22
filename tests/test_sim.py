@@ -73,6 +73,7 @@ def run_z80(sym, g, sim, ticks, move_n=None, decay_n=None, off=()):
     m.write_ram(STAGE_DOME, bytes(sim.e.dome))
     m.write_ram(STAGE_STR, bytes(sim.e.struct))
     m.write_ram(sym["G_ECON_STATE"], EC.to_bytes(sim.e))   # τράπεζα 2, βασική
+    m.write_ram(sym["G_JOB_TBL"], bytes(sim.e.job))
     enter(m, sym, "LOAD_STATE")
 
     for slot in off:
@@ -88,7 +89,8 @@ def run_z80(sym, g, sim, ticks, move_n=None, decay_n=None, off=()):
     enter(m, sym, "SAVE_STATE")
     return (m.read_ram(STAGE_AG, 2048), m.read_ram(STAGE_OCC, 128), frames,
             m.read_ram(STAGE_DOME, 1536), m.read_ram(STAGE_STR, 512),
-            m.read_ram(sym["G_ECON_STATE"], EC.ECON_BYTES))
+            m.read_ram(sym["G_ECON_STATE"], EC.ECON_BYTES),
+            m.read_ram(sym["G_JOB_TBL"], EC.MAX_JOB * EC.JOB_REC))
 
 
 def describe(blob, sim):
@@ -125,16 +127,17 @@ def check_occ(blob, occ, g):
 
 def fresh(g, nexthop, src):
     """Αντίγραφο της αρχικής κατάστασης — ο Z80 και η αναφορά ξεκινούν ίδια."""
-    s = E.Sim(g, nexthop)
+    s = E.Sim(g, nexthop, src.e.dist)
     s.a.from_bytes(src.a.to_bytes())
     s.occ = bytearray(src.occ)
     s.e.dome = bytearray(src.e.dome)
     s.e.struct = bytearray(src.e.struct)
     s.e.stock = list(src.e.stock)
+    s.e.job = bytearray(src.e.job)
     for f in ("power_store", "power_cap", "power_prod", "power_use",
               "mach_power", "o2_prod", "o2_use", "acc_power", "acc_o2",
               "power_ok", "o2_ok", "prod_dome", "day", "wind", "sol",
-              "frame", "rnd", "n_dome", "n_struct"):
+              "frame", "rnd", "n_dome", "n_struct", "job_dome", "job_agent"):
         setattr(s.e, f, getattr(src.e, f))
     return s
 
@@ -142,13 +145,13 @@ def fresh(g, nexthop, src):
 def main():
     sym = build()
     g = G.GRAPHS["colony"]()
-    _, nexthop = G.all_pairs(g)
+    dist, nexthop = G.all_pairs(g)
 
-    sim0 = E.populate(E.Sim(g, nexthop))
+    sim0 = E.populate(E.Sim(g, nexthop, dist))
     EC.populate(sim0.e)
     before = E.Agents().from_bytes(sim0.a.to_bytes())
 
-    got_a, got_occ, frames, got_dome, got_str, got_econ = \
+    got_a, got_occ, frames, got_dome, got_str, got_econ, got_job = \
         run_z80(sym, g, fresh(g, nexthop, sim0), TICKS)
 
     sim = fresh(g, nexthop, sim0)
@@ -191,6 +194,14 @@ def main():
         n = sum(1 for i in range(1536) if got_dome[i] != sim.e.dome[i])
         print(f"ΑΠΟΤΥΧΙΑ πίνακες: {n} bytes θόλων διαφέρουν")
         return 1
+    if got_job != bytes(sim.e.job):
+        bad = [j for j in range(EC.MAX_JOB)
+               if got_job[j*5:j*5+5] != sim.e.job[j*5:j*5+5]]
+        print(f"ΑΠΟΤΥΧΙΑ πίνακας εργασιών: {len(bad)} εγγραφές διαφέρουν")
+        for j in bad[:6]:
+            print(f"    {j:2d}  Z80 {list(got_job[j*5:j*5+5])} != "
+                  f"αναφορά {list(sim.e.job[j*5:j*5+5])}")
+        return 1
     want_econ = EC.to_bytes(sim.e)
     if got_econ != want_econ:
         names = ([f"stock:{n}" for n in EC.STOCKS] +
@@ -214,6 +225,31 @@ def main():
             if gv != wv:
                 print(f"    {n:18s} Z80 {gv:6d} != αναφορά {wv:6d}")
         return 1
+
+    # --- ο πίνακας εργασιών όντως δούλεψε; ---
+    # Χωρίς αυτό, δύο άδειοι πίνακες συμφωνούν μια χαρά και δεν δοκιμάζεται
+    # τίποτα: ούτε δημοσίευση, ούτε ανάθεση, ούτε ο κύκλος που κλείνει όταν
+    # κάποιος φτάσει και ο θόλος αποκτήσει χειριστή.
+    ag = E.Agents().from_bytes(got_a)
+    open_jobs = sum(1 for j in range(EC.MAX_JOB)
+                    if got_job[j * 5] != EC.NO_JOB)
+    claimed = sum(1 for j in range(EC.MAX_JOB)
+                  if got_job[j * 5] != EC.NO_JOB and got_job[j * 5 + 2] != 255)
+    working = sum(1 for i in range(128) if ag.flags[i] & E.F_WORKING)
+    tasked = sum(1 for i in range(128) if ag.task[i] != EC.NO_TASK)
+    ops_now = sum(got_dome[d * EC.DOME_REC + EC.D_OPS] for d in range(64))
+    ops_before = sum(sim0.e.dome[d * EC.DOME_REC + EC.D_OPS] for d in range(64))
+    if working == 0 or open_jobs == 0:
+        print(f"ΑΠΟΤΥΧΙΑ: ο πίνακας εργασιών δεν έκανε τίποτα — "
+              f"{open_jobs} ανοιχτές, {working} στη δουλειά")
+        return 1
+    if ops_now <= ops_before:
+        print(f"ΑΠΟΤΥΧΙΑ: οι χειριστές δεν αυξήθηκαν ({ops_before} -> "
+              f"{ops_now}) — ο κύκλος δεν κλείνει")
+        return 1
+    print(f"OK εργασίες:  {open_jobs} ανοιχτές ({claimed} πιασμένες), "
+          f"{tasked} πράκτορες σε αποστολή, {working} στη θέση τους")
+    print(f"              χειριστές στους θόλους {ops_before} -> {ops_now}")
 
     e = sim.e
     produced = [EC.STOCKS[i] for i in range(EC.N_STOCK)
@@ -244,13 +280,15 @@ def main():
     t2 = timed(tuple(range(11)))                      # ούτε φθορά
     t3 = timed(tuple(range(12)))                      # ούτε παραγωγή
     t4 = timed(tuple(range(13)))                      # ούτε ισοζύγιο
+    t45 = timed(tuple(range(14)))                     # ούτε εργασίες
     t5 = timed(tuple(range(16)))                      # τίποτα: μόνο διανομή
 
     move_us = (t_all - t1) / (REV * 8)
     decay_us = (t1 - t2) / (REV * 3)
     prod_us = (t2 - t3) / REV
     flow_us = (t3 - t4) / REV
-    event_us = (t4 - t5) / REV
+    job_us = (t4 - t45) / REV
+    event_us = (t45 - t5) / REV
     over_us = t5 / TICKS
 
     print(f"\nκόστος ανά θέση τροχού ({TICKS} θέσεις = {REV} περιστροφές):")
@@ -258,10 +296,17 @@ def main():
             ("φθορά", decay_us, 433, f"{E.WH_DECAY_N} πράκτορες"),
             ("παραγωγή", prod_us, 4000, f"{EC.PROD_DOMES} θόλοι"),
             ("ισοζύγιο", flow_us, 2000, "64 δομές + 128 πράκτορες"),
+            ("εργασίες", job_us, 3000,
+             f"{EC.JOB_SCAN} θόλοι, {EC.JOB_LOOK} πράκτορες"),
             ("συμβάντα", event_us, 500, "μία ζαριά")]
     for name, got, budget, what in rows:
-        mark = "OK " if got <= budget else "ΕΚΤΟΣ"
-        print(f"  {name:9s} {got:7.0f} us  (προϋπ. {budget:5d})  {mark}  {what}")
+        if got <= budget:
+            mark = "OK   "
+        elif got <= budget * 1.05:
+            mark = "οριακά"
+        else:
+            mark = f"{got/budget:.1f}x  "
+        print(f"  {name:9s} {got:7.0f} us  (προϋπ. {budget:5d})  {mark} {what}")
     print(f"  {'διανομή':9s} {over_us:7.0f} us  (κάθε frame)")
 
     worst_name, worst = max(((n, v) for n, v, _, _ in rows), key=lambda r: r[1])

@@ -98,8 +98,7 @@ wd_lp:
 wd_go:
         jp      ent_decay_slice
 
-; --- η θέση που δεν έχει γραφτεί ακόμη ---
-; Δεν είναι «τίποτα»: είναι ο πίνακας εργασιών, και λείπει.
+; --- η ελεύθερη θέση ---
 wh_todo:
         ret
 
@@ -132,7 +131,7 @@ wh_table:
         dw wh_decay, wh_decay, wh_decay
         dw econ_prod_slice              ; 11 παραγωγή
         dw econ_flow                    ; 12 ισοζύγιο ροών
-        dw wh_todo                      ; 13 πίνακας εργασιών
+        dw jobs_tick                    ; 13 πίνακας εργασιών
         dw wh_todo                      ; 14 ελεύθερη — η δρομολόγηση έφυγε
         dw econ_events                  ; 15 συμβάντα
 

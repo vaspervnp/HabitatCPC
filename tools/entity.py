@@ -31,6 +31,7 @@ MAXAGENT = 128              # η πλευρά των πινάκων (§6.1: 80 �
 NSLOT = 8                   # θέσεις δαχτυλιδιού ανά κόμβο
 NO_EDGE = 255
 NO_SLOT = 255
+NO_TASK = 255
 
 # σειρά γεμίσματος θέσεων — από το corr_fill των assets, ώστε οι άνθρωποι να
 # μη μοιάζουν στοιβαγμένοι
@@ -42,6 +43,7 @@ FIELDS = ["flags", "role", "node", "slot", "dest", "edge", "progress", "task",
           "o2", "water", "food", "sleep", "health", "morale", "skill", "spare"]
 
 F_ALIVE, F_INDOORS, F_ASLEEP, F_SICK, F_IDLE = 1, 2, 4, 8, 16
+F_WORKING = 32              # στέκεται στη θέση εργασίας και μετράει ως χειριστής
 
 # ρόλοι (§6.1) και ταχύτητα ανά βήμα κίνησης. Τα ρομπότ είναι γρηγορότερα.
 WORKER, ENGINEER, BIOLOGIST, MEDIC, GUARD, BOT_CONSTR, BOT_CARRY, BOT_DRILL = range(8)
@@ -57,6 +59,7 @@ class Agents:
         for i in range(MAXAGENT):
             self.edge[i] = NO_EDGE
             self.slot[i] = NO_SLOT
+            self.task[i] = NO_TASK      # 0 θα σήμαινε «κρατάει την εργασία 0»
 
     def to_bytes(self):
         """Η μνήμη όπως τη βλέπει ο Z80: 8 σελίδες, δύο πεδία η καθεμία."""
@@ -89,7 +92,7 @@ def release(occ, node, slot):
         occ[node] &= ~(1 << slot) & 0xFF
 
 
-def move_one(a, i, g, nexthop, occ):
+def move_one(a, i, g, nexthop, occ, e=None):
     """Ενα βήμα κίνησης για τον πράκτορα i. Η καρδιά του §6.3."""
     if not a.flags[i] & F_ALIVE:
         return
@@ -123,6 +126,11 @@ def move_one(a, i, g, nexthop, occ):
     base = a.node[i] * G.MAXDEG
     for k in range(g.deg[a.node[i]]):
         if g.adj[base + k] == nh:
+            # φεύγει: αν δούλευε, ο θόλος χάνει έναν χειριστή
+            if e is not None and a.flags[i] & F_WORKING:
+                if a.node[i] < EC.MAX_DOME:
+                    e.dome[a.node[i] * EC.DOME_REC + EC.D_OPS] -= 1
+                a.flags[i] &= ~F_WORKING & 0xFF
             release(occ, a.node[i], a.slot[i])
             a.slot[i] = NO_SLOT
             a.edge[i] = k
@@ -132,10 +140,10 @@ def move_one(a, i, g, nexthop, occ):
     # μπαγιάτικος ΚΑΙ λάθος. Δεν συμβαίνει· αν συμβεί, δεν κουνιέται.
 
 
-def move_slice(a, g, nexthop, occ, first, count):
+def move_slice(a, g, nexthop, occ, first, count, e=None):
     """Η φέτα του §7.2: count πράκτορες από τον first, με αύξουσα σειρά."""
     for k in range(count):
-        move_one(a, (first + k) & (MAXAGENT - 1), g, nexthop, occ)
+        move_one(a, (first + k) & (MAXAGENT - 1), g, nexthop, occ, e)
 
 
 # --- φθορά αναγκών (§6.6), η δεύτερη πραγματική εργασία του τροχού ---------
@@ -163,13 +171,14 @@ WH_DECAY_N = 32             # πράκτορες ανά θέση φθοράς
 class Sim:
     """Ο,τι χρειάζεται ένα frame προσομοίωσης, και τίποτε άλλο."""
 
-    def __init__(self, g, nexthop):
+    def __init__(self, g, nexthop, dist=None):
         self.a = Agents()
         self.g = g
         self.nexthop = nexthop
         self.occ = bytearray(G.MAXNODE)
         self.slot = 0
         self.e = EC.Econ()
+        self.e.dist = dist
 
     def tick(self):
         """Ενα frame: μία θέση του τροχού. Η δρομολόγηση δεν είναι θέση."""
@@ -177,7 +186,7 @@ class Sim:
         self.slot = (s + 1) & (WH_SLOTS - 1)
         if s < 8:
             move_slice(self.a, self.g, self.nexthop, self.occ,
-                       s * WH_MOVE_N, WH_MOVE_N)
+                       s * WH_MOVE_N, WH_MOVE_N, self.e)
         elif s < 11:
             decay_slice(self.a, (s - 8) * WH_DECAY_N, WH_DECAY_N)
         elif s == 11:
@@ -186,6 +195,8 @@ class Sim:
             alive = sum(1 for i in range(MAXAGENT)
                         if self.a.flags[i] & F_ALIVE)
             EC.flow_balance(self.e, alive)
+        elif s == 13:
+            EC.jobs_tick(self.e, self.a, F_ALIVE, F_WORKING)
         elif s == 15:
             EC.events(self.e)
         # 13 πίνακας εργασιών, 14 ελεύθερη — δεν έχουν γραφτεί, ούτε εδώ ούτε

@@ -28,6 +28,8 @@ EC_WIND     equ G_econ_state + 50
 EC_SOL      equ G_econ_state + 51
 EC_FRAME    equ G_econ_state + 52
 EC_RND      equ G_econ_state + 54
+EC_JDOME    equ G_econ_state + 56       ; περιστροφικοί δείκτες του πίνακα
+EC_JAGENT   equ G_econ_state + 57       ; εργασιών (§6.7)
 
 EC_CAP      equ 600                     ; ταβάνι αποθέματος
 DOME_REC    equ 24

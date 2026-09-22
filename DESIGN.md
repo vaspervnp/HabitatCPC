@@ -319,9 +319,9 @@ must always be reachable is in bank 0 (`&0000–&3FFF`) or bank 2 (`&8000–&BFF
 | window | 1 | **distance matrix** `DIST[128][128]` | 16,384 | 0 |
 | window | 4 | **world plane** 128×128×1 byte | 16,384 | 0 |
 | window | 5 | **next-hop matrix** `NEXTHOP[128][128]` | 16,384 | 0 |
-| window | 6 | `flip_mode0` 256 · dome+ring `nw` quadrants 7,424 · slot figures 3,456 · entity tables 4,480 ([§6.1](#61-entities)) | 15,616 | 768 |
+| window | 6 | `flip_mode0` 256 · dome+ring `nw` quadrants 7,424 · slot figures 3,456 · entity tables 4,832 ([§6.1](#61-entities)) | 16,096 | 288 |
 | window | 7 | external structures 11,264 · plants 1,584 · `plant_ptr` 24 · text 1,024 · audio 2,048 | 15,944 | 440 |
-| `&8000–&BFFF` | 2 | graphics, flat · node graph + BFS workspace 1,536 ([§6.4](#64-routing)) | 14,323 | **2,061** |
+| `&8000–&BFFF` | 2 | graphics, flat · node graph + BFS workspace 1,536 · recipes 110 · economy 58 · job board 160 | 14,848 | **1,536** |
 | `&C000–&FFFF` | 3 | play-area screen | 16,384 | 0 |
 
 Every bank is spoken for. The two matrices in banks 1 and 5 are the clearest answer
@@ -372,7 +372,10 @@ the HUD moved into the play area's page and bank 2 became **flat 16 KB**:
 | Generated pointer tables (`tile_ptr`, `icon_{s,m,l}_ptr`, `mach_ptr`) | 108 |
 | Cursor and UI chrome (reserve) | 256 |
 | Node graph (`node_deg`, `node_adj`) and BFS workspace | 1,536 |
-| **Total** | **14,323** of 16,384 — **2,061 free, contiguous** |
+| Machine recipes + the "needs an operator" lookup | 110 |
+| Economy state — 14 stocks, flows, clock, weather | 58 |
+| Job board, 32 × 5 | 160 |
+| **Total** | **14,848** of 16,384 — **1,536 free, contiguous** |
 
 The graph is here and not in bank 6 because the BFS pages the window twice per
 source ([§6.4](#64-routing)). That 1,536 bytes is the first real claim on the space
@@ -713,7 +716,7 @@ Buildings use the same pattern:
 
 | Table | Entries | Fields |
 |---|---|---|
-| Domes | 64 | `cx cy size room state integrity power slots machines[4] health[4]` |
+| Domes | 64 | `cx cy size room state integrity power ops machines[8] health[8]` — **24 bytes** |
 | Structures | 64 | `cx cy kind size state integrity output` |
 | Corridors | 96 | `a b dir len state` |
 | Jobs | 32 | `kind target agent priority age` |
@@ -729,11 +732,20 @@ Measured, as laid out by `tools/pack.py`:
 |---|---|
 | `agent_fields` — 16 fields × 128, **must be page-aligned** | 2,048 |
 | `node_occ` — slot bitmasks (128 used, 128 spare in the page) | 256 |
-| Domes, 64 × 16 | 1,024 |
+| Domes, 64 × 24 | 1,536 |
 | Structures, 64 × 8 | 512 |
 | Corridors, 96 × 5 | 480 |
-| Jobs, 32 × 5 | 160 |
-| **Total** | **4,480** |
+| **Total in bank 6** | **4,832** |
+
+`machines[4]` was specified, but `machine_count` in the asset data gives a large dome
+**eight** slots. The record is 24 bytes so the large dome has the slots the art draws.
+The `slots` field became `ops` — how many colonists are currently standing in this
+dome's work positions, which is what decides whether its machines turn.
+
+The **job board (160 B) and the economy state (58 B) are not in bank 6**: the job
+board reads `DIST` out of bank 1 while it assigns, and the HUD reads the stocks every
+frame. Both live in bank 2 with the routing workspace, for the same reason
+([§6.4](#64-routing)).
 
 384 bytes over the 4,096 this section used to claim. Bank 6 absorbs it and closes
 at 640 free, because the BFS workspace that used to sit there moved out
@@ -919,9 +931,15 @@ Two **flows**, buffered and balanced every wheel revolution:
 | Power | `solar` (day only), `turbine` (wind), stored in `collector` | every machine, lighting at night | machines stop, then oxygen stops |
 | Oxygen | `mach_oxygen` (small domes only) | every colonist, leaks | health drains, fast |
 
-Ten **stocks**, 16-bit, capped by storage-dome capacity:
+**Fourteen stocks**, 16-bit, capped by storage-dome capacity:
 
 `Water · Food · Ore · Metal · Bioplastic · Processors · Spares · Medicine · Guns · Bots`
+`· Starch · Vegetables · Medicinal · Vitromeat`
+
+This section originally listed ten. The chain immediately below it consumes
+**Starch, Vegetables, Medicinal and Vitromeat** — none of which were on the list, so
+the greenhouse produced into nothing and three machines had no input. The four
+intermediates are stocks like any other.
 
 The chain, using the machines that exist in `assets/sprites.bin`:
 
@@ -941,9 +959,23 @@ mach_oxygen    Water+Power -> Oxygen flow
 greenhouse plants          -> Starch / Vegetables / Medicinal / morale
 ```
 
-Each machine type has one **recipe record** — `in1, qty1, in2, qty2, out, qty, power,
-flags` — eight bytes, eighty bytes for the lot. The production tick is a table walk, not
-a switch statement, which is both smaller and much easier to rebalance.
+Each machine type has one **recipe record** — `in1, qty1, in2, qty2, in3, qty3, out,
+qty, power, flags` — **ten** bytes, 100 bytes for the lot. Eight was specified, with
+two inputs; `mach_robots` and `mach_food` on the same page need three. Twenty bytes
+buys the contradiction away.
+
+`flags` carries `MF_OPERATOR` (the machine needs someone standing in its slot) and
+`MF_FLOW` (the output is a flow, not a stock — only `mach_oxygen`).
+
+The production tick is a table walk, not a switch statement, which is both smaller and
+much easier to rebalance. It is generated into bank 2 by `tools/pack.py` straight from
+`tools/econ.py`, so the reference implementation and the ROM data cannot drift apart.
+
+**The two economy slots read each other one revolution late.** Production tests
+`power_ok`, which the flow balance set last revolution; the flow balance uses
+`mach_power`, which production published at the end of its last four-revolution sweep.
+Without that buffer each slot would need the other's answer inside the same frame.
+This section already said *buffered*; this is what it buys.
 
 `machine_rules` in the asset data already constrains placement: `mach_oxygen` is
 `bit0` only, meaning **oxygen generators fit only in small domes**. That is honoured as
@@ -999,8 +1031,32 @@ A **32-entry job board**. Buildings post jobs; idle agents claim them.
 | Rest / Eat / Drink | the colonist's own needs | anyone, highest priority |
 
 Assignment is: for each idle agent, take the highest-priority compatible job, breaking
-ties by `DIST[agent.node][job.node]`. Bounded at **4 assignments per visit** so the pass
-cannot spike.
+ties by `DIST[agent.node][job.node]`. Bounded at **4 assignments per visit**, examining
+at most **32 agents** and posting from at most **4 domes**, so the pass cannot spike.
+
+**A node id *is* a dome id** for ids 0–63, and structure `n − 64` above that. 64 + 64
+is exactly the 128-node ceiling of [§6.2](#62-the-node-graph). Without this convention
+there is no way to get from "job at node 12" to "dome 12", and the section never said it.
+
+The pass does four things, in this order, and the order is the design:
+
+1. **Reap** — anyone who died or changed their mind leaves the job open again.
+2. **Arrive** — anyone standing on their job's node starts working: the dome's `ops`
+   goes up and its machines begin to turn. *This is where the loop closes.* Without
+   it the job board is a list that never does anything, and the test that proves the
+   colony responds to people is the one that watches `ops` rise (61 → 64 over 40
+   revolutions) and the power draw rise with it.
+3. **Post** — 4 domes per visit, round-robin, one `Operate` job per dome that is short
+   of operators.
+4. **Assign** — as above.
+
+Leaving is the mirror of arriving and lives in the movement pass: an agent with
+`F_WORKING` that starts down an edge decrements the dome's `ops` on the way out.
+
+**The steady state is the expensive one, not the busy one.** When every job is taken,
+each idle agent still scanned all 32 entries to find nothing — 36,442 µs per visit,
+nearly twice a frame. One pass over the board, before the agent loop, asking only
+*is there any unassigned job at all*, brings it to 6,490 µs.
 
 A colonist's own needs always outrank the board. That is the rule that makes the
 colony feel like people rather than machines: at some point everyone puts down what
@@ -1104,19 +1160,32 @@ it could live here.
 
 | Slot | Pass | Slice | Budgeted | **Measured** |
 |---|---|---|---|---|
-| 0–7 | **Agent movement** | 12 agents each — every agent moves once per revolution | 1,800 µs | **1,560 µs** ✅ |
-| 8–10 | Needs decay | 32 agents each | 433 µs | **1,997 µs** ❌ 4.6× |
-| 11 | Production | 16 domes — every dome produces every 4 revolutions | 4,000 µs | not written |
-| 12 | Flow balance | power and oxygen supply vs demand, storage caps | 2,000 µs | not written |
-| 13 | Job board | reap finished jobs, post new ones, up to 4 assignments | 3,000 µs | not written |
+| 0–7 | **Agent movement** | 12 agents each — every agent moves once per revolution | 1,800 µs | **1,810 µs** ✅ |
+| 8–10 | Needs decay | 32 agents each | 433 µs | **2,163 µs** ❌ 5.0× |
+| 11 | Production | 16 domes — every dome produces every 4 revolutions | 4,000 µs | **5,990 µs** ❌ 1.5× |
+| 12 | Flow balance | 64 structures, plus counting the living | 2,000 µs | **6,490 µs** ❌ 3.2× |
+| 13 | Job board | reap, arrive, post 4 domes, assign 4 of 32 agents | 3,000 µs | **6,490 µs** ❌ 2.2× |
 | 14 | *(free)* | — routing moved out, see below | — | — |
-| 15 | Events | one roll: weather, disaster, ship, day/night | 500 µs | not written |
-| — | wheel dispatch itself | every frame | — | **125 µs** |
+| 15 | Events | one roll: weather, day/night, the sol clock | 500 µs | **≈ 0 µs** ✅ |
+| — | wheel dispatch itself | every frame | — | **94 µs** |
 
-Needs decay was budgeted at 13 µs per agent for four saturating byte subtractions,
-which was never possible; 62 µs is what it costs after inlining the inner loop (it
-was 109 µs before). **The budget was wrong, the design is not** — the worst
-simulation frame is 2,122 µs, 11 % of a frame.
+**Four of the six budgets were wrong, all of them optimistic, and the one that was
+right was right by 0.6 %.** That is the pattern worth naming: every estimate in this
+document made before a measurement has come in low. The design survives anyway —
+**the worst simulation frame is 6,583 µs, a third of a frame** — because the wheel
+never runs two of these in the same frame. That is what slicing by identity buys, and
+it is the reason the numbers being wrong is survivable.
+
+Three of the four were brought down before being recorded here, and the wins say
+where the time actually goes on a Z80:
+
+| Pass | First working version | Now | What changed |
+|---|---|---|---|
+| Needs decay | 3,494 µs | 2,163 µs | `call`/`ret` per field was a quarter of the work |
+| Production | 7,488 µs | 5,990 µs | input loop unrolled onto fixed `IX` offsets, bailing on the first missing input |
+| Job board | 36,442 µs | 6,490 µs | one pass asking *are there any free jobs* before scanning per agent |
+
+
 
 #### Routing is not a wheel slot any more
 
@@ -1131,11 +1200,12 @@ Slot 14 is left empty rather than renumbered, so every other slot keeps its numb
 Every frame, regardless of slot:Every frame, regardless of slot: read input, move cursor and camera, advance the dirty
 list ([§8.5](#85-the-dirty-list)) up to a 20,000 µs cap, tick animation, service audio.
 
-The worst simulation frame is now a needs-decay slot during a routing rebuild:
-1,997 + 2,700 + 125 ≈ **4,800 µs, under a quarter of the frame**, leaving the rest
-for the dirty list, input and audio. Nothing in the wheel comes close to filling a
-frame, which is the whole point of slicing by identity — and the reason the dirty
-list is a *budget* rather than a queue that must be drained.
+The worst *frame* is a flow-balance or job-board slot during a routing rebuild:
+6,490 + 2,700 + 94 ≈ **9,300 µs, under half the frame**. That leaves 10,700 µs for
+rendering — and a single scroll column costs 9,300 µs
+([§8.3](#83-the-tile-pass)). **The two together very nearly fill the frame**, which
+is exactly why the dirty list is a *budget* rather than a queue that must be drained:
+on a frame where the sim is heavy, the scroll edge takes two frames instead of one.
 
 ### 7.3 Degradation
 
@@ -1580,13 +1650,15 @@ order, and do not build gameplay on top of a scroll that has not been proven on 
 | ~~CRTC offset scrolling with a two-page raster split~~ | ~~High~~ | **Resolved at milestone 5, and split in two.** Offset scrolling works to the pixel ([§8.2](#82-camera)). The mid-frame page change does **not** — the CRTC latches the start address once per frame — so the HUD moved into the play page and bank 2 went flat ([§8.1](#81-screen-layout), [§4.3](#43-bank-2-flat-again)). |
 | HUD re-render on every scroll step, ≈ 0.4 frames, **estimated not measured** | Medium | Measure when the HUD renderer exists. If it is too slow, the escape hatch is rupture — with the CRTC-type compatibility risk that comes with it. |
 | Mid-frame writes land where aimed, but only on the emulator's CRTC | Low | The border control in `tests/test_camera.py` hits line 160 exactly. Real hardware still wants a check, but nothing now depends on a mid-frame *address* write. |
-| Memory map slack: 3,597 contiguous in bank 2, 384 in bank 6, 440 in bank 7 | Low | Bank 2 is comfortable now. Banks 6 and 7 are still tight; named cuts in [§4.2](#42-the-eight-banks). |
+| Memory map slack: 1,536 contiguous in bank 2, **288 in bank 6**, 440 in bank 7 | Medium | Bank 6 is the tight one now and the entity tables grew into it. The next thing that needs space there moves `plants` out of bank 7 first, or takes the `s` room-icon set (864 B) as [§4.2](#42-the-eight-banks) names. |
 | Routing rebuild latency of ≈ 5 s after a network change | Low | Stale routes are inefficient, never invalid ([§6.4](#64-routing)). If it grates: cache paths for the 16 busiest pairs and rebuild those first. |
 | **13.5 s** world generation feels long even on a cassette-era machine, and it is 3.9× the original estimate | Medium | New game only — loads read the plane off disc ([§5.10](#510-player-modification)). Real progress bar, music keeps playing. The identified 2× win ([§5.9](#59-cost--measured)) is held in reserve. |
 | A seed produces a technically valid but miserable map | Low | Feature anchors guarantee the necessities; the headless seed sweep ([§13](#13-build-and-test)) finds the rest. |
 | **Airlock: dome or structure?** The asset set now has both an `icon_airlock` room type and a standalone `airlock` structure sprite; the node graph in [§6.2](#62-the-node-graph) only models the dome | Medium | Decide before the node graph is written — it changes what an *outdoor edge* connects to. Recommendation and the comparison are in [§6.2](#62-the-node-graph). Cheap either way: the unused half is 400–512 bytes. |
 | A full-colony routing rebuild is ~27 s of stale routes at the current budget | Medium | Only at 128 nodes; 48 nodes is 3.8 s ([§6.4](#64-routing)). Two levers, both untaken: raise the per-frame budget while the camera is still, or tighten `rt_node` — its per-node setup re-reads the same three bytes and is worth about 2×. |
-| Slots 11, 12, 13 and 15 of the wheel are unwritten, and their budgets are estimates of the same kind that needs decay missed by 4.6× | Medium | The wheel dispatches them already; each is a `ret`. Measure as each lands, and expect the estimates to be low rather than high. |
+| ~~Slots 11, 12, 13 and 15 of the wheel are unwritten~~ | ~~Medium~~ | **Written and measured.** Four of six budgets were low, by 1.5× to 5× ([§7.2](#72-the-wheel)). The worst frame is a third of a frame, so the design holds. Remaining passes should be budgeted pessimistically. |
+| A heavy sim slot and a scroll column in the same frame come to ~19 ms of 20 | Medium | The dirty list is a budget, so the edge redraw spreads over two frames. Costs nothing but a one-frame lag on the newly exposed column; needs watching once the HUD re-render ([§8.1](#81-screen-layout)) is measured too. |
+| Needs, health and death are not written, so nobody ever stops working, gets hungry or dies | High | [§6.6](#66-needs) decays the six needs already; nothing yet *acts* on them. Until it does, the job board has no competition and the colony cannot fail — the loop is closed but not yet a game. |
 | Balance | Certain | Every number in [§6.5](#65-economy) is a first guess. The recipe table exists so that rebalancing is a data edit, not a code edit. |
 
 ---
@@ -1607,6 +1679,13 @@ order, and do not build gameplay on top of a scroll that has not been proven on 
 | `MAX_NODES` | 128 | domes + structures + pad + 8 build sites |
 | `MAX_JOBS` | 32 | |
 | `NODE_SLOTS` | 8 | ring slots per dome, `corr_fill` order |
+| `N_STOCK` | 14 | ten goods plus four greenhouse intermediates ([§6.5](#65-economy)) |
+| `DOME_REC` | 24 | bytes per dome — 8 machine slots, not 4 |
+| `RECIPE_REC` | 10 | bytes per machine recipe — 3 inputs |
+| `MAX_JOB` | 32 | job board entries |
+| `JOB_SCAN` / `JOB_LOOK` / `JOB_ASSIGN` | 4 / 32 / 4 | domes posted from, agents examined, assignments — per visit |
+| `PROD_DOMES` | 16 | domes per production slot: a full sweep every 4 revolutions |
+| `SOL_FRAMES` / `DAY_FRAMES` | 12,000 / 7,200 | a sol, and how much of it is daylight |
 | `MAX_DEGREE` | 8 | edges per node — one per `conn_points` direction |
 | `WHEEL_SLOTS` | 16 | 320 ms per revolution |
 | `MOVE_SLOTS` | 8 | slots 0–7 |

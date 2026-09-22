@@ -120,6 +120,7 @@ b4:     jr      b4
         include "../src/graph.asm"
         include "../src/entity.asm"
         include "../src/econ.asm"
+        include "../src/jobs.asm"
         include "../src/wheel.asm"
 
 done_flag:   db 0
