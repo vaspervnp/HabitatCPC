@@ -4,3 +4,4 @@ tests/rasmoutput.sym
 tests/golden/*_actual.png
 __pycache__/
 *.pyc
+rasmoutput.sym
