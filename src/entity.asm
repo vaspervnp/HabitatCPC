@@ -287,7 +287,20 @@ ec_free:
         pop     hl
         ld      (hl),a                  ; η μάσκα με τη νέα θέση πιασμένη
         ld      a,d
+        ld      (ec_slot),a
+        ld      a,(em_dst)
+        cp      MAX_DOME
+        jr      nc,ec_done
+        ld      b,a
+        ld      a,(ec_slot)
+        ld      c,a
+        ld      a,DK_SLOT
+        call    wh_push
+ec_done:
+        ld      a,(ec_slot)
         ret
+
+ec_slot:    db 0
 
 ; ---------------------------------------------------------------------------
 ; ent_release — ελευθερώνει τη θέση του (em_id) στον (em_node).
@@ -301,6 +314,7 @@ ent_release:
         ld      a,(hl)                  ; slot
         cp      NO_SLOT
         jr      z,er_out
+        ld      (er_slot),a
         ld      (hl),NO_SLOT
         ld      hl,bit_tab
         add     a,l
@@ -317,9 +331,21 @@ ent_release:
         ld      a,(hl)
         and     c
         ld      (hl),a
+        ; Η θέση άδειασε: η οθόνη πρέπει να σβήσει τη φιγούρα. Οι δομές δεν
+        ; έχουν δακτύλιο, οπότε μόνο οι θόλοι.
+        ld      a,(em_node)
+        cp      MAX_DOME
+        jr      nc,er_out
+        ld      b,a
+        ld      a,(er_slot)
+        ld      c,a
+        ld      a,DK_SLOT
+        call    wh_push
 er_out:
         pop     bc
         ret
+
+er_slot:    db 0
 
 bit_tab:    db 1,2,4,8,16,32,64,128
 ; Διπλάσιες από την πρώτη εκτίμηση: με τις παλιές, μια ακμή ήθελε έξι

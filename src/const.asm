@@ -206,3 +206,12 @@ GH_BUF      equ PAGE2_TOP
 GH_LOG      equ 1600
 DOME_FIG    equ GH_BUF + GH_LOG     ; 64 θόλοι x 8 θέσεις
 PAGE2_CODE  equ DOME_FIG + 512      ; από εδώ και πάνω, κώδικας
+
+; --- τα είδη της λίστας βρώμικων (§8.5). Εδώ επειδή τα σπρώχνει η
+; προσομοίωση, που δεν συνδέει renderer στο tests/simtest.asm.
+DK_SLOT     equ 0                   ; a = θόλος, b = θέση δακτυλίου
+DK_MACH     equ 1                   ; a = θόλος, b = υποδοχή
+DK_ICON     equ 2                   ; a = θόλος
+DK_CONN     equ 3                   ; a = θόλος, b = κατεύθυνση
+DK_TILE     equ 4                   ; a = tx, b = ty (προσημασμένα)
+DK_KINDS    equ 5

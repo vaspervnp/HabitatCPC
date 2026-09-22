@@ -31,6 +31,10 @@ start:
         call    pal_set
         xor     a
         call    pal_border
+        ; Ο renderer παρουσιάζεται στην προσομοίωση: από εδώ και πέρα κάθε
+        ; αλλαγή που φαίνεται σπρώχνεται στη λίστα βρώμικων (§8.5).
+        ld      hl,dirty_push
+        ld      (wh_hook),hl
         call    game_new
         ; fall through
 

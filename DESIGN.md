@@ -1705,8 +1705,17 @@ straight out of `assets/SPRITES.md` §8:
 | Room type changes | one icon | ≈ 800 µs | **1,997 µs** |
 | Corridor added | one connector | ≈ 450 µs | **2,995 µs** |
 | Terrain tile changes, open ground | 3×3 tiles | ≈ 1,600 µs | **9,984 µs** |
-| Terrain tile changes, under a dome | 3×3 tiles + every object over them | — | **99,840 µs** |
+| Terrain tile changes, under a dome | 3×3 tiles + every object over them | — | **109,824 µs** |
 | Dome built | everything, sliced over 8 frames | 1.4 – 5.7 frames | not built — [§6.9](#69-construction) |
+
+**The figure cache is rebuilt from the agents, once per burst of pushes.**
+`dome_fig` is what tells the slot redraw which figure belongs where, and when the
+simulation moves colonists it is stale — the figure would be drawn back where it
+left and never appear where it went. The rebuild walks all 128 agents and costs a
+**measured 9,984 µs, half a frame**, so it runs only when a `DK_SLOT` has been
+pushed since the last tick, not on every tick. The per-item budget below does not
+include it; a frame that redraws a slot can therefore overrun by half a frame,
+once.
 
 **All five estimates were low, by 2× to 21×, and for one reason.** The blit is
 not the cost. Reaching it is: page the bank, read the 24-byte dome record,
@@ -2138,7 +2147,7 @@ tests in this document runnable rather than aspirational:
 | Object pass | independent Python renderer from the prose, compared byte-for-byte at five camera positions (`test_object.py`) |
 | Scrolling | equivalence: scroll *k* steps and compare with a full draw at the destination (`test_scroll.py`) |
 | HUD | content against a reference, boundary against a marker, cost against a limit (`test_hud.py`) |
-| Dirty list | equivalence: the same mutation through the list and through a full redraw (`test_dirty.py`) |
+| Dirty list | equivalence: the same mutation through the list and through a full redraw (`test_dirty.py`) — the mutation moves an **agent**, not the renderer's figure cache, because the cache is now rebuilt from the agents |
 | Input | every action, keyboard and joystick, one edge per press (`test_input.py`) |
 | Build mode | cursor, ghost-leaves-no-trace, validation, placement, payment (`test_build.py`) |
 | Corridor routing | independent Python router compared on every pair of domes, then the *picture* compared at both kinds of bend (`test_route.py`) |
@@ -2209,9 +2218,10 @@ a colony that can be built and a colony that runs.
 | **Memory is the binding constraint from here on** | High | 2,108 bytes free in bank 0 and 708 in bank 2, for save/load, audio, meteors and intruders. The reserves left, in order: bank 7's `text` block (1,024, already allocated for exactly this), size-optimising `route.asm`/`ui.asm`/`object.asm` (1,000–1,500 by estimate), and the cuts [§4.2](#42-the-eight-banks) already names. Every new feature now costs a decision. |
 | ~~Nothing finishes what the player starts~~ | ~~High~~ | **Built.** A Build job is picked up, the agent routes to the site, works it 32 points a visit, and at 255 the building turns `DS_ACTIVE` and is drawn ([§6.9](#69-construction)). `tests/test_game.py` walks the whole chain: place a solar panel with 30 Metal, and about six seconds later the HUD says `ALL SYSTEMS OK` with no key pressed in between. |
 | **A completed building stalls the game for 0.8 s** | Medium | The full redraw of [§6.9](#69-construction) step 4, in place of the eight-chunk reveal that is specified and unwritten. Rare — once per building — but it is a visible freeze, and it is the first thing to fix if building ever becomes frequent. |
-| **The simulation still pushes nothing into the dirty list** | High | Unchanged from the row below: colonists move in the tables and not on the screen. The HUD now follows the simulation (once per wheel revolution), so the *numbers* are live even though the picture is not. |
+| ~~The simulation still pushes nothing into the dirty list~~ | ~~High~~ | **Wired for ring slots**, which is what moves: `ent_claim` and `ent_release` push a `DK_SLOT`, and the figure cache is rebuilt once per burst rather than once per slot ([§8.5](#85-the-dirty-list)). Machines breaking, plants growing and room changes still push nothing. |
 | **A near-diagonal pair of domes cannot be connected** | Low | The turn in [§9.4](#94-corridor-routing) spends `\|S − T\|` tiles, so when the two axes differ by less than the destination's radius there is no route and the panel says so. The band is 2–4 tiles wide and the player can step out of it by moving the dome. Closing it needs a corner sprite the art does not have. |
-| **Nothing in the simulation pushes into the dirty list yet** | High | The list works and is tested, but the wheel does not call it: no `dirty_push` when a colonist takes a slot, a machine breaks, or a plant grows. It is a dozen call sites, and every one of them is a place where the two halves can silently disagree — which is what [§8.5](#85-the-dirty-list)'s equivalence test is for. |
+| **The rest of the dirty-list call sites** | Low | A machine breaking, a machine repaired and a plant growing push nothing — **and would change no pixels if they did**: there is no damaged-machine variant ([ASSET-8](#12-asset-gaps)) and a plant's sprite is chosen by class, not by stage. Ring slots were the only change the picture can show, and they are wired. A colonist who dies releases a slot, so that path is covered; one who arrives by ship gets no ring slot until they move. Wire the rest when the art gives them something to draw. |
+| **A vacated ring slot leaves 2–7 wrong bytes** | Medium | Redrawing an *empty* ring slot over a freshly drawn dome does not reproduce the full pass, for five of the eight slots. It is **not** the empty-slot art: replacing the redraw with "draw the whole dome clipped to the slot's 2×8 rectangle" — which by construction must match — gives the same wrong pixels, so the fault is in how the object pass clips to a window about two bytes wide at a sprite's left edge. `tests/test_object.py` passes at four bytes, which is why scrolling never showed it. Bounded and idempotent: `tests/test_game.py` asserts the whole-screen divergence stays ≤ 8 bytes. |
 | **The base is invisible on its own foundation** | Medium | The foundation tile, the dome rings and the corridors are all the same grey. Outside the base everything reads; inside it, the colony disappears into the slab. Found by looking at the first running build, not by any check. It is a palette question for [§8.6](#86-palette) — one pen, differently chosen. |
 | **Scrolling is 4 to 8 tiles per second through a built-up base** | Medium | 3.0–3.2 frames per tile in open ground, up to 8.8 in the base, plus 2.55 for the HUD. Playable, not smooth. Three levers, all untaken: move the HUD block instead of redrawing it ([§8.1](#81-screen-layout)), index which objects overlap which strip instead of testing all 224 records, and blit tile pairs ([§8.3](#83-the-tile-pass)). |
 | **A broken machine is invisible on screen** ([ASSET-8](#12-asset-gaps)) | Medium | One sprite per machine, no damaged variant. The economy knows, the alert line knows, the picture does not — wrong way round for a game about watching a colony. 132 bytes per machine would fix it. |
