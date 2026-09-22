@@ -346,7 +346,10 @@ wanted 16,128. Three decisions closed it:
 
 - **The world generator is not resident** (2,931). It runs once, before anything
   else exists, and [§5.10](#510-player-modification) already says a load reads the
-  plane off disc instead. It is a separate loadable — the game is loaded over it.
+  plane off disc instead. It is a separate loadable — `GEN.BIN`, loaded at `&8000`
+  and overwritten later by bank 2's data ([§13.1](#131-three-ways-a-loader-does-not-run)).
+  Not at `&0100`, where the game goes: while the firmware is alive the lower ROM
+  covers `&0000–&3FFF`, so code there cannot run.
 - **`MAX_NODES` is 96, not 128.** Both routing matrices are *nodes* × 128 bytes, so
   96 nodes costs 12 KB instead of 16 and frees 4 KB in each of banks 1 and 5. The
   room icons `m` and `l` (3,936) moved into bank 1's share, which freed the same
@@ -672,9 +675,17 @@ timed by `tests/test_worldgen.py` on the emulator. The per-tile pass dominates a
 is holding `u`, `v` and the world pointer in registers across `gen_tile` and
 inlining the hash — worth perhaps 2×, and not taken yet.
 
-The generator is still written to run in slices with a real progress bar, and
-13.5 s behind one is tolerable for a new game. **It is not tolerable on load** —
-see [§5.10](#510-player-modification).
+13.5 s is tolerable for a new game. **It is not tolerable on load** — see
+[§5.10](#510-player-modification).
+
+The generator was going to run in slices behind a `GENERATING` progress bar. It
+does not. It runs in one blocking call from the loader, before the game's own code
+exists, with the **border colour** as the only feedback — BASIC's text is still on
+the screen at that point, because the loader never touches the screen page and the
+firmware's palette is still in force. A progress bar would need the game's tile
+pass, its palette and its font, all of which arrive after the world does. The slice
+structure is still in the generator and costs nothing; nothing calls it that way
+yet.
 
 ### 5.10 Player modification
 
@@ -2123,10 +2134,34 @@ and `tools/pack.py` hard-code the list.
 ## 13. Build and test
 
 ```
-assets/sprites.asm  ─┐
-src/*.asm           ─┼─ rasm ──> habitat.bin ──> iDSK ──> habitat.dsk ──> cpcemu
-data/*.bin          ─┘
+assets/sprites.asm ─┬─ tools/pack.py ─> page2 bank1 bank6 bank7 .bin ─┐
+                    └─ tools/mkoffsets.py ─> sprite_consts.asm        │
+src/main.asm ─┬─ rasm ─> game.bin + game2.bin ──────────────────────┐ │
+src/gen.asm  ─┼─ rasm ─> gen.bin                                    ├─┴─ iDSK ─> habitat.dsk
+src/boot.asm ─┴─ rasm ─> boot.bin                                   │
+                         HABITAT.BAS (three lines) ─────────────────┘
 ```
+
+`tools/mkdsk.py` runs that whole chain and `tests/test_disc.py` boots the result
+from BASIC. Eight files, because AMSDOS gives one load address per file and the
+game lives in seven places at once — see [§13.1](#131-three-ways-a-loader-does-not-run).
+
+| File | Goes to | Bytes | |
+|---|---|---|---|
+| `HABITAT.BAS` | — | 3 lines | `MEMORY &8FFF` · `LOAD"LOADER.BIN",&9000` · `CALL &9000` |
+| `LOADER.BIN` | `&9000` | 342 | the loader |
+| `BANK6.BIN` | bank 6 | 16,384 | quadrants, figures, entity tables |
+| `BANK7.BIN` | bank 7 | 16,384 | structures, plants, text, audio |
+| `BANK1.BIN` | `&7000` | 4,096 | room icons above the distance matrix |
+| `PAGE2.BIN` | bank 5, then `&8000` | 11,264 | bank 2's graphics and tables |
+| `GAME2.BIN` | bank 5, then `&B440` | 2,300 | bank 2's code |
+| `GEN.BIN` | `&8000` | 3,072 | the world generator: runs once, returns |
+| `GAME.BIN` | `&0100` | 14,125 | the game |
+
+**Measured: 31 s from `ENTER` to the colony** — 13.5 s of that is the generator
+([§5.9](#59-cost--measured)), the rest is 68 KB off the floppy. The border changes
+colour at each file, which is the only progress indicator there can be while the
+firmware still owns the screen.
 
 | Tool | Path | Role |
 |---|---|---|
@@ -2152,10 +2187,48 @@ tests in this document runnable rather than aspirational:
 | Build mode | cursor, ghost-leaves-no-trace, validation, placement, payment (`test_build.py`) |
 | Corridor routing | independent Python router compared on every pair of domes, then the *picture* compared at both kinds of bend (`test_route.py`) |
 | The whole game | `src/main.asm` booted: start state, the economy moving inside the loop, a building placed and **finished**, and the HUD following it with no input (`test_game.py`) |
+| The disc | `RUN"HABITAT` from a cold BASIC prompt: the game arrives, the start state is there, the HUD is drawn, and the world is **generated** rather than loaded (`test_disc.py`) |
 | Playability of every seed | headless run of N seeds, assert water and ore within 30 tiles of centre |
 
 That last one is the kind of test that is impossible on real hardware and trivial here.
 It should be run over a few thousand seeds before release.
+
+### 13.1 Three ways a loader does not run
+
+The snapshot the tests boot from is a *scene*: banks in place, firmware gone, jump
+to `&0100`. A disc gives none of that, and three separate things made the loader
+fail **without a single visible error** — no message, no wrong picture, just a
+machine that went somewhere else.
+
+**The ROMs are on while the firmware is alive.** The lower ROM covers
+`&0000–&3FFF` and the upper ROM `&C000–&FFFF`. *Writes* go to RAM underneath, so a
+file loads there perfectly and the bytes are provably correct — and then the
+processor executes ROM. The first loader sat at `&C000` (16 KB free, ideal) and
+reset the machine in two seconds; the second sat at `&3E00` and wandered into the
+operating system, which eventually asked for a cassette. Only `&4000–&A6FF` can
+hold code, and above `&A700` is AMSDOS's workspace. So the loader lives at `&9000`,
+its 2 KB AMSDOS buffer at `&9800`, and the generator at `&8000`.
+
+**AMSDOS unhooks itself when BASIC runs a binary.** `RUN"FILE.BIN"` loads from the
+disc and then restores the *cassette* vectors before jumping: measured, `&BC77`
+holds a far call into ROM at the `Ready` prompt and a low jump into the cassette
+manager inside the running program, and `KL FIND COMMAND` no longer finds `DISC`.
+The first `CAS IN OPEN` of the loader printed `Press PLAY then any key`. A program
+reached by `CALL` from BASIC keeps AMSDOS hooked — also measured — which is why
+there is a three-line `HABITAT.BAS` and why the CPC has always done it this way.
+
+**The first byte of a loadable must be an instruction.** `gen.asm` began with its
+includes, and `gen_tables.asm` emits *tables*; `call &8000` ran the table, returned
+without complaint, and left bank 4 empty. The world came out a flawless infinite
+field of ground, which looks exactly like a world. `jp gen_entry` is now the first
+thing in the file.
+
+The fourth constraint is a collision rather than a surprise: bank 2's data
+(`&8000–&ABFF`) and code (`&B440`) both land inside AMSDOS's workspace. They are
+loaded into bank 5 first and copied down by an **endgame** — twenty bytes copied to
+`&3E00` and entered with both ROMs off, because the copy passes over the loader
+itself and over BASIC's stack. It takes its two lengths in `BC` and `IX` rather
+than reading them from memory that is about to disappear.
 
 ---
 
@@ -2185,11 +2258,20 @@ occupancy on screen, and no build menu without a HUD. 6a is that renderer; 6b is
 the half the player touches. **Both are done.** Milestones 7–9 were built before
 either, out of order, because they needed no pixels.
 
-What is left before the game is playable end to end is not a milestone in this
-table: it is the **wiring** — the wheel does not push into the dirty list, nothing
-advances a `DS_BUILDING` site to `DS_ACTIVE`, and there is no new-game routine
-([§10.1](#101-start-state)). Each is small; together they are what stands between
-a colony that can be built and a colony that runs.
+**The wiring is done.** It was never a milestone in this table and it was what
+stood between a colony that can be built and a colony that runs: `src/main.asm` is
+one binary with one loop, `game_new` lays out the start state of
+[§10.1](#101-start-state), a finished `J_BUILD` job turns a site `DS_ACTIVE`, and
+the wheel pushes every visible change into the dirty list through a hook the
+renderer installs ([§8.5](#85-the-dirty-list)). Two things only showed up once both
+halves were assembled together: the two halves disagreed about which bank the
+window holds ([§7.4](#74-one-convention-per-half-and-they-disagreed)), and a fresh
+construction site had no graph edge, so nobody could ever walk to it.
+
+**And it boots from a disc.** `tools/mkdsk.py` builds `build/habitat.dsk`;
+`RUN"HABITAT` on a 6128 generates a world and drops the player into the colony
+([§13](#13-build-and-test)). That is milestone 10's delivery half, ahead of its
+save/load half.
 
 ---
 

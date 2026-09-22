@@ -42,3 +42,4 @@ python3 tests/test_input.py
 python3 tests/test_build.py
 python3 tests/test_route.py
 python3 tests/test_game.py
+python3 tests/test_disc.py

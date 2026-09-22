@@ -108,6 +108,7 @@ ml_hud:
         include "wheel.asm"
         include "hw.asm"
         include "newgame.asm"
+zz_bank0_end:
 
 ; --- ό,τι τρέχει από την ΤΡΑΠΕΖΑ 2 -----------------------------------------
 ; Η τράπεζα 2 φαίνεται πάντα στο &8000, άρα ο κώδικας εκεί είναι απλώς κώδικας.
@@ -117,6 +118,12 @@ ml_hud:
         include "build.asm"
         include "route.asm"
 zz_page2_end:
+
+; --- τα δύο κομμάτια του παιχνιδιού, για τον δίσκο ------------------------
+; Το AMSDOS δίνει ΜΙΑ διεύθυνση φόρτωσης ανά αρχείο, και το παιχνίδι ζει σε δύο
+; ασυνεχείς περιοχές: τον κώδικα της τράπεζας 0 και τον κώδικα της τράπεζας 2.
+        save    "../build/game.bin",  #0100, zz_bank0_end - #0100
+        save    "../build/game2.bin", PAGE2_CODE, zz_page2_end - PAGE2_CODE
 
         org     #8000
         incbin  "../build/page2.bin"
