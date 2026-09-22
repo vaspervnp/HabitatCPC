@@ -110,11 +110,12 @@ def move_one(a, i, g, nexthop, occ, e=None):
             return
         # έφτασε: ο κόμβος προορισμού του βήματος
         dst = g.adj[a.node[i] * G.MAXDEG + a.edge[i]]
+        # Μπαίνει ΠΑΝΤΑ. Η θέση στο δαχτυλίδι είναι περιορισμός ΣΧΕΔΙΑΣΗΣ —
+        # οκτώ θέσεις έχει το sprite — όχι πόρτα. Οταν ήταν πόρτα, ένας
+        # γεμάτος θόλος με χαλασμένη μηχανή δεν επισκευαζόταν ΠΟΤΕ: ο
+        # μηχανικός περίμενε έξω και οι οκτώ μέσα δεν είχαν λόγο να φύγουν.
+        # Ο ένατος είναι μέσα, απλώς δεν ζωγραφίζεται.
         s = claim(occ, dst)
-        if s == NO_SLOT:
-            # ο κόμβος είναι γεμάτος — περιμένει στο σωλήνα, ξαναδοκιμάζει
-            a.progress[i] = 255
-            return
         a.node[i] = dst
         a.slot[i] = s
         a.edge[i] = NO_EDGE
@@ -262,6 +263,7 @@ def die(a, e, occ, i):
     a.task[i] = NO_TASK
     a.progress[i] = 0
     e.gloom = min(255, e.gloom + 16)
+    e.deaths_sol = min(255, e.deaths_sol + 1)
 
 
 def seek(a, e, i):
@@ -352,7 +354,9 @@ class Sim:
         elif s == 13:
             EC.jobs_tick(self.e, self.a, F_ALIVE, F_WORKING)
         elif s == 15:
-            EC.events(self.e)
+            if EC.events(self.e):
+                EC.sol_rollover(self.e, self.a, F_ALIVE, F_WORKING, NEED_LOW)
+            EC.ship_tick(self.e, self.a, self.e.pad_node, F_ALIVE)
         # 13 πίνακας εργασιών, 14 ελεύθερη — δεν έχουν γραφτεί, ούτε εδώ ούτε
         # στον Z80.
 

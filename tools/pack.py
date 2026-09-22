@@ -90,8 +90,11 @@ def build_runs(smap, blob):
     ROOMS = ["empty", "control", "quarters", "canteen", "oxygen",
              "greenhouse", "storage", "airlock", "factory", "lab",
              "medbay", "lounge"]
+    # Δώδεκα, όχι δέκα: η παράδοση τέχνης πρόσθεσε `beds` και `medstore` στο
+    # ιατρείο (θέσεις 10 και 11). Οι δέκα πρώτοι δείκτες δεν άλλαξαν.
     MACH = ["oxygen", "iron", "bioplastic", "weapons", "processors",
-            "robots", "food", "spares", "medical", "vitromeat"]
+            "robots", "food", "spares", "medical", "vitromeat",
+            "beds", "medstore"]
     PLANTS = ["peas", "rice", "potatoes", "wheat", "maize", "tomatoes",
               "lettuce", "onions", "radishes", "mushrooms", "medicinal", "tree"]
     DIRS = ["n", "ne", "e", "se", "s", "sw", "w", "nw"]
@@ -135,7 +138,8 @@ def build_runs(smap, blob):
     # Το tile_base ΔΕΝ περνάει: κρατά μετατοπίσεις από την αρχή ενός ενιαίου
     # μπλοκ που πλέον δεν υπάρχει. Το ξαναφτιάχνουμε ως tile_ptr.
     for n in ("corr_slots", "corr_fill", "plant_class", "machine_count",
-              "machine_slots", "machine_rules", "interior_ofs", "tile_variants",
+              "machine_slots", "machine_rules", "room_machines",
+              "interior_ofs", "tile_variants",
               "planet_pens", "conn_points", "struct_dims", "palette_fw"):
         arena.append(spr(n))
 
@@ -165,7 +169,7 @@ def build_runs(smap, blob):
     # αποθέματα τα διαβάζει το HUD σε κάθε frame. Ο,τι διαβάζεται μαζί με
     # σελιδοποιημένο πίνακα δεν μπορεί να ζει στο παράθυρο — το ίδιο μάθημα
     # με τον πάγκο της BFS.
-    arena.append(Run("econ_state", 64, None, note="ΔΕΣΜΕΥΣΗ — αποθέματα και ροές"))
+    arena.append(Run("econ_state", 82, None, note="ΔΕΣΜΕΥΣΗ — αποθέματα και ροές"))
     arena.append(Run("job_tbl", 32 * 5, None, note="ΔΕΣΜΕΥΣΗ — 32 εργασίες"))
     arena.append(Run("room_n", 12, None, note="ΔΕΣΜΕΥΣΗ — θόλοι ανά είδος δωματίου"))
     arena.append(Run("room_list", 12 * 8, None, note="ΔΕΣΜΕΥΣΗ — ως 8 ο καθένας"))

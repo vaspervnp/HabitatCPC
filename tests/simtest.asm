@@ -132,6 +132,7 @@ b4:     jr      b4
         include "../src/econ.asm"
         include "../src/jobs.asm"
         include "../src/needs.asm"
+        include "../src/ship.asm"
         include "../src/wheel.asm"
 
 done_flag:   db 0

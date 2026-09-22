@@ -42,7 +42,8 @@ NO_STOCK = 255
 
 # --- μηχανές, με τη σειρά του MACH στο pack.py ----------------------------
 MACH = ["oxygen", "iron", "bioplastic", "weapons", "processors",
-        "robots", "food", "spares", "medical", "vitromeat"]
+        "robots", "food", "spares", "medical", "vitromeat",
+        "beds", "medstore"]
 N_MACH = len(MACH)
 NO_MACH = 255
 
@@ -61,6 +62,12 @@ RECIPE = [
     (S_METAL, 1, S_BIOPL, 1, NO_STOCK, 0, S_SPARE, 1, 3, MF_OPERATOR),
     (S_MEDPLANT, 2, NO_STOCK, 0, NO_STOCK, 0, S_MEDI, 1, 3, MF_OPERATOR),
     (S_WATER, 2, NO_STOCK, 0, NO_STOCK, 0, S_MEAT, 1, 4, MF_OPERATOR),  # vitromeat
+    # Τα δύο του ιατρείου δεν ΠΑΡΑΓΟΥΝ: είναι έπιπλα που κάνουν το δωμάτιο να
+    # δουλεύει. Τα κρεβάτια θέλουν γιατρό από πάνω τους, η φαρμακαποθήκη όχι.
+    # Παραμένουν εγγραφές συνταγής ώστε το πέρασμα παραγωγής να μην ξέρει από
+    # ειδικές περιπτώσεις.
+    (NO_STOCK, 0, NO_STOCK, 0, NO_STOCK, 0, NO_STOCK, 0, 1, MF_OPERATOR),
+    (NO_STOCK, 0, NO_STOCK, 0, NO_STOCK, 0, NO_STOCK, 0, 0, 0),
 ]
 
 # --- θόλοι ----------------------------------------------------------------
@@ -140,6 +147,24 @@ class Econ:
         self.gloom = 0              # πένθος: ανεβαίνει με κάθε θάνατο
         self.storm = 0              # περιστροφές αμμοθύελλας που απομένουν
         self.amenity = 0            # δέντρα και σαλόνια — παρηγοριά (§6.6)
+        # Το μήκος του sol είναι ΔΕΔΟΜΕΝΟ και όχι σταθερά: μια δοκιμή που
+        # θέλει να δει πέντε sols δεν μπορεί να περιμένει 60.000 frames.
+        self.sollen = SOL_FRAMES
+        self.daylen = DAY_FRAMES
+        # --- πλοία (§6.11) ---
+        self.ship_state = 0         # 0 κανένα · 1 έρχεται · 2 προσγειωμένο
+        self.ship_kind = 0          # 0 άποικοι · 1 έμπορος · 2 επισκέπτες
+        self.ship_eta = 0           # περιστροφές ως την άφιξη
+        self.pop_cap = 4            # το Control ανεβάζει το ταβάνι
+        self.pad_node = 255         # η πλατφόρμα προσγείωσης, ως κόμβος
+        # --- ορόσημα (§10.2) ---
+        self.prod_mask = 0          # ποια αποθέματα φτιάχτηκαν ΕΔΩ
+        self.milestones = 0
+        self.deaths_sol = 0
+        self.no_death_sols = 0
+        self.green_sols = 0
+        self.no_trade_sols = 0
+        self.traded = 0
         self.dist = None            # ο πίνακας αποστάσεων, δίνεται απ' έξω
 
 
@@ -192,6 +217,7 @@ def run_plant(e, base, s, plant, plant_class):
     out, qty = PLANT_OUT[plant_class[plant] & 3]
     if out is not None:
         add_stock(e, out, qty)
+        e.prod_mask |= 1 << out
 
 
 def run_dome(e, d, plant_class=None):
@@ -230,8 +256,9 @@ def run_dome(e, d, plant_class=None):
         e.acc_power += r[8]
         if r[9] & MF_FLOW:
             e.acc_o2 += r[7]
-        else:
+        elif r[6] != NO_STOCK:              # τα κρεβάτια δεν παράγουν τίποτα
             add_stock(e, r[6], r[7])
+            e.prod_mask |= 1 << r[6]        # φτιάχτηκε ΕΔΩ (§10.2)
 
 
 def production_slice(e, count=PROD_DOMES, plant_class=None):
@@ -286,6 +313,12 @@ def flow_balance(e, alive):
     if e.power_ok:                          # οι αντλίες θέλουν ρεύμα
         add_stock(e, S_WATER, water)
         add_stock(e, S_ORE, ore)
+        # Το νερό και το μετάλλευμα βγαίνουν από ΔΟΜΕΣ, όχι από μηχανές
+        # θόλου, αλλά βγαίνουν εδώ — και η «ανεξαρτησία» του §10.2 τα θέλει.
+        if water:
+            e.prod_mask |= 1 << S_WATER
+        if ore:
+            e.prod_mask |= 1 << S_ORE
 
     e.o2_use = alive * O2_PER_COLONIST
     e.o2_ok = 1 if e.o2_prod >= e.o2_use else 0
@@ -319,10 +352,13 @@ def events(e):
     της προηγούμενης, και η αναπαραγωγή θα γινόταν δουλειά.
     """
     e.frame += 16                           # μία περιστροφή
-    if e.frame >= SOL_FRAMES:
-        e.frame -= SOL_FRAMES
+    if e.frame >= e.sollen:
+        e.frame -= e.sollen
         e.sol = (e.sol + 1) & 0xFF
-    e.day = 1 if e.frame < DAY_FRAMES else 0
+        new_sol = True
+    else:
+        new_sol = False
+    e.day = 1 if e.frame < e.daylen else 0
     if e.gloom:                             # το πένθος περνάει, αργά
         e.gloom -= 1
 
@@ -348,10 +384,15 @@ def events(e):
     if (r3 & 0x1F) == 0:                    # απλή βλάβη: τα χαμηλά του τρίτου
         break_one(e, r3 >> 5)
 
+    if (r2 & 0x3F) == 0 and e.ship_state == SHIP_NONE and e.pad_node != 255:
+        call_ship(e, SK_VISITOR)            # απρόσκλητοι (§6.11)
+
     if (r3 >> 8) == 0:                      # ηλιακή έκλαμψη: τα ψηλά του ίδιου
         break_one(e, r3 + 37)
         break_one(e, (r3 >> 3) + 101)
         break_one(e, (r3 >> 1) + 173)
+
+    return new_sol
 
 
 def to_bytes(e):
@@ -368,13 +409,20 @@ def to_bytes(e):
     out += int(e.rnd).to_bytes(2, "little")
     out += bytes([e.job_dome, e.job_agent, e.alive, e.gameover, e.gloom,
                   e.storm, e.amenity, 0])
+    out += int(e.sollen).to_bytes(2, "little")
+    out += int(e.daylen).to_bytes(2, "little")
+    out += int(e.prod_mask).to_bytes(2, "little")
+    out += int(e.ship_eta).to_bytes(2, "little")
+    out += bytes([e.ship_state, e.ship_kind, e.pop_cap, e.milestones,
+                  e.deaths_sol, e.no_death_sols, e.green_sols,
+                  e.no_trade_sols, e.traded, e.pad_node])
     return bytes(out)
 
 
-ECON_BYTES = N_STOCK * 2 + 9 * 2 + 6 + 2 + 2 + 8    # 28 + 18 + 10 + 8 = 64
+ECON_BYTES = 64 + 8 + 10                            # + sol/ship/ορόσημα = 82
 
 
-def populate(e, n_dome=24, n_struct=20, seed=11):
+def populate(e, n_dome=24, n_struct=36, seed=11):
     """Μια αποικία που όντως δουλεύει: παραγωγοί ρεύματος, αντλίες, ορυχείο,
     και θόλοι με μηχανές που έχουν πού να τραβήξουν. Ντετερμινιστική."""
     x = seed
@@ -386,20 +434,38 @@ def populate(e, n_dome=24, n_struct=20, seed=11):
     # Μια αποικία που ΕΧΕΙ προμήθειες. Οχι για να είναι εύκολη: με άδεια
     # ντουλάπια όλοι τρέχουν συνέχεια για φαγητό και κανείς δεν πιάνει ποτέ
     # δουλειά, οπότε ο πίνακας εργασιών δεν δοκιμάζεται καθόλου.
+    # Λίγο βιοπλαστικό και επεξεργαστές στην αρχή: η αλυσίδα των ρομπότ
+    # θέλει Metal + Processors + Bioplastic μαζί, και χωρίς απόθεμα εκκίνησης
+    # δεν γυρίζει ποτέ — οπότε η «ανεξαρτησία» του §10.2 δεν πιάνεται.
     for s, q in ((S_WATER, 600), (S_FOOD, 400), (S_ORE, 600), (S_STARCH, 200),
-                 (S_VEG, 200), (S_MEDPLANT, 300), (S_MEDI, 200), (S_SPARE, 40)):
+                 (S_VEG, 200), (S_MEDPLANT, 300), (S_MEDI, 200), (S_SPARE, 40),
+                 (S_BIOPL, 120), (S_PROC, 120), (S_METAL, 200)):
         e.stock[s] = q
     # Μια θύελλα ήδη σε εξέλιξη. Η ζαριά τη ρίχνει μία στις 128 περιστροφές,
     # που σημαίνει ότι ένα παράθυρο 40 περιστροφών τη χάνει τις δύο φορές
     # στις τρεις — και τότε ο κλάδος της δεν δοκιμάζεται καθόλου.
     e.storm = 20
+    # Ενα πλοίο αποίκων ήδη καθ' οδόν, ώστε η προσγείωση — και η γέννηση
+    # τεσσάρων ανθρώπων στην πίστα — να συμβεί μέσα στο παράθυρο της δοκιμής.
+    e.ship_state = SHIP_INCOMING
+    e.ship_kind = SK_COLONIST
+    e.ship_eta = 6
 
-    kinds = [K_SOLAR, K_SOLAR, K_TURBINE, K_COLLECTOR, K_EXTRACTOR, K_MINE]
+    # Περισσότερη γεννήτρια: με δύο ηλιακά ανά έξι δομές η αποικία έσβηνε
+    # κάθε νύχτα, οι συλλέκτες δεν προλάβαιναν ποτέ να φορτίσουν, και το
+    # «όλα πράσινα» του §10.2 ήταν ανέφικτο.
+    # Αρκετή γεννήτρια για να ΠΕΡΑΣΕΙ ΤΗ ΝΥΧΤΑ. Με λιγότερη, η αποικία
+    # μπλακάουταρε κάθε βράδυ, το «όλα πράσινα» του §10.2 δεν πιανόταν ποτέ,
+    # και το ευκολότερο ορόσημο ήταν το μόνο ανέφικτο.
+    kinds = [K_SOLAR, K_SOLAR, K_COLLECTOR, K_TURBINE, K_SOLAR, K_COLLECTOR,
+             K_SOLAR, K_TURBINE, K_COLLECTOR, K_SOLAR, K_EXTRACTOR, K_MINE]
     for i in range(n_struct):
         b = i * STRUCT_REC
-        k = kinds[i % len(kinds)]
+        # Μία πλατφόρμα προσγείωσης: χωρίς αυτήν κανένα πλοίο δεν έχει πού να
+        # κατέβει, και όλο το §6.11 μένει αδοκίμαστο.
+        k = K_PAD if i == n_struct - 1 else kinds[i % len(kinds)]
         e.struct[b + ST_KIND] = k
-        e.struct[b + ST_SIZE] = 0 if k in (K_MINE,) else (rnd() >> 3) % 3
+        e.struct[b + ST_SIZE] = 0 if k in (K_MINE, K_PAD) else 2
         e.struct[b + ST_STATE] = DS_ACTIVE
         e.struct[b + ST_INTEG] = 255
     e.n_struct = n_struct
@@ -411,9 +477,9 @@ def populate(e, n_dome=24, n_struct=20, seed=11):
     forced = {d: (0, 0) for d in range(10)}
     # Κάθε αποικία χρειάζεται καντίνα, κοιτώνες και ιατρείο, αλλιώς οι
     # ανάγκες δεν έχουν πού να ικανοποιηθούν και όλοι πεθαίνουν.
-    rooms = [R_CANTEEN, R_QUARTERS, R_GREENHOUSE, R_FACTORY, R_MEDBAY,
-             R_CANTEEN, R_QUARTERS, R_GREENHOUSE, R_LAB, R_STORAGE,
-             R_GREENHOUSE, R_LOUNGE]
+    rooms = [R_CONTROL, R_CANTEEN, R_QUARTERS, R_GREENHOUSE, R_FACTORY,
+             R_MEDBAY, R_CANTEEN, R_QUARTERS, R_GREENHOUSE, R_LAB,
+             R_STORAGE, R_GREENHOUSE, R_LOUNGE, R_CONTROL]
     for d in range(n_dome):
         b = d * DOME_REC
         e.dome[b + D_ROOM] = (R_OXYGEN if d in forced
@@ -440,11 +506,16 @@ def populate(e, n_dome=24, n_struct=20, seed=11):
                 e.dome[b + D_MACH + t] = 11 if t == 0 else (t * 3) % 11
                 e.dome[b + D_HEALTH + t] = 200
             continue
+        # Ο τύπος μηχανής βγαίνει από τη ΘΕΣΗ, όχι από τη γεννήτρια — και ο
+        # λόγος δεν είναι τα bits: ήταν ο ίδιος αριθμός σε δύο ρόλους. Το
+        # «άδεια υποδοχή αν r%5==0» και το «μηχανή r%10» συμφωνούν όποτε
+        # r%10==5, οπότε το εργοστάσιο ρομπότ ήταν ΑΔΥΝΑΤΟ να τοποθετηθεί.
+        # Χωρίς ρομπότ, η «ανεξαρτησία» του §10.2 είναι απρόσιτη εξ ορισμού.
         for s in range(n):
             r = rnd() >> 5
             if r % 5 == 0:
                 continue                                 # άδεια υποδοχή
-            m = r % N_MACH
+            m = (d * 3 + s) % N_MACH
             if m == 0 and size != 0:                     # machine_rules: bit0
                 m = 1                                    # οξυγόνο μόνο σε μικρό
             e.dome[b + D_MACH + s] = m
@@ -652,6 +723,16 @@ def rooms_rebuild(e, plant_class=None):
         e.room_list[r * ROOM_MAX + e.room_n[r]] = d
         e.room_n[r] += 1
     e.amenity = min(255, amenity)
+    # Το ταβάνι πληθυσμού είναι δουλειά του Control (§6.8), και η πλατφόρμα
+    # είναι ο κόμβος όπου κατεβαίνει ο κόσμος (§6.11). Και τα δύο βγαίνουν
+    # από περάσματα που γίνονται ούτως ή άλλως.
+    e.pop_cap = min(MAXAGENT_J, 4 + POP_PER_CONTROL * e.room_n[R_CONTROL])
+    e.pad_node = 255
+    for i in range(MAX_STRUCT):
+        b = i * STRUCT_REC
+        if e.struct[b + ST_STATE] == DS_ACTIVE and e.struct[b + ST_KIND] == K_PAD:
+            e.pad_node = MAX_DOME + i
+            break
 
 
 def nearest_room(e, room, node):
@@ -663,3 +744,142 @@ def nearest_room(e, room, node):
         if dist < best_d:
             best, best_d = d, dist
     return best
+
+
+# --- πλοία, εμπόριο, ορόσημα (§6.11, §10.2) --------------------------------
+SHIP_NONE, SHIP_INCOMING, SHIP_LANDED = 0, 1, 2
+SK_COLONIST, SK_MERCHANT, SK_VISITOR = 0, 1, 2
+SHIP_TRIP = 24              # περιστροφές ταξιδιού
+SHIP_STAY = 8               # πόσο μένει προσγειωμένο
+COLONISTS_PER_SHIP = 4
+VISITOR_FOOD = 6
+VISITOR_MORALE = 24
+# Πρώτη εκτίμηση, όπως όλα τα νούμερα ισορροπίας: με 8 ανά Control, μια
+# αποικία των ενενήντα δεν χωρούσε ούτε τον εαυτό της και κανένα πλοίο
+# αποίκων δεν είχε νόημα.
+POP_PER_CONTROL = 48
+
+M_FOOTHOLD, M_INDUSTRY, M_INDEPENDENCE, M_AUTOMATION, M_HABITAT = (
+    1, 2, 4, 8, 16)
+
+INDUSTRY_STOCKS = (S_METAL, S_BIOPL, S_SPARE)
+# Τα δέκα αγαθά του §6.5. Τα τέσσερα ενδιάμεσα του θερμοκηπίου δεν μετράνε
+# για την «ανεξαρτησία»: είναι πρώτη ύλη, όχι προϊόν.
+INDEPENDENCE_STOCKS = tuple(range(10))
+
+
+def call_ship(e, kind):
+    """Ο παίκτης καλεί πλοίο από το Control. Ενα τη φορά, και θέλει πίστα."""
+    if e.ship_state != SHIP_NONE or e.pad_node == 255:
+        return False
+    e.ship_state = SHIP_INCOMING
+    e.ship_kind = kind
+    e.ship_eta = SHIP_TRIP
+    return True
+
+
+def trade(e, give_stock, give_qty, take_stock, take_qty):
+    """Ανταλλαγή με τον έμπορο. Επιστρέφει αν έγινε.
+
+    Το εμπόριο είναι πράξη του παίκτη, όχι του τροχού: εδώ υπάρχει ο
+    μηχανισμός, και το κουμπί που τον καλεί θα ζήσει στο §9.
+    """
+    if e.ship_state != SHIP_LANDED or e.ship_kind != SK_MERCHANT:
+        return False
+    if e.stock[give_stock] < give_qty:
+        return False
+    e.stock[give_stock] -= give_qty
+    add_stock(e, take_stock, take_qty)
+    e.traded = 1                        # σπάει το σερί της ανεξαρτησίας
+    return True
+
+
+def ship_tick(e, a, spawn_node, F_ALIVE):
+    """Μία περιστροφή του πλοίου. Τρέχει στη θέση 15, μαζί με τα συμβάντα."""
+    if e.ship_state == SHIP_NONE:
+        return
+    if e.ship_eta:
+        e.ship_eta -= 1
+        return
+    if e.ship_state == SHIP_INCOMING:
+        e.ship_state = SHIP_LANDED
+        e.ship_eta = SHIP_STAY
+        if e.ship_kind == SK_COLONIST:
+            land_colonists(e, a, spawn_node, F_ALIVE)
+        elif e.ship_kind == SK_VISITOR:
+            visit(e, a, F_ALIVE)
+        return
+    e.ship_state = SHIP_NONE            # έφυγε
+
+
+def land_colonists(e, a, node, F_ALIVE):
+    """Καινούργιοι άποικοι στην πλατφόρμα. Οσοι χωράνε στο ταβάνι."""
+    n = 0
+    for i in range(MAXAGENT_J):
+        if n >= COLONISTS_PER_SHIP or e.alive + n >= e.pop_cap:
+            break
+        if a.flags[i] & F_ALIVE:
+            continue
+        a.flags[i] = F_ALIVE
+        a.role[i] = i & 7
+        a.node[i] = node
+        a.dest[i] = node
+        a.edge[i] = 255
+        a.slot[i] = 255
+        a.task[i] = 255
+        a.progress[i] = 0
+        a.o2[i] = 200
+        a.water[i] = 200
+        a.food[i] = 200
+        a.sleep[i] = 200
+        a.health[i] = 200
+        a.morale[i] = 160
+        n += 1
+    e.alive += n
+    return n
+
+
+def visit(e, a, F_ALIVE):
+    """Επισκέπτες: τρώνε και ανεβάζουν το ηθικό. Ενοχλητικοί όταν πεινάς."""
+    take = min(VISITOR_FOOD, e.stock[S_FOOD])
+    e.stock[S_FOOD] -= take
+    for i in range(MAXAGENT_J):
+        if a.flags[i] & F_ALIVE:
+            a.morale[i] = min(255, a.morale[i] + VISITOR_MORALE)
+
+
+def sol_rollover(e, a, F_ALIVE, F_WORKING, NEED_LOW):
+    """Μία φορά ανά sol: τα σερί, και μετά τα ορόσημα (§10.2).
+
+    Ολα τα μετρήματα γίνονται ΕΔΩ και όχι μέσα στα καυτά περάσματα: μία
+    σάρωση 128 πρακτόρων ανά 750 περιστροφές δεν φαίνεται πουθενά.
+    """
+    # «Ολες οι ανάγκες πράσινες» είναι η ένδειξη της ΑΠΟΙΚΙΑΣ, όχι η μπάρα
+    # κάθε ατόμου: με ενενήντα αποίκους κάποιος είναι πάντα καθ' οδόν προς
+    # την καντίνα, και ένα ορόσημο που δεν πιάνεται ποτέ δεν είναι ορόσημο.
+    green = bool(e.o2_ok and e.power_ok
+                 and e.stock[S_WATER] and e.stock[S_FOOD])
+    bots = 0
+    for i in range(MAXAGENT_J):
+        if a.flags[i] & F_ALIVE and a.role[i] >= 5 and (a.flags[i] & F_WORKING):
+            bots += 1
+
+    e.green_sols = e.green_sols + 1 if green else 0
+    e.no_death_sols = 0 if e.deaths_sol else min(255, e.no_death_sols + 1)
+    e.deaths_sol = 0
+    e.no_trade_sols = 0 if e.traded else min(255, e.no_trade_sols + 1)
+    e.traded = 0
+
+    m = e.milestones
+    if e.alive >= 10 and e.green_sols >= 1:
+        m |= M_FOOTHOLD
+    if all(e.prod_mask & (1 << s) for s in INDUSTRY_STOCKS):
+        m |= M_INDUSTRY
+    if all(e.prod_mask & (1 << s) for s in INDEPENDENCE_STOCKS) \
+       and e.no_trade_sols >= 5:
+        m |= M_INDEPENDENCE
+    if bots >= 8:
+        m |= M_AUTOMATION
+    if e.alive >= 80 and (m & M_INDEPENDENCE) and e.no_death_sols >= 5:
+        m |= M_HABITAT
+    e.milestones = m

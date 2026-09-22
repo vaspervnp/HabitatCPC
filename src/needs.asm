@@ -444,6 +444,11 @@ nd_d_slot:
         ld      a,255
 nd_gl:
         ld      (EC_GLOOM),a
+        ld      a,(EC_DEATHS)           ; για το σερί «χωρίς θανάτους» (§10.2)
+        inc     a
+        jr      z,nd_dths
+        ld      (EC_DEATHS),a
+nd_dths:
         ret
 
 ; ---------------------------------------------------------------------------
@@ -590,6 +595,58 @@ rr_next:
         jr      c,rr_lp
         ld      a,(rr_amen)
         ld      (EC_AMENITY),a
+
+        ; Το ταβάνι πληθυσμού είναι δουλειά του Control (§6.8), και η πίστα
+        ; είναι ο κόμβος όπου κατεβαίνει ο κόσμος (§6.11). Και τα δύο βγαίνουν
+        ; από ένα πέρασμα που γίνεται ούτως ή άλλως.
+        ld      hl,G_room_n + R_CONTROL
+        ld      a,(hl)
+        ld      b,a
+        ld      a,4
+        inc     b
+rr_cap:
+        dec     b
+        jr      z,rr_capst
+        add     a,POP_PER_CTL
+        jr      nc,rr_cap
+        ld      a,128
+        jr      rr_capst
+rr_capst:
+        cp      129
+        jr      c,rr_capok
+        ld      a,128
+rr_capok:
+        ld      (EC_POPCAP),a
+
+        ld      a,255
+        ld      (EC_PADNODE),a
+        ld      hl,G_struct_tbl
+        ld      b,64
+        ld      c,0
+rr_pad:
+        push    hl
+        ld      de,ST_STATE
+        add     hl,de
+        ld      a,(hl)
+        pop     hl
+        cp      DS_ACTIVE
+        jr      nz,rr_pad_n
+        push    hl
+        ld      de,ST_KIND
+        add     hl,de
+        ld      a,(hl)
+        pop     hl
+        cp      K_PAD
+        jr      nz,rr_pad_n
+        ld      a,c
+        add     a,MAX_DOME
+        ld      (EC_PADNODE),a
+        ret
+rr_pad_n:
+        ld      de,STRUCT_REC
+        add     hl,de
+        inc     c
+        djnz    rr_pad
         ret
 
 ; rr_amenity — A/E = είδος δωματίου, (HL στο D_ROOM του θόλου). Μετράει

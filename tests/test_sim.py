@@ -146,7 +146,10 @@ def fresh(g, nexthop, src):
               "mach_power", "o2_prod", "o2_use", "acc_power", "acc_o2",
               "power_ok", "o2_ok", "prod_dome", "day", "wind", "sol",
               "frame", "rnd", "n_dome", "n_struct", "job_dome", "job_agent",
-              "alive", "gameover", "gloom", "storm", "amenity"):
+              "alive", "gameover", "gloom", "storm", "amenity",
+              "sollen", "daylen", "prod_mask", "ship_state", "ship_kind",
+              "ship_eta", "pop_cap", "pad_node", "milestones", "deaths_sol",
+              "no_death_sols", "green_sols", "no_trade_sols", "traded"):
         setattr(s.e, f, getattr(src.e, f))
     return s
 
@@ -160,6 +163,10 @@ def main():
     EC.populate(sim0.e)
     E.populate(sim0)
     EC.rooms_rebuild(sim0.e, sim0.pc)
+    # Sol 20 περιστροφών αντί για 750: τα ορόσημα του §10.2 μετριούνται σε
+    # sols, και μια δοκιμή που θέλει πέντε δεν μπορεί να περιμένει 60.000
+    # frames. Το μήκος είναι δεδομένο ακριβώς γι' αυτό.
+    sim0.e.sollen, sim0.e.daylen = 320, 192
     before = E.Agents().from_bytes(sim0.a.to_bytes())
 
     got_a, got_occ, frames, got_dome, got_str, got_econ, got_job, got_room = \
@@ -220,26 +227,30 @@ def main():
         return 1
     want_econ = EC.to_bytes(sim.e)
     if got_econ != want_econ:
-        names = ([f"stock:{n}" for n in EC.STOCKS] +
-                 ["power_store", "power_cap", "power_prod", "power_use",
-                  "mach_power", "o2_prod", "o2_use", "acc_power", "acc_o2"])
+        # Η διάταξη περιγράφεται μία φορά, εδώ, και ακολουθεί την to_bytes.
+        w16 = [f"stock:{n}" for n in EC.STOCKS] + [
+            "power_store", "power_cap", "power_prod", "power_use",
+            "mach_power", "o2_prod", "o2_use", "acc_power", "acc_o2"]
+        groups = [(0, 2, w16),
+                  (46, 1, ["power_ok", "o2_ok", "prod_dome", "day", "wind",
+                           "sol"]),
+                  (52, 2, ["frame", "rnd"]),
+                  (56, 1, ["job_dome", "job_agent", "alive", "gameover",
+                           "gloom", "storm", "amenity", "pad"]),
+                  (64, 2, ["sollen", "daylen", "prod_mask", "ship_eta"]),
+                  (72, 1, ["ship_state", "ship_kind", "pop_cap", "milestones",
+                           "deaths_sol", "no_death_sols", "green_sols",
+                           "no_trade_sols", "traded", "pad_node"])]
         print("ΑΠΟΤΥΧΙΑ οικονομία:")
-        for i, n in enumerate(names):
-            gv = got_econ[i*2] | got_econ[i*2+1] << 8
-            wv = want_econ[i*2] | want_econ[i*2+1] << 8
-            if gv != wv:
-                print(f"    {n:18s} Z80 {gv:6d} != αναφορά {wv:6d}")
-        for j, n in enumerate(["power_ok", "o2_ok", "prod_dome", "day",
-                               "wind", "sol"]):
-            i = 46 + j
-            if got_econ[i] != want_econ[i]:
-                print(f"    {n:18s} Z80 {got_econ[i]:6d} != "
-                      f"αναφορά {want_econ[i]:6d}")
-        for n, i in (("frame", 52), ("rnd", 54)):
-            gv = got_econ[i] | got_econ[i+1] << 8
-            wv = want_econ[i] | want_econ[i+1] << 8
-            if gv != wv:
-                print(f"    {n:18s} Z80 {gv:6d} != αναφορά {wv:6d}")
+        for base, width, names in groups:
+            for j, n in enumerate(names):
+                i = base + j * width
+                gv = (got_econ[i] if width == 1
+                      else got_econ[i] | got_econ[i + 1] << 8)
+                wv = (want_econ[i] if width == 1
+                      else want_econ[i] | want_econ[i + 1] << 8)
+                if gv != wv:
+                    print(f"    {n:18s} Z80 {gv:6d} != αναφορά {wv:6d}")
         return 1
 
     # --- τα θερμοκήπια, οι θύελλες και οι βλάβες (§6.8, §6.10) ---
@@ -253,7 +264,10 @@ def main():
     # κώδικας είναι ο ίδιος που μόλις αποδείχθηκε ταυτόσημος με τον Z80.
     HAZ = TICKS * 4
     broke = repaired = storm_revs = 0
+    landings = crew_landed = 0
+    was_landed = False
     watch = fresh(g, nexthop, sim0)
+    head_before = sum(1 for i in range(128) if watch.a.flags[i] & E.F_ALIVE)
     prev = bytes(watch.e.dome)
     for _ in range(HAZ):
         watch.tick()
@@ -267,6 +281,15 @@ def main():
                     repaired += 1
         if watch.e.storm:
             storm_revs += 1
+        # Η άφιξη πιάνεται ΤΗ ΣΤΙΓΜΗ που γίνεται. «Ηταν νεκρός, τώρα ζει» δεν
+        # δουλεύει: οι καινούργιοι παίρνουν τις ταυτότητες όσων πέθαναν.
+        head = sum(1 for i in range(128) if watch.a.flags[i] & E.F_ALIVE)
+        if watch.e.ship_state == EC.SHIP_LANDED and not was_landed:
+            if watch.e.ship_kind == EC.SK_COLONIST:
+                crew_landed += head - head_before
+            landings += 1
+        was_landed = watch.e.ship_state == EC.SHIP_LANDED
+        head_before = head
         prev = now
 
     # Το θερμοκήπιο συνεισφέρει; Το ίδιο τρέξιμο με άδειες γλάστρες.
@@ -301,6 +324,35 @@ def main():
           f"παρηγοριά {got_econ[62]}")
     print(f"OK κίνδυνοι: {storm_revs} frames αμμοθύελλας, {broke} βλάβες, "
           f"{repaired} επισκευές με ανταλλακτικό")
+
+    # --- πλοία, εμπόριο, ορόσημα (§6.11, §10.2) ---
+    if landings == 0 or crew_landed <= 0:
+        print(f"ΑΠΟΤΥΧΙΑ πλοία: {landings} προσγειώσεις, {crew_landed} άποικοι")
+        return 1
+
+    # Τα ορόσημα μετριούνται σε sols· τα βλέπουμε στο μακρύ παράθυρο.
+    mile = watch.e.milestones
+    want_bits = EC.M_FOOTHOLD | EC.M_INDUSTRY | EC.M_INDEPENDENCE
+    if mile & want_bits != want_bits:
+        print(f"ΑΠΟΤΥΧΙΑ ορόσημα: {mile:05b} — λείπουν "
+              f"{(want_bits & ~mile):05b} μετά από {watch.e.sol} sols")
+        return 1
+
+    # Το εμπόριο είναι πράξη του παίκτη: εδώ δοκιμάζεται ο μηχανισμός.
+    tr = fresh(g, nexthop, sim0)
+    tr.e.ship_state, tr.e.ship_kind = EC.SHIP_LANDED, EC.SK_MERCHANT
+    tr.e.no_trade_sols = 9
+    before_metal = tr.e.stock[EC.S_METAL]
+    if not EC.trade(tr.e, EC.S_ORE, 10, EC.S_METAL, 4):
+        print("ΑΠΟΤΥΧΙΑ: η ανταλλαγή με τον έμπορο δεν έγινε")
+        return 1
+    if tr.e.stock[EC.S_METAL] != before_metal + 4 or not tr.e.traded:
+        print("ΑΠΟΤΥΧΙΑ: η ανταλλαγή δεν άλλαξε τα αποθέματα σωστά")
+        return 1
+    print(f"OK πλοία:    {landings} προσγειώσεις, {crew_landed} άποικοι στην "
+          f"πίστα (κόμβος {got_econ[81]}), ταβάνι {got_econ[74]}")
+    print(f"OK ορόσημα:  {mile:05b} μετά από {watch.e.sol} sols "
+          f"— εμπόριο δοκιμασμένο, το σερί έσπασε")
 
     # --- οι ανάγκες όντως δάγκωσαν; ---
     ag0 = E.Agents().from_bytes(sim0.a.to_bytes())

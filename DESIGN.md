@@ -823,9 +823,16 @@ if TRANS:                    p += speed
 Two cases the sketch above leaves out, both of which the implementation has to
 answer and neither of which is a special case:
 
-- **The far node is full.** All 8 ring slots taken, so there is no slot to claim.
-  The agent stays in `TRANS` with `progress` pinned at 255 and retries next
-  revolution — it queues at the door. Deterministic, and it reads as a crowded dome.
+- **The far node is full.** All 8 ring slots taken. The colonist **goes in
+  anyway**, with `slot = 255`: present, but not drawn. The ring has eight places
+  because the sprite has eight, and that is a *drawing* limit, not a door.
+
+  It was a door in the first version — the colonist waited outside with `progress`
+  pinned at 255 — and that produced a deadlock nobody would find by reading: **a full
+  dome whose machine had broken could never be repaired.** The mechanic queued at the
+  entrance, and the eight inside had no reason to leave, because their needs were met.
+  The colony simply lost a machine permanently. Found by watching an engineer stand
+  outside dome 12 for 2,560 frames with the repair job still in his hand.
 - **`NEXTHOP` says unreachable.** The agent sets `dest = node` and gives up rather
   than standing still forever with an impossible order. This is what happens to
   anyone whose destination was cut off while they were walking to it.
@@ -1160,7 +1167,8 @@ so nothing shifts.
 **Neither is packed yet.** `MACH` in `tools/pack.py` and `tools/econ.py` still lists
 ten, so bank 2 is unchanged apart from `machine_rules` growing by two bytes. Adding
 them costs **292 bytes**: 264 for the two sprites, 4 for `mach_ptr`, and 24 for
-`room_machines` if that table is packed too — against 1,534 free, so it fits.
+`room_machines` is packed with the other asset tables and the placement rule it
+describes belongs to build mode ([§9.3](#93-build-flow)), which is not written.
 
 ### 6.9 Construction
 
@@ -1222,17 +1230,30 @@ malfunction and its high bits for a flare.
 
 ### 6.11 Ships and arrivals
 
-A Control room lets you call ships to the landing pad:
+A Control room lets you call ships to the landing pad. **One ship at a time**, and
+none at all without a pad — the pad is a structure, and its node id is found by the
+same pass that indexes rooms ([§6.6](#66-needs)).
 
-- **Colonist ship** — you request a *mix* of roles; that is the only control you have
-  over who you get. Costs nothing but takes time to arrive.
-- **Merchant ship** — trade surplus stock for what you cannot make yet. This is the
-  early-game lifeline and the mid-game trap: a colony that trades for spares forever
-  never builds a factory.
-- **Visitors** — arrive unbidden, consume resources, raise morale, leave. Manageable
-  when things are going well, a genuine insult when they are not.
+| Ship | What it does | Built? |
+|---|---|---|
+| **Colonist** | four new colonists appear at the pad, full bars, roles spread | ✅ |
+| **Visitor** | arrives unbidden, eats, raises everyone's morale, leaves | ✅ |
+| **Merchant** | `trade()` swaps stock for stock while it is landed | ✅ mechanism |
 
-Ships need a landing pad sprite that does not exist yet — [ASSET-5](#12-asset-gaps).
+A ship is `INCOMING` for 24 revolutions, `LANDED` for 8, then gone. Colonists take
+the first free agent ids — which are usually the ids of people who have died, so
+counting "was dead, now alive" is not how you detect an arrival.
+
+**The colonist cap comes from Control rooms**, 48 each plus a base of 4. That number
+is a first guess like every other in [§6.5](#65-economy): at 8 per Control a colony of
+ninety could not legally contain itself, and no colonist ship meant anything.
+
+**Trade is a player action, not a wheel pass.** The mechanism lives here; the button
+that calls it belongs in [§9](#9-interface). Trading sets a flag that breaks the
+no-trade streak, which is the whole reason Independence in
+[§10.2](#102-milestones) is hard to keep rather than hard to reach.
+
+Merchants and colonist ships must be **called**; visitors arrive on their own roll.
 
 ---
 
@@ -1261,15 +1282,15 @@ it could live here.
 |---|---|---|---|---|
 | 0–7 | Agent movement | 12 agents each | 1,800 µs | **1,298 µs** ✅ |
 | 8–10 | Needs, health, death, deciding | 8 colonists each ([§6.6](#66-needs)) | 433 µs | **2,796 µs** ❌ 6.5× |
-| 11 | Production, machines and plants | 16 domes | 4,000 µs | **6,290 µs** ❌ 1.6× |
-| 12 | Flow balance | 64 structures, plus counting the living | 2,000 µs | **5,891 µs** ❌ 2.9× |
-| 13 | Job board — reap, arrive, post, assign | 4 domes, 32 agents | 3,000 µs | **4,892 µs** ❌ 1.6× |
-| 14 | Room index and amenity ([§6.6](#66-needs)) | 64 domes | *(was empty)* | **5,391 µs** |
-| 15 | Events: clock, weather, hazards ([§6.10](#610-events-and-hazards)) | three rolls | 500 µs | **200 µs** ✅ |
+| 11 | Production, machines and plants | 16 domes | 4,000 µs | **5,691 µs** ❌ 1.4× |
+| 12 | Flow balance | 64 structures, plus counting the living | 2,000 µs | **7,887 µs** ❌ 3.9× |
+| 13 | Job board — reap, arrive, post, assign | 4 domes, 32 agents | 3,000 µs | **4,692 µs** ❌ 1.6× |
+| 14 | Room index, amenity, pad, population cap | 64 domes | *(was empty)* | **7,188 µs** |
+| 15 | Events, ships, and the milestone check once a sol | three rolls | 500 µs | **499 µs** ✅ |
 | — | wheel dispatch itself | every frame | — | **94 µs** |
 
-**A whole revolution costs about 68,000 µs spread over 16 frames — a fifth of the
-machine — and the worst single frame is 6,290 µs, under a third of one.** That is the number the
+**A whole revolution costs 73,400 µs spread over 16 frames — under a quarter of the
+machine — and the worst single frame is 7,887 µs, 40 % of one.** That is the number the
 design lives or dies by, and it has room.
 
 Five of the seven budgets were low, by 1.3× to 6.2×. The one pass that came in under
@@ -1298,8 +1319,8 @@ The room index of [§6.6](#66-needs) has since moved into it.
 Every frame, regardless of slot:Every frame, regardless of slot: read input, move cursor and camera, advance the dirty
 list ([§8.5](#85-the-dirty-list)) up to a 20,000 µs cap, tick animation, service audio.
 
-The worst *frame* is a production slot during a routing rebuild: 6,290 + 2,700 + 94
-≈ **9,200 µs, under half the frame**. That leaves 10,800 µs for rendering — and a
+The worst *frame* is a flow-balance slot during a routing rebuild: 7,887 + 2,700 + 94
+≈ **10,700 µs, just over half the frame**. That leaves 9,300 µs for rendering — and a
 single scroll column costs 9,300 µs ([§8.3](#83-the-tile-pass)). **The two together
 very nearly fill the frame**, which is exactly why the dirty list is a *budget* rather
 than a queue that must be drained: on a frame where the sim is heavy, the scroll edge
@@ -1590,13 +1611,30 @@ should take to realise you need power before you need anything else.
 No victory screen — Planetbase's own choice, and the right one for a game about a
 colony that either continues or does not.
 
-| Milestone | Requirement |
-|---|---|
-| Foothold | 10 colonists, all needs green for one sol |
-| Industry | Metal, Bioplastic and Spares produced on site |
-| Independence | all ten stocks produced on site; no merchant trade for five sols |
-| Automation | 8 bots working |
-| Habitat | 80 colonists, independent, five consecutive sols with no deaths |
+| Milestone | Requirement | Reachable today? |
+|---|---|---|
+| Foothold | 10 colonists, all needs green for one sol | ✅ |
+| Industry | Metal, Bioplastic and Spares produced on site | ✅ |
+| Independence | all ten stocks produced on site; no merchant trade for five sols | ✅ |
+| Automation | 8 bots working | ❌ — no job kind a bot can take exists yet |
+| Habitat | 80 colonists, independent, five consecutive sols with no deaths | ✅ |
+
+**"All needs green" is the colony's indicator, not every colonist's bar.** With ninety
+people somebody is always walking to the canteen, and a milestone that can never be
+met is not a milestone. It reads oxygen, power, and whether there is any water and
+food at all — which is what a player would see on the HUD.
+
+Everything is counted **once per sol**, in one pass, and never inside the hot slots:
+128 agents every 750 revolutions costs nothing. Milestones are sticky; streaks are not.
+
+**Automation cannot fire yet, and that is honest rather than broken.** Bots are
+eligible only for Haul, Drill and Build ([§6.7](#67-jobs)), and none of those job
+kinds is posted by anything yet — Haul and Drill need structures with output,
+Build needs construction sites ([§6.9](#69-construction)).
+
+**The sol length is data, not a constant.** A test that wants to watch five sols
+cannot wait 60,000 frames, so `sollen` and `daylen` live in the economy record. The
+game ships with 12,000 and 7,200.
 
 ### 10.3 Failure
 
@@ -1764,6 +1802,9 @@ order, and do not build gameplay on top of a scroll that has not been proven on 
 | A heavy sim slot and a scroll column in the same frame come to ~19 ms of 20 | Medium | The dirty list is a budget, so the edge redraw spreads over two frames. Costs nothing but a one-frame lag on the newly exposed column; needs watching once the HUD re-render ([§8.1](#81-screen-layout)) is measured too. |
 | ~~Needs, health and death are not written~~ | ~~High~~ | **Written.** Colonists eat, drink, sleep, get treated, die, and grieve; the only loss condition is live ([§6.6](#66-needs)). |
 | ~~Nothing produces food~~ | ~~High~~ | **Greenhouses grow.** Plants sit in the machine slots, `plant_class` decides the crop, and every plant needs a biologist ([§6.5](#65-economy)). |
+| ~~Ships, trade and milestones are unbuilt~~ | ~~Medium~~ | **Built**, except Automation, which waits on bot-eligible jobs ([§10.2](#102-milestones)). |
+| **A heavy sim frame plus a scroll column now comes to 19.9 ms of 20** | High | The flow-balance slot grew with the structure count. It re-scans 64 structures every revolution for numbers that change slowly; the fix is the same one production already took — accumulate during a pass that walks them anyway. Until then the dirty list must spread the scroll edge over two frames. |
+| Nothing the player does exists: no build mode, no input, no HUD, nothing drawn since milestone 5 | High | Everything since has been simulation, verified headlessly against a reference. [§9](#9-interface) and [§6.9](#69-construction) are the whole remaining half of the game. |
 | Meteors and intruders are unbuilt, and both need the renderer first | Medium | Meteors write terrain, so they need the world plane and the dirty list; intruders need edge spawning and combat. Neither is a simulation problem, which is why neither is in [§6.10](#610-events-and-hazards) yet. |
 | Ships, trade and milestones are unbuilt — [§6.11](#611-ships-and-arrivals) and [§10.2](#102-milestones) | Medium | The colony sustains itself but cannot grow: no new colonists arrive and nothing can be traded for. This is what makes it a sandbox rather than a game. |
 | The balance numbers in [§6.5](#65-economy) are first guesses and three of them were unlivable | Medium | Corrected against the first working colony ([§6.6](#66-needs)). Expect the same of the rest: they cannot be checked by reading, only by running the loop and looking at who is where. |

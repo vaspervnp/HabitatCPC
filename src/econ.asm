@@ -35,6 +35,20 @@ EC_GAMEOVER equ G_econ_state + 59       ; §10.3 — η μόνη συνθήκη 
 EC_GLOOM    equ G_econ_state + 60       ; πένθος: ανεβαίνει με κάθε θάνατο
 EC_STORM    equ G_econ_state + 61       ; περιστροφές αμμοθύελλας (§6.10)
 EC_AMENITY  equ G_econ_state + 62       ; δέντρα και σαλόνια (§6.6)
+EC_SOLLEN   equ G_econ_state + 64       ; frames ανά sol — ΔΕΔΟΜΕΝΟ (§6.11)
+EC_DAYLEN   equ G_econ_state + 66
+EC_PRODM    equ G_econ_state + 68       ; ποια αποθέματα φτιάχτηκαν ΕΔΩ
+EC_SHETA    equ G_econ_state + 70
+EC_SHSTATE  equ G_econ_state + 72
+EC_SHKIND   equ G_econ_state + 73
+EC_POPCAP   equ G_econ_state + 74
+EC_MILE     equ G_econ_state + 75       ; τα πέντε ορόσημα του §10.2
+EC_DEATHS   equ G_econ_state + 76
+EC_NODEATH  equ G_econ_state + 77
+EC_GREENS   equ G_econ_state + 78
+EC_NOTRADE  equ G_econ_state + 79
+EC_TRADED   equ G_econ_state + 80
+EC_PADNODE  equ G_econ_state + 81
 
 EC_CAP      equ 600                     ; ταβάνι αποθέματος
 DOME_REC    equ 24
@@ -54,6 +68,8 @@ R_GREENHS   equ 5
 R_LOUNGE    equ 11
 STORM_LEN   equ 32
 S_WATER     equ 0
+S_FOOD      equ 1
+S_ORE       equ 2
 S_STARCH    equ 10
 S_VEG       equ 11
 S_MEDPLANT  equ 12
@@ -237,6 +253,7 @@ ec_run_plant:
         ld      d,0
         cp      NO_STOCK
         ret     z
+        call    ec_mark
         jp      ec_add_stock
 
 plant_out:  db S_STARCH,3, S_VEG,2, S_MEDPLANT,2, NO_STOCK,0
@@ -355,9 +372,39 @@ erm_stock:
         ld      a,(ix+6)                ; δείκτης αποθέματος
         cp      NO_STOCK
         ret     z
+        call    ec_mark                 ; φτιάχτηκε ΕΔΩ (§10.2)
         ld      e,(ix+7)
         ld      d,0
         jp      ec_add_stock
+
+; ec_mark — A = δείκτης αποθέματος. Σημειώνει ότι βγήκε από την αποικία.
+ec_mark:
+        push    af
+        push    bc
+        push    de
+        push    hl
+        ld      b,a
+        ld      hl,1
+        inc     b
+ecm_sh:
+        dec     b
+        jr      z,ecm_or
+        add     hl,hl
+        jr      ecm_sh
+ecm_or:
+        ld      de,(EC_PRODM)
+        ld      a,h
+        or      d
+        ld      h,a
+        ld      a,l
+        or      e
+        ld      l,a
+        ld      (EC_PRODM),hl
+        pop     hl
+        pop     de
+        pop     bc
+        pop     af
+        ret
 
 ; ec_have — A = δείκτης αποθέματος, C = ποσότητα.
 ;           Επιστρέφει DE = &stock[A], Cy=1 αν ΔΕΝ φτάνει.
@@ -640,11 +687,26 @@ ef_blackout:
         jr      ef_o2                   ; χωρίς ρεύμα δεν αντλεί κανείς
 
 ef_pumps:
-        xor     a                       ; S_WATER
+        ; Το νερό και το μετάλλευμα βγαίνουν από ΔΟΜΕΣ, όχι από μηχανές
+        ; θόλου — αλλά βγαίνουν εδώ, και το §10.2 τα θέλει.
+        ld      hl,(ef_wat)
+        ld      a,h
+        or      l
+        jr      z,ef_pump2
+        ld      a,S_WATER
+        call    ec_mark
         ld      de,(ef_wat)
+        ld      a,S_WATER
         call    ec_add_stock
-        ld      a,2                     ; S_ORE
+ef_pump2:
+        ld      hl,(ef_ore)
+        ld      a,h
+        or      l
+        jr      z,ef_o2
+        ld      a,S_ORE
+        call    ec_mark
         ld      de,(ef_ore)
+        ld      a,S_ORE
         call    ec_add_stock
 
 ef_o2:
@@ -692,19 +754,23 @@ econ_events:
         ld      hl,(EC_FRAME)
         ld      de,16                   ; μία περιστροφή
         add     hl,de
-        ld      de,SOL_FRAMES
+        ld      de,(EC_SOLLEN)
         or      a
         sbc     hl,de
         jr      nc,ev_newsol
         add     hl,de
+        xor     a
+        ld      (ev_newday),a
         jr      ev_store
 ev_newsol:
         ld      a,(EC_SOL)
         inc     a
         ld      (EC_SOL),a
+        ld      a,1
+        ld      (ev_newday),a
 ev_store:
         ld      (EC_FRAME),hl
-        ld      de,DAY_FRAMES
+        ld      de,(EC_DAYLEN)
         or      a
         sbc     hl,de
         ld      a,0
@@ -764,17 +830,27 @@ ev_fault:                               ; --- απλή βλάβη: χαμηλά 
         ld      hl,(ev_r3)
         ld      a,l
         and     #1F
-        jr      nz,ev_flare
+        jr      nz,ev_visit
         ld      hl,(ev_r3)
         ld      b,5
         call    ev_shr
         call    ec_break
 
+ev_visit:                               ; --- απρόσκλητοι επισκέπτες (§6.11) ---
+        ld      hl,(ev_r2)
+        ld      a,l
+        and     #3F
+        jr      nz,ev_flare
+        ld      a,SK_VISITOR
+        call    ship_call
+
 ev_flare:                               ; --- έκλαμψη: ψηλά του ίδιου ---
         ld      hl,(ev_r3)
         ld      a,h
         or      a
-        ret     nz
+        jr      z,ev_fl_go
+        jp      ev_after
+ev_fl_go:
         ld      hl,(ev_r3)
         ld      de,37
         add     hl,de
@@ -790,7 +866,8 @@ ev_flare:                               ; --- έκλαμψη: ψηλά του ί
         call    ev_shr
         ld      de,173
         add     hl,de
-        jp      ec_break
+        call    ec_break
+        jp      ev_after
 
 ; ev_rnd — Galois, ίδιος με τη γεννήτρια κόσμου, ΞΕΧΩΡΙΣΤΗ κατάσταση.
 ev_rnd:
@@ -880,6 +957,13 @@ ec_break:
         ld      (hl),0
         ret
 
+ev_after:
+        ld      a,(ev_newday)
+        or      a
+        call    nz,sol_rollover
+        jp      ship_tick
+
+ev_newday:  db 0
 ev_r1:      dw 0
 ev_r2:      dw 0
 ev_r3:      dw 0
