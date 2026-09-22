@@ -10,13 +10,13 @@
 ; επικαλύπτονταν, η δεύτερη θα έσωζε ό,τι είχε ήδη γράψει η πρώτη και η
 ; αναίρεση θα άφηνε το φάντασμα καρφωμένο στην οθόνη.
 
-GH_LOG      equ 1600
+; το GH_LOG και το GH_BUF είναι στο const.asm
 
 ; ---------------------------------------------------------------------------
 ; gh_reset — άδειο αρχείο.
 ; ---------------------------------------------------------------------------
 gh_reset:
-        ld      hl,gh_buf
+        ld      hl,GH_BUF
         ld      (gh_ptr),hl
         ret
 
@@ -53,7 +53,7 @@ gh_run:
         ld      c,a
         ld      b,0
         add     hl,bc
-        ld      bc,gh_buf + GH_LOG
+        ld      bc,GH_BUF + GH_LOG
         or      a
         sbc     hl,bc
         pop     bc
@@ -82,7 +82,7 @@ gr_lp:
 ; gh_undo — όλα πίσω, με τη σειρά που γράφτηκαν (δεν επικαλύπτονται).
 ; ---------------------------------------------------------------------------
 gh_undo:
-        ld      hl,gh_buf
+        ld      hl,GH_BUF
 gu_lp:
         ld      de,(gh_ptr)
         ld      a,l
@@ -238,7 +238,7 @@ gh_mark:
         add     hl,de
         ld      (gh_y),hl
         ld      b,4
-gm_lp:
+ghm_lp:
         push    bc
         ld      a,2
         ld      (gh_n),a
@@ -247,7 +247,7 @@ gm_lp:
         inc     hl
         ld      (gh_y),hl
         pop     bc
-        djnz    gm_lp
+        djnz    ghm_lp
         ret
 
 ; gh_setpen — A = pen -> το byte γεμίσματος στο gh_pen.
@@ -271,4 +271,3 @@ gh_bx:      dw 0
 gh_by:      dw 0
 gh_bw:      db 0
 gh_bh:      db 0
-gh_buf:     defs GH_LOG

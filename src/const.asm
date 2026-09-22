@@ -31,8 +31,15 @@ Q_SE        equ 3           ; και τα δύο
 ; --- οι εγγραφές των πινάκων της τράπεζας 6 (§6.1) ---
 ; Εδώ και όχι στο econ.asm: ο renderer τις διαβάζει χωρίς να θέλει τίποτε άλλο
 ; από την οικονομία, και ο assembler δεν συγχωρεί δύο ορισμούς.
+; ΟΙ ΚΟΜΒΟΙ ΕΙΝΑΙ 96, ΟΧΙ 128, και αυτό είναι απόφαση χάρτη μνήμης (§4.2). Οι
+; δύο πίνακες δρομολόγησης είναι κόμβοι x 128 bytes ο καθένας, δηλαδή 12 KB
+; αντί για 16 — και τα 4 KB που ελευθερώνονται στην τράπεζα 1 πήραν τα
+; εικονίδια δωματίων m και l, που με τη σειρά τους ελευθέρωσαν 3.936 bytes
+; ΚΩΔΙΚΑ στην τράπεζα 2. Ο κόμβος ενός θόλου είναι το id του, μιας δομής
+; MAX_DOME + id: 64 + 32 = 96.
 MAX_DOME    equ 64
-MAX_STRUCT  equ 64
+MAX_STRUCT  equ 32
+MAX_NODE    equ MAX_DOME + MAX_STRUCT
 MAX_CORR    equ 96
 DOME_REC    equ 24
 D_CX        equ 0
@@ -62,7 +69,18 @@ DS_EMPTY    equ 0
 DS_BUILDING equ 1
 DS_ACTIVE   equ 2
 NO_MACH     equ 255
+; --- οι δώδεκα τύποι δωματίου, με τη σειρά των εικονιδίων του pack.py ---
+R_EMPTY     equ 0
+R_CONTROL   equ 1
+R_QUARTERS  equ 2
+R_CANTEEN   equ 3
+R_OXYGEN    equ 4
 R_GREENHS   equ 5
+R_STORAGE   equ 6
+R_AIRLOCK   equ 7
+R_FACTORY   equ 8
+R_LAB       equ 9
+R_MEDBAY    equ 10
 R_LOUNGE    equ 11
 K_SOLAR     equ 0
 K_TURBINE   equ 1
@@ -164,3 +182,27 @@ J_DEFEND    equ 6
 
 ; --- ο γράφος κόμβων (§6.2). Εδώ επειδή τον γράφει και το build mode.
 MAX_DEGREE  equ 8
+
+; --- τα πεδία των πρακτόρων (§6.1), σε παράλληλες στήλες των 128.
+; Εδώ και όχι στο entity.asm: τα διαβάζει και ο renderer, και ο assembler δεν
+; συγχωρεί δύο ορισμούς — αυτό ήταν το πρώτο που έσπασε όταν τα δύο μισά του
+; παιχνιδιού μπήκαν για πρώτη φορά στο ίδιο binary.
+AG_PG       equ G_agent_fields / 256
+AG_FLAGS    equ G_agent_fields               ; +0 flags   +128 role
+AG_NODE     equ G_agent_fields + 256         ; +0 node    +128 slot
+AG_DEST     equ G_agent_fields + 512         ; +0 dest    +128 edge
+AG_PROG     equ G_agent_fields + 768         ; +0 progress +128 task
+AG_O2       equ G_agent_fields + 1024        ; +0 o2      +128 water
+AG_FOOD     equ G_agent_fields + 1280        ; +0 food    +128 sleep
+AG_HEALTH   equ G_agent_fields + 1536        ; +0 health  +128 morale
+AG_SKILL    equ G_agent_fields + 1792        ; +0 skill   +128 spare
+OCCPG       equ G_node_occ / 256
+
+; --- η ελεύθερη τράπεζα 2, μοιρασμένη (§4.3).
+; Πρώτα οι δύο μεγάλοι buffers και μετά κώδικας. Η τράπεζα 2 φαίνεται πάντα,
+; οπότε και τα δύο δουλεύουν χωρίς σελιδοποίηση· αυτό που κερδίζεται είναι
+; χώρος στην τράπεζα 0, που είναι η μόνη σπάνια.
+GH_BUF      equ PAGE2_TOP
+GH_LOG      equ 1600
+DOME_FIG    equ GH_BUF + GH_LOG     ; 64 θόλοι x 8 θέσεις
+PAGE2_CODE  equ DOME_FIG + 512      ; από εδώ και πάνω, κώδικας

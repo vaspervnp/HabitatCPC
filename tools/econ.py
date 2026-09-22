@@ -85,7 +85,7 @@ DS_EMPTY, DS_BUILDING, DS_ACTIVE = 0, 1, 2
 
 # --- δομές ----------------------------------------------------------------
 STRUCT_REC = 8
-MAX_STRUCT = 64
+MAX_STRUCT = 32          # §4.2: 64 θόλοι + 32 δομές = 96 κόμβοι
 ST_CX, ST_CY, ST_KIND, ST_SIZE, ST_STATE, ST_INTEG, ST_OUT, ST_SPARE = range(8)
 
 # είδη δομών, με τη σειρά του STRUCTS στο pack.py (solar/turbine/collector/
@@ -422,7 +422,7 @@ def to_bytes(e):
 ECON_BYTES = 64 + 8 + 10                            # + sol/ship/ορόσημα = 82
 
 
-def populate(e, n_dome=24, n_struct=36, seed=11):
+def populate(e, n_dome=24, n_struct=30, seed=11):
     """Μια αποικία που όντως δουλεύει: παραγωγοί ρεύματος, αντλίες, ορυχείο,
     και θόλοι με μηχανές που έχουν πού να τραβήξουν. Ντετερμινιστική."""
     x = seed

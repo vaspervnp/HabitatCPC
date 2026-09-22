@@ -41,3 +41,4 @@ python3 tests/test_dirty.py
 python3 tests/test_input.py
 python3 tests/test_build.py
 python3 tests/test_route.py
+python3 tests/test_game.py

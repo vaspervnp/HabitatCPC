@@ -206,6 +206,8 @@ done_flag:  db 0
 ; --- σελίδα 2: αρένες + περιοχή οθόνης HUD ---
         org     #8000
         incbin  "../build/page2.bin"
+        org     #7000
+        incbin  "../build/bank1.bin"     ; εικονίδια m και l (§4.2)
 
 ; --- τράπεζες 4-7 ---
         bankset 1

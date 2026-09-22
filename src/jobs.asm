@@ -102,12 +102,15 @@ ja_lp:
         cp      255
         jp      nz,ja_next              ; ακόμη στον σωλήνα
 
-        ; --- επισκευή; τότε ο μηχανικός φτάνει, αλλάζει το εξάρτημα, φεύγει ---
+        ; --- κατασκευή; τότε ο πράκτορας δουλεύει και μένει ---
         pop     hl
         push    hl
         ld      a,(hl)
+        cp      J_BUILD
+        jp      z,ja_build
+        ; --- επισκευή; τότε ο μηχανικός φτάνει, αλλάζει το εξάρτημα, φεύγει ---
         cp      J_REPAIR
-        jr      nz,ja_operate
+        jp      nz,ja_operate
         ld      a,c
         ld      (jb_d),a
         call    jb_broken
@@ -148,6 +151,57 @@ ja_fail:
         inc     hl
         ld      (hl),255
         jp      ja_next
+; ---------------------------------------------------------------------------
+; ja_build — ο πράκτορας δουλεύει στο εργοτάξιο (§6.9 βήμα 3). C = ο κόμβος.
+;
+; Η ΠΡΟΟΔΟΣ ΕΙΝΑΙ Η ΑΚΕΡΑΙΟΤΗΤΑ. Το §6.9 λέει «η πρόοδος είναι ένα byte» και η
+; εγγραφή έχει ήδη ένα: το bd_commit γράφει ακεραιότητα 0, και η κατασκευή την
+; ανεβάζει ως το 255 — οπότε ένα μισοχτισμένο κτίριο είναι το ίδιο πράγμα με
+; ένα μισοκατεστραμμένο, που είναι σωστό και γλιτώνει ένα byte ανά κόμβο.
+;
+; Το D_STATE και το D_INTEG είναι στα ίδια offsets με το ST_STATE και το
+; ST_INTEG, οπότε θόλος και δομή περνούν από τον ίδιο κώδικα.
+BUILD_STEP  equ 32                  ; οκτώ επισκέψεις = ~2,6 δευτερόλεπτα
+
+ja_build:
+        ld      a,c
+        cp      MAX_DOME
+        jr      c,jab_dome
+        sub     MAX_DOME
+        ld      l,a
+        ld      h,0
+        add     hl,hl
+        add     hl,hl
+        add     hl,hl                   ; *STRUCT_REC
+        ld      de,G_struct_tbl
+        add     hl,de
+        jr      jab_rec
+jab_dome:
+        call    jb_dome_ptr
+jab_rec:
+        push    hl
+        ld      de,D_INTEG
+        add     hl,de
+        ld      a,(hl)
+        add     a,BUILD_STEP
+        jr      nc,jab_st
+        ld      a,255
+jab_st:
+        ld      (hl),a
+        pop     hl
+        cp      255
+        jp      nz,ja_next              ; ακόμη χτίζεται· η εργασία μένει
+        ld      de,D_STATE
+        add     hl,de
+        ld      (hl),DS_ACTIVE
+        ld      a,1
+        ld      (wh_built),a            ; το κτίριο πρέπει να φανεί
+        call    ja_cleartask
+        pop     hl
+        push    hl
+        ld      (hl),NO_JOB
+        jp      ja_next
+
 ja_cleartask:
         ld      a,(jb_ag)
         ld      e,a

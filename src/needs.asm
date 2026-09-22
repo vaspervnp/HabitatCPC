@@ -16,10 +16,7 @@
 NEED_LOW    equ 64
 NEED_CRIT   equ 16
 O2_REFILL   equ 2
-R_QUARTERS  equ 2
-R_CANTEEN   equ 3
-R_MEDBAY    equ 10
-ROOM_MAX    equ 8
+ROOM_MAX    equ 8       ; τα R_* είναι στο const.asm
 
 ; ---------------------------------------------------------------------------
 ; ent_needs_slice — C = πρώτος, B = πλήθος.

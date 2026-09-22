@@ -22,7 +22,16 @@ from sprites import load_map, load_bin, ROOT
 # --- γεωμετρία ------------------------------------------------------------
 PAGE2_BASE  = 0x8000                # τράπεζα 2: επίπεδη, πάντα ορατή
 WINDOW_BASE = 0x4000                # όπου φαίνονται οι τράπεζες 4-7
+
 BANK_SIZE   = 0x4000
+# Ο πίνακας DIST είναι κόμβοι x 128 bytes. Με 96 κόμβους (DESIGN §4.2) πιάνει
+# 12 KB από τα 16 της τράπεζας 1, και τα τελευταία 4 KB μένουν — εκεί πάνε τα
+# εικονίδια δωματίων m και l, που ελευθερώνουν ισόποσο χώρο ΚΩΔΙΚΑ στην 2.
+# Η τράπεζα 1 είναι η ΠΡΟΕΠΙΛΟΓΗ του παραθύρου, οπότε δεν κοστίζει σελίδα σε
+# κανέναν εκτός από το πέρασμα αντικειμένων, που έχει την 6 μέσα.
+MAX_NODE = 96
+BANK1_BASE = WINDOW_BASE + MAX_NODE * 128
+BANK1_SIZE = BANK_SIZE - MAX_NODE * 128
 
 
 class Fail(SystemExit):
@@ -101,7 +110,7 @@ def build_runs(smap, blob):
     STRUCTS = ([f"{k}_{s}" for k in ("solar", "turbine", "collector", "extractor")
                 for s in ("s", "m", "l")] + ["mine", "airlock", "pad", "ship"])
 
-    arena, bank6, bank7 = [], [], []
+    arena, bank1, bank6, bank7 = [], [], [], []
     ptr = {}            # όνομα πίνακα -> λίστα ονομάτων run, για 2ο πέρασμα
 
     # --- έδαφος: συνεχόμενο ΑΝΑ ΚΛΑΣΗ μόνο (tile_ptr[class] + variant*64) ---
@@ -117,10 +126,14 @@ def build_runs(smap, blob):
     # bytes ΣΥΝΕΧΟΜΕΝΑ — δεν χωράνε σε αρένα 1.648. Με πίνακα δεικτών κάθε
     # εικονίδιο μπαίνει όπου βρεθεί χώρος, και η αναζήτηση είναι ΚΑΙ πιο
     # γρήγορη: το *200 και το *72 δεν είναι ολισθήσεις.
+    # Τα m και l πάνε στην ΤΡΑΠΕΖΑ 1, πάνω από τον πίνακα DIST· τα s μένουν
+    # στη 2. Οι πίνακες δεικτών μένουν και οι τρεις στη 2 — διαβάζονται όσο το
+    # παράθυρο έχει την 6 μέσα, και η 2 φαίνεται πάντα.
     for size in ("s", "m", "l"):
         names = [f"icon_{size}_{r}" for r in ROOMS]
+        dest = arena if size == "s" else bank1
         for n in names:
-            arena.append(spr(n))
+            dest.append(spr(n))
         ptr[f"icon_{size}_ptr"] = names
 
     # --- μηχανές: *132, ίδιο σκεπτικό ---------------------------------------
@@ -217,7 +230,7 @@ def build_runs(smap, blob):
     # στον μεγάλο θόλο, και το §6.1 του έδινε machines[4] health[4].
     bank6.append(Run("dome_tbl", 64 * 24, None, note="ΔΕΣΜΕΥΣΗ — 64 θόλοι x 24"))
 
-    bank6.append(Run("struct_tbl", 64 * 8, None, note="ΔΕΣΜΕΥΣΗ — 64 δομές"))
+    bank6.append(Run("struct_tbl", 32 * 8, None, note="ΔΕΣΜΕΥΣΗ — 32 δομές"))
     bank6.append(Run("corr_tbl", 96 * 5, None, note="ΔΕΣΜΕΥΣΗ — 96 διάδρομοι"))
     # Ο πάγκος διαδρομών ΕΦΥΓΕ από εδώ: η BFS σελιδοποιεί το &4000 όσο τρέχει,
     # οπότε δεν μπορεί να κρατά τα δεδομένα της σε σελιδοποιημένη τράπεζα.
@@ -234,20 +247,21 @@ def build_runs(smap, blob):
     bank7.append(Run("text", 1024, None, note="ΔΕΣΜΕΥΣΗ — δεν έχει παραδοθεί"))
     bank7.append(Run("audio", 2048, None, note="ΔΕΣΜΕΥΣΗ — δεν έχει παραδοθεί"))
 
-    return arena, bank6, bank7, ptr
+    return arena, bank1, bank6, bank7, ptr
 
 
 def pack():
     """Στρώνει τα πάντα. Επιστρέφει (arena, bank6, bank7, ptr, images).
     Σκάει με Fail αν κάτι δεν χωράει."""
     smap, blob = load_map(), load_bin()
-    arena, bank6, bank7, ptr = build_runs(smap, blob)
+    arena, bank1, bank6, bank7, ptr = build_runs(smap, blob)
 
     u2 = pack_flat(arena, PAGE2_BASE, BANK_SIZE, "τράπεζα 2")
+    u1 = pack_flat(bank1, BANK1_BASE, BANK1_SIZE, "τράπεζα 1 (πάνω από το DIST)")
     u6 = pack_flat(bank6, WINDOW_BASE, BANK_SIZE, "τράπεζα 6")
     u7 = pack_flat(bank7, WINDOW_BASE, BANK_SIZE, "τράπεζα 7")
 
-    by_name = {r.name: r for r in arena + bank6 + bank7}
+    by_name = {r.name: r for r in arena + bank1 + bank6 + bank7}
 
     # 2ο πέρασμα: οι πίνακες δεικτών ξέρουν πια πού κάθονται όλα
     for tab, names in ptr.items():
@@ -261,11 +275,19 @@ def pack():
     out = os.path.join(ROOT, "build")
     os.makedirs(out, exist_ok=True)
 
-    page2 = bytearray(BANK_SIZE)
+    # Η εικόνα της τράπεζας 2 κόβεται στο ΧΡΗΣΙΜΟΠΟΙΗΜΕΝΟ μέρος: ό,τι μένει από
+    # πάνω το παίρνει ο κώδικας (DESIGN §4.3), και ένα incbin 16 KB θα το
+    # έσβηνε τη στιγμή του φορτώματος.
+    page2 = bytearray(u2)
     for r in arena:
         if r.data:
             o = r.addr - PAGE2_BASE
             page2[o:o + r.size] = r.data
+    b1 = bytearray(BANK1_SIZE)
+    for r in bank1:
+        if r.data:
+            o = r.addr - BANK1_BASE
+            b1[o:o + r.size] = r.data
     b6 = bytearray(BANK_SIZE)
     b7 = bytearray(BANK_SIZE)
     for img, runs in ((b6, bank6), (b7, bank7)):
@@ -274,7 +296,8 @@ def pack():
                 o = r.addr - WINDOW_BASE
                 img[o:o + r.size] = r.data
 
-    images = {"page2": bytes(page2), "bank6": bytes(b6), "bank7": bytes(b7)}
+    images = {"page2": bytes(page2), "bank1": bytes(b1),
+              "bank6": bytes(b6), "bank7": bytes(b7)}
     for name, img in images.items():
         with open(os.path.join(out, name + ".bin"), "wb") as f:
             f.write(img)
@@ -282,8 +305,9 @@ def pack():
     # --- διευθύνσεις για τον assembler -------------------------------------
     with open(os.path.join(out, "layout.asm"), "w", encoding="utf-8") as f:
         f.write("; ΠΑΡΑΓΕΤΑΙ από tools/pack.py — μην το επεξεργάζεσαι.\n")
+        f.write(f"PAGE2_TOP   equ #{PAGE2_BASE + u2:04X}   ; πρώτο ελεύθερο byte\n")
         f.write("; Οι τράπεζες 6/7 φαίνονται στο &4000 όταν σελιδοποιηθούν.\n\n")
-        for label, runs in (("τράπεζα 2", arena),
+        for label, runs in (("τράπεζα 2", arena), ("τράπεζα 1", bank1),
                             ("τράπεζα 6", bank6), ("τράπεζα 7", bank7)):
             f.write(f"; --- {label} ---\n")
             for r in sorted(runs, key=lambda r: r.addr):
@@ -292,10 +316,11 @@ def pack():
 
     # --- λογαριασμός --------------------------------------------------------
     lines = []
-    for label, runs, used in (("τράπεζα 2", arena, u2),
-                              ("τράπεζα 6", bank6, u6),
-                              ("τράπεζα 7", bank7, u7)):
-        lines.append(f"{label}: {used}/{BANK_SIZE}  ελεύθερα {BANK_SIZE-used}")
+    for label, runs, used, cap in (("τράπεζα 2", arena, u2, BANK_SIZE),
+                                   ("τράπεζα 1", bank1, u1, BANK1_SIZE),
+                                   ("τράπεζα 6", bank6, u6, BANK_SIZE),
+                                   ("τράπεζα 7", bank7, u7, BANK_SIZE)):
+        lines.append(f"{label}: {used}/{cap}  ελεύθερα {cap-used}")
         for r in sorted(runs, key=lambda r: r.addr):
             lines.append(f"      #{r.addr:04X} {r.size:>5}  {r.name}"
                          f"{'  · ' + r.note if r.note else ''}")
@@ -303,7 +328,7 @@ def pack():
     report = "\n".join(lines)
     with open(os.path.join(out, "layout.txt"), "w", encoding="utf-8") as f:
         f.write(report)
-    return arena, bank6, bank7, ptr, images, [BANK_SIZE - u2], report
+    return arena, bank1, bank6, bank7, ptr, images, [BANK_SIZE - u2], report
 
 
 if __name__ == "__main__":

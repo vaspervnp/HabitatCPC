@@ -26,14 +26,14 @@ def check(cond, msg):
 
 
 def main():
-    arena, bank6, bank7, ptr, images, free, _ = pack.pack()
+    arena, bank1, bank6, bank7, ptr, images, free, _ = pack.pack()
     smap, blob = load_map(), load_bin()
-    all_runs = arena + bank6 + bank7
+    all_runs = arena + bank1 + bank6 + bank7
     by_name = {r.name: r for r in all_runs}
 
     # 1. καμία επικάλυψη μέσα στην ίδια περιοχή
-    for label, runs in (("τράπεζα 2", arena), ("τράπεζα 6", bank6),
-                        ("τράπεζα 7", bank7)):
+    for label, runs in (("τράπεζα 2", arena), ("τράπεζα 1", bank1),
+                        ("τράπεζα 6", bank6), ("τράπεζα 7", bank7)):
         seen = sorted(runs, key=lambda r: r.addr)
         for a, b in zip(seen, seen[1:]):
             check(a.addr + a.size <= b.addr,
@@ -41,8 +41,11 @@ def main():
                   f"{b.name} (#{b.addr:04X})")
         if seen:
             last = seen[-1]
-            base = pack.PAGE2_BASE if label == "τράπεζα 2" else pack.WINDOW_BASE
-            check(last.addr + last.size <= base + pack.BANK_SIZE,
+            base = (pack.PAGE2_BASE if label == "τράπεζα 2"
+                    else pack.BANK1_BASE if label == "τράπεζα 1"
+                    else pack.WINDOW_BASE)
+            cap = pack.BANK1_SIZE if label == "τράπεζα 1" else pack.BANK_SIZE
+            check(last.addr + last.size <= base + cap,
                   f"{label}: το {last.name} βγαίνει από την τράπεζα")
 
     # 4. το flip_mode0 σε όριο σελίδας — όλη η παραγωγή τεταρτημορίων εξαρτάται
@@ -54,6 +57,8 @@ def main():
     def image_of(r):
         if r in arena:
             return images["page2"], pack.PAGE2_BASE
+        if r in bank1:
+            return images["bank1"], pack.BANK1_BASE
         return (images["bank6"], pack.WINDOW_BASE) if r in bank6 else \
                (images["bank7"], pack.WINDOW_BASE)
 

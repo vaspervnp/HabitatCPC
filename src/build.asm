@@ -362,10 +362,90 @@ bdk_done:
         out     (c),c
         call    bd_stock_pay            ; πληρώνει ΑΦΟΥ βρεθεί θέση
         call    bd_stamp
+        call    bd_link
         call    bd_postjob
         call    ob_touch
         ld      a,(bd_node)
         ret
+
+; ---------------------------------------------------------------------------
+; bd_link — το εργοτάξιο συνδέεται με τον κοντινότερο ζωντανό θόλο.
+;
+; Χωρίς αυτό η εργασία Build δημοσιεύεται σε κόμβο ΧΩΡΙΣ ακμές: η δρομολόγηση
+; τον βρίσκει απρόσιτο, κανείς πράκτορας δεν ξεκινά ποτέ, και το κτίριο μένει
+; DS_BUILDING για πάντα. Το §6.2 το ονομάζει «ακμή εξωτερικού χώρου» — βγαίνεις
+; από τον αεροθάλαμο και περπατάς — και εδώ είναι ακριβώς αυτό: μια ακμή που
+; δεν έχει διάδρομο να τη ζωγραφίσει.
+;
+; «Κοντινότερος» με |dx|+|dy| σε μισά tiles. Η ρίζα θα ήταν σωστότερη και δεν
+; θα άλλαζε ποτέ την απάντηση σε αποικία που χωράει σε 128 tiles.
+; ---------------------------------------------------------------------------
+bd_link:
+        ld      a,255
+        ld      (bl_best),a
+        ld      (bl_dist),a
+        ld      bc,GA_PORT + PAGE_B6
+        out     (c),c
+        xor     a
+        ld      (bl_i),a
+bl_lp:
+        ld      a,(bl_i)
+        call    ob_dome_live
+        jr      z,bl_next
+        ld      a,(bl_i)
+        call    ob_domeadr
+        ld      a,(hl)                  ; cx
+        inc     hl
+        ld      c,(hl)                  ; cy, πριν χαθεί το HL
+        ld      hl,cur_hx
+        sub     (hl)
+        call    bl_abs                  ; το C επιβιώνει
+        ld      b,a
+        ld      a,c
+        ld      hl,cur_hy
+        sub     (hl)
+        call    bl_abs
+        add     a,b
+        jr      c,bl_next               ; ξεχείλισε: πολύ μακριά
+        ld      hl,bl_dist
+        cp      (hl)
+        jr      nc,bl_next
+        ld      (hl),a
+        ld      a,(bl_i)
+        ld      (bl_best),a
+bl_next:
+        ld      hl,bl_i
+        inc     (hl)
+        ld      a,(hl)
+        cp      MAX_DOME
+        jr      c,bl_lp
+        ld      bc,GA_PORT + PAGE_B1
+        out     (c),c
+        ld      a,(bl_best)
+        cp      255
+        ret     z                       ; πρώτο κτίριο του κόσμου
+        ld      b,a
+        ld      a,(bd_node)
+        ld      c,a
+        cp      b
+        ret     z                       ; ο εαυτός του
+        call    cr_edge
+        ld      a,(bl_best)
+        ld      c,a
+        ld      a,(bd_node)
+        ld      b,a
+        call    cr_edge
+        jp      rt_mark
+
+bl_abs:
+        or      a
+        ret     p
+        neg
+        ret
+
+bl_best:    db 255
+bl_dist:    db 255
+bl_i:       db 0
 
 ; bd_stamp — τα tiles γίνονται θεμέλιο και δεσμευμένα (§6.9 βήμα 2).
 bd_stamp:

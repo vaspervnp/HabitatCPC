@@ -235,6 +235,8 @@ goto_st:    db 0
 
         org     #8000
         incbin  "../build/page2.bin"
+        org     #7000
+        incbin  "../build/bank1.bin"     ; εικονίδια m και l (§4.2)
 
         bankset 1
         org     #0000

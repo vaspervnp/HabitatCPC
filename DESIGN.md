@@ -325,10 +325,10 @@ must always be reachable is in bank 0 (`&0000–&3FFF`) or bank 2 (`&8000–&BFF
 
 | Block | Bank | Contents | Bytes | Slack |
 |---|---|---|---|---|
-| `&0000–&3FFF` | 0 | engine code, ISR, blit kernels, generator, UI | 16,384 | — |
-| window | 1 | **distance matrix** `DIST[128][128]` | 16,384 | 0 |
+| `&0000–&3FFF` | 0 | engine code, ISR, blit kernels, UI | 16,384 | **2,108** |
+| window | 1 | **distance matrix** `DIST[96][128]` 12,288 · room icons `m` and `l` 3,936 | 16,384 | 160 |
 | window | 4 | **world plane** 128×128×1 byte | 16,384 | 0 |
-| window | 5 | **next-hop matrix** `NEXTHOP[128][128]` | 16,384 | 0 |
+| window | 5 | **next-hop matrix** `NEXTHOP[96][128]` | 16,384 | 4,096 |
 | window | 6 | `flip_mode0` 256 · dome+ring `nw` quadrants 7,424 · slot figures 3,456 · entity tables 4,832 ([§6.1](#61-entities)) | 16,096 | 288 |
 | window | 7 | external structures 11,264 · plants 1,584 · `plant_ptr` 24 · text 1,024 · audio 2,048 | 15,944 | 440 |
 | `&8000–&BFFF` | 2 | graphics, flat · node graph + BFS workspace 1,536 · recipes 110 · economy 58 · job board 160 | 14,848 | **1,536** |
@@ -337,6 +337,32 @@ must always be reachable is in bank 0 (`&0000–&3FFF`) or bank 2 (`&8000–&BFF
 Every bank is spoken for. The two matrices in banks 1 and 5 are the clearest answer
 to "what is the extra 64 KB actually *for*": they turn pathfinding from a per-agent
 search into a single table read ([§6.4](#64-routing)).
+
+**Bank 0's slack was a dash because nobody had measured it, and when the two halves
+of the game were first assembled into one binary it came out at −4,443.** The
+renderer and the build mode lived in `tests/uitest.asm`, the economy and the wheel
+in `tests/simtest.asm`, and nothing linked both; 20,571 bytes of code and tables
+wanted 16,128. Three decisions closed it:
+
+- **The world generator is not resident** (2,931). It runs once, before anything
+  else exists, and [§5.10](#510-player-modification) already says a load reads the
+  plane off disc instead. It is a separate loadable — the game is loaded over it.
+- **`MAX_NODES` is 96, not 128.** Both routing matrices are *nodes* × 128 bytes, so
+  96 nodes costs 12 KB instead of 16 and frees 4 KB in each of banks 1 and 5. The
+  room icons `m` and `l` (3,936) moved into bank 1's share, which freed the same
+  amount of **code** space in bank 2. A node is a dome's id or `MAX_DOME + `
+  a structure's, so the split is now 64 domes + **32** structures. Bank 1 is the
+  window's default content, so the icons cost a page switch only in the object
+  pass, which has bank 6 in.
+- **Bank 2 holds code.** It was always visible and always treated as data; its
+  image is now trimmed to the 11,264 bytes it actually uses, and `build.asm`,
+  `route.asm`, the ghost's 1,600-byte undo log and the 512-byte figure table live
+  above it.
+
+The result is 2,108 free in bank 0 and 708 in bank 2 — about 2.8 KB for save/load,
+audio, meteors and intruders, with bank 7's reserved 1,024-byte `text` block
+untouched behind it. `tests/test_game.py` builds the whole thing, so the number
+cannot drift back without a test failing to assemble.
 
 **Every bank now fits, and the numbers above are produced by `tools/pack.py`,
 which lays the assets out for real and refuses to build if anything overflows.**
@@ -1218,11 +1244,24 @@ describes belongs to build mode ([§9.3](#93-build-flow)), which is not written.
   step; the router is cheap but the answer is also wrong, because the dome the
   player is about to connect to may not be built yet.
 3. Engineers and constructor bots walk there and work. Progress is a byte.
+   **Built, and the byte is the integrity byte** — `bd_commit` writes integrity 0
+   and each visit adds 32, so eight visits (≈2.6 s) finish it. A half-built
+   building and a half-wrecked one are then the same state, which is right and
+   saves a byte per node. **A construction site also gets an edge**: without one
+   the routing finds it unreachable, nobody ever sets out, and it stays
+   `DS_BUILDING` for ever. It is linked to the nearest live dome — an *outdoor
+   edge* in [§6.2](#62-the-node-graph)'s sense, one with no corridor to draw it.
 4. On completion the object is drawn — and this is the expensive moment: **5.7 frames
    for a large dome** ([§2.2](#22-the-frame-budget)). It is split into 8 chunks, one
    quadrant per frame, in the order of `assets/SPRITES.md` §8: rings, domes, connectors,
    room icon, machines, slots. The dome appears over about a sixth of a second, which
    reads as materialising rather than as a stall.
+
+   **As built it is a full redraw: 41 frames, 0.8 s, once per building.** The
+   eight-chunk reveal is not written. The dirty list is *not* cheaper here — a
+   single tile under a dome costs 99,840 µs and a small dome has sixteen — so the
+   choice was between one stall and a worse one. It is the right place for the
+   chunked reveal when someone writes it.
 
 ### 6.10 Events and hazards
 
@@ -1397,6 +1436,24 @@ Four more things are sliced, for the same reason:
 | Routing rebuild | 12 node expansions per frame, **not** a wheel slot | 3.8 s at 48 nodes, ~27 s at 128 ([§6.4](#64-routing)) |
 | Dome construction blit | one quadrant per frame | ≈ 8 frames |
 | Camera redraw after a jump | one tile column per frame | ≈ 20 frames |
+
+---
+
+### 7.4 One convention per half, and they disagreed
+
+Every simulation pass reads domes, structures and agents straight from `&4000`
+without paging: `tests/simtest.asm` put bank 6 in the window once before the run
+and never touched it again. The renderer does the opposite — it changes bank
+dozens of times a frame and always leaves bank 1.
+
+Put together, the economy counted the agents *inside the distance matrix* and the
+population dropped to zero in ten seconds. **The wheel now owns the convention**:
+one `out` on the way in, one on the way out, 30 T-states a frame. Passes that need
+another bank put bank 6 back themselves — `rt_slice` was the exception and is now
+wrapped, because it was written to be called from the renderer's world.
+
+This is the class of bug that only exists between two subsystems, and the only
+thing that finds it is linking them.
 
 ---
 
@@ -1896,12 +1953,19 @@ joining them. Four colonists: two workers, one engineer, one biologist. Starting
 Enough to live about two sols without doing anything, which is exactly how long it
 should take to realise you need power before you need anything else.
 
-**None of this exists in Z80 yet.** There is no "new game" routine: the tests load
-a hand-made colony and fill the tables themselves. That matters for one table in
-particular — **the job board's empty value is 255 and zero means `J_BUILD`**, so a
-job table that was never initialised reads as thirty-two Build jobs and the build
-mode finds nowhere to post. Whatever writes the start state must write `NO_JOB`
-across it.
+**Written** (`src/newgame.asm`), with two departures from the paragraph above.
+The three domes sit 8 tiles apart centre to centre, because that is the closest
+spacing that leaves a whole number of corridor tiles between two small domes
+([§9.4](#94-corridor-routing)); and **the pad is joined by an outdoor edge, not a
+corridor**, because a corridor record can only name domes.
+
+The table that matters most is the job board: **its empty value is 255 and zero
+means `J_BUILD`**, so a board that was never initialised reads as thirty-two Build
+jobs and the build mode finds nowhere to post. Colonists likewise start with every
+need at 255 — starting at zero kills them before they can walk to the fridge.
+
+The generator is **not** part of this binary ([§4.2](#42-the-eight-banks)), so a
+new game is two loads: generate the plane, then load the game over the generator.
 
 ### 10.2 Milestones
 
@@ -2078,6 +2142,7 @@ tests in this document runnable rather than aspirational:
 | Input | every action, keyboard and joystick, one edge per press (`test_input.py`) |
 | Build mode | cursor, ghost-leaves-no-trace, validation, placement, payment (`test_build.py`) |
 | Corridor routing | independent Python router compared on every pair of domes, then the *picture* compared at both kinds of bend (`test_route.py`) |
+| The whole game | `src/main.asm` booted: start state, the economy moving inside the loop, a building placed and **finished**, and the HUD following it with no input (`test_game.py`) |
 | Playability of every seed | headless run of N seeds, assert water and ore within 30 tiles of centre |
 
 That last one is the kind of test that is impossible on real hardware and trivial here.
@@ -2140,10 +2205,14 @@ a colony that can be built and a colony that runs.
 | ~~A heavy sim frame plus a scroll column comes to 19.9 ms of 20~~ | High | **Worse than that, and now measured.** A scroll step is 3.0–8.8 frames of world plus 2.55 of HUD ([§8.2](#82-camera)), so it was never going to fit in one frame and does not need to: the dirty list is a budget and the strip fills over several frames. What this costs is **latency, not frame rate** — about a quarter of a second per tile through a dense base. The flow-balance slot still wants the fix described below. |
 | **The flow-balance wheel slot re-scans 64 structures every revolution** | Medium | 7,887 µs for numbers that change slowly. The fix is the one production already took: accumulate during a pass that walks the structures anyway ([§7.2](#72-the-wheel)). |
 | ~~Nothing the player does exists: no build mode, no input, no HUD, nothing drawn since milestone 5~~ | ~~High~~ | **Resolved.** The colony is drawn, the camera scrolls, the dirty list keeps it honest, the HUD reports — and the player now moves a cursor, opens a menu, places a dome and routes a corridor between two of them ([§9.1](#91-controls), [§9.3](#93-build-flow), [§9.4](#94-corridor-routing), [§6.9](#69-construction)). |
-| **The two halves have never been assembled into one binary** | Medium | `tests/uitest.asm` links the renderer and the build mode; `tests/simtest.asm` links the economy, entities, jobs and the wheel. Nothing links both, so the combined code size below `&4000` is unmeasured and no call site between them has ever been compiled. This is the same wiring gap as the rows around it, seen from the linker's side. |
-| **Nothing finishes what the player starts** | High | A placed dome goes in as `DS_BUILDING` with integrity 0 and posts a Build job, and then nothing ever advances it: no pass reads that job, works the site and flips it to `DS_ACTIVE`. The colony can be built and cannot be completed. It is the same wiring gap as the row below — [§6.9](#69-construction) step 3 exists as prose only. |
+| ~~The two halves have never been assembled into one binary~~ | ~~Medium~~ | **Assembled, and it did not fit: 20,571 bytes wanted 16,128.** Resolved by moving the generator out, cutting `MAX_NODES` to 96 and putting code in bank 2 ([§4.2](#42-the-eight-banks)). It also turned up duplicate constants in three files and, worse, [§7.4](#74-one-convention-per-half-and-they-disagreed)'s paging disagreement. |
+| **Memory is the binding constraint from here on** | High | 2,108 bytes free in bank 0 and 708 in bank 2, for save/load, audio, meteors and intruders. The reserves left, in order: bank 7's `text` block (1,024, already allocated for exactly this), size-optimising `route.asm`/`ui.asm`/`object.asm` (1,000–1,500 by estimate), and the cuts [§4.2](#42-the-eight-banks) already names. Every new feature now costs a decision. |
+| ~~Nothing finishes what the player starts~~ | ~~High~~ | **Built.** A Build job is picked up, the agent routes to the site, works it 32 points a visit, and at 255 the building turns `DS_ACTIVE` and is drawn ([§6.9](#69-construction)). `tests/test_game.py` walks the whole chain: place a solar panel with 30 Metal, and about six seconds later the HUD says `ALL SYSTEMS OK` with no key pressed in between. |
+| **A completed building stalls the game for 0.8 s** | Medium | The full redraw of [§6.9](#69-construction) step 4, in place of the eight-chunk reveal that is specified and unwritten. Rare — once per building — but it is a visible freeze, and it is the first thing to fix if building ever becomes frequent. |
+| **The simulation still pushes nothing into the dirty list** | High | Unchanged from the row below: colonists move in the tables and not on the screen. The HUD now follows the simulation (once per wheel revolution), so the *numbers* are live even though the picture is not. |
 | **A near-diagonal pair of domes cannot be connected** | Low | The turn in [§9.4](#94-corridor-routing) spends `\|S − T\|` tiles, so when the two axes differ by less than the destination's radius there is no route and the panel says so. The band is 2–4 tiles wide and the player can step out of it by moving the dome. Closing it needs a corner sprite the art does not have. |
-| **Nothing in the simulation pushes into the dirty list yet** | High | The list works and is tested, but the wheel does not call it: no `dirty_push` when a colonist takes a slot, a machine breaks, or a plant grows. Until that wiring exists the screen only changes when the camera does. It is a dozen call sites, and every one of them is a place where the two halves can silently disagree — which is what [§8.5](#85-the-dirty-list)'s equivalence test is for. |
+| **Nothing in the simulation pushes into the dirty list yet** | High | The list works and is tested, but the wheel does not call it: no `dirty_push` when a colonist takes a slot, a machine breaks, or a plant grows. It is a dozen call sites, and every one of them is a place where the two halves can silently disagree — which is what [§8.5](#85-the-dirty-list)'s equivalence test is for. |
+| **The base is invisible on its own foundation** | Medium | The foundation tile, the dome rings and the corridors are all the same grey. Outside the base everything reads; inside it, the colony disappears into the slab. Found by looking at the first running build, not by any check. It is a palette question for [§8.6](#86-palette) — one pen, differently chosen. |
 | **Scrolling is 4 to 8 tiles per second through a built-up base** | Medium | 3.0–3.2 frames per tile in open ground, up to 8.8 in the base, plus 2.55 for the HUD. Playable, not smooth. Three levers, all untaken: move the HUD block instead of redrawing it ([§8.1](#81-screen-layout)), index which objects overlap which strip instead of testing all 224 records, and blit tile pairs ([§8.3](#83-the-tile-pass)). |
 | **A broken machine is invisible on screen** ([ASSET-8](#12-asset-gaps)) | Medium | One sprite per machine, no damaged variant. The economy knows, the alert line knows, the picture does not — wrong way round for a game about watching a colony. 132 bytes per machine would fix it. |
 | Meteors and intruders are unbuilt, and both need the renderer first | Medium | Meteors write terrain, so they need the world plane and the dirty list; intruders need edge spawning and combat. Neither is a simulation problem, which is why neither is in [§6.10](#610-events-and-hazards) yet. |
@@ -2164,9 +2233,9 @@ a colony that can be built and a colony that runs.
 | `VIEW_W` / `VIEW_H` | 20 / 10 | viewport, in tiles |
 | `PLAY_LINES` / `HUD_LINES` | 160 / 40 | |
 | `MAX_AGENTS` | 96 | 80 colonists + 16 bots |
-| `MAX_DOMES` / `MAX_STRUCTS` | 64 / 64 | |
+| `MAX_DOMES` / `MAX_STRUCTS` | 64 / 32 | |
 | `MAX_CORRIDORS` | 96 | |
-| `MAX_NODES` | 128 | domes + structures + pad + 8 build sites |
+| `MAX_NODES` | 96 | 64 domes + 32 structures (the pad and build sites are structures) |
 | `MAX_JOBS` | 32 | |
 | `NODE_SLOTS` | 8 | ring slots per dome, `corr_fill` order |
 | `N_STOCK` | 14 | ten goods plus four greenhouse intermediates ([§6.5](#65-economy)) |
