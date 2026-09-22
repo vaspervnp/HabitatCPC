@@ -33,6 +33,8 @@ EC_JAGENT   equ G_econ_state + 57       ; εργασιών (§6.7)
 EC_ALIVE    equ G_econ_state + 58
 EC_GAMEOVER equ G_econ_state + 59       ; §10.3 — η μόνη συνθήκη ήττας
 EC_GLOOM    equ G_econ_state + 60       ; πένθος: ανεβαίνει με κάθε θάνατο
+EC_STORM    equ G_econ_state + 61       ; περιστροφές αμμοθύελλας (§6.10)
+EC_AMENITY  equ G_econ_state + 62       ; δέντρα και σαλόνια (§6.6)
 
 EC_CAP      equ 600                     ; ταβάνι αποθέματος
 DOME_REC    equ 24
@@ -48,6 +50,13 @@ NO_STOCK    equ 255
 MF_OPERATOR equ 1
 MF_FLOW     equ 2
 PROD_DOMES  equ 16
+R_GREENHS   equ 5
+R_LOUNGE    equ 11
+STORM_LEN   equ 32
+S_WATER     equ 0
+S_STARCH    equ 10
+S_VEG       equ 11
+S_MEDPLANT  equ 12
 MAX_DOME    equ 64
 MAX_STRUCT  equ 64
 STRUCT_REC  equ 8
@@ -112,7 +121,16 @@ ec_run_dome:
         ld      a,(hl)
         cp      DS_ACTIVE
         ret     nz
-        ld      de,D_OPS - D_STATE
+        ld      de,D_ROOM - D_STATE
+        add     hl,de
+        ld      a,(hl)
+        cp      R_GREENHS
+        ld      a,0
+        jr      nz,erd_ng
+        inc     a
+erd_ng:
+        ld      (ed_green),a
+        ld      de,D_OPS - D_ROOM
         add     hl,de
         ld      a,(hl)
         ld      (ed_ops),a              ; HL = base + D_OPS
@@ -139,7 +157,16 @@ erd_lp:
         jr      z,erd_next
         push    bc
         push    hl
+        ld      b,a
+        ld      a,(ed_green)
+        or      a
+        ld      a,b
+        jr      z,erd_mach
+        call    ec_run_plant            ; A = φυτό, HL -> υποδοχή
+        jr      erd_back
+erd_mach:
         call    ec_run_mach             ; A = μηχανή, HL -> υποδοχή
+erd_back:
         pop     hl
         pop     bc
 erd_next:
@@ -149,6 +176,70 @@ erd_next:
         ld      (ed_slot),a
         djnz    erd_lp
         ret
+
+; --- ένα φυτό --------------------------------------------------------------
+; Ιδια υποδοχή, άλλο νόημα: το είδος δωματίου λέει αν εκεί κάθεται μηχανή ή
+; φυτό. Νερό και ρεύμα μέσα, χλωρίδα έξω (§6.5).
+ec_run_plant:
+        ld      (ed_m),a
+        push    hl
+        ld      de,D_HEALTH - D_MACH
+        add     hl,de
+        ld      e,(hl)
+        pop     hl
+        inc     e
+        dec     e
+        ret     z                       ; μαραμένο
+
+        ld      a,(ed_slot)             ; τα φυτά θέλουν φροντίδα
+        ld      hl,ed_ops
+        cp      (hl)
+        ret     nc
+        ld      a,(EC_POK)
+        or      a
+        ret     z
+
+        ld      a,S_WATER               ; ένα νερό
+        ld      c,1
+        call    ec_have
+        ret     c
+        ld      a,(de)
+        sub     1
+        ld      (de),a
+        inc     de
+        ld      a,(de)
+        sbc     a,0
+        ld      (de),a
+
+        ld      de,1                    ; ένα ρεύμα
+        ld      hl,EC_ACCP
+        call    ec_add16
+
+        ld      a,(ed_m)                ; η κατηγορία του φυτού
+        ld      hl,G_plant_class
+        add     a,l
+        ld      l,a
+        ld      a,0
+        adc     a,h
+        ld      h,a
+        ld      a,(hl)
+        and     3
+        add     a,a                     ; *2 στον πίνακα εξόδου
+        ld      hl,plant_out
+        add     a,l
+        ld      l,a
+        ld      a,0
+        adc     a,h
+        ld      h,a
+        ld      a,(hl)                  ; απόθεμα, 255 = τίποτα (δέντρο)
+        inc     hl
+        ld      e,(hl)
+        ld      d,0
+        cp      NO_STOCK
+        ret     z
+        jp      ec_add_stock
+
+plant_out:  db S_STARCH,3, S_VEG,2, S_MEDPLANT,2, NO_STOCK,0
 
 ; --- μία μηχανή ------------------------------------------------------------
 ; A = τύπος μηχανής, HL = δείκτης στην υποδοχή (η υγεία είναι 8 πιο κάτω).
@@ -369,6 +460,7 @@ ed_ops:     db 0
 ed_slot:    db 0
 ed_m:       db 0
 ed_flags:   db 0
+ed_green:   db 0
 
 ; ---------------------------------------------------------------------------
 ; econ_flow — θέση 12: παραγωγή απέναντι σε κατανάλωση, και η μπαταρία.
@@ -407,7 +499,7 @@ ef_lp:
         cp      K_EXTRACT
         jr      z,ef_extr
         cp      K_MINE
-        jr      z,ef_mine
+        jp      z,ef_mine
 ef_next:
         ld      hl,(ef_p)
         ld      de,STRUCT_REC
@@ -419,16 +511,19 @@ ef_next:
         jp      ef_battery
 
 ef_solar:
+        ld      a,(EC_STORM)            ; η σκόνη σκεπάζει τα πάνελ (§6.10)
+        or      a
+        jp      nz,ef_next
         ld      a,(EC_DAY)
         or      a
-        jr      z,ef_next
+        jp      z,ef_next
         ld      hl,tab_solar
         add     hl,bc
         ld      e,(hl)
         ld      d,0
         ld      hl,ef_prod
         call    ec_add16
-        jr      ef_next
+        jp      ef_next
 
 ef_turb:
         ; παραγωγή = βάση * άνεμος / 3, ακέραια — όπως η αναφορά
@@ -618,7 +713,88 @@ ev_store:
 ev_night:
         ld      (EC_DAY),a
 
-        ld      hl,(EC_RND)             ; Galois, ίδιος με τη γεννήτρια κόσμου
+        ld      a,(EC_GLOOM)            ; το πένθος περνάει, αργά
+        or      a
+        jr      z,ev_roll
+        dec     a
+        ld      (EC_GLOOM),a
+
+        ; Τρεις ζαριές, ΠΑΝΤΑ. Μια ζαριά υπό όρους θα έκανε την ακολουθία να
+        ; εξαρτάται από το αποτέλεσμα της προηγούμενης, και η αναπαραγωγή θα
+        ; γινόταν δουλειά.
+ev_roll:
+        call    ev_rnd
+        ld      (ev_r1),hl
+        call    ev_rnd
+        ld      (ev_r2),hl
+        call    ev_rnd
+        ld      (ev_r3),hl
+
+        ld      hl,(ev_r1)              ; --- άνεμος ---
+        ld      a,l
+        and     15
+        jr      nz,ev_storm
+        ld      a,l
+        rrca
+        rrca
+        rrca
+        rrca
+        and     3
+        ld      (EC_WIND),a
+
+ev_storm:                               ; --- αμμοθύελλα ---
+        ld      a,(EC_STORM)
+        or      a
+        jr      z,ev_st_new
+        dec     a
+        ld      (EC_STORM),a
+        jr      ev_fault
+ev_st_new:
+        ; Τα ΨΗΛΑ bits του δεύτερου. Ο Galois ολισθαίνει δεξιά, άρα δύο
+        ; διαδοχικά τραβήγματα είναι το ίδιο νούμερο μετατοπισμένο: με δύο
+        ; δοκιμές στα χαμηλά bits, θύελλα και βλάβη έπεφταν μαζί ή καθόλου.
+        ld      hl,(ev_r2)
+        ld      a,h
+        and     #FE
+        jr      nz,ev_fault
+        ld      a,STORM_LEN
+        ld      (EC_STORM),a
+
+ev_fault:                               ; --- απλή βλάβη: χαμηλά του τρίτου ---
+        ld      hl,(ev_r3)
+        ld      a,l
+        and     #1F
+        jr      nz,ev_flare
+        ld      hl,(ev_r3)
+        ld      b,5
+        call    ev_shr
+        call    ec_break
+
+ev_flare:                               ; --- έκλαμψη: ψηλά του ίδιου ---
+        ld      hl,(ev_r3)
+        ld      a,h
+        or      a
+        ret     nz
+        ld      hl,(ev_r3)
+        ld      de,37
+        add     hl,de
+        call    ec_break
+        ld      hl,(ev_r3)
+        ld      b,3
+        call    ev_shr
+        ld      de,101
+        add     hl,de
+        call    ec_break
+        ld      hl,(ev_r3)
+        ld      b,1
+        call    ev_shr
+        ld      de,173
+        add     hl,de
+        jp      ec_break
+
+; ev_rnd — Galois, ίδιος με τη γεννήτρια κόσμου, ΞΕΧΩΡΙΣΤΗ κατάσταση.
+ev_rnd:
+        ld      hl,(EC_RND)
         ld      a,l
         srl     h
         rr      l
@@ -629,23 +805,86 @@ ev_night:
         ld      h,a
 ev_nox:
         ld      (EC_RND),hl
-        ld      a,(EC_GLOOM)            ; το πένθος περνάει, αργά
-        or      a
-        jr      z,ev_wind
-        dec     a
-        ld      (EC_GLOOM),a
-ev_wind:
-        ld      a,l
-        and     15
-        ret     nz                      ; ο άνεμος αλλάζει σπάνια
-        ld      a,l
-        rrca
-        rrca
-        rrca
-        rrca
-        and     3
-        ld      (EC_WIND),a
         ret
+
+; ev_shr — HL >>= B
+ev_shr:
+        inc     b
+        dec     b
+        ret     z
+ev_shr1:
+        srl     h
+        rr      l
+        djnz    ev_shr1
+        ret
+
+; ---------------------------------------------------------------------------
+; ec_break — HL = τυχαία τιμή. Μία μηχανή σταματά.
+;
+; Οχι «χαλάει λίγο»: υγεία μηδέν, και μένει εκεί ως να έρθει μηχανικός με ένα
+; ανταλλακτικό. Ο πίνακας εργασιών δημοσιεύει την επισκευή μόνος του.
+; ---------------------------------------------------------------------------
+ec_break:
+        ld      a,l
+        and     63                      ; MAX_DOME - 1
+        ld      (eb_d),a
+        ld      b,6
+        call    ev_shr
+        ld      a,l
+        ld      (eb_s),a
+
+        ld      a,(eb_d)
+        call    jb_dome_ptr
+        push    hl
+        ld      de,D_STATE
+        add     hl,de
+        ld      a,(hl)
+        pop     hl
+        cp      DS_ACTIVE
+        ret     nz
+
+        push    hl
+        ld      de,D_SIZE
+        add     hl,de
+        ld      a,(hl)
+        ld      hl,G_machine_count
+        add     a,l
+        ld      l,a
+        ld      a,0
+        adc     a,h
+        ld      h,a
+        ld      a,(hl)
+        dec     a                       ; 1/4/8 -> μάσκα
+        ld      c,a
+        pop     hl
+        ld      a,(eb_s)
+        and     c
+        ld      e,a
+        ld      d,0
+
+        push    hl
+        ld      bc,D_MACH
+        add     hl,bc
+        add     hl,de
+        ld      a,(hl)
+        pop     hl
+        cp      NO_MACH
+        ret     z
+
+        ld      bc,D_HEALTH
+        add     hl,bc
+        add     hl,de
+        ld      a,(hl)
+        or      a
+        ret     z                       ; ήδη σταματημένη
+        ld      (hl),0
+        ret
+
+ev_r1:      dw 0
+ev_r2:      dw 0
+ev_r3:      dw 0
+eb_d:       db 0
+eb_s:       db 0
 
 tab_solar:      db 2,8,18
 tab_turb:       db 3,12,27

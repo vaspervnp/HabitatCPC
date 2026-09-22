@@ -21,6 +21,16 @@
 «buffered», και αυτό είναι το buffer.
 """
 
+def load_plant_class():
+    """Η κατηγορία κάθε φυτού έρχεται από τα assets, όχι από εδώ."""
+    import os, sys
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from sprites import load_map, load_bin
+    m, b = load_map(), load_bin()
+    sp = m["plant_class"]
+    return list(b[sp.off:sp.off + sp.size])
+
+
 # --- αποθέματα ------------------------------------------------------------
 STOCKS = ["water", "food", "ore", "metal", "bioplastic", "processors",
           "spares", "medicine", "guns", "bots",
@@ -128,6 +138,8 @@ class Econ:
         self.alive = 0
         self.gameover = 0
         self.gloom = 0              # πένθος: ανεβαίνει με κάθε θάνατο
+        self.storm = 0              # περιστροφές αμμοθύελλας που απομένουν
+        self.amenity = 0            # δέντρα και σαλόνια — παρηγοριά (§6.6)
         self.dist = None            # ο πίνακας αποστάσεων, δίνεται απ' έξω
 
 
@@ -163,14 +175,42 @@ def lfsr(x):
     return x
 
 
-def run_dome(e, d):
+# Ενα θερμοκήπιο κρατά ΦΥΤΑ στις ίδιες υποδοχές όπου ένας άλλος θόλος κρατά
+# μηχανές: ίδιο πεδίο, άλλο νόημα, και το είδος δωματίου λέει ποιο.
+# plant_class: 0 άμυλο · 1 λαχανικά · 2 φάρμακα · 3 ηθικό (δέντρο)
+PLANT_OUT = [(S_STARCH, 3), (S_VEG, 2), (S_MEDPLANT, 2), (None, 0)]
+PLANT_WATER = 1
+PLANT_POWER = 1
+
+
+def run_plant(e, base, s, plant, plant_class):
+    """Μία υποδοχή θερμοκηπίου. Νερό και ρεύμα μέσα, χλωρίδα έξω."""
+    if e.stock[S_WATER] < PLANT_WATER:
+        return
+    e.stock[S_WATER] -= PLANT_WATER
+    e.acc_power += PLANT_POWER
+    out, qty = PLANT_OUT[plant_class[plant] & 3]
+    if out is not None:
+        add_stock(e, out, qty)
+
+
+def run_dome(e, d, plant_class=None):
     """Μία επίσκεψη σε έναν θόλο: όσες μηχανές του μπορούν, τρέχουν."""
     base = d * DOME_REC
     if e.dome[base + D_STATE] != DS_ACTIVE:
         return
     n = MACHINE_COUNT[e.dome[base + D_SIZE]]
     ops = e.dome[base + D_OPS]
+    green = e.dome[base + D_ROOM] == R_GREENHOUSE
     for s in range(n):
+        if green:
+            p = e.dome[base + D_MACH + s]
+            if p == NO_MACH or e.dome[base + D_HEALTH + s] == 0:
+                continue
+            if s >= ops or not e.power_ok:      # τα φυτά θέλουν φροντίδα
+                continue
+            run_plant(e, base, s, p, plant_class)
+            continue
         m = e.dome[base + D_MACH + s]
         if m == NO_MACH:
             continue
@@ -194,10 +234,10 @@ def run_dome(e, d):
             add_stock(e, r[6], r[7])
 
 
-def production_slice(e, count=PROD_DOMES):
+def production_slice(e, count=PROD_DOMES, plant_class=None):
     """Θέση 11: PROD_DOMES θόλοι. Στο τέλος του σαρώματος δημοσιεύει."""
     for _ in range(count):
-        run_dome(e, e.prod_dome)
+        run_dome(e, e.prod_dome, plant_class)
         e.prod_dome += 1
         if e.prod_dome >= MAX_DOME:
             e.prod_dome = 0
@@ -217,7 +257,7 @@ def flow_balance(e, alive):
             continue
         k, sz = e.struct[st + ST_KIND], e.struct[st + ST_SIZE]
         if k == K_SOLAR:
-            if e.day:
+            if e.day and not e.storm:       # η σκόνη σκεπάζει τα πάνελ
                 prod += SOLAR_OUT[sz]
         elif k == K_TURBINE:
             prod += TURBINE_OUT[sz] * e.wind // 3
@@ -254,8 +294,30 @@ def flow_balance(e, alive):
         e.gameover = 1
 
 
+STORM_LEN = 32          # περιστροφές — περίπου δέκα δευτερόλεπτα
+
+
+def break_one(e, x):
+    """Μια μηχανή σταματά. Οχι «χαλάει λίγο»: υγεία μηδέν, και μένει εκεί ως
+    να έρθει μηχανικός με ένα ανταλλακτικό (§6.7 Repair)."""
+    d = x % MAX_DOME
+    b = d * DOME_REC
+    if e.dome[b + D_STATE] != DS_ACTIVE:
+        return
+    n = MACHINE_COUNT[e.dome[b + D_SIZE]]
+    s = (x >> 6) % n
+    if e.dome[b + D_MACH + s] == NO_MACH or e.dome[b + D_HEALTH + s] == 0:
+        return
+    e.dome[b + D_HEALTH + s] = 0
+
+
 def events(e):
-    """Θέση 15: μία ζαριά. Ρολόι, μέρα/νύχτα, άνεμος."""
+    """Θέση 15: μία ζαριά. Ρολόι, μέρα/νύχτα, άνεμος, θύελλα, βλάβες (§6.10).
+
+    Τραβάει ΠΑΝΤΑ τρεις τιμές από τη γεννήτρια, είτε τις χρειαστεί είτε όχι.
+    Μια ζαριά υπό όρους θα σήμαινε ότι η ακολουθία εξαρτάται από το αποτέλεσμα
+    της προηγούμενης, και η αναπαραγωγή θα γινόταν δουλειά.
+    """
     e.frame += 16                           # μία περιστροφή
     if e.frame >= SOL_FRAMES:
         e.frame -= SOL_FRAMES
@@ -263,9 +325,33 @@ def events(e):
     e.day = 1 if e.frame < DAY_FRAMES else 0
     if e.gloom:                             # το πένθος περνάει, αργά
         e.gloom -= 1
+
     e.rnd = lfsr(e.rnd)
-    if (e.rnd & 15) == 0:                   # ο άνεμος αλλάζει σπάνια
-        e.wind = (e.rnd >> 4) & 3
+    r1 = e.rnd
+    e.rnd = lfsr(e.rnd)
+    r2 = e.rnd
+    e.rnd = lfsr(e.rnd)
+    r3 = e.rnd
+
+    # Κάθε ζαριά κοιτάζει ΑΛΛΟ κομμάτι του αριθμού. Ο Galois ολισθαίνει δεξιά,
+    # άρα δύο διαδοχικά τραβήγματα είναι σχεδόν το ίδιο νούμερο μετατοπισμένο:
+    # όταν και οι δύο δοκιμές κοιτούσαν τα χαμηλά bits, η θύελλα και η βλάβη
+    # έπεφταν μαζί ή καθόλου.
+    if (r1 & 15) == 0:                      # ο άνεμος αλλάζει σπάνια
+        e.wind = (r1 >> 4) & 3
+
+    if e.storm:                             # αμμοθύελλα: τα πάνελ σκεπάζονται
+        e.storm -= 1
+    elif (r2 >> 9) == 0:                    # τα ΨΗΛΑ bits του δεύτερου
+        e.storm = STORM_LEN
+
+    if (r3 & 0x1F) == 0:                    # απλή βλάβη: τα χαμηλά του τρίτου
+        break_one(e, r3 >> 5)
+
+    if (r3 >> 8) == 0:                      # ηλιακή έκλαμψη: τα ψηλά του ίδιου
+        break_one(e, r3 + 37)
+        break_one(e, (r3 >> 3) + 101)
+        break_one(e, (r3 >> 1) + 173)
 
 
 def to_bytes(e):
@@ -280,11 +366,12 @@ def to_bytes(e):
     # (το job_dome/job_agent μπαίνουν στο τέλος, βλ. ECON_BYTES)
     out += int(e.frame).to_bytes(2, "little")
     out += int(e.rnd).to_bytes(2, "little")
-    out += bytes([e.job_dome, e.job_agent, e.alive, e.gameover, e.gloom, 0])
+    out += bytes([e.job_dome, e.job_agent, e.alive, e.gameover, e.gloom,
+                  e.storm, e.amenity, 0])
     return bytes(out)
 
 
-ECON_BYTES = N_STOCK * 2 + 9 * 2 + 6 + 2 + 2 + 6    # 28 + 18 + 10 + 6 = 62
+ECON_BYTES = N_STOCK * 2 + 9 * 2 + 6 + 2 + 2 + 8    # 28 + 18 + 10 + 8 = 64
 
 
 def populate(e, n_dome=24, n_struct=20, seed=11):
@@ -299,9 +386,13 @@ def populate(e, n_dome=24, n_struct=20, seed=11):
     # Μια αποικία που ΕΧΕΙ προμήθειες. Οχι για να είναι εύκολη: με άδεια
     # ντουλάπια όλοι τρέχουν συνέχεια για φαγητό και κανείς δεν πιάνει ποτέ
     # δουλειά, οπότε ο πίνακας εργασιών δεν δοκιμάζεται καθόλου.
-    for s, q in ((S_WATER, 600), (S_FOOD, 600), (S_ORE, 600), (S_STARCH, 600),
-                 (S_VEG, 600), (S_MEDPLANT, 300), (S_MEDI, 200)):
+    for s, q in ((S_WATER, 600), (S_FOOD, 400), (S_ORE, 600), (S_STARCH, 200),
+                 (S_VEG, 200), (S_MEDPLANT, 300), (S_MEDI, 200), (S_SPARE, 40)):
         e.stock[s] = q
+    # Μια θύελλα ήδη σε εξέλιξη. Η ζαριά τη ρίχνει μία στις 128 περιστροφές,
+    # που σημαίνει ότι ένα παράθυρο 40 περιστροφών τη χάνει τις δύο φορές
+    # στις τρεις — και τότε ο κλάδος της δεν δοκιμάζεται καθόλου.
+    e.storm = 20
 
     kinds = [K_SOLAR, K_SOLAR, K_TURBINE, K_COLLECTOR, K_EXTRACTOR, K_MINE]
     for i in range(n_struct):
@@ -320,8 +411,9 @@ def populate(e, n_dome=24, n_struct=20, seed=11):
     forced = {d: (0, 0) for d in range(10)}
     # Κάθε αποικία χρειάζεται καντίνα, κοιτώνες και ιατρείο, αλλιώς οι
     # ανάγκες δεν έχουν πού να ικανοποιηθούν και όλοι πεθαίνουν.
-    rooms = [R_CANTEEN, R_QUARTERS, R_FACTORY, R_MEDBAY,
-             R_CANTEEN, R_QUARTERS, R_GREENHOUSE, R_LAB, R_STORAGE, R_LOUNGE]
+    rooms = [R_CANTEEN, R_QUARTERS, R_GREENHOUSE, R_FACTORY, R_MEDBAY,
+             R_CANTEEN, R_QUARTERS, R_GREENHOUSE, R_LAB, R_STORAGE,
+             R_GREENHOUSE, R_LOUNGE]
     for d in range(n_dome):
         b = d * DOME_REC
         e.dome[b + D_ROOM] = (R_OXYGEN if d in forced
@@ -339,6 +431,14 @@ def populate(e, n_dome=24, n_struct=20, seed=11):
             e.dome[b + D_OPS] = 1
             e.dome[b + D_MACH] = forced[d][1]
             e.dome[b + D_HEALTH] = 200
+            continue
+        if e.dome[b + D_ROOM] == R_GREENHOUSE:
+            # Τα φυτά κάθονται στις ίδιες υποδοχές. Ενα δέντρο (κατηγορία 3)
+            # σε κάθε θερμοκήπιο, ώστε να δοκιμάζεται και η παρηγοριά.
+            e.dome[b + D_OPS] = n
+            for t in range(n):
+                e.dome[b + D_MACH + t] = 11 if t == 0 else (t * 3) % 11
+                e.dome[b + D_HEALTH + t] = 200
             continue
         for s in range(n):
             r = rnd() >> 5
@@ -377,18 +477,35 @@ NO_TASK = 255
 
 
 def needs_operators(e, d):
-    """Πόσες μηχανές αυτού του θόλου θέλουν χειριστή."""
+    """Πόσες υποδοχές αυτού του θόλου θέλουν κάποιον από πάνω τους.
+
+    Το θερμοκήπιο μετράει ΚΑΘΕ φυτό: τα φυτά θέλουν φροντίδα, όχι χειρισμό,
+    αλλά από τη σκοπιά του πίνακα εργασιών είναι το ίδιο πράγμα.
+    """
     base = d * DOME_REC
     if e.dome[base + D_STATE] != DS_ACTIVE:
         return 0
+    green = e.dome[base + D_ROOM] == R_GREENHOUSE
     n = 0
     for s in range(MACHINE_COUNT[e.dome[base + D_SIZE]]):
         m = e.dome[base + D_MACH + s]
         if m == NO_MACH or e.dome[base + D_HEALTH + s] == 0:
             continue
-        if RECIPE[m][9] & MF_OPERATOR:
+        if green or (RECIPE[m][9] & MF_OPERATOR):
             n += 1
     return n
+
+
+def broken_slot(e, d):
+    """Η πρώτη σταματημένη υποδοχή αυτού του θόλου, ή None."""
+    base = d * DOME_REC
+    if e.dome[base + D_STATE] != DS_ACTIVE:
+        return None
+    for s in range(MACHINE_COUNT[e.dome[base + D_SIZE]]):
+        if e.dome[base + D_MACH + s] != NO_MACH \
+           and e.dome[base + D_HEALTH + s] == 0:
+            return s
+    return None
 
 
 def jobs_tick(e, a, F_ALIVE, F_WORKING):
@@ -417,28 +534,46 @@ def jobs_tick(e, a, F_ALIVE, F_WORKING):
         node = jb[b + J_NODE]
         if a.node[i] != node or a.edge[i] != 255:
             continue
+        if jb[b + J_KIND] == J_REPAIR:
+            # Ο μηχανικός φτάνει με ένα ανταλλακτικό και φεύγει. Δεν πιάνει
+            # θέση χειριστή — η επισκευή δεν είναι δουλειά που κρατάει.
+            s = broken_slot(e, node)
+            if s is None or e.stock[S_SPARE] < 1:
+                jb[b + J_AGENT] = 255       # τζάμπα δρόμος· μένει ανοιχτή
+                a.task[i] = NO_TASK
+                continue
+            e.stock[S_SPARE] -= 1
+            e.dome[node * DOME_REC + D_HEALTH + s] = 200
+            a.task[i] = NO_TASK
+            jb[b + J_KIND] = NO_JOB
+            continue
         if node < MAX_DOME:
             e.dome[node * DOME_REC + D_OPS] += 1
         a.flags[i] |= F_WORKING
         a.task[i] = NO_TASK
         jb[b + J_KIND] = NO_JOB
 
-    # 3. δημοσίευση, JOB_SCAN θόλοι ανά επίσκεψη
+    # 3. δημοσίευση, JOB_SCAN θόλοι ανά επίσκεψη. Μία εργασία ανά θόλο ανά
+    #    επίσκεψη, και η επισκευή προηγείται: μια σταματημένη μηχανή δεν
+    #    χρειάζεται χειριστή, χρειάζεται μηχανικό.
     for _ in range(JOB_SCAN):
         d = e.job_dome
         e.job_dome = (d + 1) % MAX_DOME
-        want = needs_operators(e, d)
-        if e.dome[d * DOME_REC + D_OPS] >= want:
+        if broken_slot(e, d) is not None:
+            kind = J_REPAIR
+        elif e.dome[d * DOME_REC + D_OPS] < needs_operators(e, d):
+            kind = J_OPERATE
+        else:
             continue
-        if any(jb[k * JOB_REC + J_KIND] == J_OPERATE
+        if any(jb[k * JOB_REC + J_KIND] == kind
                and jb[k * JOB_REC + J_NODE] == d for k in range(MAX_JOB)):
             continue
         for k in range(MAX_JOB):
             if jb[k * JOB_REC + J_KIND] == NO_JOB:
-                jb[k * JOB_REC + J_KIND] = J_OPERATE
+                jb[k * JOB_REC + J_KIND] = kind
                 jb[k * JOB_REC + J_NODE] = d
                 jb[k * JOB_REC + J_AGENT] = 255
-                jb[k * JOB_REC + J_PRIO] = JOB_PRIO[J_OPERATE]
+                jb[k * JOB_REC + J_PRIO] = JOB_PRIO[kind]
                 jb[k * JOB_REC + J_AGE] = 0
                 break
 
@@ -490,19 +625,33 @@ R_EMPTY, R_CONTROL, R_QUARTERS, R_CANTEEN, R_OXYGEN, R_GREENHOUSE, \
     R_STORAGE, R_AIRLOCK, R_FACTORY, R_LAB, R_MEDBAY, R_LOUNGE = range(N_ROOM)
 
 
-def rooms_rebuild(e):
-    """Θέση 14: ποιοι θόλοι είναι τι. 64 εγγραφές, μία φορά ανά περιστροφή."""
+def rooms_rebuild(e, plant_class=None):
+    """Θέση 14: ποιοι θόλοι είναι τι. 64 εγγραφές, μία φορά ανά περιστροφή.
+
+    Μετράει στο ίδιο πέρασμα και την **παρηγοριά**: σαλόνια και δέντρα. Το
+    §6.6 θέλει το ηθικό να ανεβαίνει με ένα δέντρο στο θερμοκήπιο, και αυτό
+    είναι το μόνο πέρασμα που κοιτάζει ούτως ή άλλως κάθε θόλο.
+    """
     e.room_n = bytearray(N_ROOM)
     e.room_list = bytearray(N_ROOM * ROOM_MAX)
+    amenity = 0
     for d in range(MAX_DOME):
         b = d * DOME_REC
         if e.dome[b + D_STATE] != DS_ACTIVE:
             continue
         r = e.dome[b + D_ROOM]
+        if r == R_LOUNGE:
+            amenity += 1
+        elif r == R_GREENHOUSE and plant_class is not None:
+            for s in range(MACHINE_COUNT[e.dome[b + D_SIZE]]):
+                p = e.dome[b + D_MACH + s]
+                if p != NO_MACH and (plant_class[p] & 3) == 3:
+                    amenity += 1
         if r >= N_ROOM or e.room_n[r] >= ROOM_MAX:
             continue
         e.room_list[r * ROOM_MAX + e.room_n[r]] = d
         e.room_n[r] += 1
+    e.amenity = min(255, amenity)
 
 
 def nearest_room(e, room, node):

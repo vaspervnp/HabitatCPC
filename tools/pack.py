@@ -165,7 +165,7 @@ def build_runs(smap, blob):
     # αποθέματα τα διαβάζει το HUD σε κάθε frame. Ο,τι διαβάζεται μαζί με
     # σελιδοποιημένο πίνακα δεν μπορεί να ζει στο παράθυρο — το ίδιο μάθημα
     # με τον πάγκο της BFS.
-    arena.append(Run("econ_state", 62, None, note="ΔΕΣΜΕΥΣΗ — αποθέματα και ροές"))
+    arena.append(Run("econ_state", 64, None, note="ΔΕΣΜΕΥΣΗ — αποθέματα και ροές"))
     arena.append(Run("job_tbl", 32 * 5, None, note="ΔΕΣΜΕΥΣΗ — 32 εργασίες"))
     arena.append(Run("room_n", 12, None, note="ΔΕΣΜΕΥΣΗ — θόλοι ανά είδος δωματίου"))
     arena.append(Run("room_list", 12 * 8, None, note="ΔΕΣΜΕΥΣΗ — ως 8 ο καθένας"))

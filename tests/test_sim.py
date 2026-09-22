@@ -146,7 +146,7 @@ def fresh(g, nexthop, src):
               "mach_power", "o2_prod", "o2_use", "acc_power", "acc_o2",
               "power_ok", "o2_ok", "prod_dome", "day", "wind", "sol",
               "frame", "rnd", "n_dome", "n_struct", "job_dome", "job_agent",
-              "alive", "gameover", "gloom"):
+              "alive", "gameover", "gloom", "storm", "amenity"):
         setattr(s.e, f, getattr(src.e, f))
     return s
 
@@ -159,7 +159,7 @@ def main():
     sim0 = E.Sim(g, nexthop, dist)
     EC.populate(sim0.e)
     E.populate(sim0)
-    EC.rooms_rebuild(sim0.e)
+    EC.rooms_rebuild(sim0.e, sim0.pc)
     before = E.Agents().from_bytes(sim0.a.to_bytes())
 
     got_a, got_occ, frames, got_dome, got_str, got_econ, got_job, got_room = \
@@ -241,6 +241,66 @@ def main():
             if gv != wv:
                 print(f"    {n:18s} Z80 {gv:6d} != αναφορά {wv:6d}")
         return 1
+
+    # --- τα θερμοκήπια, οι θύελλες και οι βλάβες (§6.8, §6.10) ---
+    #
+    # Αυτά τρέχουν στην ΑΝΑΦΟΡΑ: μόλις αποδείχθηκε ότι ο Z80 βγάζει τα ίδια
+    # bytes, οπότε ό,τι ισχύει για τη μία ισχύει και για τον άλλον. Και έτσι
+    # μπορούν να παρακολουθηθούν μεταβάσεις μέσα στο τρέξιμο, που ένα
+    # στιγμιότυπο στο τέλος δεν τις δείχνει.
+    # Τετραπλάσιο παράθυρο: η βλάβη ρίχνεται μία στις 32 περιστροφές και η
+    # έκλαμψη μία στις 256, οπότε σαράντα περιστροφές τις χάνουν συχνά. Ο
+    # κώδικας είναι ο ίδιος που μόλις αποδείχθηκε ταυτόσημος με τον Z80.
+    HAZ = TICKS * 4
+    broke = repaired = storm_revs = 0
+    watch = fresh(g, nexthop, sim0)
+    prev = bytes(watch.e.dome)
+    for _ in range(HAZ):
+        watch.tick()
+        now = bytes(watch.e.dome)
+        for d in range(EC.MAX_DOME):
+            for sl in range(EC.MACH_SLOTS):
+                k = d * EC.DOME_REC + EC.D_HEALTH + sl
+                if prev[k] and not now[k]:
+                    broke += 1
+                elif not prev[k] and now[k]:
+                    repaired += 1
+        if watch.e.storm:
+            storm_revs += 1
+        prev = now
+
+    # Το θερμοκήπιο συνεισφέρει; Το ίδιο τρέξιμο με άδειες γλάστρες.
+    bare = fresh(g, nexthop, sim0)
+    for d in range(EC.MAX_DOME):
+        b = d * EC.DOME_REC
+        if bare.e.dome[b + EC.D_ROOM] == EC.R_GREENHOUSE:
+            for sl in range(EC.MACH_SLOTS):
+                bare.e.dome[b + EC.D_MACH + sl] = EC.NO_MACH
+    EC.rooms_rebuild(bare.e, bare.pc)
+    for _ in range(HAZ):
+        bare.tick()
+
+    grown = watch.e.stock[EC.S_STARCH] - bare.e.stock[EC.S_STARCH]
+    if grown <= 0:
+        print(f"ΑΠΟΤΥΧΙΑ: τα θερμοκήπια δεν παρήγαγαν τίποτα "
+              f"({watch.e.stock[EC.S_STARCH]} με φυτά, "
+              f"{bare.e.stock[EC.S_STARCH]} χωρίς)")
+        return 1
+    if broke == 0 or repaired == 0:
+        print(f"ΑΠΟΤΥΧΙΑ: {broke} βλάβες, {repaired} επισκευές — "
+              f"ο κύκλος του §6.10 δεν έκλεισε")
+        return 1
+    if storm_revs == 0 or got_econ[61] != 0:
+        print(f"ΑΠΟΤΥΧΙΑ: η αμμοθύελλα δεν έτρεξε ({storm_revs} περιστροφές, "
+              f"υπόλοιπο {got_econ[61]})")
+        return 1
+    if got_econ[62] == 0:
+        print("ΑΠΟΤΥΧΙΑ: καμία παρηγοριά — δέντρα και σαλόνια δεν μετρήθηκαν")
+        return 1
+    print(f"OK χλωρίδα:  +{grown} άμυλο από τα θερμοκήπια σε {HAZ} frames, "
+          f"παρηγοριά {got_econ[62]}")
+    print(f"OK κίνδυνοι: {storm_revs} frames αμμοθύελλας, {broke} βλάβες, "
+          f"{repaired} επισκευές με ανταλλακτικό")
 
     # --- οι ανάγκες όντως δάγκωσαν; ---
     ag0 = E.Agents().from_bytes(sim0.a.to_bytes())

@@ -205,6 +205,10 @@ def need_one(a, e, occ, i):
         dmg += 2
     if a.food[i] < NEED_CRIT:
         dmg += 1
+    # Η αμμοθύελλα χτυπά όποιον είναι έξω — και έξω σημαίνει «σε εξωτερική
+    # δομή», γιατί αυτό ακριβώς κάνει τους αεροφράκτες απόφαση (§6.2).
+    if e.storm and a.node[i] >= EC.MAX_DOME:
+        dmg += 4
     if dmg:
         a.health[i] = sub_sat(a.health[i], dmg)
     elif min(a.o2[i], a.water[i], a.food[i]) >= NEED_LOW:
@@ -220,7 +224,9 @@ def need_one(a, e, occ, i):
         a.morale[i] = sub_sat(a.morale[i], 2)
     elif min(a.o2[i], a.water[i], a.food[i], a.sleep[i]) >= NEED_LOW:
         a.morale[i] = min(255, a.morale[i] + 1)
-    if e.gloom:
+    # Ενα δέντρο ή ένα σαλόνι δεν φέρνει πίσω κανέναν, αλλά κρατά το πένθος
+    # από το να τρώει το ηθικό όλων (§6.6).
+    if e.gloom and not e.amenity:
         a.morale[i] = sub_sat(a.morale[i], 1)
 
     # 7. πού πρέπει να πάει
@@ -304,6 +310,8 @@ MAX_COLONIST = 96           # το ταβάνι του §6.1: 80 άποικοι 
 class Sim:
     """Ο,τι χρειάζεται ένα frame προσομοίωσης, και τίποτε άλλο."""
 
+    PLANT_CLASS = None
+
     def __init__(self, g, nexthop, dist=None):
         self.a = Agents()
         self.g = g
@@ -313,6 +321,9 @@ class Sim:
         self.need_base = 0
         self.e = EC.Econ()
         self.e.dist = dist
+        if Sim.PLANT_CLASS is None:
+            Sim.PLANT_CLASS = EC.load_plant_class()
+        self.pc = Sim.PLANT_CLASS
 
     def tick(self):
         """Ενα frame: μία θέση του τροχού. Η δρομολόγηση δεν είναι θέση."""
@@ -331,13 +342,13 @@ class Sim:
             if s == 10:
                 self.need_base = (self.need_base + WH_NEED_SPAN) % MAX_COLONIST
         elif s == 11:
-            EC.production_slice(self.e)
+            EC.production_slice(self.e, plant_class=self.pc)
         elif s == 12:
             alive = sum(1 for i in range(MAXAGENT)
                         if self.a.flags[i] & F_ALIVE)
             EC.flow_balance(self.e, alive)
         elif s == 14:
-            EC.rooms_rebuild(self.e)
+            EC.rooms_rebuild(self.e, self.pc)
         elif s == 13:
             EC.jobs_tick(self.e, self.a, F_ALIVE, F_WORKING)
         elif s == 15:
@@ -353,7 +364,11 @@ def populate(sim, n_agents=96, seed=7):
     x = seed
     for i in range(n_agents):
         x = ((x * 75) + 74) & 0xFFFF
-        a.role[i] = (x >> 3) & 7
+        # ΟΧΙ από τη γεννήτρια. Ο LCG `x = 75x + 74` έχει αδύναμα χαμηλά bits:
+        # το (x>>3)&7 έβγαζε ΜΟΝΟ τους ρόλους 0 και 2, δηλαδή κάθε αποικία
+        # δοκιμής ήταν εργάτες και βιολόγοι — ούτε ένας μηχανικός, ούτε ένας
+        # γιατρός. Η επισκευή και η ίαση δεν είχαν εκτελεστεί ποτέ.
+        a.role[i] = i & 7
         a.flags[i] = F_ALIVE if (x & 31) else 0      # ~3% νεκροί εξαρχής
         # Οι άποικοι ζουν ΣΤΟΥΣ ΘΟΛΟΥΣ. Σκορπισμένοι σε όλο τον γράφο, οι
         # μισοί ξεκινούσαν πάνω σε εξωτερικές δομές και το ταξίδι ως την

@@ -993,9 +993,17 @@ First-pass balance, per sol (one sol = 4 real minutes):
 | `collector` s/m/l | stores 40 / 160 / 360 Power | |
 | `extractor` s/m/l | 6 / 24 / 54 Water | 2 / 6 / 12 Power |
 | `mine` | 20 Ore | 8 Power, 2 drillers |
-| Greenhouse slot | 3 Starch or 2 Vegetables | 1 Water, 1 Power |
+| Greenhouse slot | 3 Starch / 2 Vegetables / 2 Medicinal, by `plant_class` | 1 Water, 1 Power |
 
-These numbers are a starting point for tuning, not a balance claim.
+These numbers are a starting point for tuning, not a balance claim — and three of
+them turned out to be unlivable the first time the whole loop ran
+([§6.6](#66-needs)).
+
+**A greenhouse keeps plants in the same slots another dome keeps machines.** Same
+field, different meaning, and the room type says which. `plant_class` decides the
+output: starch, vegetables, medicine, or nothing at all for a tree, which is there for
+morale. Every plant needs tending, so a greenhouse posts as many `Operate` jobs as it
+has plants — biologists are what make it grow.
 
 ### 6.6 Needs
 
@@ -1156,22 +1164,46 @@ machines in the asset set have no home, which is not a gap worth designing aroun
 
 ### 6.10 Events and hazards
 
-One check per wheel revolution (≈ 3 Hz), from the gameplay RNG.
+One check per wheel revolution (≈ 3 Hz), from the gameplay RNG — which is **separate
+from the world generator's**, so the weather can never change the terrain a seed
+produces.
 
-| Event | Attacks | Countered by |
-|---|---|---|
-| Sandstorm | solar output ↓, outdoor structures damaged, outdoor agents take health damage | turbines, collectors, indoor work |
-| Solar flare | processors and machine health, sickness | spares, medics, warning from Control |
-| Meteor shower | random structures destroyed, **crater tiles written to the world plane** | spread-out building, spares |
-| Intruders | arrive at the map edge, walk in, attack | guards, guns, airlock placement |
-| Malfunction | one machine stops | engineer + 1 Spare |
-| Night | solar output = 0 for ~40% of each sol | collectors, turbines |
+| Event | Attacks | Countered by | Built? |
+|---|---|---|---|
+| Night | solar output = 0 for ~40% of each sol | collectors, turbines | ✅ |
+| Sandstorm | solar output = 0; anyone outdoors loses health | turbines, collectors, indoor work | ✅ |
+| Malfunction | one machine stops dead | engineer + 1 Spare | ✅ |
+| Solar flare | three machines stop at once | spares, engineers | ✅ |
+| Meteor shower | random structures destroyed, **crater tiles written to the world plane** | spread-out building, spares | ✗ |
+| Intruders | arrive at the map edge, walk in, attack | guards, guns, airlock placement | ✗ |
 
-Meteors are the only event that writes terrain, and they write through the same delta
-list as mining ([§5.10](#510-player-modification)).
+Meteors and intruders are **not built**, and for the same reason: both need something
+outside the simulation. Meteors write terrain, which means the world plane and the
+dirty list that redraws it; intruders need agents that spawn at the map edge and a
+notion of combat. Both belong after the renderer, not before it.
 
-A Control room gives a warning some seconds ahead of storms and flares, which is what
-makes Control worth building before it is obviously needed.
+**A malfunction is not "damaged a bit": the machine's health goes to zero and stays
+there** until an engineer arrives with a Spare. That is what closes the loop — the job
+board posts the repair itself, and repair outranks staffing, because a stopped machine
+does not need an operator, it needs a mechanic. The engineer arrives, spends the part,
+and leaves; unlike an operator they do not stay.
+
+Sandstorms hurt **anyone standing at an external structure**. That is precisely what
+makes airlock placement a real decision ([§6.2](#62-the-node-graph)) rather than
+decoration.
+
+#### Three rolls, always, and each reads a different part of the number
+
+The events tick always draws three values, whether it needs them or not: a conditional
+roll would make the sequence depend on the previous outcome, and reproducibility would
+become work.
+
+The first version then tested the **low bits of two consecutive draws** — and a Galois
+LFSR shifts right, so consecutive draws are very nearly the same number moved along.
+The storm roll and the malfunction roll were reading almost the same bits, so they
+fired together or not at all. Each test now reads a different field: low bits of the
+first for wind, **high** bits of the second for storms, low bits of the third for a
+malfunction and its high bits for a flare.
 
 ### 6.11 Ships and arrivals
 
@@ -1213,16 +1245,16 @@ it could live here.
 | Slot | Pass | Slice | Budgeted | **Measured** |
 |---|---|---|---|---|
 | 0–7 | Agent movement | 12 agents each | 1,800 µs | **1,298 µs** ✅ |
-| 8–10 | Needs, health, death, deciding | 8 colonists each ([§6.6](#66-needs)) | 433 µs | **2,696 µs** ❌ 6.2× |
-| 11 | Production | 16 domes | 4,000 µs | **5,292 µs** ❌ 1.3× |
-| 12 | Flow balance | 64 structures, plus counting the living | 2,000 µs | **6,390 µs** ❌ 3.2× |
-| 13 | Job board | reap, arrive, post, assign | 3,000 µs | **4,293 µs** ❌ 1.4× |
-| 14 | Room index | 64 domes ([§6.6](#66-needs)) | *(was empty)* | **3,894 µs** |
-| 15 | Events | one roll: weather, day/night, the sol clock | 500 µs | **200 µs** ✅ |
+| 8–10 | Needs, health, death, deciding | 8 colonists each ([§6.6](#66-needs)) | 433 µs | **2,796 µs** ❌ 6.5× |
+| 11 | Production, machines and plants | 16 domes | 4,000 µs | **6,290 µs** ❌ 1.6× |
+| 12 | Flow balance | 64 structures, plus counting the living | 2,000 µs | **5,891 µs** ❌ 2.9× |
+| 13 | Job board — reap, arrive, post, assign | 4 domes, 32 agents | 3,000 µs | **4,892 µs** ❌ 1.6× |
+| 14 | Room index and amenity ([§6.6](#66-needs)) | 64 domes | *(was empty)* | **5,391 µs** |
+| 15 | Events: clock, weather, hazards ([§6.10](#610-events-and-hazards)) | three rolls | 500 µs | **200 µs** ✅ |
 | — | wheel dispatch itself | every frame | — | **94 µs** |
 
-**A whole revolution costs 62,400 µs spread over 16 frames — a fifth of the machine —
-and the worst single frame is 6,390 µs, a third of one.** That is the number the
+**A whole revolution costs about 68,000 µs spread over 16 frames — a fifth of the
+machine — and the worst single frame is 6,290 µs, under a third of one.** That is the number the
 design lives or dies by, and it has room.
 
 Five of the seven budgets were low, by 1.3× to 6.2×. The one pass that came in under
@@ -1251,7 +1283,7 @@ The room index of [§6.6](#66-needs) has since moved into it.
 Every frame, regardless of slot:Every frame, regardless of slot: read input, move cursor and camera, advance the dirty
 list ([§8.5](#85-the-dirty-list)) up to a 20,000 µs cap, tick animation, service audio.
 
-The worst *frame* is a flow-balance slot during a routing rebuild: 6,390 + 2,700 + 94
+The worst *frame* is a production slot during a routing rebuild: 6,290 + 2,700 + 94
 ≈ **9,200 µs, under half the frame**. That leaves 10,800 µs for rendering — and a
 single scroll column costs 9,300 µs ([§8.3](#83-the-tile-pass)). **The two together
 very nearly fill the frame**, which is exactly why the dirty list is a *budget* rather
@@ -1716,7 +1748,9 @@ order, and do not build gameplay on top of a scroll that has not been proven on 
 | ~~Slots 11, 12, 13 and 15 of the wheel are unwritten~~ | ~~Medium~~ | **Written and measured.** Four of six budgets were low, by 1.5× to 5× ([§7.2](#72-the-wheel)). The worst frame is a third of a frame, so the design holds. Remaining passes should be budgeted pessimistically. |
 | A heavy sim slot and a scroll column in the same frame come to ~19 ms of 20 | Medium | The dirty list is a budget, so the edge redraw spreads over two frames. Costs nothing but a one-frame lag on the newly exposed column; needs watching once the HUD re-render ([§8.1](#81-screen-layout)) is measured too. |
 | ~~Needs, health and death are not written~~ | ~~High~~ | **Written.** Colonists eat, drink, sleep, get treated, die, and grieve; the only loss condition is live ([§6.6](#66-needs)). |
-| **Nothing produces food.** Greenhouses are a room type with no plant logic, so Starch, Vegetables and Medicinal only ever fall | High | The test colony survives on a full larder. A real one starves in about a sol. Greenhouse production is the next thing that has to exist, before any balancing means anything. |
+| ~~Nothing produces food~~ | ~~High~~ | **Greenhouses grow.** Plants sit in the machine slots, `plant_class` decides the crop, and every plant needs a biologist ([§6.5](#65-economy)). |
+| Meteors and intruders are unbuilt, and both need the renderer first | Medium | Meteors write terrain, so they need the world plane and the dirty list; intruders need edge spawning and combat. Neither is a simulation problem, which is why neither is in [§6.10](#610-events-and-hazards) yet. |
+| Ships, trade and milestones are unbuilt — [§6.11](#611-ships-and-arrivals) and [§10.2](#102-milestones) | Medium | The colony sustains itself but cannot grow: no new colonists arrive and nothing can be traded for. This is what makes it a sandbox rather than a game. |
 | The balance numbers in [§6.5](#65-economy) are first guesses and three of them were unlivable | Medium | Corrected against the first working colony ([§6.6](#66-needs)). Expect the same of the rest: they cannot be checked by reading, only by running the loop and looking at who is where. |
 | Balance | Certain | Every number in [§6.5](#65-economy) is a first guess. The recipe table exists so that rebalancing is a data edit, not a code edit. |
 

@@ -28,6 +28,8 @@ J_AGE       equ 4
 NO_JOB      equ 255
 NO_TASK     equ 255
 J_OPERATE   equ 1
+J_REPAIR    equ 4
+S_SPARE     equ 6
 JOB_SCAN    equ 4
 JOB_ASSIGN  equ 4
 JOB_LOOK    equ 32                  ; πράκτορες που εξετάζονται ανά επίσκεψη
@@ -90,27 +92,83 @@ ja_lp:
         push    hl
         ld      a,(hl)
         cp      NO_JOB
-        jr      z,ja_next
+        jp      z,ja_next
         inc     hl
         ld      c,(hl)                  ; C = κόμβος
         inc     hl
         ld      a,(hl)                  ; ο πράκτορας
         cp      255
-        jr      z,ja_next
+        jp      z,ja_next
         ld      e,a
         ld      (jb_ag),a
         ld      d,AG_PG + 1             ; node
         ld      a,(de)
         cp      c
-        jr      nz,ja_next              ; δεν έφτασε ακόμη
+        jp      nz,ja_next              ; δεν έφτασε ακόμη
         ld      d,AG_PG + 2
         ld      a,e
         add     a,128                   ; edge στο πάνω μισό
         ld      e,a
         ld      a,(de)
         cp      255
-        jr      nz,ja_next              ; ακόμη στον σωλήνα
+        jp      nz,ja_next              ; ακόμη στον σωλήνα
 
+        ; --- επισκευή; τότε ο μηχανικός φτάνει, αλλάζει το εξάρτημα, φεύγει ---
+        pop     hl
+        push    hl
+        ld      a,(hl)
+        cp      J_REPAIR
+        jr      nz,ja_operate
+        ld      a,c
+        ld      (jb_d),a
+        call    jb_broken
+        cp      255
+        jr      z,ja_fail
+        ld      (jb_slot),a
+        ld      a,S_SPARE               ; χρειάζεται ένα ανταλλακτικό
+        ld      c,1
+        call    ec_have
+        jr      c,ja_fail
+        ld      a,(de)
+        sub     1
+        ld      (de),a
+        inc     de
+        ld      a,(de)
+        sbc     a,0
+        ld      (de),a
+        ld      a,(jb_d)
+        call    jb_dome_ptr
+        ld      de,D_HEALTH
+        add     hl,de
+        ld      a,(jb_slot)
+        ld      e,a
+        ld      d,0
+        add     hl,de
+        ld      (hl),200                ; ξαναδουλεύει
+        call    ja_cleartask
+        pop     hl
+        push    hl
+        ld      (hl),NO_JOB
+        jp      ja_next
+ja_fail:
+        ; τζάμπα δρόμος: η εργασία μένει ανοιχτή για τον επόμενο
+        call    ja_cleartask
+        pop     hl
+        push    hl
+        inc     hl
+        inc     hl
+        ld      (hl),255
+        jp      ja_next
+ja_cleartask:
+        ld      a,(jb_ag)
+        ld      e,a
+        set     7,e
+        ld      d,AG_PG + 3
+        ld      a,NO_TASK
+        ld      (de),a
+        ret
+
+ja_operate:
         ; --- ο θόλος αποκτά χειριστή ---
         ld      a,c
         cp      MAX_DOME
@@ -148,7 +206,8 @@ ja_next:
         ld      de,JOB_REC
         add     hl,de
         pop     bc
-        djnz    ja_lp
+        dec     b
+        jp      nz,ja_lp
         ret
 
 ; ---------------------------------------------------------------------------
@@ -172,20 +231,28 @@ jp_st:
         ret
 
 jp_one:
-        ; χρειάζεται = πόσες μηχανές θέλουν χειριστή
+        ; Μία εργασία ανά θόλο ανά επίσκεψη, και η επισκευή προηγείται: μια
+        ; σταματημένη μηχανή δεν θέλει χειριστή, θέλει μηχανικό.
+        ld      a,J_REPAIR
+        ld      (jb_kind2),a
+        call    jb_broken
+        cp      255
+        jr      nz,jp_have
+        ld      a,J_OPERATE
+        ld      (jb_kind2),a
         call    jb_need
         ld      (jb_want),a
         or      a
         ret     z
-        ; ops >= χρειάζεται ;
         ld      a,(jb_d)
-        call    jb_dome_ptr             ; HL = εγγραφή θόλου
+        call    jb_dome_ptr
         ld      de,D_OPS
         add     hl,de
         ld      a,(hl)
         ld      hl,jb_want
         cp      (hl)
         ret     nc                      ; έχει ήδη αρκετούς
+jp_have:
 
         ; ΕΝΑ πέρασμα: βρίσκει και το διπλότυπο και την πρώτη ελεύθερη θέση.
         ; Δύο ξεχωριστές σαρώσεις των 32 ήταν η μισή δουλειά της δημοσίευσης.
@@ -208,7 +275,10 @@ jp_dup:
         ld      (jp_slot),hl
         jr      jp_dup_n
 jp_used:
-        cp      J_OPERATE
+        push    hl
+        ld      hl,jb_kind2
+        cp      (hl)
+        pop     hl
         jr      nz,jp_dup_n
         inc     hl
         ld      a,(hl)
@@ -225,16 +295,74 @@ jp_dup_n:
         or      l
         ret     z                       ; ο πίνακας γέμισε
 jp_write:
-        ld      (hl),J_OPERATE
+        ld      a,(jb_kind2)
+        ld      (hl),a
         inc     hl
         ld      a,(jb_d)
         ld      (hl),a
         inc     hl
         ld      (hl),255                ; αδιάθετη
         inc     hl
-        ld      (hl),3                  ; προτεραιότητα του J_OPERATE
+        ld      a,(jb_kind2)
+        push    hl
+        ld      hl,job_prio
+        add     a,l
+        ld      l,a
+        ld      a,0
+        adc     a,h
+        ld      h,a
+        ld      a,(hl)
+        pop     hl
+        ld      (hl),a
         inc     hl
         ld      (hl),0
+        ret
+
+; jb_broken — (jb_d) = θόλος. A = η πρώτη σταματημένη υποδοχή, ή 255.
+jb_broken:
+        ld      a,(jb_d)
+        call    jb_dome_ptr
+        push    hl
+        ld      de,D_STATE
+        add     hl,de
+        ld      a,(hl)
+        pop     hl
+        cp      DS_ACTIVE
+        jr      nz,jbr_no
+        push    hl
+        ld      de,D_SIZE
+        add     hl,de
+        ld      a,(hl)
+        ld      hl,G_machine_count
+        add     a,l
+        ld      l,a
+        ld      a,0
+        adc     a,h
+        ld      h,a
+        ld      b,(hl)
+        pop     hl
+        ld      de,D_MACH
+        add     hl,de
+        ld      c,0
+jbr_lp:
+        ld      a,(hl)
+        cp      NO_MACH
+        jr      z,jbr_n
+        push    hl
+        ld      de,D_HEALTH - D_MACH
+        add     hl,de
+        ld      a,(hl)
+        pop     hl
+        or      a
+        jr      nz,jbr_n
+        ld      a,c                     ; βρέθηκε
+        ret
+jbr_n:
+        inc     hl
+        inc     c
+        djnz    jbr_lp
+jbr_no:
+        ld      a,255
         ret
 
 ; jb_need — A/(jb_d) = θόλος -> A = πόσες μηχανές θέλουν χειριστή
@@ -251,6 +379,17 @@ jb_need:
         xor     a
         ret
 jn_go:
+        push    hl                      ; θερμοκήπιο; τότε κάθε φυτό μετράει
+        ld      de,D_ROOM
+        add     hl,de
+        ld      a,(hl)
+        pop     hl
+        cp      R_GREENHS
+        ld      a,0
+        jr      nz,jn_ng
+        inc     a
+jn_ng:
+        ld      (jb_green),a
         push    hl
         ld      de,D_SIZE
         add     hl,de
@@ -279,6 +418,8 @@ jn_lp:
         dec     e
         jr      z,jn_next               ; χαλασμένη
         push    hl
+        ld      hl,jb_green
+        ld      e,(hl)
         ld      hl,G_mach_op
         add     a,l
         ld      l,a
@@ -286,6 +427,7 @@ jn_lp:
         adc     a,h
         ld      h,a
         ld      a,(hl)
+        or      e                       ; στο θερμοκήπιο, όλα μετράνε
         pop     hl
         or      a
         jr      z,jn_next
@@ -314,6 +456,10 @@ jb_dome_ptr:
 jb_ag:      db 0
 jb_d:       db 0
 jb_want:    db 0
+jb_kind2:   db 0
+jb_green:   db 0
+jb_slot:    db 0
+job_prio:   db 5,3,2,4,6,8,9
 
 ; ---------------------------------------------------------------------------
 ; 4. ανάθεση: ως JOB_ASSIGN, κοιτάζοντας ως JOB_LOOK πράκτορες

@@ -150,6 +150,19 @@ nd_h2:
         inc     a
         ld      (nd_dmg),a
 nd_h3:
+        ; Η αμμοθύελλα χτυπά όποιον είναι έξω — και έξω σημαίνει «σε εξωτερική
+        ; δομή». Αυτό ακριβώς κάνει τη θέση του αεροφράκτη απόφαση (§6.2).
+        ld      a,(EC_STORM)
+        or      a
+        jr      z,nd_h4
+        ld      h,AG_PG + 1
+        ld      a,(hl)
+        cp      MAX_DOME
+        jr      c,nd_h4
+        ld      a,(nd_dmg)
+        add     a,4
+        ld      (nd_dmg),a
+nd_h4:
         ld      h,AG_PG + 6
         ld      a,(nd_dmg)
         or      a
@@ -223,7 +236,10 @@ nd_mo_up:
 nd_mo_st:
         ld      (hl),a
 nd_gloom:
-        ld      a,(EC_GLOOM)            ; το πένθος βαραίνει όλους
+        ld      a,(EC_AMENITY)          ; ένα δέντρο ή ένα σαλόνι παρηγορεί
+        or      a
+        jr      nz,nd_seek0
+        ld      a,(EC_GLOOM)            ; αλλιώς το πένθος βαραίνει όλους
         or      a
         jr      z,nd_seek0
         ld      a,(hl)
@@ -512,6 +528,8 @@ rr_clr:
         ld      (hl),0
         inc     hl
         djnz    rr_clr
+        xor     a
+        ld      (rr_amen),a
 
         ld      hl,G_dome_tbl
         ld      c,0                     ; C = δείκτης θόλου
@@ -530,6 +548,12 @@ rr_lp:
         cp      12
         jr      nc,rr_next
         ld      e,a                     ; E = είδος
+        push    de
+        push    bc
+        call    rr_amenity              ; σαλόνια και δέντρα (§6.6)
+        pop     bc
+        pop     de
+        ld      a,e
         ld      hl,G_room_n
         add     a,l
         ld      l,a
@@ -564,6 +588,63 @@ rr_next:
         ld      a,c
         cp      MAX_DOME
         jr      c,rr_lp
+        ld      a,(rr_amen)
+        ld      (EC_AMENITY),a
+        ret
+
+; rr_amenity — A/E = είδος δωματίου, (HL στο D_ROOM του θόλου). Μετράει
+; σαλόνια και δέντρα. Το δέντρο είναι φυτό κατηγορίας 3 σε θερμοκήπιο.
+rr_amenity:
+        cp      R_LOUNGE
+        jr      z,rr_am_one
+        cp      R_GREENHS
+        ret     nz
+        ; πόσες υποδοχές;
+        ld      de,D_SIZE - D_ROOM
+        add     hl,de
+        ld      a,(hl)
+        ld      de,D_ROOM - D_SIZE
+        add     hl,de
+        push    hl
+        ld      hl,G_machine_count
+        add     a,l
+        ld      l,a
+        ld      a,0
+        adc     a,h
+        ld      h,a
+        ld      b,(hl)
+        pop     hl
+        ld      de,D_MACH - D_ROOM
+        add     hl,de
+rr_am_lp:
+        ld      a,(hl)
+        cp      NO_MACH
+        jr      z,rr_am_n
+        push    hl
+        ld      hl,G_plant_class
+        add     a,l
+        ld      l,a
+        ld      a,0
+        adc     a,h
+        ld      h,a
+        ld      a,(hl)
+        pop     hl
+        and     3
+        cp      3
+        jr      nz,rr_am_n
+        push    hl
+        call    rr_am_one
+        pop     hl
+rr_am_n:
+        inc     hl
+        djnz    rr_am_lp
+        ret
+rr_am_one:
+        ld      a,(rr_amen)
+        cp      255
+        ret     z
+        inc     a
+        ld      (rr_amen),a
         ret
 
 nd_i:       db 0
@@ -575,3 +656,4 @@ nd_best:    db 0
 nd_bestd:   db 0
 nd_cand:    db 0
 nd_row:     dw 0
+rr_amen:    db 0
