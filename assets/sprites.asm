@@ -85,7 +85,7 @@ CORR_D_SY   equ 16
 MACH_W      equ 6
 MACH_H      equ 22
 MACH_SIZE   equ 132          ; machines + type*MACH_SIZE
-MACH_TYPES  equ 10           ; oxygen, iron, bioplastic, weapons, processors, robots, food, spares, medical, vitromeat
+MACH_TYPES  equ 12           ; oxygen, iron, bioplastic, weapons, processors, robots, food, spares, medical, vitromeat, beds, medstore
 MACH_SLOTS  equ 8           ; θέσεις ανά μέγεθος στον πίνακα
 
 PLANT_SIZE  equ 132          ; ίδιες διαστάσεις με τα μηχανήματα
@@ -3970,6 +3970,56 @@ mach_vitromeat:
     db #0C,#0C,#0C,#0C,#0C,#0C   ; ............
     db #0C,#0C,#0C,#0C,#0C,#0C   ; ............
 
+; mach_beds — 12 x 22 pixels, αδιαφανές, 132 bytes
+mach_beds:
+    db #0C,#0C,#0C,#0C,#0C,#0C   ; ............
+    db #58,#F0,#A4,#58,#F0,#A4   ; .WWWW..WWWW.
+    db #58,#CC,#A4,#58,#CC,#A4   ; .WccW..WccW.
+    db #58,#CC,#A4,#58,#CC,#A4   ; .WccW..WccW.
+    db #58,#03,#A4,#58,#03,#A4   ; .WRRW..WRRW.
+    db #58,#30,#A4,#58,#30,#A4   ; .W,,W..W,,W.
+    db #58,#30,#A4,#58,#30,#A4   ; .W,,W..W,,W.
+    db #58,#30,#A4,#58,#30,#A4   ; .W,,W..W,,W.
+    db #58,#30,#A4,#58,#30,#A4   ; .W,,W..W,,W.
+    db #58,#30,#A4,#58,#30,#A4   ; .W,,W..W,,W.
+    db #58,#30,#A4,#58,#30,#A4   ; .W,,W..W,,W.
+    db #58,#30,#A4,#58,#30,#A4   ; .W,,W..W,,W.
+    db #58,#30,#A4,#58,#30,#A4   ; .W,,W..W,,W.
+    db #58,#30,#A4,#58,#30,#A4   ; .W,,W..W,,W.
+    db #58,#30,#A4,#58,#30,#A4   ; .W,,W..W,,W.
+    db #58,#30,#A4,#58,#30,#A4   ; .W,,W..W,,W.
+    db #58,#30,#A4,#58,#30,#A4   ; .W,,W..W,,W.
+    db #58,#30,#A4,#58,#30,#A4   ; .W,,W..W,,W.
+    db #58,#F0,#A4,#58,#F0,#A4   ; .WWWW..WWWW.
+    db #0C,#0C,#0C,#0C,#0C,#0C   ; ............
+    db #0C,#0C,#0C,#0C,#0C,#0C   ; ............
+    db #0C,#0C,#0C,#0C,#0C,#0C   ; ............
+
+; mach_medstore — 12 x 22 pixels, αδιαφανές, 132 bytes
+mach_medstore:
+    db #0C,#0C,#0C,#0C,#0C,#0C   ; ............
+    db #58,#F0,#F0,#F0,#F0,#A4   ; .WWWWWWWWWW.
+    db #58,#30,#30,#30,#30,#A4   ; .W,,,,,,,,W.
+    db #58,#03,#09,#06,#03,#A4   ; .WRR.RR.RRW.
+    db #58,#03,#09,#06,#03,#A4   ; .WRR.RR.RRW.
+    db #58,#30,#30,#30,#30,#A4   ; .W,,,,,,,,W.
+    db #58,#FF,#5D,#AE,#FF,#A4   ; .WPP.PP.PPW.
+    db #58,#FF,#5D,#AE,#FF,#A4   ; .WPP.PP.PPW.
+    db #58,#30,#30,#30,#30,#A4   ; .W,,,,,,,,W.
+    db #58,#03,#09,#06,#03,#A4   ; .WRR.RR.RRW.
+    db #58,#03,#09,#06,#03,#A4   ; .WRR.RR.RRW.
+    db #58,#30,#30,#30,#30,#A4   ; .W,,,,,,,,W.
+    db #58,#F0,#F0,#F0,#F0,#A4   ; .WWWWWWWWWW.
+    db #0C,#0C,#0C,#0C,#0C,#0C   ; ............
+    db #0C,#F0,#F0,#F0,#F0,#0C   ; ..WWWWWWWW..
+    db #0C,#B0,#30,#30,#70,#0C   ; ..W,,,,,,W..
+    db #0C,#B0,#03,#03,#70,#0C   ; ..W,RRRR,W..
+    db #0C,#B0,#03,#03,#70,#0C   ; ..W,RRRR,W..
+    db #0C,#B0,#30,#30,#70,#0C   ; ..W,,,,,,W..
+    db #0C,#F0,#F0,#F0,#F0,#0C   ; ..WWWWWWWW..
+    db #0C,#0C,#0C,#0C,#0C,#0C   ; ............
+    db #0C,#0C,#0C,#0C,#0C,#0C   ; ............
+
 plants:
 
 ; plant_peas — 12 x 22 pixels, αδιαφανές, 132 bytes
@@ -5309,14 +5359,14 @@ ore_overlay_1:
 ;     του μπλοκ. Πραγματική διεύθυνση = base + tile_base[class].
 ;     tile_base[class] + variant*TILE_SZ ---
 tile_base:
-    dw #4C8C   ; 0 ground      4 παραλλαγές
-    dw #4D8C   ; 1 dust        4 παραλλαγές
-    dw #4E8C   ; 2 rock        4 παραλλαγές
-    dw #4F8C   ; 3 mountain   16 autotile
-    dw #538C   ; 4 water      16 autotile
-    dw #578C   ; 5 deepwater   4 παραλλαγές
-    dw #588C   ; 6 crater      2 παραλλαγές
-    dw #590C   ; 7 foundation  2 παραλλαγές
+    dw #4D94   ; 0 ground      4 παραλλαγές
+    dw #4E94   ; 1 dust        4 παραλλαγές
+    dw #4F94   ; 2 rock        4 παραλλαγές
+    dw #5094   ; 3 mountain   16 autotile
+    dw #5494   ; 4 water      16 autotile
+    dw #5894   ; 5 deepwater   4 παραλλαγές
+    dw #5994   ; 6 crater      2 παραλλαγές
+    dw #5A14   ; 7 foundation  2 παραλλαγές
 
 ; --- παραλλαγές ανά κλάση εδάφους ---
 ; Όλα είναι δυνάμεις του 2, οπότε:  variant AND (count-1)
@@ -6004,8 +6054,25 @@ machine_slots:
     db  19, 26   ; l θέση 7
 
 machine_rules:
-    db 1,7,7,7,7,7,7,7,7,7
-    ; oxygen, iron, bioplastic, weapons, processors, robots, food, spares, medical, vitromeat
+    db 1,7,7,7,7,7,7,7,7,7,7,7
+    ; oxygen, iron, bioplastic, weapons, processors, robots, food, spares, medical, vitromeat, beds, medstore
+
+; --- ποια μηχανήματα δέχεται κάθε τύπος δωματίου ---
+; room_machines + type*2 -> bitmask 12 bit (little-endian)
+; bit N = το μηχάνημα N της λίστας machines
+room_machines:
+    dw #0000   ;  0 empty      —
+    dw #0010   ;  1 control    processors
+    dw #0000   ;  2 quarters   —
+    dw #0040   ;  3 canteen    food
+    dw #0001   ;  4 oxygen     oxygen
+    dw #0000   ;  5 greenhouse —
+    dw #0000   ;  6 storage    —
+    dw #0000   ;  7 airlock    —
+    dw #00AE   ;  8 factory    iron, bioplastic, weapons, robots, spares
+    dw #0310   ;  9 lab        processors, medical, vitromeat
+    dw #0C00   ; 10 medbay     beds, medstore
+    dw #0000   ; 11 lounge     —
 
 ; --- θέσεις εικονιδίου/πληρότητας από το ΚΕΝΤΡΟ του θόλου ---
 ; interior_ofs + size*2 -> (icon dx bytes, icon dy) από το κέντρο
@@ -6904,9 +6971,9 @@ palette_fw:
     ; pen 14  FW 10  Cyan          ΕΔΑΦΟΣ — νερό / πάγος
     ; pen 15  FW 16  Pink          εικονίδια
 
-; --- 185 bytes γέμισμα για τη σελίδα του flip_mode0 ---
+; --- 151 bytes γέμισμα για τη σελίδα του flip_mode0 ---
 sprites_pad:
-    defs 185,#00
+    defs 151,#00
 
 ; --- flip_mode0[b] = b με ανταλλαγμένα pixels ---
 align 256

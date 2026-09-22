@@ -365,17 +365,17 @@ the HUD moved into the play area's page and bank 2 became **flat 16 KB**:
 |---|---|
 | Terrain tiles | 3,584 |
 | Room icons, 12 types × 3 sizes | 4,800 |
-| Machines, 10 types | 1,320 |
+| Machines, 10 types packed of 12 in the asset set | 1,320 |
 | Corridors + connectors | 896 |
 | 4×8 font, 96 glyphs | 1,536 |
-| Asset tables | 287 |
+| Asset tables | 289 |
 | Generated pointer tables (`tile_ptr`, `icon_{s,m,l}_ptr`, `mach_ptr`) | 108 |
 | Cursor and UI chrome (reserve) | 256 |
 | Node graph (`node_deg`, `node_adj`) and BFS workspace | 1,536 |
 | Machine recipes + the "needs an operator" lookup | 110 |
 | Economy state — 14 stocks, flows, clock, weather | 58 |
 | Job board, 32 × 5 | 160 |
-| **Total** | **14,848** of 16,384 — **1,536 free, contiguous** |
+| **Total** | **14,850** of 16,384 — **1,534 free, contiguous** |
 
 The graph is here and not in bank 6 because the BFS pages the window twice per
 source ([§6.4](#64-routing)). That 1,536 bytes is the first real claim on the space
@@ -389,8 +389,8 @@ no reason to undo them.
 
 ### 4.4 `--quads nw` is mandatory
 
-`assets/sprites.bin` is **36,608 bytes**, built with `--quads nw` — of which 7,424 are
-dome and ring quadrants. The same set built with `--quads all` is 58,880 bytes, with
+`assets/sprites.bin` is **36,864 bytes**, built with `--quads nw` — of which 7,424 are
+dome and ring quadrants. The same set built with `--quads all` is 59,136 bytes, with
 29,696 in quadrants. **The full build does not fit this memory map; the `nw` build
 fits.**
 
@@ -1134,18 +1134,33 @@ drawn (`assets/SPRITES.md` §4).
 | Empty | `empty` | — | unassigned / under construction |
 | Control | `control` | `processors` | call ships, radar warning, colonist cap |
 | Quarters | `quarters` | — | sleep capacity 2 / 6 / 12 |
-| Canteen | `canteen` | `food`, `vitromeat` | meals, morale |
+| Canteen | `canteen` | `food` | meals, morale |
 | Oxygen | `oxygen` | `oxygen` (small domes only) | life support |
 | Greenhouse | `greenhouse` | 12 plant species | starch, vegetables, medicine, morale |
 | Storage | `storage` | — | stock capacity 100 / 300 / 600 |
 | Airlock | `airlock` | — | the only route outdoors — **but see [§6.2](#62-the-node-graph)**: this may become a structure instead of a dome |
-| **Factory** | *new* | `iron`, `bioplastic`, `spares`, `robots`, `weapons` | refining and manufacture |
-| **Lab** | *new* | `processors`, `vitromeat` | high-tech goods |
-| **Medbay** | *new* | `medical` | healing, medicine |
-| **Lounge** | *new* | — | morale |
+| **Factory** | `factory` | `iron`, `bioplastic`, `spares`, `robots`, `weapons` | refining and manufacture |
+| **Lab** | `lab` | `processors`, `medical`, `vitromeat` | medicine, printed meat, high-tech goods |
+| **Medbay** | `medbay` | `beds`, `medstore` | healing, medicine stock |
+| **Lounge** | `lounge` | — | morale |
 
-The last four need new icons — [ASSET-2](#12-asset-gaps). Without them, six of the ten
-machines in the asset set have no home, which is not a gap worth designing around.
+All twelve icons exist ([ASSET-2](#12-asset-gaps), delivered), and the **Slots hold**
+column is no longer prose: `room_machines + type*2` in the asset data is a 12-bit mask
+of exactly this table, and the generator refuses to build if a machine has no room. A
+machine may sit in more than one room — `processors` is in both Control and Lab.
+
+Two machines were added to the asset set for the medical chain: **`beds`** and
+**`medstore`** in the Medbay. The medicine bench and the meat printer already existed
+as `medical` and `vitromeat` — those names describe the *product*, not the machine,
+which is why they read as missing. They were **not** renamed: `tools/pack.py` and
+`tools/econ.py` hold the list by name and a rename would break a working build. The
+ten existing indices are unchanged; the two new machines are appended at 10 and 11,
+so nothing shifts.
+
+**Neither is packed yet.** `MACH` in `tools/pack.py` and `tools/econ.py` still lists
+ten, so bank 2 is unchanged apart from `machine_rules` growing by two bytes. Adding
+them costs **292 bytes**: 264 for the two sprites, 4 for `mach_ptr`, and 24 for
+`room_machines` if that table is packed too — against 1,534 free, so it fits.
 
 ### 6.9 Construction
 

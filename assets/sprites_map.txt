@@ -296,103 +296,106 @@
   mach_spares           #44C4    132  12x22 px       αδιαφανές  μηχανήματα
   mach_medical          #4548    132  12x22 px       αδιαφανές  μηχανήματα
   mach_vitromeat        #45CC    132  12x22 px       αδιαφανές  μηχανήματα
-# plants                #4650      -                            (ομάδα)
-  plant_peas            #4650    132  12x22 px       αδιαφανές  φυτά
-  plant_rice            #46D4    132  12x22 px       αδιαφανές  φυτά
-  plant_potatoes        #4758    132  12x22 px       αδιαφανές  φυτά
-  plant_wheat           #47DC    132  12x22 px       αδιαφανές  φυτά
-  plant_maize           #4860    132  12x22 px       αδιαφανές  φυτά
-  plant_tomatoes        #48E4    132  12x22 px       αδιαφανές  φυτά
-  plant_lettuce         #4968    132  12x22 px       αδιαφανές  φυτά
-  plant_onions          #49EC    132  12x22 px       αδιαφανές  φυτά
-  plant_radishes        #4A70    132  12x22 px       αδιαφανές  φυτά
-  plant_mushrooms       #4AF4    132  12x22 px       αδιαφανές  φυτά
-  plant_medicinal       #4B78    132  12x22 px       αδιαφανές  φυτά
-  plant_tree            #4BFC    132  12x22 px       αδιαφανές  φυτά
-  plant_class           #4C80     12                            πίνακες δωματίου
-# terrain               #4C8C      -                            (ομάδα)
-  tile_ground_0         #4C8C     64  8x16 px        αδιαφανές  έδαφος
-  tile_ground_1         #4CCC     64  8x16 px        αδιαφανές  έδαφος
-  tile_ground_2         #4D0C     64  8x16 px        αδιαφανές  έδαφος
-  tile_ground_3         #4D4C     64  8x16 px        αδιαφανές  έδαφος
-  tile_dust_0           #4D8C     64  8x16 px        αδιαφανές  έδαφος
-  tile_dust_1           #4DCC     64  8x16 px        αδιαφανές  έδαφος
-  tile_dust_2           #4E0C     64  8x16 px        αδιαφανές  έδαφος
-  tile_dust_3           #4E4C     64  8x16 px        αδιαφανές  έδαφος
-  tile_rock_0           #4E8C     64  8x16 px        αδιαφανές  έδαφος
-  tile_rock_1           #4ECC     64  8x16 px        αδιαφανές  έδαφος
-  tile_rock_2           #4F0C     64  8x16 px        αδιαφανές  έδαφος
-  tile_rock_3           #4F4C     64  8x16 px        αδιαφανές  έδαφος
-  tile_mountain_0       #4F8C     64  8x16 px        αδιαφανές  έδαφος
-  tile_mountain_1       #4FCC     64  8x16 px        αδιαφανές  έδαφος
-  tile_mountain_2       #500C     64  8x16 px        αδιαφανές  έδαφος
-  tile_mountain_3       #504C     64  8x16 px        αδιαφανές  έδαφος
-  tile_mountain_4       #508C     64  8x16 px        αδιαφανές  έδαφος
-  tile_mountain_5       #50CC     64  8x16 px        αδιαφανές  έδαφος
-  tile_mountain_6       #510C     64  8x16 px        αδιαφανές  έδαφος
-  tile_mountain_7       #514C     64  8x16 px        αδιαφανές  έδαφος
-  tile_mountain_8       #518C     64  8x16 px        αδιαφανές  έδαφος
-  tile_mountain_9       #51CC     64  8x16 px        αδιαφανές  έδαφος
-  tile_mountain_10      #520C     64  8x16 px        αδιαφανές  έδαφος
-  tile_mountain_11      #524C     64  8x16 px        αδιαφανές  έδαφος
-  tile_mountain_12      #528C     64  8x16 px        αδιαφανές  έδαφος
-  tile_mountain_13      #52CC     64  8x16 px        αδιαφανές  έδαφος
-  tile_mountain_14      #530C     64  8x16 px        αδιαφανές  έδαφος
-  tile_mountain_15      #534C     64  8x16 px        αδιαφανές  έδαφος
-  tile_water_0          #538C     64  8x16 px        αδιαφανές  έδαφος
-  tile_water_1          #53CC     64  8x16 px        αδιαφανές  έδαφος
-  tile_water_2          #540C     64  8x16 px        αδιαφανές  έδαφος
-  tile_water_3          #544C     64  8x16 px        αδιαφανές  έδαφος
-  tile_water_4          #548C     64  8x16 px        αδιαφανές  έδαφος
-  tile_water_5          #54CC     64  8x16 px        αδιαφανές  έδαφος
-  tile_water_6          #550C     64  8x16 px        αδιαφανές  έδαφος
-  tile_water_7          #554C     64  8x16 px        αδιαφανές  έδαφος
-  tile_water_8          #558C     64  8x16 px        αδιαφανές  έδαφος
-  tile_water_9          #55CC     64  8x16 px        αδιαφανές  έδαφος
-  tile_water_10         #560C     64  8x16 px        αδιαφανές  έδαφος
-  tile_water_11         #564C     64  8x16 px        αδιαφανές  έδαφος
-  tile_water_12         #568C     64  8x16 px        αδιαφανές  έδαφος
-  tile_water_13         #56CC     64  8x16 px        αδιαφανές  έδαφος
-  tile_water_14         #570C     64  8x16 px        αδιαφανές  έδαφος
-  tile_water_15         #574C     64  8x16 px        αδιαφανές  έδαφος
-  tile_deepwater_0      #578C     64  8x16 px        αδιαφανές  έδαφος
-  tile_deepwater_1      #57CC     64  8x16 px        αδιαφανές  έδαφος
-  tile_deepwater_2      #580C     64  8x16 px        αδιαφανές  έδαφος
-  tile_deepwater_3      #584C     64  8x16 px        αδιαφανές  έδαφος
-  tile_crater_0         #588C     64  8x16 px        αδιαφανές  έδαφος
-  tile_crater_1         #58CC     64  8x16 px        αδιαφανές  έδαφος
-  tile_foundation_0     #590C     64  8x16 px        αδιαφανές  έδαφος
-  tile_foundation_1     #594C     64  8x16 px        αδιαφανές  έδαφος
-  ore_overlay_0         #598C    128  8x16 px        mask+data  έδαφος
-  ore_overlay_1         #5A0C    128  8x16 px        mask+data  έδαφος
-  tile_base             #5A8C     16                            πίνακες εδάφους
-  tile_variants         #5A9C      8                            πίνακες εδάφους
-  planet_pens           #5AA4     16                            πίνακες εδάφους
-# structures            #5AB4      -                            (ομάδα)
-  solar_s               #5AB4    128  8x16 px        mask+data  εξωτερικές δομές
-  solar_m               #5B34    512  16x32 px       mask+data  εξωτερικές δομές
-  solar_l               #5D34   1152  24x48 px       mask+data  εξωτερικές δομές
-  turbine_s             #61B4    128  8x16 px        mask+data  εξωτερικές δομές
-  turbine_m             #6234    512  16x32 px       mask+data  εξωτερικές δομές
-  turbine_l             #6434   1152  24x48 px       mask+data  εξωτερικές δομές
-  collector_s           #68B4    128  8x16 px        mask+data  εξωτερικές δομές
-  collector_m           #6934    512  16x32 px       mask+data  εξωτερικές δομές
-  collector_l           #6B34   1152  24x48 px       mask+data  εξωτερικές δομές
-  extractor_s           #6FB4    128  8x16 px        mask+data  εξωτερικές δομές
-  extractor_m           #7034    512  16x32 px       mask+data  εξωτερικές δομές
-  extractor_l           #7234   1152  24x48 px       mask+data  εξωτερικές δομές
-  mine                  #76B4   2048  32x64 px       mask+data  εξωτερικές δομές
-  airlock               #7EB4    512  16x32 px       mask+data  εξωτερικές δομές
-  pad                   #80B4   1024  32x64 px       αδιαφανές  εξωτερικές δομές
-  ship                  #84B4    512  16x32 px       mask+data  εξωτερικές δομές
-  struct_dims           #86B4     64                            πίνακες δομών
-  machine_count         #86F4      3                            πίνακες δωματίου
-  machine_slots         #86F7     48                            πίνακες δωματίου
-  machine_rules         #8727     10                            πίνακες δωματίου
-  interior_ofs          #8731      6                            πίνακες δωματίου
-  font_gfx              #8737   1536                            γραμματοσειρά
-  palette_fw            #8D37     16                            παλέτα
-  sprites_pad           #8D47    185                            στοίχιση
-  flip_mode0            #8E00    256                            πίνακας καθρεφτισμού
+  mach_beds             #4650    132  12x22 px       αδιαφανές  μηχανήματα
+  mach_medstore         #46D4    132  12x22 px       αδιαφανές  μηχανήματα
+# plants                #4758      -                            (ομάδα)
+  plant_peas            #4758    132  12x22 px       αδιαφανές  φυτά
+  plant_rice            #47DC    132  12x22 px       αδιαφανές  φυτά
+  plant_potatoes        #4860    132  12x22 px       αδιαφανές  φυτά
+  plant_wheat           #48E4    132  12x22 px       αδιαφανές  φυτά
+  plant_maize           #4968    132  12x22 px       αδιαφανές  φυτά
+  plant_tomatoes        #49EC    132  12x22 px       αδιαφανές  φυτά
+  plant_lettuce         #4A70    132  12x22 px       αδιαφανές  φυτά
+  plant_onions          #4AF4    132  12x22 px       αδιαφανές  φυτά
+  plant_radishes        #4B78    132  12x22 px       αδιαφανές  φυτά
+  plant_mushrooms       #4BFC    132  12x22 px       αδιαφανές  φυτά
+  plant_medicinal       #4C80    132  12x22 px       αδιαφανές  φυτά
+  plant_tree            #4D04    132  12x22 px       αδιαφανές  φυτά
+  plant_class           #4D88     12                            πίνακες δωματίου
+# terrain               #4D94      -                            (ομάδα)
+  tile_ground_0         #4D94     64  8x16 px        αδιαφανές  έδαφος
+  tile_ground_1         #4DD4     64  8x16 px        αδιαφανές  έδαφος
+  tile_ground_2         #4E14     64  8x16 px        αδιαφανές  έδαφος
+  tile_ground_3         #4E54     64  8x16 px        αδιαφανές  έδαφος
+  tile_dust_0           #4E94     64  8x16 px        αδιαφανές  έδαφος
+  tile_dust_1           #4ED4     64  8x16 px        αδιαφανές  έδαφος
+  tile_dust_2           #4F14     64  8x16 px        αδιαφανές  έδαφος
+  tile_dust_3           #4F54     64  8x16 px        αδιαφανές  έδαφος
+  tile_rock_0           #4F94     64  8x16 px        αδιαφανές  έδαφος
+  tile_rock_1           #4FD4     64  8x16 px        αδιαφανές  έδαφος
+  tile_rock_2           #5014     64  8x16 px        αδιαφανές  έδαφος
+  tile_rock_3           #5054     64  8x16 px        αδιαφανές  έδαφος
+  tile_mountain_0       #5094     64  8x16 px        αδιαφανές  έδαφος
+  tile_mountain_1       #50D4     64  8x16 px        αδιαφανές  έδαφος
+  tile_mountain_2       #5114     64  8x16 px        αδιαφανές  έδαφος
+  tile_mountain_3       #5154     64  8x16 px        αδιαφανές  έδαφος
+  tile_mountain_4       #5194     64  8x16 px        αδιαφανές  έδαφος
+  tile_mountain_5       #51D4     64  8x16 px        αδιαφανές  έδαφος
+  tile_mountain_6       #5214     64  8x16 px        αδιαφανές  έδαφος
+  tile_mountain_7       #5254     64  8x16 px        αδιαφανές  έδαφος
+  tile_mountain_8       #5294     64  8x16 px        αδιαφανές  έδαφος
+  tile_mountain_9       #52D4     64  8x16 px        αδιαφανές  έδαφος
+  tile_mountain_10      #5314     64  8x16 px        αδιαφανές  έδαφος
+  tile_mountain_11      #5354     64  8x16 px        αδιαφανές  έδαφος
+  tile_mountain_12      #5394     64  8x16 px        αδιαφανές  έδαφος
+  tile_mountain_13      #53D4     64  8x16 px        αδιαφανές  έδαφος
+  tile_mountain_14      #5414     64  8x16 px        αδιαφανές  έδαφος
+  tile_mountain_15      #5454     64  8x16 px        αδιαφανές  έδαφος
+  tile_water_0          #5494     64  8x16 px        αδιαφανές  έδαφος
+  tile_water_1          #54D4     64  8x16 px        αδιαφανές  έδαφος
+  tile_water_2          #5514     64  8x16 px        αδιαφανές  έδαφος
+  tile_water_3          #5554     64  8x16 px        αδιαφανές  έδαφος
+  tile_water_4          #5594     64  8x16 px        αδιαφανές  έδαφος
+  tile_water_5          #55D4     64  8x16 px        αδιαφανές  έδαφος
+  tile_water_6          #5614     64  8x16 px        αδιαφανές  έδαφος
+  tile_water_7          #5654     64  8x16 px        αδιαφανές  έδαφος
+  tile_water_8          #5694     64  8x16 px        αδιαφανές  έδαφος
+  tile_water_9          #56D4     64  8x16 px        αδιαφανές  έδαφος
+  tile_water_10         #5714     64  8x16 px        αδιαφανές  έδαφος
+  tile_water_11         #5754     64  8x16 px        αδιαφανές  έδαφος
+  tile_water_12         #5794     64  8x16 px        αδιαφανές  έδαφος
+  tile_water_13         #57D4     64  8x16 px        αδιαφανές  έδαφος
+  tile_water_14         #5814     64  8x16 px        αδιαφανές  έδαφος
+  tile_water_15         #5854     64  8x16 px        αδιαφανές  έδαφος
+  tile_deepwater_0      #5894     64  8x16 px        αδιαφανές  έδαφος
+  tile_deepwater_1      #58D4     64  8x16 px        αδιαφανές  έδαφος
+  tile_deepwater_2      #5914     64  8x16 px        αδιαφανές  έδαφος
+  tile_deepwater_3      #5954     64  8x16 px        αδιαφανές  έδαφος
+  tile_crater_0         #5994     64  8x16 px        αδιαφανές  έδαφος
+  tile_crater_1         #59D4     64  8x16 px        αδιαφανές  έδαφος
+  tile_foundation_0     #5A14     64  8x16 px        αδιαφανές  έδαφος
+  tile_foundation_1     #5A54     64  8x16 px        αδιαφανές  έδαφος
+  ore_overlay_0         #5A94    128  8x16 px        mask+data  έδαφος
+  ore_overlay_1         #5B14    128  8x16 px        mask+data  έδαφος
+  tile_base             #5B94     16                            πίνακες εδάφους
+  tile_variants         #5BA4      8                            πίνακες εδάφους
+  planet_pens           #5BAC     16                            πίνακες εδάφους
+# structures            #5BBC      -                            (ομάδα)
+  solar_s               #5BBC    128  8x16 px        mask+data  εξωτερικές δομές
+  solar_m               #5C3C    512  16x32 px       mask+data  εξωτερικές δομές
+  solar_l               #5E3C   1152  24x48 px       mask+data  εξωτερικές δομές
+  turbine_s             #62BC    128  8x16 px        mask+data  εξωτερικές δομές
+  turbine_m             #633C    512  16x32 px       mask+data  εξωτερικές δομές
+  turbine_l             #653C   1152  24x48 px       mask+data  εξωτερικές δομές
+  collector_s           #69BC    128  8x16 px        mask+data  εξωτερικές δομές
+  collector_m           #6A3C    512  16x32 px       mask+data  εξωτερικές δομές
+  collector_l           #6C3C   1152  24x48 px       mask+data  εξωτερικές δομές
+  extractor_s           #70BC    128  8x16 px        mask+data  εξωτερικές δομές
+  extractor_m           #713C    512  16x32 px       mask+data  εξωτερικές δομές
+  extractor_l           #733C   1152  24x48 px       mask+data  εξωτερικές δομές
+  mine                  #77BC   2048  32x64 px       mask+data  εξωτερικές δομές
+  airlock               #7FBC    512  16x32 px       mask+data  εξωτερικές δομές
+  pad                   #81BC   1024  32x64 px       αδιαφανές  εξωτερικές δομές
+  ship                  #85BC    512  16x32 px       mask+data  εξωτερικές δομές
+  struct_dims           #87BC     64                            πίνακες δομών
+  machine_count         #87FC      3                            πίνακες δωματίου
+  machine_slots         #87FF     48                            πίνακες δωματίου
+  machine_rules         #882F     12                            πίνακες δωματίου
+  room_machines         #883B     24                            πίνακες δωματίου
+  interior_ofs          #8853      6                            πίνακες δωματίου
+  font_gfx              #8859   1536                            γραμματοσειρά
+  palette_fw            #8E59     16                            παλέτα
+  sprites_pad           #8E69    151                            στοίχιση
+  flip_mode0            #8F00    256                            πίνακας καθρεφτισμού
 
-  ΣΥΝΟΛΟ                       36608
+  ΣΥΝΟΛΟ                       36864
