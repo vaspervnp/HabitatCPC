@@ -133,7 +133,15 @@ def main():
           f"-> {us/1000:.1f} ms ανά πλήρες κάδρο = {us/tiles:.0f} us ανά tile")
     print(f"  πλήρες κάδρο {us/19968:.1f} frames · μία στήλη "
           f"{us/tiles*VIEW_TH/1000:.1f} ms · μία σειρά {us/tiles*VIEW_TW/1000:.1f} ms")
-    print(f"  (το DESIGN §2.2 υπολόγιζε 320 us ανά tile, 3.2 frames το κάδρο)")
+    # Το DESIGN §2.2 καταγράφει 929 us μετρημένα. Αν αυτό αλλάξει — προς τα πάνω
+    # ή προς τα κάτω — το έγγραφο θέλει ενημέρωση, όχι σιωπή.
+    per = us / tiles
+    if not 880 <= per <= 980:
+        print(f"  ΑΠΟΤΥΧΙΑ: το DESIGN §2.2 λέει 929 us ανά tile, μετρήθηκαν {per:.0f}."
+              f"\n  Αν η αλλαγή είναι σκόπιμη, ενημέρωσε το §2.2 και αυτό το όριο.")
+        fails += 1
+    else:
+        print(f"  (το DESIGN §2.2 καταγράφει 929 us ανά tile — συμφωνεί)")
     return 1 if fails else 0
 
 

@@ -280,9 +280,9 @@ One byte per tile holds everything about that tile that is not in an object list
 stored either: a class with 16 variants in `tile_variants` is autotiled, anything
 else takes its variant from the decor bits. The rule falls out of the data, so
 there is no second table to keep in step. It is recomputed at draw time
-from the four orthogonal neighbours — four bank reads and a 16-entry lookup, ≈ 60 µs
-per tile against a 320 µs blit. Paying 19% more per tile to free 4 bits of world
-state is a good trade, and it means terrain edits never have to fix up their
+from the four orthogonal neighbours — four bank reads and a 16-entry lookup, which
+is inside the measured 929 µs per tile ([§2.2](#22-the-frame-budget)); the blit
+itself dominates. Paying that to free 4 bits of world state is a good trade, and it means terrain edits never have to fix up their
 neighbours' stored variants.
 
 Occupancy stores only *what kind*, not *which object*. Finding which dome covers a
@@ -321,7 +321,7 @@ must always be reachable is in bank 0 (`&0000–&3FFF`) or bank 2 (`&8000–&BFF
 | window | 5 | **next-hop matrix** `NEXTHOP[128][128]` | 16,384 | 0 |
 | window | 6 | `flip_mode0` 256 · dome+ring `nw` quadrants 7,424 · slot figures 3,456 · entity tables 4,096 · job board 256 · path workspace 512 | 16,000 | 384 |
 | window | 7 | external structures 11,264 · plants 1,584 · `plant_ptr` 24 · text 1,024 · audio 2,048 | 15,944 | 440 |
-| `&8000–&BFFF` | 2 | HUD screen page 3,200 + graphics arenas 12,787 | 15,987 | 397 |
+| `&8000–&BFFF` | 2 | graphics, flat — tiles, icons, machines, corridors, font, tables | 12,787 | **3,597** |
 | `&C000–&FFFF` | 3 | play-area screen | 16,384 | 0 |
 
 Every bank is spoken for. The two matrices in banks 1 and 5 are the clearest answer
@@ -348,63 +348,36 @@ was never added to this table when it was delivered. That is corrected above.
 
 Slack is thin — about 1.3 KB across the three windows. The next cheap cuts, in order:
 four plant species (528 B), the `s` room-icon set (864 B), moving `plants` into
-bank 6. The font's lowercase is **not** on that list ([§4.3](#43-the-8000-page-and-its-arenas)).
+bank 6. The font's lowercase is **not** on that list ([§4.3](#43-bank-2-flat-again)).
 
-### 4.3 The `&8000` page and its arenas
+### 4.3 Bank 2, flat again
 
-Bank 2 does double duty: it is the **HUD screen page** *and* it holds the small
-graphics. That works because a 5-character-row HUD uses very little of a 16 KB screen
-page. CPC screen addressing is `base + (line & 7) × &800 + (line >> 3) × &50 + x`, so
-five character rows occupy only bytes `&000–&18F` of each of the eight `&800` sub-pages.
+Bank 2 was designed to do two jobs at once: the HUD's screen page *and* the small
+graphics, with the graphics bin-packed into eight 1,648-byte arenas threaded
+between the HUD's screen rows. Nothing could straddle an arena, and the measured
+result was **397 bytes free but fragmented across eight boxes, seven of them
+completely full** — so nothing larger than 392 bytes could ever be added again.
 
-That leaves **eight independent arenas of 1,648 bytes each = 13,184 bytes.** Nothing
-may straddle an arena boundary, so only small sprites go here — which is exactly what
-these are:
+**The raster split turned out to be impossible** ([§8.1](#81-screen-layout)), so
+the HUD moved into the play area's page and bank 2 became **flat 16 KB**:
 
-| In the arenas | Bytes | |
-|---|---|---|
-| Terrain tiles, 9 runs (per class + ore overlay) | 3,584 | delivered |
-| Room icons, 36 separate runs | 4,800 | delivered |
-| Machines, 10 separate runs | 1,320 | delivered |
-| Corridors + connectors | 896 | delivered |
-| 4×8 font, 96 glyphs | 1,536 | delivered |
-| Asset tables (`machine_slots`, `conn_points`, `corr_slots`, `tile_variants`, `planet_pens`, …) | 287 | delivered |
-| Generated pointer tables (`tile_ptr`, `icon_{s,m,l}_ptr`, `mach_ptr`) | 108 | generated |
-| Cursor and UI chrome | 256 | *reserve, still a guess* |
-| **Total** | **12,787** | |
+| In bank 2 | Bytes |
+|---|---|
+| Terrain tiles | 3,584 |
+| Room icons, 12 types × 3 sizes | 4,800 |
+| Machines, 10 types | 1,320 |
+| Corridors + connectors | 896 |
+| 4×8 font, 96 glyphs | 1,536 |
+| Asset tables | 287 |
+| Generated pointer tables (`tile_ptr`, `icon_{s,m,l}_ptr`, `mach_ptr`) | 108 |
+| Cursor and UI chrome (reserve) | 256 |
+| **Total** | **12,787** of 16,384 — **3,597 free, contiguous** |
 
-**The icons could not stay contiguous.** `SPRITES.md` §6 indexes them as
-`room_icons_l + type*ICON_L_SZ`, which needs 2,400 bytes in one piece — and an
-arena is 1,648. So `tools/pack.py` places each icon wherever it fits and emits a
-**pointer table** instead. That is not a concession: `*200` and `*72` are not
-shifts, so a table lookup is also the faster indexing. The same applies to
-machines and plants (`*132`). `tile_base` is likewise replaced by `tile_ptr`,
-holding real addresses rather than offsets into a single block that no longer
-exists.
-
-**The slack is real but fragmented.** Measured free space per arena is
-`[0, 0, 0, 1, 0, 4, 0, 392]` — 397 bytes in total, but seven arenas are full and
-essentially all of it is in arena 7. Anything new larger than 392 bytes will not
-fit, whatever the total says. Adding 512 bytes of UI art makes the packer fail on
-a *64-byte* run, which is what the packer is for: it reports
-`ο χώρος υπάρχει αλλά είναι κομματιασμένος` rather than silently corrupting a sprite.
-
-Delivered art and tables are **12,423**; only the 256-byte cursor is still a guess.
-Against 13,184 that leaves **397 bytes of slack** — see the fragmentation note above.
-
-**The lowercase glyphs are not a candidate for cutting.** Dropping a-z would free
-416 bytes at this width, which makes it the obvious saving and the wrong one — the
-alert line is the game's voice and reads as shouting in all caps.
-
-Largest single item is a 200-byte `icon_l`, so bin-packing eight 1,648-byte arenas is
-trivial. `flip_mode0` must be 256-byte aligned and lives in bank 6 with the quadrants
-it serves.
-
-If the slack goes, the cheapest cut is still the `s` room-icon set (12 × 72 = 864
-bytes): the small dome is 4×4 tiles and could carry the `m` icon scaled down in the
-blit, or no icon at all. The 6×8 font set is also built and one constant away — it
-costs 768 more and drops the HUD to 26 columns, but `M`, `N` and `W` become
-unambiguous, which at 4 px they are not.
+A failed technique that leaves the memory map simpler and nine times roomier is
+a good trade. The pointer tables stay: they were introduced because
+`room_icons_l` needs 2,400 contiguous bytes and an arena was 1,648, but they are
+also **faster** than the `*200` and `*132` multiplies they replace, so there is
+no reason to undo them.
 
 ### 4.4 `--quads nw` is mandatory
 
@@ -656,15 +629,24 @@ see [§5.10](#510-player-modification).
 ### 5.10 Player modification
 
 Terrain changes during play — a mined-out mountain becomes rock, a meteor leaves a
-crater, a dome site becomes foundation. These are **not** regenerable from the seed, so
-they are logged to a **delta list**: `(tile index, new byte)`, 3 bytes each, 512 entries.
+crater, a dome site becomes foundation. These are **not** regenerable from the seed.
 
-On load, the world is regenerated from the seed (3.5 s) and the deltas are replayed
-(instant). A save therefore stores about 1.5 KB of world state instead of 16 KB.
+Earlier revisions logged them to a 1.5 KB delta list and **regenerated the world from
+the seed on load**, replaying the deltas over it. That was a good trade against a
+3.5 s generator. Against the measured 13.5 s ([§5.9](#59-cost--measured)) it is not: it buys
+about 15 KB of disc space at the price of a quarter-minute stare on every single
+load.
 
-If the list ever fills — 512 modified tiles is a great deal of mining — the oldest
-entries are folded into a full 16 KB plane dump in the save file, and the list resets.
+**So the plane is saved.** All 16 KB of it, verbatim, in the save file
+([§11](#11-save-and-load)). Loading becomes a disc read — an estimated 4 s for
+16 KB at typical CPC floppy throughput, not yet measured — and modified tiles need
+no special handling at all, because there is nothing to replay them over.
 
+The delta list is gone with them. It only ever existed to avoid storing the plane.
+
+The determinism contract in [§5.1](#51-the-contract) still earns its keep: it makes
+the generator testable, lets a seed be shared as two bytes, and keeps *new game*
+reproducible. It just no longer carries the load path.
 ### 5.11 Testing determinism
 
 The headless emulator at `~/cpcemu` makes this mechanical, and it should be a test
@@ -1059,7 +1041,7 @@ Four more things are sliced, for the same reason:
 
 | Work | Slicing | Total |
 |---|---|---|
-| World generation | one pyramid level or one classify chunk per frame | ≈ 3.5 s, with a real progress bar |
+| World generation | one pyramid level or one classify chunk per frame | **13.5 s measured**, with a real progress bar — new game only ([§5.9](#59-cost--measured)) |
 | Routing rebuild | half a BFS source per frame, slot 14 | ≈ 5 s, invisible |
 | Dome construction blit | one quadrant per frame | ≈ 8 frames |
 | Camera redraw after a jump | one tile column per frame | ≈ 20 frames |
@@ -1071,48 +1053,69 @@ Four more things are sliced, for the same reason:
 ### 8.1 Screen layout
 
 ```
-lines   0 .. 159    play area   80 bytes × 160 lines  = 20 × 10 tiles   from bank 3 (&C000)
-lines 160 .. 199    HUD         80 bytes ×  40 lines  =  5 char rows    from bank 2 (&8000)
+lines   0 .. 159    play area   80 bytes × 160 lines  = 20 × 10 tiles
+lines 160 .. 199    HUD         80 bytes ×  40 lines  =  5 char rows
 ```
 
-The two halves come from **different CRTC screen pages**. Bits 4–5 of `R12` select which
-16 KB block the display reads, so a raster split at line 160 switches the HUD to page 2
-with a fixed offset, while the play area keeps the whole of page 3's 16 KB as a
-scrolling torus. Without the two-page split the HUD and the play area would have to
-share one 1,024-word CRTC address ring, and a scrolling play area would eventually walk
-over the HUD.
+**Both halves come from the same page** — bank 3 at `&C000`. Earlier revisions
+put the HUD on its own CRTC page and switched `R12` at a raster split on line
+160. **That does not work, and it has been proven not to work**
+(`tests/test_camera.py`):
 
-Interrupts arrive every 52 scanlines (0, 52, 104, 156, 208, 260), so line 160 is reached
-by taking the interrupt at 156 and delaying four lines — 256 T-states — after a
-stabilised interrupt. Standard CPC practice, but it does need proving on hardware
-([§15](#15-open-risks)).
+> The 6845 latches its display start address **once per frame**. A write to
+> `R12`/`R13` in the middle of a frame changes nothing until the next one.
+
+The measurement is trustworthy because the test carries its own control: at the
+*same* point in the frame it writes the **border** colour instead, and the border
+changes at exactly line 160. The timing lands where it is aimed; the CRTC simply
+ignores a mid-frame start address.
+
+**What follows from that:**
+
+- The HUD occupies the last 5 character rows of the same 1,024-word ring as the
+  play area. When the camera scrolls, the ring rotates, and the HUD's *memory*
+  moves even though its *screen position* does not. So the HUD must be
+  **re-rendered after every scroll step** — at its new addresses, same pixels.
+  Estimated ≈ 0.4 frames (roughly 1.2 KB of glyph and bar blits); to be measured
+  when the HUD renderer exists.
+- **Bank 2 stops being a screen page**, which is the good news hiding in the bad.
+  It becomes a flat 16 KB of data ([§4.3](#43-bank-2-flat-again)).
+
+**The escape hatch, if the re-render cost proves too high**, is *rupture*:
+manipulating `R4`/`R9` to make the CRTC end the frame early and restart it
+mid-screen, which does reload `R12`/`R13`. It is the standard CPC technique for a
+true split, and it is deliberately not taken here — it is timing-critical and
+behaves differently across CRTC types 0–4, so a HUD built on it would work on
+some real machines and not others.
 
 ### 8.2 Camera
 
 The camera moves in **whole tiles**, implemented entirely as a CRTC display-offset
-change:
+change. **Measured on the emulator** (`tests/test_camera.py`):
 
-| Step | Offset change |
-|---|---|
-| One tile east/west | ± 2 offset words (2 × 2 bytes = 8 px) |
-| One tile south/north | ± 80 offset words (2 × `R1` = 16 lines) |
+| Step | Offset change | Measured |
+|---|---|---|
+| One offset word | +1 | image moves **exactly 4 Mode 0 pixels** (2 bytes) |
+| One tile east/west | ± 2 words | 8 px |
+| One tile south/north | ± 80 words (2 × `R1`) | 16 lines |
 
-Then **only the newly exposed edge is drawn** — one column (0.16 frames) or one row
-(0.32 frames). That is the whole reason for hardware scrolling: the alternative, a full
-play-area redraw, is 3.2 frames per step, twenty times worse.
+Offsets 1, 2, 4 and 8 were checked against the predicted pixel position and all
+four matched to the pixel. **This half of §15's top risk is confirmed**: scrolling
+costs a display-register write, not a redraw.
 
-Half-tile steps are possible (1 word, 40 words) and are what the position unit is built
-for, but they leave a half-visible tile at two edges and need a partial-tile blit
-variant. **Not taken now**; whole-tile steps keep the tile pass free of clipping. The
-half-tile unit still earns its place for walkers and for odd-footprint structures.
+Then **only the newly exposed edge is drawn** — one column (0.47 frames) or one
+row (0.93 frames), measured in [§8.3](#83-the-tile-pass) — plus the HUD
+re-render that [§8.1](#81-screen-layout) now requires. Call it ≈ 0.9 frames per
+horizontal tile step against the 9.3 frames a full redraw would cost.
 
-The 16 KB page wraps, so the newly exposed strip's addresses wrap too. The blit
-computes addresses from the current offset anyway, so this is bookkeeping rather than a
-new mechanism — but it is the part most likely to need an afternoon with the emulator.
+Half-tile steps are possible (1 word, 40 words) and are what the position unit is
+built for, but they leave a half-visible tile at two edges and need a partial-tile
+blit variant. **Not taken now**; whole-tile steps keep the tile pass free of
+clipping.
 
-**Fallback if the wrap proves painful:** no hardware scroll, camera jumps 4 tiles at a
-time with a full redraw sliced one column per frame (20 frames, ≈ 0.4 s per jump). Worse,
-but shippable, and it changes nothing above the renderer.
+The 16 KB page wraps — the ring is 1,024 words — so the newly exposed strip's
+addresses wrap too. The blit computes addresses from the current offset anyway,
+so this is bookkeeping rather than a new mechanism.
 
 ### 8.3 The tile pass
 
@@ -1328,17 +1331,15 @@ because its workspace at `&A700–&BFFF` is occupied by bank 2 data.
 | Section | Bytes |
 |---|---|
 | Header: magic, generator version, seed, planet, sol, camera, RNG state | 32 |
+| **World plane, verbatim** | 16,384 |
 | Entity tables (agents, domes, structures, corridors, jobs) | ≈ 4,100 |
 | Economy: stocks, flows, buffers, milestone flags | 128 |
-| World delta list, up to 512 × 3 | ≤ 1,536 |
-| **Total** | **≈ 5.8 KB** |
+| **Total** | **≈ 20.2 KB** |
 
-The world plane itself is **not** saved — it is regenerated from the seed in 3.5 s on
-load and the deltas replayed over it. That is the whole payoff of the determinism
-contract in [§5.1](#51-the-contract): a 16 KB map costs two bytes in the save file.
-
-If the delta list overflows, the save falls back to a full 16 KB plane dump and the
-list resets. A save is never allowed to be lossy.
+The world plane **is** saved, in full. Regenerating it from the seed would cost
+13.5 s on every load ([§5.10](#510-player-modification)); reading 16 KB off the disc
+costs an estimated 4 s and takes the modified-tile bookkeeping with it. A 178 KB
+disc side holds eight such saves.
 
 ---
 
@@ -1351,7 +1352,7 @@ Everything below is a change request against `CPCArt/planetbase/`, pulled in by
 **ASSET-3, 4, 5 and 6 are delivered too.** Every asset gap in this table is now
 closed, and [§4.2](#42-the-eight-banks) shows every bank fitting. The rows are kept
 with their sizes because the memory map in
-[§4.3](#43-the-8000-page-and-its-arenas) is built on those numbers.
+[§4.3](#43-bank-2-flat-again) is built on those numbers.
 
 | # | Asset | Size | Why |
 |---|---|---|---|
@@ -1458,14 +1459,14 @@ order, and do not build gameplay on top of a scroll that has not been proven on 
 
 | Risk | Severity | Mitigation |
 |---|---|---|
-| **CRTC offset scrolling with a two-page raster split** — the interaction of the 1,024-word address ring, the `&800` line stride and a mid-frame `R12` page change is the least certain thing in this document | High | Prototype at milestone 5, before anything depends on it. Fallback: sliced full redraw on camera jumps ([§8.2](#82-camera)) — costs 0.4 s per jump and nothing else. |
-| Raster split timing at line 160 | Medium | Stabilised interrupt + fixed delay is standard practice, but must be verified on hardware, not only in the emulator. |
-| Memory map has under 1.5 KB of slack | Medium | Named cuts in priority order in [§4.2](#42-the-eight-banks). |
+| ~~CRTC offset scrolling with a two-page raster split~~ | ~~High~~ | **Resolved at milestone 5, and split in two.** Offset scrolling works to the pixel ([§8.2](#82-camera)). The mid-frame page change does **not** — the CRTC latches the start address once per frame — so the HUD moved into the play page and bank 2 went flat ([§8.1](#81-screen-layout), [§4.3](#43-bank-2-flat-again)). |
+| HUD re-render on every scroll step, ≈ 0.4 frames, **estimated not measured** | Medium | Measure when the HUD renderer exists. If it is too slow, the escape hatch is rupture — with the CRTC-type compatibility risk that comes with it. |
+| Mid-frame writes land where aimed, but only on the emulator's CRTC | Low | The border control in `tests/test_camera.py` hits line 160 exactly. Real hardware still wants a check, but nothing now depends on a mid-frame *address* write. |
+| Memory map slack: 3,597 contiguous in bank 2, 384 in bank 6, 440 in bank 7 | Low | Bank 2 is comfortable now. Banks 6 and 7 are still tight; named cuts in [§4.2](#42-the-eight-banks). |
 | Routing rebuild latency of ≈ 5 s after a network change | Low | Stale routes are inefficient, never invalid ([§6.4](#64-routing)). If it grates: cache paths for the 16 busiest pairs and rebuild those first. |
-| 3.5 s world generation feels long on a cassette-era machine | Low | Real progress bar, music keeps playing. It is still faster than loading the game was. |
+| **13.5 s** world generation feels long even on a cassette-era machine, and it is 3.9× the original estimate | Medium | New game only — loads read the plane off disc ([§5.10](#510-player-modification)). Real progress bar, music keeps playing. The identified 2× win ([§5.9](#59-cost--measured)) is held in reserve. |
 | A seed produces a technically valid but miserable map | Low | Feature anchors guarantee the necessities; the headless seed sweep ([§13](#13-build-and-test)) finds the rest. |
 | **Airlock: dome or structure?** The asset set now has both an `icon_airlock` room type and a standalone `airlock` structure sprite; the node graph in [§6.2](#62-the-node-graph) only models the dome | Medium | Decide before the node graph is written — it changes what an *outdoor edge* connects to. Recommendation and the comparison are in [§6.2](#62-the-node-graph). Cheap either way: the unused half is 400–512 bytes. |
-| Memory map slack is **265 bytes** once the font and cursor land, and both are still estimates ([§4.3](#43-the-8000-page-and-its-arenas)) | Medium | The `s` room-icon set (864 B) is the named cut. Measure the font before committing to 96 glyphs. |
 | Balance | Certain | Every number in [§6.5](#65-economy) is a first guess. The recipe table exists so that rebalancing is a data edit, not a code edit. |
 
 ---

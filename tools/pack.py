@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""Στρώνει τα assets στις τράπεζες και στις αρένες του &8000.
+"""Στρώνει τα assets στις τράπεζες.
 
 Βγάζει τις εικόνες των τραπεζών, τις διευθύνσεις για τον assembler, και έναν
 λογαριασμό που διαβάζεται. **Σκάει** αν κάτι δεν χωρέσει — αυτός είναι ο λόγος
-που υπάρχει: το DESIGN.md §4.2/§4.3 είναι χαρτί μέχρι να το μετρήσει κάποιος.
+που υπάρχει: το DESIGN.md §4.2 είναι χαρτί μέχρι να το μετρήσει κάποιος.
 
-Η σελίδα 2 (&8000-&BFFF) κάνει δύο δουλειές ταυτόχρονα: είναι η σελίδα οθόνης
-του HUD ΚΑΙ κρατά τα μικρά γραφικά. Η διάταξη οθόνης του CPC είναι
+Η τράπεζα 2 ήταν σχεδιασμένη να κάνει δύο δουλειές: σελίδα οθόνης του HUD ΚΑΙ
+αποθήκη για τα μικρά γραφικά, με τα γραφικά στριμωγμένα σε οκτώ αρένες ανάμεσα
+στις γραμμές του HUD. Το tests/test_camera.py έδειξε ότι η τομή δύο σελίδων δεν
+γίνεται — ο CRTC κλειδώνει τη διεύθυνση έναρξης μία φορά ανά frame — οπότε το
+HUD ζει πλέον στη σελίδα του κάδρου και η τράπεζα 2 είναι ΕΠΙΠΕΔΑ 16 KB.
 
-    addr = base + (γραμμή & 7)*&800 + (γραμμή >> 3)*80 + x
-
-οπότε ένα HUD 5 σειρών χαρακτήρων πιάνει μόνο τα bytes &000-&18F καθεμιάς από
-τις οκτώ υποσελίδες των &800. Μένουν οκτώ ΑΝΕΞΑΡΤΗΤΕΣ αρένες — τίποτα δεν
-επιτρέπεται να πατάει σε δύο.
+Το κέρδος δεν είναι μόνο απλότητα: οι αρένες άφηναν 397 bytes ελεύθερα αλλά
+κομματιασμένα σε οκτώ κουτιά, με επτά από αυτά γεμάτα. Τώρα είναι συνεχόμενα.
 """
 import os, sys
 
@@ -20,16 +20,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from sprites import load_map, load_bin, ROOT
 
 # --- γεωμετρία ------------------------------------------------------------
-SUBPAGE     = 0x800
-HUD_ROWS    = 5                     # DESIGN §8.1: 40 γραμμές = 5 σειρές
-HUD_USED    = HUD_ROWS * 80         # &190 ανά υποσελίδα
-ARENA_SIZE  = SUBPAGE - HUD_USED    # 1648
-ARENA_N     = 8
-PAGE2_BASE  = 0x8000
+PAGE2_BASE  = 0x8000                # τράπεζα 2: επίπεδη, πάντα ορατή
 WINDOW_BASE = 0x4000                # όπου φαίνονται οι τράπεζες 4-7
 BANK_SIZE   = 0x4000
-
-ARENAS = [(PAGE2_BASE + i * SUBPAGE + HUD_USED, ARENA_SIZE) for i in range(ARENA_N)]
 
 
 class Fail(SystemExit):
@@ -68,33 +61,7 @@ def pack_flat(runs, base, size, label):
     return used
 
 
-def pack_arenas(runs):
-    """First-fit-decreasing σε οκτώ ανεξάρτητα κουτιά.
 
-    Φθίνουσα σειρά επειδή τα μεγάλα κομμάτια (γραμματοσειρά 1536, βουνό 1024)
-    δεν χωράνε πουθενά αν μπουν τελευταία.
-    """
-    free = [ARENA_SIZE] * ARENA_N
-    head = [a for a, _ in ARENAS]
-    for r in sorted(runs, key=lambda r: -r.size):
-        for i in range(ARENA_N):
-            a = head[i]
-            if r.align > 1:
-                a = (a + r.align - 1) & ~(r.align - 1)
-            pad = a - head[i]
-            if r.size + pad <= free[i]:
-                r.addr, r.bin = a, i
-                free[i] -= r.size + pad
-                head[i] = a + r.size
-                break
-        else:
-            raise Fail(
-                f"αρένες: το {r.name} ({r.size} B) δεν χωράει πουθενά.\n"
-                f"  ελεύθερα ανά αρένα: {free}\n"
-                f"  σύνολο ελεύθερο {sum(free)} B — ο χώρος υπάρχει αλλά είναι κομματιασμένος"
-                if sum(free) >= r.size else
-                f"αρένες: το {r.name} ({r.size} B) δεν χωράει — μένουν μόνο {sum(free)} B")
-    return free
 
 
 # --- η διάταξη ------------------------------------------------------------
@@ -214,7 +181,7 @@ def pack():
     smap, blob = load_map(), load_bin()
     arena, bank6, bank7, ptr = build_runs(smap, blob)
 
-    free = pack_arenas(arena)
+    u2 = pack_flat(arena, PAGE2_BASE, BANK_SIZE, "τράπεζα 2")
     u6 = pack_flat(bank6, WINDOW_BASE, BANK_SIZE, "τράπεζα 6")
     u7 = pack_flat(bank7, WINDOW_BASE, BANK_SIZE, "τράπεζα 7")
 
@@ -254,7 +221,7 @@ def pack():
     with open(os.path.join(out, "layout.asm"), "w", encoding="utf-8") as f:
         f.write("; ΠΑΡΑΓΕΤΑΙ από tools/pack.py — μην το επεξεργάζεσαι.\n")
         f.write("; Οι τράπεζες 6/7 φαίνονται στο &4000 όταν σελιδοποιηθούν.\n\n")
-        for label, runs in (("αρένες σελίδας 2", arena),
+        for label, runs in (("τράπεζα 2", arena),
                             ("τράπεζα 6", bank6), ("τράπεζα 7", bank7)):
             f.write(f"; --- {label} ---\n")
             for r in sorted(runs, key=lambda r: r.addr):
@@ -263,23 +230,18 @@ def pack():
 
     # --- λογαριασμός --------------------------------------------------------
     lines = []
-    lines.append(f"αρένα = {SUBPAGE} - {HUD_USED} (HUD {HUD_ROWS} σειρές) = {ARENA_SIZE} B x {ARENA_N} = {ARENA_SIZE*ARENA_N} B\n")
-    for i in range(ARENA_N):
-        items = sorted([r for r in arena if r.bin == i], key=lambda r: r.addr)
-        used = sum(r.size for r in items)
-        lines.append(f"  αρένα {i} @#{ARENAS[i][0]:04X}  {used:>5}/{ARENA_SIZE}  ελεύθερα {free[i]:>4}")
-        for r in items:
-            lines.append(f"      #{r.addr:04X} {r.size:>5}  {r.name}{'  · ' + r.note if r.note else ''}")
-    lines.append(f"\n  σύνολο αρενών: {sum(r.size for r in arena)}/{ARENA_SIZE*ARENA_N}  ελεύθερα {sum(free)}\n")
-    for label, runs, used in (("τράπεζα 6", bank6, u6), ("τράπεζα 7", bank7, u7)):
+    for label, runs, used in (("τράπεζα 2", arena, u2),
+                              ("τράπεζα 6", bank6, u6),
+                              ("τράπεζα 7", bank7, u7)):
         lines.append(f"{label}: {used}/{BANK_SIZE}  ελεύθερα {BANK_SIZE-used}")
         for r in sorted(runs, key=lambda r: r.addr):
-            lines.append(f"      #{r.addr:04X} {r.size:>5}  {r.name}{'  · ' + r.note if r.note else ''}")
+            lines.append(f"      #{r.addr:04X} {r.size:>5}  {r.name}"
+                         f"{'  · ' + r.note if r.note else ''}")
         lines.append("")
     report = "\n".join(lines)
     with open(os.path.join(out, "layout.txt"), "w", encoding="utf-8") as f:
         f.write(report)
-    return arena, bank6, bank7, ptr, images, free, report
+    return arena, bank6, bank7, ptr, images, [BANK_SIZE - u2], report
 
 
 if __name__ == "__main__":
