@@ -78,6 +78,16 @@ rt_lp:
         jr      z,rt_end
         dec     hl
         ld      (tick_count),hl
+        ; Καρφώνει τον τροχό σε μία θέση, ώστε να μετρηθεί ΑΥΤΗ και μόνο
+        ; αυτή. Η μέτρηση με αφαίρεση («τρέξε χωρίς αυτήν, βγάλε τη διαφορά»)
+        ; σταμάτησε να ισχύει μόλις τα περάσματα άρχισαν να εξαρτώνται το ένα
+        ; από το άλλο: σβήνοντας την κίνηση, κανείς δεν φτάνει ποτέ πουθενά
+        ; και το πέρασμα αναγκών βλέπει εντελώς άλλη αποικία.
+        ld      a,(pin_slot)
+        cp      255
+        jr      z,rt_go
+        ld      (wh_slot),a
+rt_go:
         call    wheel_tick
         jr      rt_lp
 rt_end:
@@ -121,10 +131,12 @@ b4:     jr      b4
         include "../src/entity.asm"
         include "../src/econ.asm"
         include "../src/jobs.asm"
+        include "../src/needs.asm"
         include "../src/wheel.asm"
 
 done_flag:   db 0
 tick_count:  dw 0
+pin_slot:    db 255
 
 ; --- η τράπεζα 2 ΠΡΕΠΕΙ να φορτωθεί ---
 ; Χωρίς αυτό το incbin, το G_corr_fill διαβάζεται μηδενικό: κάθε θέση του

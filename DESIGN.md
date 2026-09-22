@@ -1001,19 +1001,71 @@ These numbers are a starting point for tuning, not a balance claim.
 
 Six per colonist, decaying on the wheel: **oxygen, water, food, sleep, health, morale.**
 
-- Oxygen and water drain constantly; below a threshold, health drains.
-- Food drains slower and is satisfied at a canteen. **Variety** is tracked as three
-  hidden counters (starch / vegetable / meat consumed recently); eating one category
-  exclusively caps health — Planetbase's malnutrition rule, which is what makes a
-  greenhouse with one crop a trap.
-- Sleep is satisfied in quarters. An unsleeping colonist works slower and then stops.
-- Health is repaired in a medbay by a medic, consuming Medicine.
-- Morale rises with a lounge, a tree in a greenhouse (`plant_class` 3 = morale), food
-  variety and spare space; it falls with deaths, alarms and overcrowding. Low morale
-  colonists stop working, then leave on the next ship.
+- **Oxygen is a flow, not a journey.** Anyone inside the colony breathes its air: if
+  `o2_ok`, oxygen refills; if life support is short, it drains and health follows fast.
+  Nobody walks anywhere for it.
+- Water and food are satisfied **at a canteen**, consuming the stock. Sleep is
+  satisfied **in quarters**. Health is repaired **in a medbay**, consuming Medicine.
+- Below `NEED_LOW` (64) the colonist goes looking. Below `NEED_CRIT` (16) health
+  drains — 4/visit for oxygen, 2 for water, 1 for food. At health 0 they die.
+- **Death** releases their ring slot, drops their job, takes their operator count off
+  the dome, and raises colony-wide `gloom`, which pulls everyone's morale down until
+  it decays away. Morale otherwise rises when everything is fine and falls when
+  anything is critical.
+- §10.3's only loss condition — everyone dead — is set by the flow pass, which is
+  already counting the living for the oxygen demand.
 
-Six bytes of decay per colonist per visit, ≈ 40 µs. Cheap; the expensive part is
-*deciding what to do about it*, which is the job board's problem.
+#### Their own needs outrank the board
+
+A colonist below a threshold **drops the job they were assigned** and walks off. The
+job board's reap step notices and gives the work to someone else. Priority order is
+health, food, water, sleep. That single rule is what makes a colony feel like people:
+at some point everyone puts down what they are doing and goes to eat, and if the
+canteen is on the far side of the base you will watch production die of walking.
+
+#### Finding the right room
+
+"Nearest canteen" would be a scan of 64 domes with a `DIST` read each — 1,300 µs per
+hungry colonist. Instead the **free slot 14** rebuilds a room index once per
+revolution: up to 8 domes per room type, 108 bytes. The search is then eight reads.
+Slot 14 was emptied when routing left the wheel ([§7.2](#72-the-wheel)); this is what
+moved into it.
+
+A colonist already walking toward a room of the right type is left alone. Without
+that check every colonist re-ran the search on every visit.
+
+#### What the first working colony cost
+
+This section estimated "six bytes of decay per colonist per visit, ≈ 40 µs. Cheap; the
+expensive part is *deciding what to do about it*, which is the job board's problem."
+Both halves were wrong. The deciding is **not** the job board's problem — that hands
+out work, it does not send people to dinner — and the full pass measures **337 µs per
+colonist**, not 40. There is no single hotspot; it simply does a great deal.
+
+So the slice shrank, which is exactly the lever [§7.3](#73-degradation) describes:
+**8 colonists per slot, 24 per revolution, each visited every fourth revolution.**
+That is also *more* faithful to the economy in [§6.5](#65-economy), which gives a
+colonist 2 water per sol: a 255-point bar now lasts about one and a half sols instead
+of forty seconds.
+
+**Three balance numbers had to change the first time the whole loop ran**, and all
+three were wrong in the same direction — they made the colony unlivable:
+
+| | Was | Now | Why |
+|---|---|---|---|
+| Decay per visit | 3 / 2 / 1 / 2 | 1 each | Six times faster than [§6.5](#65-economy)'s own per-sol figures |
+| Walking speed | 40–64 | 88–144 | An edge took 6 revolutions; a 5-hop trip lasted as long as the need that sent you |
+| Oxygen per colony | 2 generators | 10 | 40 O₂ against 192 demanded: everyone quietly asphyxiating from frame one |
+
+With the first set, **no colonist ever reached a workplace** — the entire population
+spent its life commuting. That is not something a budget or a unit test would have
+caught; it only appears when the loop actually closes.
+
+**Variety is deliberately not implemented.** This section wanted three hidden counters
+per colonist so that eating one crop caps health. The trap it exists to create is
+already enforced one level earlier: `mach_food` needs **Starch and Vegetables and
+Vitromeat** together, so a one-crop greenhouse cannot produce a meal at all. A second
+mechanism for the same lesson would cost 384 bytes and teach nothing new.
 
 ### 6.7 Jobs
 
@@ -1160,32 +1212,30 @@ it could live here.
 
 | Slot | Pass | Slice | Budgeted | **Measured** |
 |---|---|---|---|---|
-| 0–7 | **Agent movement** | 12 agents each — every agent moves once per revolution | 1,800 µs | **1,810 µs** ✅ |
-| 8–10 | Needs decay | 32 agents each | 433 µs | **2,163 µs** ❌ 5.0× |
-| 11 | Production | 16 domes — every dome produces every 4 revolutions | 4,000 µs | **5,990 µs** ❌ 1.5× |
-| 12 | Flow balance | 64 structures, plus counting the living | 2,000 µs | **6,490 µs** ❌ 3.2× |
-| 13 | Job board | reap, arrive, post 4 domes, assign 4 of 32 agents | 3,000 µs | **6,490 µs** ❌ 2.2× |
-| 14 | *(free)* | — routing moved out, see below | — | — |
-| 15 | Events | one roll: weather, day/night, the sol clock | 500 µs | **≈ 0 µs** ✅ |
+| 0–7 | Agent movement | 12 agents each | 1,800 µs | **1,298 µs** ✅ |
+| 8–10 | Needs, health, death, deciding | 8 colonists each ([§6.6](#66-needs)) | 433 µs | **2,696 µs** ❌ 6.2× |
+| 11 | Production | 16 domes | 4,000 µs | **5,292 µs** ❌ 1.3× |
+| 12 | Flow balance | 64 structures, plus counting the living | 2,000 µs | **6,390 µs** ❌ 3.2× |
+| 13 | Job board | reap, arrive, post, assign | 3,000 µs | **4,293 µs** ❌ 1.4× |
+| 14 | Room index | 64 domes ([§6.6](#66-needs)) | *(was empty)* | **3,894 µs** |
+| 15 | Events | one roll: weather, day/night, the sol clock | 500 µs | **200 µs** ✅ |
 | — | wheel dispatch itself | every frame | — | **94 µs** |
 
-**Four of the six budgets were wrong, all of them optimistic, and the one that was
-right was right by 0.6 %.** That is the pattern worth naming: every estimate in this
-document made before a measurement has come in low. The design survives anyway —
-**the worst simulation frame is 6,583 µs, a third of a frame** — because the wheel
-never runs two of these in the same frame. That is what slicing by identity buys, and
-it is the reason the numbers being wrong is survivable.
+**A whole revolution costs 62,400 µs spread over 16 frames — a fifth of the machine —
+and the worst single frame is 6,390 µs, a third of one.** That is the number the
+design lives or dies by, and it has room.
 
-Three of the four were brought down before being recorded here, and the wins say
-where the time actually goes on a Z80:
+Five of the seven budgets were low, by 1.3× to 6.2×. The one pass that came in under
+budget is the one whose cost was derived from a measured blit rather than guessed.
+**Budget the remaining passes pessimistically.**
 
-| Pass | First working version | Now | What changed |
-|---|---|---|---|
-| Needs decay | 3,494 µs | 2,163 µs | `call`/`ret` per field was a quarter of the work |
-| Production | 7,488 µs | 5,990 µs | input loop unrolled onto fixed `IX` offsets, bailing on the first missing input |
-| Job board | 36,442 µs | 6,490 µs | one pass asking *are there any free jobs* before scanning per agent |
+#### These numbers are measured directly, not by difference
 
-
+Earlier revisions of the test ran the wheel with one pass switched off and took the
+difference. That stopped being valid the moment the passes began to depend on each
+other: with movement disabled nobody ever arrives anywhere, so the needs pass sees a
+completely different colony and its "cost" came out at 12,646 µs instead of 2,696.
+The test now **pins the wheel to one slot** and runs it 200 times.
 
 #### Routing is not a wheel slot any more
 
@@ -1195,17 +1245,18 @@ frames**, and at a measured 222 µs per node expansion with n² of them
 of the wheel and given a **per-frame budget**, exactly like the dirty list: 12 node
 expansions every frame, ≈ 2,700 µs, and only while the graph is dirty.
 
-Slot 14 is left empty rather than renumbered, so every other slot keeps its number.
+Slot 14 was left empty rather than renumbered, so every other slot kept its number.
+The room index of [§6.6](#66-needs) has since moved into it.
 
 Every frame, regardless of slot:Every frame, regardless of slot: read input, move cursor and camera, advance the dirty
 list ([§8.5](#85-the-dirty-list)) up to a 20,000 µs cap, tick animation, service audio.
 
-The worst *frame* is a flow-balance or job-board slot during a routing rebuild:
-6,490 + 2,700 + 94 ≈ **9,300 µs, under half the frame**. That leaves 10,700 µs for
-rendering — and a single scroll column costs 9,300 µs
-([§8.3](#83-the-tile-pass)). **The two together very nearly fill the frame**, which
-is exactly why the dirty list is a *budget* rather than a queue that must be drained:
-on a frame where the sim is heavy, the scroll edge takes two frames instead of one.
+The worst *frame* is a flow-balance slot during a routing rebuild: 6,390 + 2,700 + 94
+≈ **9,200 µs, under half the frame**. That leaves 10,800 µs for rendering — and a
+single scroll column costs 9,300 µs ([§8.3](#83-the-tile-pass)). **The two together
+very nearly fill the frame**, which is exactly why the dirty list is a *budget* rather
+than a queue that must be drained: on a frame where the sim is heavy, the scroll edge
+takes two frames instead of one.
 
 ### 7.3 Degradation
 
@@ -1216,6 +1267,12 @@ The wheel length is fixed at 16. As the colony grows, **slices grow, not the whe
 | 20 | 4 | 3.1 Hz |
 | 50 | 8 | 3.1 Hz |
 | 80 + 16 bots | 12 | 3.1 Hz |
+
+**The needs pass has already taken this lever**, and not because the colony grew: one
+visit costs 337 µs per colonist, so three slots of 32 would not fit comfortably in a
+frame. It runs 8 per slot and visits each colonist every fourth revolution
+([§6.6](#66-needs)). Nothing else changes — needs simply last four times longer, which
+the economy wanted anyway.
 
 — because the slot count is fixed, every agent is still visited once per revolution.
 The cost per slot rises from ≈ 600 µs to ≈ 1,800 µs, which the budget absorbs. If the
@@ -1658,7 +1715,9 @@ order, and do not build gameplay on top of a scroll that has not been proven on 
 | A full-colony routing rebuild is ~27 s of stale routes at the current budget | Medium | Only at 128 nodes; 48 nodes is 3.8 s ([§6.4](#64-routing)). Two levers, both untaken: raise the per-frame budget while the camera is still, or tighten `rt_node` — its per-node setup re-reads the same three bytes and is worth about 2×. |
 | ~~Slots 11, 12, 13 and 15 of the wheel are unwritten~~ | ~~Medium~~ | **Written and measured.** Four of six budgets were low, by 1.5× to 5× ([§7.2](#72-the-wheel)). The worst frame is a third of a frame, so the design holds. Remaining passes should be budgeted pessimistically. |
 | A heavy sim slot and a scroll column in the same frame come to ~19 ms of 20 | Medium | The dirty list is a budget, so the edge redraw spreads over two frames. Costs nothing but a one-frame lag on the newly exposed column; needs watching once the HUD re-render ([§8.1](#81-screen-layout)) is measured too. |
-| Needs, health and death are not written, so nobody ever stops working, gets hungry or dies | High | [§6.6](#66-needs) decays the six needs already; nothing yet *acts* on them. Until it does, the job board has no competition and the colony cannot fail — the loop is closed but not yet a game. |
+| ~~Needs, health and death are not written~~ | ~~High~~ | **Written.** Colonists eat, drink, sleep, get treated, die, and grieve; the only loss condition is live ([§6.6](#66-needs)). |
+| **Nothing produces food.** Greenhouses are a room type with no plant logic, so Starch, Vegetables and Medicinal only ever fall | High | The test colony survives on a full larder. A real one starves in about a sol. Greenhouse production is the next thing that has to exist, before any balancing means anything. |
+| The balance numbers in [§6.5](#65-economy) are first guesses and three of them were unlivable | Medium | Corrected against the first working colony ([§6.6](#66-needs)). Expect the same of the rest: they cannot be checked by reading, only by running the loop and looking at who is where. |
 | Balance | Certain | Every number in [§6.5](#65-economy) is a first guess. The recipe table exists so that rebalancing is a data edit, not a code edit. |
 
 ---
@@ -1684,6 +1743,10 @@ order, and do not build gameplay on top of a scroll that has not been proven on 
 | `RECIPE_REC` | 10 | bytes per machine recipe — 3 inputs |
 | `MAX_JOB` | 32 | job board entries |
 | `JOB_SCAN` / `JOB_LOOK` / `JOB_ASSIGN` | 4 / 32 / 4 | domes posted from, agents examined, assignments — per visit |
+| `NEED_LOW` / `NEED_CRIT` | 64 / 16 | go looking for a room / start losing health |
+| `wh_need_n` | 8 | colonists per needs slot — each visited every 4th revolution |
+| `N_ROOM` / `ROOM_MAX` | 12 / 8 | room types, and domes indexed per type ([§6.6](#66-needs)) |
+| `ROLE_SPEED` | 88–144 | edge progress per movement visit, by role |
 | `PROD_DOMES` | 16 | domes per production slot: a full sweep every 4 revolutions |
 | `SOL_FRAMES` / `DAY_FRAMES` | 12,000 / 7,200 | a sol, and how much of it is daylight |
 | `MAX_DEGREE` | 8 | edges per node — one per `conn_points` direction |

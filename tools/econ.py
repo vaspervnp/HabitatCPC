@@ -60,6 +60,7 @@ MACH_SLOTS = 8
 MACHINE_COUNT = [1, 4, 8]           # ανά μέγεθος s/m/l — από τα assets
 
 D_CX, D_CY, D_SIZE, D_ROOM, D_STATE, D_INTEG, D_POWER, D_OPS = range(8)
+N_ROOM_F = 12               # είδη δωματίων — βλ. rooms_rebuild
 D_MACH = 8                          # 8 bytes
 D_HEALTH = 16                       # 8 bytes
 
@@ -122,6 +123,11 @@ class Econ:
             self.job[j * JOB_REC + J_AGENT] = 255
         self.job_dome = 0
         self.job_agent = 0
+        self.room_n = bytearray(12)
+        self.room_list = bytearray(12 * 8)
+        self.alive = 0
+        self.gameover = 0
+        self.gloom = 0              # πένθος: ανεβαίνει με κάθε θάνατο
         self.dist = None            # ο πίνακας αποστάσεων, δίνεται απ' έξω
 
 
@@ -243,6 +249,9 @@ def flow_balance(e, alive):
 
     e.o2_use = alive * O2_PER_COLONIST
     e.o2_ok = 1 if e.o2_prod >= e.o2_use else 0
+    e.alive = alive
+    if alive == 0:                      # §10.3 — η μόνη συνθήκη ήττας
+        e.gameover = 1
 
 
 def events(e):
@@ -252,6 +261,8 @@ def events(e):
         e.frame -= SOL_FRAMES
         e.sol = (e.sol + 1) & 0xFF
     e.day = 1 if e.frame < DAY_FRAMES else 0
+    if e.gloom:                             # το πένθος περνάει, αργά
+        e.gloom -= 1
     e.rnd = lfsr(e.rnd)
     if (e.rnd & 15) == 0:                   # ο άνεμος αλλάζει σπάνια
         e.wind = (e.rnd >> 4) & 3
@@ -269,11 +280,11 @@ def to_bytes(e):
     # (το job_dome/job_agent μπαίνουν στο τέλος, βλ. ECON_BYTES)
     out += int(e.frame).to_bytes(2, "little")
     out += int(e.rnd).to_bytes(2, "little")
-    out += bytes([e.job_dome, e.job_agent])
+    out += bytes([e.job_dome, e.job_agent, e.alive, e.gameover, e.gloom, 0])
     return bytes(out)
 
 
-ECON_BYTES = N_STOCK * 2 + 9 * 2 + 6 + 2 + 2 + 2    # 28 + 18 + 10 + 2 = 58
+ECON_BYTES = N_STOCK * 2 + 9 * 2 + 6 + 2 + 2 + 6    # 28 + 18 + 10 + 6 = 62
 
 
 def populate(e, n_dome=24, n_struct=20, seed=11):
@@ -285,9 +296,11 @@ def populate(e, n_dome=24, n_struct=20, seed=11):
         x = ((x * 75) + 74) & 0xFFFF
         return x
 
-    # λίγο απόθεμα για να ξεκινήσει η αλυσίδα
-    for s, q in ((S_WATER, 200), (S_ORE, 300), (S_STARCH, 150),
-                 (S_VEG, 120), (S_MEDPLANT, 90)):
+    # Μια αποικία που ΕΧΕΙ προμήθειες. Οχι για να είναι εύκολη: με άδεια
+    # ντουλάπια όλοι τρέχουν συνέχεια για φαγητό και κανείς δεν πιάνει ποτέ
+    # δουλειά, οπότε ο πίνακας εργασιών δεν δοκιμάζεται καθόλου.
+    for s, q in ((S_WATER, 600), (S_FOOD, 600), (S_ORE, 600), (S_STARCH, 600),
+                 (S_VEG, 600), (S_MEDPLANT, 300), (S_MEDI, 200)):
         e.stock[s] = q
 
     kinds = [K_SOLAR, K_SOLAR, K_TURBINE, K_COLLECTOR, K_EXTRACTOR, K_MINE]
@@ -300,12 +313,19 @@ def populate(e, n_dome=24, n_struct=20, seed=11):
         e.struct[b + ST_INTEG] = 255
     e.n_struct = n_struct
 
-    # Δύο μικροί θόλοι με γεννήτρια οξυγόνου, εγγυημένα: το machine_rules
-    # επιτρέπει το mach_oxygen μόνο σε μικρούς, και χωρίς αυτούς ο κλάδος της
-    # ΡΟΗΣ (MF_FLOW) δεν δοκιμάζεται ποτέ.
-    forced = {0: (0, 0), 1: (0, 0)}
+    # Δέκα μικροί θόλοι με γεννήτρια οξυγόνου. Οχι δύο: 2 x 20 = 40 O2 για
+    # 96 αποίκους που θέλουν 192 σημαίνει αποικία που ασφυκτιά σιωπηλά από το
+    # πρώτο frame — η υγεία έπεφτε συνέχεια και κανείς δεν πρόφτανε να
+    # δουλέψει. Το machine_rules επιτρέπει το mach_oxygen μόνο σε μικρούς.
+    forced = {d: (0, 0) for d in range(10)}
+    # Κάθε αποικία χρειάζεται καντίνα, κοιτώνες και ιατρείο, αλλιώς οι
+    # ανάγκες δεν έχουν πού να ικανοποιηθούν και όλοι πεθαίνουν.
+    rooms = [R_CANTEEN, R_QUARTERS, R_FACTORY, R_MEDBAY,
+             R_CANTEEN, R_QUARTERS, R_GREENHOUSE, R_LAB, R_STORAGE, R_LOUNGE]
     for d in range(n_dome):
         b = d * DOME_REC
+        e.dome[b + D_ROOM] = (R_OXYGEN if d in forced
+                              else rooms[(d - len(forced)) % len(rooms)])
         size = forced[d][0] if d in forced else (rnd() >> 4) % 3
         e.dome[b + D_SIZE] = size
         e.dome[b + D_STATE] = DS_ACTIVE
@@ -456,3 +476,41 @@ def jobs_tick(e, a, F_ALIVE, F_WORKING):
 
 
 MAXAGENT_J = 128
+
+
+# --- ευρετήριο δωματίων (θέση 14) -----------------------------------------
+# Ενας πεινασμένος άποικος πρέπει να βρει την ΚΟΝΤΙΝΟΤΕΡΗ καντίνα. Σάρωση 64
+# θόλων με μία ανάγνωση DIST στον καθένα θα κόστιζε 1.300 us ανά άτομο. Αντί
+# γι' αυτό, μία φορά ανά περιστροφή, η ελεύθερη θέση 14 χτίζει λίστες ανά
+# είδος δωματίου: ως ROOM_MAX θόλοι ο καθένας, και η αναζήτηση γίνεται οκτώ
+# αναγνώσεις.
+N_ROOM = 12
+ROOM_MAX = 8
+R_EMPTY, R_CONTROL, R_QUARTERS, R_CANTEEN, R_OXYGEN, R_GREENHOUSE, \
+    R_STORAGE, R_AIRLOCK, R_FACTORY, R_LAB, R_MEDBAY, R_LOUNGE = range(N_ROOM)
+
+
+def rooms_rebuild(e):
+    """Θέση 14: ποιοι θόλοι είναι τι. 64 εγγραφές, μία φορά ανά περιστροφή."""
+    e.room_n = bytearray(N_ROOM)
+    e.room_list = bytearray(N_ROOM * ROOM_MAX)
+    for d in range(MAX_DOME):
+        b = d * DOME_REC
+        if e.dome[b + D_STATE] != DS_ACTIVE:
+            continue
+        r = e.dome[b + D_ROOM]
+        if r >= N_ROOM or e.room_n[r] >= ROOM_MAX:
+            continue
+        e.room_list[r * ROOM_MAX + e.room_n[r]] = d
+        e.room_n[r] += 1
+
+
+def nearest_room(e, room, node):
+    """Ο κοντινότερος θόλος αυτού του είδους, ή 255. Ισοπαλία: μικρότερο id."""
+    best, best_d = 255, 255
+    for k in range(e.room_n[room]):
+        d = e.room_list[room * ROOM_MAX + k]
+        dist = e.dist[node * 128 + d]
+        if dist < best_d:
+            best, best_d = d, dist
+    return best

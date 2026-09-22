@@ -30,10 +30,14 @@ EC_FRAME    equ G_econ_state + 52
 EC_RND      equ G_econ_state + 54
 EC_JDOME    equ G_econ_state + 56       ; περιστροφικοί δείκτες του πίνακα
 EC_JAGENT   equ G_econ_state + 57       ; εργασιών (§6.7)
+EC_ALIVE    equ G_econ_state + 58
+EC_GAMEOVER equ G_econ_state + 59       ; §10.3 — η μόνη συνθήκη ήττας
+EC_GLOOM    equ G_econ_state + 60       ; πένθος: ανεβαίνει με κάθε θάνατο
 
 EC_CAP      equ 600                     ; ταβάνι αποθέματος
 DOME_REC    equ 24
 D_SIZE      equ 2
+D_ROOM      equ 3
 D_STATE     equ 4
 D_OPS       equ 7
 D_MACH      equ 8
@@ -561,6 +565,13 @@ ef_cnt_n:
         inc     l
         djnz    ef_cnt_lp
 
+        ld      a,c
+        ld      (EC_ALIVE),a
+        or      a
+        jr      nz,ef_alive
+        ld      a,1
+        ld      (EC_GAMEOVER),a         ; κανείς ζωντανός: τέλος (§10.3)
+ef_alive:
         ld      l,c
         ld      h,0
         add     hl,hl                   ; O2_PER_COL = 2
@@ -618,6 +629,12 @@ ev_night:
         ld      h,a
 ev_nox:
         ld      (EC_RND),hl
+        ld      a,(EC_GLOOM)            ; το πένθος περνάει, αργά
+        or      a
+        jr      z,ev_wind
+        dec     a
+        ld      (EC_GLOOM),a
+ev_wind:
         ld      a,l
         and     15
         ret     nz                      ; ο άνεμος αλλάζει σπάνια

@@ -14,7 +14,9 @@
 
 WH_SLOTS    equ 16
 WH_MOVE_DEF   equ 12                  ; πράκτορες ανά θέση κίνησης (§7.3)
-WH_DECAY_DEF  equ 32                  ; πράκτορες ανά θέση φθοράς
+WH_NEED_DEF   equ 8                   ; άποικοι ανά θέση αναγκών (§7.3)
+WH_NEED_SPAN  equ 24                  ; 3 θέσεις x 8
+MAX_COLONIST  equ 96
 WH_RT_B     equ 12                  ; επεκτάσεις κόμβων ανά frame
 
 ; ---------------------------------------------------------------------------
@@ -78,14 +80,15 @@ wm_lp:
 wm_go:
         jp      ent_move_slice
 
-; --- θέσεις 8-10: φθορά αναγκών ---
+; --- θέσεις 8-10: ανάγκες — φθορά, ικανοποίηση, υγεία, θάνατος, απόφαση ---
 wh_decay:
         ld      a,e
         sub     8
         ld      e,a
         ld      a,(wh_decay_n)
         ld      b,a
-        ld      c,0
+        ld      a,(wh_need_base)
+        ld      c,a
 wd_lp:
         ld      a,e
         or      a
@@ -96,7 +99,18 @@ wd_lp:
         ld      c,a
         jr      wd_lp
 wd_go:
-        jp      ent_decay_slice
+        ld      a,(wh_slot)             ; μόλις αυξήθηκε: 11 σημαίνει «ήταν 10»
+        cp      11
+        jr      nz,wd_run
+        ld      a,(wh_need_base)
+        add     a,WH_NEED_SPAN
+        cp      MAX_COLONIST
+        jr      c,wd_nb
+        sub     MAX_COLONIST
+wd_nb:
+        ld      (wh_need_base),a
+wd_run:
+        jp      ent_needs_slice
 
 ; --- η ελεύθερη θέση ---
 wh_todo:
@@ -132,11 +146,12 @@ wh_table:
         dw econ_prod_slice              ; 11 παραγωγή
         dw econ_flow                    ; 12 ισοζύγιο ροών
         dw jobs_tick                    ; 13 πίνακας εργασιών
-        dw wh_todo                      ; 14 ελεύθερη — η δρομολόγηση έφυγε
+        dw rooms_rebuild                ; 14 ευρετήριο δωματίων (§6.6)
         dw econ_events                  ; 15 συμβάντα
 
 wh_on:      db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
 wh_slot:    db 0
 wh_dirty:   db 0
 wh_move_n:  db WH_MOVE_DEF            ; §7.3 — οι φέτες μεγαλώνουν, ο τροχός όχι
-wh_decay_n: db WH_DECAY_DEF
+wh_decay_n: db WH_NEED_DEF
+wh_need_base: db 0

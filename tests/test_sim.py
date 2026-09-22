@@ -57,7 +57,7 @@ def enter(m, sym, label, limit=600):
     return n
 
 
-def run_z80(sym, g, sim, ticks, move_n=None, decay_n=None, off=()):
+def run_z80(sym, g, sim, ticks, move_n=None, decay_n=None, off=(), pin=None):
     from cpc import CPC
     m = CPC()
     m.run_frames(60)
@@ -74,10 +74,14 @@ def run_z80(sym, g, sim, ticks, move_n=None, decay_n=None, off=()):
     m.write_ram(STAGE_STR, bytes(sim.e.struct))
     m.write_ram(sym["G_ECON_STATE"], EC.to_bytes(sim.e))   # τράπεζα 2, βασική
     m.write_ram(sym["G_JOB_TBL"], bytes(sim.e.job))
+    m.write_ram(sym["G_ROOM_N"], bytes(sim.e.room_n))
+    m.write_ram(sym["G_ROOM_LIST"], bytes(sim.e.room_list))
     enter(m, sym, "LOAD_STATE")
 
     for slot in off:
         m.poke(sym["WH_ON"] + slot, 0)
+    if pin is not None:
+        m.poke(sym["PIN_SLOT"], pin)
     if move_n is not None:
         m.poke(sym["WH_MOVE_N"], move_n)
     if decay_n is not None:
@@ -90,7 +94,9 @@ def run_z80(sym, g, sim, ticks, move_n=None, decay_n=None, off=()):
     return (m.read_ram(STAGE_AG, 2048), m.read_ram(STAGE_OCC, 128), frames,
             m.read_ram(STAGE_DOME, 1536), m.read_ram(STAGE_STR, 512),
             m.read_ram(sym["G_ECON_STATE"], EC.ECON_BYTES),
-            m.read_ram(sym["G_JOB_TBL"], EC.MAX_JOB * EC.JOB_REC))
+            m.read_ram(sym["G_JOB_TBL"], EC.MAX_JOB * EC.JOB_REC),
+            m.read_ram(sym["G_ROOM_N"], 12) +
+            m.read_ram(sym["G_ROOM_LIST"], 96))
 
 
 def describe(blob, sim):
@@ -134,10 +140,13 @@ def fresh(g, nexthop, src):
     s.e.struct = bytearray(src.e.struct)
     s.e.stock = list(src.e.stock)
     s.e.job = bytearray(src.e.job)
+    s.e.room_n = bytearray(src.e.room_n)
+    s.e.room_list = bytearray(src.e.room_list)
     for f in ("power_store", "power_cap", "power_prod", "power_use",
               "mach_power", "o2_prod", "o2_use", "acc_power", "acc_o2",
               "power_ok", "o2_ok", "prod_dome", "day", "wind", "sol",
-              "frame", "rnd", "n_dome", "n_struct", "job_dome", "job_agent"):
+              "frame", "rnd", "n_dome", "n_struct", "job_dome", "job_agent",
+              "alive", "gameover", "gloom"):
         setattr(s.e, f, getattr(src.e, f))
     return s
 
@@ -147,11 +156,13 @@ def main():
     g = G.GRAPHS["colony"]()
     dist, nexthop = G.all_pairs(g)
 
-    sim0 = E.populate(E.Sim(g, nexthop, dist))
+    sim0 = E.Sim(g, nexthop, dist)
     EC.populate(sim0.e)
+    E.populate(sim0)
+    EC.rooms_rebuild(sim0.e)
     before = E.Agents().from_bytes(sim0.a.to_bytes())
 
-    got_a, got_occ, frames, got_dome, got_str, got_econ, got_job = \
+    got_a, got_occ, frames, got_dome, got_str, got_econ, got_job, got_room = \
         run_z80(sym, g, fresh(g, nexthop, sim0), TICKS)
 
     sim = fresh(g, nexthop, sim0)
@@ -194,6 +205,11 @@ def main():
         n = sum(1 for i in range(1536) if got_dome[i] != sim.e.dome[i])
         print(f"ΑΠΟΤΥΧΙΑ πίνακες: {n} bytes θόλων διαφέρουν")
         return 1
+    if got_room != bytes(sim.e.room_n) + bytes(sim.e.room_list):
+        print("ΑΠΟΤΥΧΙΑ ευρετήριο δωματίων:")
+        print(f"    Z80      {list(got_room[:12])}")
+        print(f"    αναφορά  {list(sim.e.room_n)}")
+        return 1
     if got_job != bytes(sim.e.job):
         bad = [j for j in range(EC.MAX_JOB)
                if got_job[j*5:j*5+5] != sim.e.job[j*5:j*5+5]]
@@ -225,6 +241,34 @@ def main():
             if gv != wv:
                 print(f"    {n:18s} Z80 {gv:6d} != αναφορά {wv:6d}")
         return 1
+
+    # --- οι ανάγκες όντως δάγκωσαν; ---
+    ag0 = E.Agents().from_bytes(sim0.a.to_bytes())
+    agz = E.Agents().from_bytes(got_a)
+    alive0 = sum(1 for i in range(128) if ag0.flags[i] & E.F_ALIVE)
+    alive1 = sum(1 for i in range(128) if agz.flags[i] & E.F_ALIVE)
+    fed = sum(1 for i in range(128) if agz.food[i] > ag0.food[i])
+    slept = sum(1 for i in range(128) if agz.sleep[i] > ag0.sleep[i])
+    healed = sum(1 for i in range(128) if agz.health[i] > ag0.health[i])
+    seeking = sum(1 for i in range(128)
+                  if agz.flags[i] & E.F_ALIVE and agz.dest[i] != agz.node[i])
+    gloom = got_econ[60]
+    for what, n in (("θάνατοι", alive0 - alive1), ("φαγητό", fed),
+                    ("ύπνος", slept), ("ίαση", healed), ("μετακίνηση", seeking)):
+        if n == 0:
+            print(f"ΑΠΟΤΥΧΙΑ: καμία {what} σε {TICKS} frames — "
+                  f"η διαδρομή δεν εκτελέστηκε ποτέ")
+            return 1
+    if gloom == 0:
+        print("ΑΠΟΤΥΧΙΑ: κανένα πένθος, άρα κανένας θάνατος δεν καταγράφηκε")
+        return 1
+    if got_econ[58] != alive1:
+        print(f"ΑΠΟΤΥΧΙΑ: το econ λέει {got_econ[58]} ζωντανούς, "
+              f"οι πράκτορες λένε {alive1}")
+        return 1
+    print(f"OK ανάγκες:   {alive0} -> {alive1} ζωντανοί, {fed} έφαγαν, "
+          f"{slept} κοιμήθηκαν, {healed} γιατρεύτηκαν")
+    print(f"              {seeking} σε μετακίνηση για ανάγκη, πένθος {gloom}")
 
     # --- ο πίνακας εργασιών όντως δούλεψε; ---
     # Χωρίς αυτό, δύο άδειοι πίνακες συμφωνούν μια χαρά και δεν δοκιμάζεται
@@ -266,51 +310,42 @@ def main():
           f"{'ΟΚ' if e.o2_ok else 'ΕΛΛΕΙΜΜΑ'}, sol {e.sol} "
           f"{'μέρα' if e.day else 'νύχτα'}, άνεμος {e.wind}")
 
-    # --- κόστος ανά ΕΙΔΟΣ θέσης ---
-    # Σβήνουμε μία κατηγορία τη φορά και κρατάμε τη διαφορά. Χωρίς αυτό η
-    # «διανομή» φαίνεται να κοστίζει 967 us, που είναι στην πραγματικότητα η
-    # οικονομία κρυμμένη μέσα της.
-    def timed(off):
-        return run_z80(sym, g, fresh(g, nexthop, sim0), TICKS,
-                       off=off)[2] * FRAME_US
+    # --- κόστος ανά θέση, μετρημένο ΚΑΤΕΥΘΕΙΑΝ ---
+    # Ο τροχός καρφώνεται σε μία θέση και τρέχει PIN_TICKS φορές. Η παλιότερη
+    # μέθοδος — τρέξε τα πάντα, μετά σβήσε ένα, κράτα τη διαφορά — έπαψε να
+    # ισχύει μόλις τα περάσματα άρχισαν να αλληλοεξαρτώνται.
+    PIN_TICKS = 200
 
-    REV = TICKS // 16
-    t_all = frames * FRAME_US
-    t1 = timed(tuple(range(8)))                       # χωρίς κίνηση
-    t2 = timed(tuple(range(11)))                      # ούτε φθορά
-    t3 = timed(tuple(range(12)))                      # ούτε παραγωγή
-    t4 = timed(tuple(range(13)))                      # ούτε ισοζύγιο
-    t45 = timed(tuple(range(14)))                     # ούτε εργασίες
-    t5 = timed(tuple(range(16)))                      # τίποτα: μόνο διανομή
+    def pinned(slot):
+        fr = run_z80(sym, g, fresh(g, nexthop, sim0), PIN_TICKS, pin=slot)[2]
+        return fr * FRAME_US / PIN_TICKS
 
-    move_us = (t_all - t1) / (REV * 8)
-    decay_us = (t1 - t2) / (REV * 3)
-    prod_us = (t2 - t3) / REV
-    flow_us = (t3 - t4) / REV
-    job_us = (t4 - t45) / REV
-    event_us = (t45 - t5) / REV
-    over_us = t5 / TICKS
-
-    print(f"\nκόστος ανά θέση τροχού ({TICKS} θέσεις = {REV} περιστροφές):")
-    rows = [("κίνηση", move_us, 1800, f"{E.WH_MOVE_N} πράκτορες"),
-            ("φθορά", decay_us, 433, f"{E.WH_DECAY_N} πράκτορες"),
-            ("παραγωγή", prod_us, 4000, f"{EC.PROD_DOMES} θόλοι"),
-            ("ισοζύγιο", flow_us, 2000, "64 δομές + 128 πράκτορες"),
-            ("εργασίες", job_us, 3000,
+    rows = [("κίνηση", pinned(0), 1800, f"{E.WH_MOVE_N} πράκτορες"),
+            ("ανάγκες", pinned(8), 433, f"{E.WH_NEED_N} άποικοι"),
+            ("παραγωγή", pinned(11), 4000, f"{EC.PROD_DOMES} θόλοι"),
+            ("ισοζύγιο", pinned(12), 2000, "64 δομές + 128 πράκτορες"),
+            ("εργασίες", pinned(13), 3000,
              f"{EC.JOB_SCAN} θόλοι, {EC.JOB_LOOK} πράκτορες"),
-            ("συμβάντα", event_us, 500, "μία ζαριά")]
+            ("δωμάτια", pinned(14), 0, "64 θόλοι — η θέση 14 δεν είχε προϋπολογισμό"),
+            ("συμβάντα", pinned(15), 500, "μία ζαριά")]
+
+    print(f"\nκόστος ανά θέση τροχού (καρφωμένος τροχός, {PIN_TICKS} κλήσεις):")
     for name, got, budget, what in rows:
-        if got <= budget:
+        if budget == 0:
+            mark = "  —  "
+        elif got <= budget:
             mark = "OK   "
         elif got <= budget * 1.05:
             mark = "οριακά"
         else:
             mark = f"{got/budget:.1f}x  "
         print(f"  {name:9s} {got:7.0f} us  (προϋπ. {budget:5d})  {mark} {what}")
-    print(f"  {'διανομή':9s} {over_us:7.0f} us  (κάθε frame)")
+
+    total = frames * FRAME_US / (TICKS // 16)
+    print(f"  ολόκληρη περιστροφή: {total:.0f} us σε 16 frames "
+          f"({100*total/(16*FRAME_US):.0f}% της συνολικής CPU)")
 
     worst_name, worst = max(((n, v) for n, v, _, _ in rows), key=lambda r: r[1])
-    worst += over_us
     print(f"  χειρότερο frame: {worst:.0f} us ({worst_name}) από τα 19.968 "
           f"= {100*worst/FRAME_US:.0f}%")
 

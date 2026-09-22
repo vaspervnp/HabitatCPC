@@ -77,7 +77,7 @@ ent_move_one:
         set     7,l
         ld      a,(hl)                  ; edge
         inc     a
-        jr      nz,em_trans             ; != 255 -> ταξιδεύει
+        jp      nz,em_trans             ; != 255 -> ταξιδεύει
 
 ; --- ΣΤΑΘΕΡΟΣ: χρειάζεται να ξεκινήσει; ---
         ld      a,(em_id)
@@ -147,6 +147,26 @@ em_scan:
         ret                             ; μπαγιάτικο NEXTHOP — μένει ακίνητος
 
 em_found:
+        ; Αν δούλευε, ο θόλος χάνει έναν χειριστή καθώς βγαίνει. Είναι ο
+        ; καθρέφτης της άφιξης στο jobs.asm, και χωρίς αυτό οι χειριστές
+        ; μόνο ανεβαίνουν: ο θόλος θυμάται κόσμο που έφυγε πριν από ώρα.
+        ld      a,(em_id)
+        ld      h,AG_PG
+        ld      l,a
+        ld      a,(hl)
+        and     F_WORKING
+        jr      z,emf_rel
+        ld      a,(hl)
+        and     255 - F_WORKING
+        ld      (hl),a
+        ld      a,(em_node)
+        cp      MAX_DOME
+        jr      nc,emf_rel
+        call    jb_dome_ptr
+        ld      de,D_OPS
+        add     hl,de
+        dec     (hl)
+emf_rel:
         ; ελευθερώνει τη θέση του και μπαίνει στην ακμή C
         call    ent_release
         ld      a,(em_id)
@@ -317,62 +337,11 @@ er_out:
         pop     bc
         ret
 
-; ---------------------------------------------------------------------------
-; ent_decay_slice — C = πρώτος, B = πλήθος. Οι ανάγκες πέφτουν (§6.6).
-;
-; Τέσσερα πεδία, τέσσερις ρυθμοί, και κανένα δεν περνά ποτέ κάτω από το μηδέν —
-; η αφαίρεση με κορεσμό είναι ο λόγος που δεν είναι ένα ldir.
-; ---------------------------------------------------------------------------
-ent_decay_slice:
-        inc     b
-        dec     b
-        ret     z
-eds_lp:
-        ld      a,c
-        ld      h,AG_PG
-        ld      l,a
-        ld      a,(hl)
-        and     F_ALIVE
-        jr      z,ed_next
-
-        ; Τέσσερα πεδία, δύο σελίδες, χωρίς κλήσεις: το ed_sub ως υπορουτίνα
-        ; κόστιζε 27 T-states ανά πεδίο σε call/ret, δηλαδή το ένα τέταρτο της
-        ; δουλειάς. Μετρημένο, όχι υποτιθέμενο.
-        ld      h,AG_PG + 4
-        ld      a,(hl)                  ; o2
-        sub     3
-        jr      nc,ed_1
-        xor     a
-ed_1:   ld      (hl),a
-        set     7,l
-        ld      a,(hl)                  ; water
-        sub     2
-        jr      nc,ed_2
-        xor     a
-ed_2:   ld      (hl),a
-        res     7,l
-        ld      h,AG_PG + 5
-        ld      a,(hl)                  ; food
-        sub     1
-        jr      nc,ed_3
-        xor     a
-ed_3:   ld      (hl),a
-        set     7,l
-        ld      a,(hl)                  ; sleep
-        sub     2
-        jr      nc,ed_4
-        xor     a
-ed_4:   ld      (hl),a
-ed_next:
-        ld      a,c
-        inc     a
-        and     N_AGENT - 1
-        ld      c,a
-        djnz    eds_lp
-        ret
-
 bit_tab:    db 1,2,4,8,16,32,64,128
-role_speed: db 40,40,36,44,48,56,64,52
+; Διπλάσιες από την πρώτη εκτίμηση: με τις παλιές, μια ακμή ήθελε έξι
+; περιστροφές και μια διαδρομή πέντε αλμάτων κρατούσε όσο και η ανάγκη που
+; σε έστειλε — κανείς δεν πρόφταινε ποτέ να πιάσει δουλειά.
+role_speed: db 96,96,88,104,112,128,144,120
 
 em_id:      db 0
 em_node:    db 0

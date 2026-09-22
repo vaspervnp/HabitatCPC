@@ -47,7 +47,12 @@ F_WORKING = 32              # στέκεται στη θέση εργασίας 
 
 # ρόλοι (§6.1) και ταχύτητα ανά βήμα κίνησης. Τα ρομπότ είναι γρηγορότερα.
 WORKER, ENGINEER, BIOLOGIST, MEDIC, GUARD, BOT_CONSTR, BOT_CARRY, BOT_DRILL = range(8)
-ROLE_SPEED = [40, 40, 36, 44, 48, 56, 64, 52]
+# Πρώτη φορά που έτρεξε ολόκληρος ο κύκλος, φάνηκε ότι οι αριθμοί του §6.5
+# δίνουν αποικία όπου κανείς δεν δουλεύει ποτέ: με ταχύτητα 40, μια ακμή
+# θέλει 6 περιστροφές, μια διαδρομή 5 αλμάτων 30 — όσο ακριβώς κρατά και η
+# ανάγκη που σε έστειλε. Ολη η ζωή ήταν μετακίνηση. Διπλάσια ταχύτητα:
+# μια ακμή σε 2-3 περιστροφές.
+ROLE_SPEED = [96, 96, 88, 104, 112, 128, 144, 120]
 
 
 class Agents:
@@ -146,26 +151,154 @@ def move_slice(a, g, nexthop, occ, first, count, e=None):
         move_one(a, (first + k) & (MAXAGENT - 1), g, nexthop, occ, e)
 
 
-# --- φθορά αναγκών (§6.6), η δεύτερη πραγματική εργασία του τροχού ---------
+# --- ανάγκες: φθορά, ικανοποίηση, υγεία, θάνατος (§6.6) -------------------
+#
+# Το §6.6 έλεγε «φθορά έξι bytes ανά άποικο, ~40 us· το ακριβό είναι να
+# ΑΠΟΦΑΣΙΣΕΙΣ τι θα κάνεις γι' αυτό, και αυτό είναι πρόβλημα του πίνακα
+# εργασιών». Δεν είναι: ο πίνακας εργασιών δίνει δουλειές, δεν στέλνει κόσμο
+# για φαγητό. Η απόφαση ζει εδώ, στο ίδιο πέρασμα που ξέρει ήδη τα νούμερα.
+
 NEED_FIELDS = ["o2", "water", "food", "sleep"]
-NEED_RATE = [3, 2, 1, 2]
+# Το §6.5 λέει ότι ένας άποικος καταναλώνει 2 νερό και 1 γεύμα ΑΝΑ SOL, και
+# ένα sol είναι 750 περιστροφές. Οι ρυθμοί 3/2/1/2 ανά περιστροφή ήταν έξι
+# φορές πιο γρήγοροι από την ίδια του την οικονομία: η μπάρα άδειαζε σε 40
+# δευτερόλεπτα και όλη η ζωή ενός αποίκου ήταν μετακίνηση. Ενα ανά επίσκεψη
+# αδειάζει σε 255 περιστροφές, δηλαδή στο ένα τρίτο ενός sol.
+NEED_RATE = [1, 1, 1, 1]
+NEED_LOW = 64               # κάτω από αυτό, ψάχνει πού να το λύσει
+NEED_CRIT = 16              # κάτω από αυτό, η υγεία πληρώνει
+MORALE_QUIT = 48            # κάτω από αυτό, δεν δέχεται δουλειά
+O2_REFILL = 2               # όσο αναπνέει αέρα αποικίας
 
 
-def decay_slice(a, first, count):
-    """Οι ανάγκες πέφτουν, και δεν γυρίζουν ποτέ κάτω από το μηδέν."""
+def sub_sat(v, d):
+    return v - d if v > d else 0
+
+
+def needs_slice(a, e, occ, first, count):
+    """Η φέτα των θέσεων 8-10: count άποικοι, με αύξουσα σειρά."""
     for k in range(count):
         i = (first + k) & (MAXAGENT - 1)
-        if not a.flags[i] & F_ALIVE:
-            continue
-        for f, r in zip(NEED_FIELDS, NEED_RATE):
-            arr = getattr(a, f)
-            arr[i] = arr[i] - r if arr[i] > r else 0
+        if a.flags[i] & F_ALIVE:
+            need_one(a, e, occ, i)
+
+
+def need_one(a, e, occ, i):
+    # 1. φθορά
+    for f, r in zip(NEED_FIELDS, NEED_RATE):
+        arr = getattr(a, f)
+        arr[i] = sub_sat(arr[i], r)
+
+    # 2. το οξυγόνο είναι ροή, όχι ταξίδι: το αναπνέει όποιος είναι μέσα
+    if e.o2_ok:
+        a.o2[i] = min(255, a.o2[i] + O2_REFILL)
+
+    # 3. αν στέκεται στο σωστό δωμάτιο, το παίρνει
+    if a.edge[i] == NO_EDGE and a.node[i] < EC.MAX_DOME:
+        satisfy(a, e, i, a.node[i])
+
+    # 4. υγεία
+    dmg = 0
+    if a.o2[i] < NEED_CRIT:
+        dmg += 4
+    if a.water[i] < NEED_CRIT:
+        dmg += 2
+    if a.food[i] < NEED_CRIT:
+        dmg += 1
+    if dmg:
+        a.health[i] = sub_sat(a.health[i], dmg)
+    elif min(a.o2[i], a.water[i], a.food[i]) >= NEED_LOW:
+        a.health[i] = min(255, a.health[i] + 1)
+
+    # 5. θάνατος
+    if a.health[i] == 0:
+        die(a, e, occ, i)
+        return
+
+    # 6. ηθικό
+    if min(a.o2[i], a.water[i], a.food[i], a.sleep[i]) < NEED_CRIT:
+        a.morale[i] = sub_sat(a.morale[i], 2)
+    elif min(a.o2[i], a.water[i], a.food[i], a.sleep[i]) >= NEED_LOW:
+        a.morale[i] = min(255, a.morale[i] + 1)
+    if e.gloom:
+        a.morale[i] = sub_sat(a.morale[i], 1)
+
+    # 7. πού πρέπει να πάει
+    seek(a, e, i)
+
+
+def satisfy(a, e, i, d):
+    """Στέκεται στον θόλο d. Οτι έχει να του δώσει, του το δίνει."""
+    room = e.dome[d * EC.DOME_REC + EC.D_ROOM]
+    if room == EC.R_QUARTERS:
+        a.sleep[i] = min(255, a.sleep[i] + 64)   # μια νύχτα, όχι ένας υπνάκος
+    elif room == EC.R_CANTEEN:
+        if a.food[i] < NEED_LOW and e.stock[EC.S_FOOD] > 0:
+            e.stock[EC.S_FOOD] -= 1
+            a.food[i] = min(255, a.food[i] + 64)
+        if a.water[i] < NEED_LOW and e.stock[EC.S_WATER] > 0:
+            e.stock[EC.S_WATER] -= 1
+            a.water[i] = min(255, a.water[i] + 64)
+    elif room == EC.R_MEDBAY:
+        if a.health[i] < NEED_LOW and e.stock[EC.S_MEDI] > 0:
+            e.stock[EC.S_MEDI] -= 1
+            a.health[i] = min(255, a.health[i] + 32)
+
+
+def die(a, e, occ, i):
+    """Ο θάνατος αφήνει πίσω του μια θέση, μια δουλειά και πένθος."""
+    if a.flags[i] & F_WORKING and a.node[i] < EC.MAX_DOME:
+        e.dome[a.node[i] * EC.DOME_REC + EC.D_OPS] -= 1
+    release(occ, a.node[i], a.slot[i])
+    a.flags[i] = 0
+    a.slot[i] = NO_SLOT
+    a.edge[i] = NO_EDGE
+    a.task[i] = NO_TASK
+    a.progress[i] = 0
+    e.gloom = min(255, e.gloom + 16)
+
+
+def seek(a, e, i):
+    """Οι δικές του ανάγκες υπερισχύουν του πίνακα εργασιών (§6.7).
+
+    Με αυτή τη σειρά: υγεία, φαγητό, νερό, ύπνος. Οποιος έχει ανάγκη αφήνει τη
+    δουλειά του — ο πίνακας εργασιών θα ξαναδώσει την εργασία σε άλλον μόνος
+    του, στο μάζεμα.
+    """
+    if a.health[i] < NEED_LOW:
+        room = EC.R_MEDBAY
+    elif a.food[i] < NEED_LOW:
+        room = EC.R_CANTEEN
+    elif a.water[i] < NEED_LOW:
+        room = EC.R_CANTEEN
+    elif a.sleep[i] < NEED_LOW:
+        room = EC.R_QUARTERS
+    else:
+        return
+    # Ηδη πάει (ή είναι) σε τέτοιο δωμάτιο; Τότε τίποτα. Χωρίς αυτόν τον
+    # έλεγχο κάθε άποικος ξαναέψαχνε το κοντινότερο δωμάτιο σε ΚΑΘΕ επίσκεψη,
+    # μαζί με τη σελιδοποίηση και τις οκτώ αναγνώσεις του DIST που αυτό θέλει.
+    d = a.dest[i]
+    if d < EC.MAX_DOME and e.dome[d * EC.DOME_REC + EC.D_ROOM] == room:
+        return
+    d = EC.nearest_room(e, room, a.node[i])
+    if d == 255:
+        return                              # δεν υπάρχει τέτοιο δωμάτιο
+    a.task[i] = NO_TASK
+    a.dest[i] = d
 
 
 # --- ο τροχός (§7.2) ------------------------------------------------------
 WH_SLOTS = 16
 WH_MOVE_N = 12              # πράκτορες ανά θέση κίνησης
-WH_DECAY_N = 32             # πράκτορες ανά θέση φθοράς
+# Οκτώ ανά θέση: 3 x 8 = 24 άποικοι ανά περιστροφή, καθένας κάθε τέσσερις.
+# Το πλήρες πέρασμα κοστίζει ~740 us ανά άποικο και δεν υπάρχει ένα σημείο
+# που να φταίει — απλώς κάνει πολλά. Το §7.3 δίνει ακριβώς αυτόν τον μοχλό.
+# Και ο αραιότερος ρυθμός είναι ΠΙΟ κοντά στην οικονομία του §6.5: μια μπάρα
+# των 255 κρατά τώρα 1.020 περιστροφές, δηλαδή περίπου ενάμισι sol.
+WH_NEED_N = 8               # άποικοι ανά θέση αναγκών
+WH_NEED_SPAN = 24           # 3 θέσεις x 8
+MAX_COLONIST = 96           # το ταβάνι του §6.1: 80 άποικοι + 16 ρομπότ
 
 
 class Sim:
@@ -177,6 +310,7 @@ class Sim:
         self.nexthop = nexthop
         self.occ = bytearray(G.MAXNODE)
         self.slot = 0
+        self.need_base = 0
         self.e = EC.Econ()
         self.e.dist = dist
 
@@ -188,13 +322,22 @@ class Sim:
             move_slice(self.a, self.g, self.nexthop, self.occ,
                        s * WH_MOVE_N, WH_MOVE_N, self.e)
         elif s < 11:
-            decay_slice(self.a, (s - 8) * WH_DECAY_N, WH_DECAY_N)
+            # Το πλήρες πέρασμα αναγκών κοστίζει 348 us ανά άποικο. Τρεις
+            # θέσεις x 32 δεν χωρούσαν άνετα σε frame, οπότε ο τροχός κάνει
+            # αυτό ακριβώς που λέει το §7.3: μισούς ανά περιστροφή, τον
+            # καθένα κάθε δεύτερη. Οι ανάγκες απλώς κρατάνε διπλάσιο χρόνο.
+            needs_slice(self.a, self.e, self.occ,
+                        self.need_base + (s - 8) * WH_NEED_N, WH_NEED_N)
+            if s == 10:
+                self.need_base = (self.need_base + WH_NEED_SPAN) % MAX_COLONIST
         elif s == 11:
             EC.production_slice(self.e)
         elif s == 12:
             alive = sum(1 for i in range(MAXAGENT)
                         if self.a.flags[i] & F_ALIVE)
             EC.flow_balance(self.e, alive)
+        elif s == 14:
+            EC.rooms_rebuild(self.e)
         elif s == 13:
             EC.jobs_tick(self.e, self.a, F_ALIVE, F_WORKING)
         elif s == 15:
@@ -212,15 +355,36 @@ def populate(sim, n_agents=96, seed=7):
         x = ((x * 75) + 74) & 0xFFFF
         a.role[i] = (x >> 3) & 7
         a.flags[i] = F_ALIVE if (x & 31) else 0      # ~3% νεκροί εξαρχής
-        node = (x >> 6) % g.n
+        # Οι άποικοι ζουν ΣΤΟΥΣ ΘΟΛΟΥΣ. Σκορπισμένοι σε όλο τον γράφο, οι
+        # μισοί ξεκινούσαν πάνω σε εξωτερικές δομές και το ταξίδι ως την
+        # κοντινότερη καντίνα κρατούσε περισσότερο από την ίδια την ανάγκη:
+        # κανείς δεν προλάβαινε ποτέ να πιάσει δουλειά.
+        ndome = min(EC.MAX_DOME, g.n)
+        node = (x >> 6) % ndome
         a.node[i] = node
-        a.dest[i] = ((x >> 9) * 7 + i) % g.n
-        a.o2[i] = 100 + (x & 63)
-        a.water[i] = 90 + ((x >> 2) & 63)
-        a.food[i] = 80 + ((x >> 4) & 63)
-        a.sleep[i] = 70 + ((x >> 5) & 63)
+        a.dest[i] = ((x >> 9) * 7 + i) % ndome
+        a.o2[i] = 190 + (x & 63)
+        a.water[i] = 150 + ((x >> 2) & 63)
+        a.food[i] = 120 + ((x >> 4) & 63)
+        a.sleep[i] = 110 + ((x >> 5) & 63)
+        # Μερικοί μπαίνουν ήδη πεινασμένοι, διψασμένοι ή άυπνοι. Χωρίς αυτούς
+        # οι μπάρες θέλουν εκατοντάδες περιστροφές για να πέσουν κάτω από το
+        # κατώφλι, και η δοκιμή τελειώνει πριν φάει ποτέ κανείς.
+        if i % 4 == 1:
+            a.food[i] = 30
+        if i % 5 == 2:
+            a.water[i] = 30
+        if i % 3 == 0:
+            a.sleep[i] = 30
         a.health[i] = 200
         a.morale[i] = 150
+        # Εξι άποικοι μπαίνουν ετοιμοθάνατοι. Χωρίς αυτούς η διαδρομή του
+        # θανάτου — θέση, δουλειά, χειριστής, πένθος — δεν εκτελείται ποτέ
+        # μέσα στη διάρκεια της δοκιμής.
+        if i % 16 == 5:
+            a.health[i] = 6
+            a.o2[i] = 4
+            a.water[i] = 4
         if a.flags[i] & F_ALIVE:
             a.slot[i] = claim(sim.occ, node)          # μπορεί να γυρίσει 255
     return sim
