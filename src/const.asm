@@ -62,7 +62,18 @@ DS_EMPTY    equ 0
 DS_BUILDING equ 1
 DS_ACTIVE   equ 2
 NO_MACH     equ 255
+; --- οι δώδεκα τύποι δωματίου, με τη σειρά των εικονιδίων του pack.py ---
+R_EMPTY     equ 0
+R_CONTROL   equ 1
+R_QUARTERS  equ 2
+R_CANTEEN   equ 3
+R_OXYGEN    equ 4
 R_GREENHS   equ 5
+R_STORAGE   equ 6
+R_AIRLOCK   equ 7
+R_FACTORY   equ 8
+R_LAB       equ 9
+R_MEDBAY    equ 10
 R_LOUNGE    equ 11
 K_SOLAR     equ 0
 K_TURBINE   equ 1
@@ -164,3 +175,25 @@ J_DEFEND    equ 6
 
 ; --- ο γράφος κόμβων (§6.2). Εδώ επειδή τον γράφει και το build mode.
 MAX_DEGREE  equ 8
+
+; --- τα πεδία των πρακτόρων (§6.1), σε παράλληλες στήλες των 128.
+; Εδώ και όχι στο entity.asm: τα διαβάζει και ο renderer, και ο assembler δεν
+; συγχωρεί δύο ορισμούς — αυτό ήταν το πρώτο που έσπασε όταν τα δύο μισά του
+; παιχνιδιού μπήκαν για πρώτη φορά στο ίδιο binary.
+AG_PG       equ G_agent_fields / 256
+AG_FLAGS    equ G_agent_fields               ; +0 flags   +128 role
+AG_NODE     equ G_agent_fields + 256         ; +0 node    +128 slot
+AG_DEST     equ G_agent_fields + 512         ; +0 dest    +128 edge
+AG_PROG     equ G_agent_fields + 768         ; +0 progress +128 task
+AG_O2       equ G_agent_fields + 1024        ; +0 o2      +128 water
+AG_FOOD     equ G_agent_fields + 1280        ; +0 food    +128 sleep
+AG_HEALTH   equ G_agent_fields + 1536        ; +0 health  +128 morale
+AG_SKILL    equ G_agent_fields + 1792        ; +0 skill   +128 spare
+OCCPG       equ G_node_occ / 256
+
+; --- ΠΡΟΣΩΡΙΝΟ: δύο buffers έξω από την τράπεζα 0, γιατί δεν χωράνε (§4.2).
+; Η τράπεζα 2 είναι πάντα ορατή, οπότε ο κώδικας δεν αλλάζει· αυτό που αλλάζει
+; είναι ότι τα τελευταία 1.024 ελεύθερα bytes της τράπεζας 2 ξοδεύτηκαν.
+GH_LOG      equ 512                 ; ήταν 1.600 — το ημερολόγιο κόβεται νωρίτερα
+GH_BUF      equ #BC00
+DOME_FIG    equ #BE00               ; 64 θόλοι x 8 θέσεις

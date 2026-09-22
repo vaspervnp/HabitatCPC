@@ -826,7 +826,9 @@ cr_link:
         ld      a,(cr_from)
         ld      c,a
         call    cr_edge
-        jp      rt_begin
+        ; Οχι rt_begin: αυτό μόνο μηδενίζει τον μετρητή πηγών. Το rt_dirty
+        ; είναι που κάνει τον τροχό να ΤΡΕΞΕΙ την ανοικοδόμηση.
+        jp      rt_mark
 
 ; cr_edge — προσθέτει τον C στους γείτονες του B, αν χωράει.
 cr_edge:

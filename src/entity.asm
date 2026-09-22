@@ -18,17 +18,7 @@
 ; ο κόμβος-στόχος βγαίνει με μία ανάγνωση αντί για ψάξιμο στον πίνακα
 ; διαδρόμων.
 
-AG_PG       equ G_agent_fields / 256
-AG_FLAGS    equ G_agent_fields               ; +0 flags   +128 role
-AG_NODE     equ G_agent_fields + 256         ; +0 node    +128 slot
-AG_DEST     equ G_agent_fields + 512         ; +0 dest    +128 edge
-AG_PROG     equ G_agent_fields + 768         ; +0 progress +128 task
-AG_O2       equ G_agent_fields + 1024        ; +0 o2      +128 water
-AG_FOOD     equ G_agent_fields + 1280        ; +0 food    +128 sleep
-AG_HEALTH   equ G_agent_fields + 1536        ; +0 health  +128 morale
-AG_SKILL    equ G_agent_fields + 1792        ; +0 skill   +128 spare
-
-OCCPG       equ G_node_occ / 256
+; Τα AG_* και το OCCPG είναι στο const.asm — τα διαβάζει και ο renderer.
 
 F_ALIVE     equ 1
 F_INDOORS   equ 2
