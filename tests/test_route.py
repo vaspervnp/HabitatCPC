@@ -190,6 +190,9 @@ def ui_flow(sym, g, col):
     goto(PLANT[1][1], PLANT[1][2], 3)
     check(m.peek(sym["UI_BAD"]) == 0 and m.peek(sym["CR_N"]) == 2,
           "το φάντασμα δείχνει έγκυρη διαδρομή με στροφή")
+    row = hud_row(m, sym, 3)
+    check("FE 36" in row and "BI 18" in row,
+          f"ο πίνακας δείχνει το κόστος ΟΛΗΣ της διαδρομής: |{row}|")
     # --- το κόστος ενός βήματος κέρσορα, μετρημένο ------------------------
     def cost():
         m.poke(sym["DONE_FLAG"], 0)
@@ -406,6 +409,23 @@ def commit_and_render(sym, g, col):
     check(not bad_cam,
           "η στροφή ζωγραφίζεται εκεί που λέει η αναφορά, και στους δύο άξονες"
           + ("" if not bad_cam else f" — {bad_cam}"))
+
+
+def hud_row(m, sym, row):
+    """Μια σειρά του HUD σε κείμενο, από τα ίδια τα pixel."""
+    from sprites import load_map, load_bin
+    smap, blob = load_map(), load_bin()
+    f = smap["font_gfx"]
+    font = blob[f.off:f.off + f.size]
+    glyph = {bytes(font[i * 16:(i + 1) * 16]): chr(32 + i) for i in range(96)}
+    off = m.peek(sym["CAM_OFF"]) | (m.peek(sym["CAM_OFF"] + 1) << 8)
+    ram = m.read_ram(0xC000, 0x4000)
+
+    def byte(x, y):
+        return ram[(y & 7) * 0x800 + (((y >> 3) * 80 + x + 2 * off) & 0x7FF)]
+    return "".join(glyph.get(bytes(byte(c * 2 + k, 160 + row * 8 + l)
+                                   for l in range(8) for k in range(2)), "#")
+                   for c in range(40))
 
 
 def layout(name):

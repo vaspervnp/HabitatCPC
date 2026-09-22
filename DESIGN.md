@@ -1871,7 +1871,9 @@ moving the dome two tiles.
 [§6.9](#69-construction) for why, and it is a real divergence.
 
 Costed **per tile**: the catalogue's 6 Metal / 3 Bioplastic is the price of one
-corridor tile, because the length is chosen by the geometry and not by the player.
+corridor tile, because the length is chosen by the geometry and not by the player —
+and the panel shows the total for the route it is previewing, not the unit price,
+for the same reason.
 
 The whole thing has an independent Python twin, `tools/route.py`, and
 `tests/test_route.py` compares the two over every pair of domes in the test colony —

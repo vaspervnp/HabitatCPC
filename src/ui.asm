@@ -18,7 +18,7 @@ UI_MENU     equ 1
 UI_PLACE    equ 2
 UI_LINK     equ 3                       ; διάλεξε θόλο, διάλεξε θόλο (§9.4)
 
-UIP_NSIG    equ 6                       ; bytes υπογραφής των σειρών 3-4
+UIP_NSIG    equ 7                       ; bytes υπογραφής των σειρών 3-4
 UI_MARGIN   equ 1                       ; tiles από το χείλος πριν σκρολάρει
 PEN_CUR     equ 15                      ; ροζ — το λευκό χανόταν πάνω στα χείλη
                                     ; των διαδρόμων, που είναι κι αυτά λευκά
@@ -706,6 +706,29 @@ uipc_go:
         call    hud_blank
         jr      uip_row4
 uip_item:
+        ; Το κόστος που δείχνεται είναι ΟΛΗΣ της διαδρομής όταν υπάρχει
+        ; διαδρομή: ο κατάλογος γράφει την τιμή ενός πλακιδίου διαδρόμου, και
+        ; το μήκος δεν το διαλέγει ο παίκτης αλλά η γεωμετρία (§9.4).
+        ld      a,(bd_metal)
+        ld      l,a
+        ld      h,0
+        ld      (uip_fe),hl
+        ld      a,(bd_biop)
+        ld      l,a
+        ld      h,0
+        ld      (uip_bi),hl
+        ld      a,(ui_state)
+        cp      UI_LINK
+        jr      nz,uipi_go
+        ld      a,(cr_n)
+        or      a
+        jr      z,uipi_go
+        call    cr_cost
+        ld      hl,(cr_metal)
+        ld      (uip_fe),hl
+        ld      hl,(cr_biop)
+        ld      (uip_bi),hl
+uipi_go:
         ld      a,'<'
         call    hud_char
         ld      b,1
@@ -720,18 +743,14 @@ uip_item:
         call    hud_blank
         ld      hl,t_fe
         call    hud_text
-        ld      a,(bd_metal)
-        ld      l,a
-        ld      h,0
+        ld      hl,(uip_fe)
         ld      b,3
         call    hud_num
         ld      b,2
         call    hud_blank
         ld      hl,t_bi
         call    hud_text
-        ld      a,(bd_biop)
-        ld      l,a
-        ld      h,0
+        ld      hl,(uip_bi)
         ld      b,3
         call    hud_num
         ld      b,40-31
@@ -807,6 +826,13 @@ ui_sig:
         ld      a,(cr_n)
         ld      (hl),a
         inc     hl
+        ld      a,(cr_l0)               ; δύο διαδρομές ίδιου σχήματος και
+        push    hl                      ; διαφορετικού μήκους κοστίζουν αλλιώς
+        ld      hl,cr_l1
+        add     a,(hl)
+        pop     hl
+        ld      (hl),a
+        inc     hl
         push    hl
         ld      a,(ui_state)
         cp      UI_LINK
@@ -853,6 +879,8 @@ uid_tx:     db 0
 uid_ty:     db 0
 uid_cx:     db 0
 uid_cy:     db 0
+uip_fe:     dw 0
+uip_bi:     dw 0
 uip_sig:    defs UIP_NSIG, 255
 uip_now:    defs UIP_NSIG
 cur_hx:     db 0
