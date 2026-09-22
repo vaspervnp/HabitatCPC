@@ -87,8 +87,9 @@ class Canvas:
         for y, row in enumerate(pens):
             for x, p in enumerate(row):
                 px[x, y] = palette_rgb[p]
-        if scale != 1:
-            img = img.resize((img.width * scale, img.height * scale * 2), Image.NEAREST)
+        # Το pixel του Mode 0 είναι ΔΙΠΛΟ σε πλάτος: 160 pixel σε οθόνη 200
+        # γραμμών. Για να βγει τετράγωνο το tile, διπλασιάζεται το ΠΛΑΤΟΣ.
+        img = img.resize((img.width * 2 * scale, img.height * scale), Image.NEAREST)
         img.save(path)
         return path
 

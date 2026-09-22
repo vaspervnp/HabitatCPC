@@ -34,3 +34,4 @@ python3 tests/test_worldgen.py
 python3 tests/test_camera.py
 python3 tests/test_routing.py
 python3 tests/test_sim.py
+python3 tests/test_object.py

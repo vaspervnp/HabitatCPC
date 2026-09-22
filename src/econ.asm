@@ -51,21 +51,10 @@ EC_TRADED   equ G_econ_state + 80
 EC_PADNODE  equ G_econ_state + 81
 
 EC_CAP      equ 600                     ; ταβάνι αποθέματος
-DOME_REC    equ 24
-D_SIZE      equ 2
-D_ROOM      equ 3
-D_STATE     equ 4
-D_OPS       equ 7
-D_MACH      equ 8
-D_HEALTH    equ 16
-DS_ACTIVE   equ 2
-NO_MACH     equ 255
 NO_STOCK    equ 255
 MF_OPERATOR equ 1
 MF_FLOW     equ 2
 PROD_DOMES  equ 16
-R_GREENHS   equ 5
-R_LOUNGE    equ 11
 STORM_LEN   equ 32
 S_WATER     equ 0
 S_FOOD      equ 1
@@ -73,17 +62,6 @@ S_ORE       equ 2
 S_STARCH    equ 10
 S_VEG       equ 11
 S_MEDPLANT  equ 12
-MAX_DOME    equ 64
-MAX_STRUCT  equ 64
-STRUCT_REC  equ 8
-ST_KIND     equ 2
-ST_SIZE     equ 3
-ST_STATE    equ 4
-K_SOLAR     equ 0
-K_TURBINE   equ 1
-K_COLLECT   equ 2
-K_EXTRACT   equ 3
-K_MINE      equ 4
 O2_PER_COL  equ 2
 SOL_FRAMES  equ 12000
 DAY_FRAMES  equ 7200                    ; 3/5 του sol

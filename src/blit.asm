@@ -25,9 +25,8 @@ blit_op:
 bo_line:
         push    de
         ld      a,(bo_w)
-        ld      c,a
-        ld      b,0
-        ldir
+        ld      b,a
+        call    blt_op_line
         pop     de
         call    scr_nextline
         ld      a,(bo_h)
@@ -35,6 +34,80 @@ bo_line:
         ld      (bo_h),a
         jr      nz,bo_line
         ret
+
+; ---------------------------------------------------------------------------
+; blt_op_line / blt_mask_line — ΜΙΑ γραμμή, με το δαχτυλίδι των 2 KB μέσα.
+; In :  HL = πηγή, DE = οθόνη, B = πλήθος bytes (1..80)
+;
+; Η γραμμή σπάει στα δύο μόνο όταν πατάει το σημείο τυλίγματος — μία στις
+; χίλιες. Το φθηνό φίλτρο είναι το (d&7)==7: μόνο τότε είναι το p πάνω από το
+; #700 και μόνο τότε μπορεί μια γραμμή 80 bytes να περάσει το #800. Τρεις
+; εντολές ανά γραμμή, ΟΧΙ ανά byte — ένα `and #C7` σε κάθε `inc de` θα κόστιζε
+; 70%. Ο έλεγχος ήταν πρώτα κλήση σε ρουτίνα και φάνηκε αμέσως: η επικάλυψη
+; εδάφους (blit_mask, 16 γραμμές ανά tile) πλήρωνε 90 T τη γραμμή για τίποτα.
+; ---------------------------------------------------------------------------
+blt_op_line:
+        ld      c,b
+        ld      b,0
+        ld      a,d
+        and     7
+        cp      7
+        jr      z,bol_chk
+bol_go:
+        ldir
+        ret
+bol_chk:
+        ld      a,c
+        dec     a
+        add     a,e
+        jr      nc,bol_go
+        ld      a,e
+        neg                         ; 256 - e = όσα χωράνε πριν το τύλιγμα
+        ld      b,a
+        ld      a,c
+        sub     b
+        ld      c,b
+        ld      b,0
+        push    af
+        ldir
+        call    scr_ringtop
+        pop     af
+        ld      c,a
+        ld      b,0
+        ldir
+        ret
+
+blt_mask_line:
+        ld      a,d
+        and     7
+        cp      7
+        jr      z,bml_chk
+bml_run:
+        ld      a,(de)
+        and     (hl)
+        inc     hl
+        or      (hl)
+        inc     hl
+        ld      (de),a
+        inc     de
+        djnz    bml_run
+        ret
+bml_chk:
+        ld      a,b
+        dec     a
+        add     a,e                 ; το ΤΕΛΕΥΤΑΙΟ byte περνάει το #FF;
+        jr      nc,bml_run
+        ld      a,e
+        neg
+        ld      c,a
+        ld      a,b
+        sub     c
+        ld      b,c
+        ld      c,a
+        call    bml_run             ; ως το τύλιγμα
+        ld      b,c
+        call    scr_ringtop
+        jp      bml_run             ; και το υπόλοιπο, από την αρχή
 
 ; ---------------------------------------------------------------------------
 ; blit_mask — με μάσκα, W x H, χωρίς καθρεφτισμό.
@@ -63,16 +136,7 @@ bm_line:
 blit_mline:
         ld      a,(bq_w)
         ld      b,a
-bml:
-        ld      a,(de)
-        and     (hl)
-        inc     hl
-        or      (hl)
-        inc     hl
-        ld      (de),a
-        inc     de
-        djnz    bml
-        ret
+        jp      blt_mask_line
 
 ; ---------------------------------------------------------------------------
 ; blit_quad — ΕΝΑ τεταρτημόριο, σε όποιον προσανατολισμό, από το αποθηκευμένο nw.
@@ -261,4 +325,8 @@ qf_w:       db 0            ; W τεταρτημορίου σε bytes δεδομ
 qf_h:       db 0            ; H τεταρτημορίου σε γραμμές
 
 ; buffer για μια καθρεφτισμένη γραμμή· η μεγαλύτερη είναι DOME_L_W*2 = 32
+; Το flipbuf χωράει ΑΚΡΙΒΩΣ το πλατύτερο τεταρτημόριο: 16 bytes δεδομένων =
+; 16 ζεύγη = 32 bytes. Δεν υπάρχει περιθώριο, και όταν το bq_w έγινε 185 από
+; λάθος βήμα πίνακα, το flip_line έγραψε 370 bytes μέσα στον κώδικα του
+; tiles.asm. Οποιος το μεγαλώσει, ας το μεγαλώσει επίτηδες.
 flipbuf:    defs 32

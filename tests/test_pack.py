@@ -84,10 +84,13 @@ def main():
             checked += 1
 
     # 6. οι παραγόμενοι πίνακες δείχνουν στα σωστά
+    # Το None είναι θέση που ΔΕΝ υπάρχει — το struct_ptr κρατά τέσσερις ανά
+    # είδος και το ορυχείο έχει ένα μέγεθος. Πρέπει να δείχνει μηδέν, και ο
+    # renderer το ελέγχει πριν σχεδιάσει.
     for tab, names in ptr.items():
         r = by_name[tab]
         for i, n in enumerate(names):
-            want = by_name[n].addr
+            want = 0 if n is None else by_name[n].addr
             got = int.from_bytes(r.data[i * 2:i * 2 + 2], "little")
             check(got == want,
                   f"{tab}[{i}] -> #{got:04X}, περίμενα #{want:04X} ({n})")

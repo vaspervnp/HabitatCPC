@@ -75,6 +75,9 @@ td_next_col:
         ld      hl,(t_sptr)
         ld      de,TILE_W
         add     hl,de
+        ld      a,h
+        and     #C7                 ; το δαχτυλίδι: p mod 2048 (screen.asm)
+        ld      h,a
         ld      (t_sptr),hl
         ld      a,(td_col)
         dec     a
@@ -297,6 +300,7 @@ blit_tile:
         ld      e,a
         ld      a,d
         adc     a,0
+        and     #C7                 ; και εδώ το δαχτυλίδι — μία εντολή ανά tile
         ld      d,a
         repeat  8
         push    de
