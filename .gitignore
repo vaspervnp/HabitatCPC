@@ -5,3 +5,5 @@ tests/golden/*_actual.png
 __pycache__/
 *.pyc
 rasmoutput.sym
+tests/golden/obj_got_*.png
+tests/golden/obj_ref_*.png

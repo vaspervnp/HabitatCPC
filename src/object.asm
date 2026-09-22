@@ -98,6 +98,24 @@ ob_fromtop:
         ld      (ob_ln),hl
 
         ; --- μετατόπιση μέσα στη γραμμή, για το clip από αριστερά ---
+        ; Στο καθρεφτισμένο η μετατόπιση δείχνει στο ΠΡΩΤΟ ζεύγος που θα
+        ; χρειαστεί — δηλαδή στο (w-1-skip) μετρώντας από την αρχή — και το
+        ; flip_span γυρίζει μόνο όσα ζεύγη γράφονται.
+        ld      a,(ob_fl)
+        and     1
+        jr      z,ob_noflip
+        ld      a,(ob_w)
+        dec     a
+        ld      c,a
+        ld      a,(ob_sl)
+        neg
+        add     a,c
+        add     a,a
+        ld      c,a
+        ld      b,0
+        ld      (ob_sk),bc
+        jr      ob_skdone
+ob_noflip:
         ld      a,(ob_sl)
         ld      c,a
         ld      a,(ob_fl)
@@ -107,6 +125,7 @@ ob_fromtop:
 ob_skip1:
         ld      b,0
         ld      (ob_sk),bc
+ob_skdone:
 
         ld      a,(ob_x0)
         ld      c,a
@@ -116,16 +135,16 @@ ob_skip1:
 ob_line:
         push    de
         ld      hl,(ob_ln)
+        ld      bc,(ob_sk)
+        add     hl,bc
         ld      a,(ob_fl)
         and     1
         jr      z,ob_direct
-        ld      a,(ob_w)
-        ld      (bq_w),a
-        call    flip_line               ; -> flipbuf, το HL μένει
+        ld      a,(ob_nb)
+        ld      b,a
+        call    flip_span               ; μόνο τα ζεύγη που γράφονται
         ld      hl,flipbuf
 ob_direct:
-        ld      bc,(ob_sk)
-        add     hl,bc
         ld      a,(ob_nb)
         ld      b,a
         ld      a,(ob_fl)
@@ -281,8 +300,8 @@ ob_sy:
 ; μπορούμε να σελιδοποιήσουμε την 7 για τα φυτά.
 ; Απαιτεί: τράπεζα 6.
 ; ---------------------------------------------------------------------------
-ob_getdome:
-        ld      (d_id),a
+; ob_domeadr — A = id -> HL = η εγγραφή μέσα στην τράπεζα 6.
+ob_domeadr:
         ld      l,a
         ld      h,0
         add     hl,hl
@@ -294,6 +313,26 @@ ob_getdome:
         add     hl,de                   ; 24*id
         ld      de,G_dome_tbl
         add     hl,de
+        ret
+
+; ob_dome_live — A = id· Ζ αν η θέση είναι άδεια. Το A μένει.
+;
+; Υπάρχει επειδή το ob_getdome αντιγράφει 24 bytes ΠΡΙΝ δει την κατάσταση, και
+; 52 από τις 64 θέσεις είναι άδειες: σε κάθε βήμα σκρολαρίσματος πληρώναμε
+; 2.500 ldi για εγγραφές που δεν υπάρχουν.
+ob_dome_live:
+        ld      c,a
+        call    ob_domeadr
+        ld      de,D_STATE
+        add     hl,de
+        ld      a,(hl)
+        or      a
+        ld      a,c
+        ret
+
+ob_getdome:
+        ld      (d_id),a
+        call    ob_domeadr
         ld      de,d_rec
         ld      bc,DOME_REC
         ldir
@@ -337,12 +376,74 @@ ob_frame:
         ret
 
 ; ---------------------------------------------------------------------------
+; ob_vis — τέμνει το πλαίσιο του θόλου το παράθυρο clip; A = 0 όχι.
+;
+; ΕΝΑΣ έλεγχος ορθογωνίου ανά θόλο, πριν από οτιδήποτε άλλο. Χωρίς αυτόν κάθε
+; θόλος πλήρωνε οκτώ πόρτες, οκτώ υποδοχές μηχανών και οκτώ θέσεις αποίκων —
+; σαράντα κλήσεις ob_blit που κόβονταν μία-μία. Στο σκρολάρισμα, όπου το
+; παράθυρο είναι μία στήλη 4 bytes, αυτό ήταν όλο το κόστος.
+; ---------------------------------------------------------------------------
+ob_vis:
+        ld      hl,(d_fx)
+        ld      (cl_pos),hl
+        ld      a,(d_qw)
+        add     a,a
+        ld      (cl_len),a
+        ld      hl,(clip_x0)
+        ld      (cl_lo),hl
+        call    ob_clip
+        or      a
+        ret     z
+        ld      hl,(d_fy)
+        ld      (cl_pos),hl
+        ld      a,(d_qh)
+        add     a,a
+        ld      (cl_len),a
+        ld      hl,(clip_y0)
+        ld      (cl_lo),hl
+        jp      ob_clip
+
+; ---------------------------------------------------------------------------
+; ob_ovl — τέμνεται το [HL, HL+DE) με το [cl_lo, cl_hi); 16 bit, για τους
+; διαδρόμους που μπορεί να είναι 95 πλακίδια μακριοί.
+; Out: A = 0 όχι.
+; ---------------------------------------------------------------------------
+ob_ovl:
+        push    hl
+        add     hl,de
+        ld      a,(cl_lo)
+        ld      e,a
+        ld      d,0
+        or      a
+        sbc     hl,de
+        pop     hl
+        jp      m,oov_no
+        jr      z,oov_no
+        push    hl
+        ex      de,hl
+        ld      a,(cl_hi)
+        ld      l,a
+        ld      h,0
+        or      a
+        sbc     hl,de
+        pop     hl
+        jp      m,oov_no
+        jr      z,oov_no
+        ld      a,1
+        ret
+oov_no:
+        xor     a
+        ret
+
+; ---------------------------------------------------------------------------
 ; ob_shell — βήματα 1-2: δακτύλιος και θόλος, τέσσερα τεταρτημόρια το καθένα.
 ; In: A = id θόλου. Απαιτεί τράπεζα 6.
 ; ---------------------------------------------------------------------------
 ob_shell:
+        call    ob_dome_live
+        ret     z
         call    ob_getdome
-        ld      a,(d_rec+D_STATE)
+        call    ob_vis
         or      a
         ret     z
         ld      hl,(d_geo)
@@ -404,8 +505,10 @@ oq_noy:
 ; φιγούρες. In: A = id θόλου. Απαιτεί τράπεζα 6 στην είσοδο, την αφήνει ως έχει.
 ; ---------------------------------------------------------------------------
 ob_fittings:
+        call    ob_dome_live
+        ret     z
         call    ob_getdome
-        ld      a,(d_rec+D_STATE)
+        call    ob_vis
         or      a
         ret     z
         call    ob_conns
@@ -762,14 +865,23 @@ ob_corr:
         add     hl,de                   ; 5*id
         ld      de,G_corr_tbl
         add     hl,de
+        push    hl
+        ld      de,C_CSTATE
+        add     hl,de
+        ld      a,(hl)
+        pop     hl
+        or      a
+        ret     z                       ; άδεια θέση — τίποτα να αντιγραφεί
         ld      de,c_rec
         ld      bc,CORR_REC
         ldir
-        ld      a,(c_rec+C_CSTATE)
-        or      a
-        ret     z
+        ; Οι διάδρομοι έρχονται σε σειρά και μοιράζονται αφετηρία: μισοί από
+        ; αυτούς ξεκινούν από τον ίδιο θόλο με τον προηγούμενο. Δύο εντολές
+        ; γλιτώνουν την αντιγραφή 24 bytes και τον υπολογισμό του πλαισίου.
         ld      a,(c_rec+C_A)
-        call    ob_getdome
+        ld      hl,d_id
+        cp      (hl)
+        call    nz,ob_getdome
         ; --- ο πίνακας της κατεύθυνσης ---
         ld      a,(c_rec+C_DIR)
         and     7
@@ -881,6 +993,29 @@ ob_corr_run:
         or      a
         ret     z
         ld      (oc_n),a
+        ; --- κουτί οριοθέτησης ολόκληρης της διαδρομής ---
+        ; Το cl_lo/cl_hi μπαίνει ΠΡΙΝ το ob_box: το ob_box γυρίζει HL και DE,
+        ; και ένα ld hl,(clip_x0) μετά θα τα έτρωγε.
+        ld      hl,(clip_x0)
+        ld      (cl_lo),hl
+        ld      a,(oc_dx)
+        ld      c,a
+        ld      hl,(ob_x)
+        ld      a,(ob_w)
+        call    ob_box
+        call    ob_ovl
+        or      a
+        ret     z
+        ld      hl,(clip_y0)
+        ld      (cl_lo),hl
+        ld      a,(oc_dy)
+        ld      c,a
+        ld      hl,(ob_y)
+        ld      a,(ob_h)
+        call    ob_box
+        call    ob_ovl
+        or      a
+        ret     z
 occ_lp:
         xor     a
         ld      (ob_fl),a
@@ -897,6 +1032,52 @@ occ_lp:
         dec     a
         ld      (oc_n),a
         jr      nz,occ_lp
+        ret
+
+; ---------------------------------------------------------------------------
+; ob_box — το εύρος μιας διαδρομής σε έναν άξονα.
+; In :  HL = θέση πρώτου πλακιδίου, C = βήμα (προσημασμένο), A = πλάτος sprite,
+;       (oc_n) = πλήθος πλακιδίων
+; Out:  HL = αρχή, DE = μήκος
+; ---------------------------------------------------------------------------
+ob_box:
+        ld      (obx_w),a
+        ld      a,c
+        or      a
+        jr      nz,obx_move
+        ld      a,(obx_w)               ; ακίνητος άξονας: μόνο το sprite
+        ld      e,a
+        ld      d,0
+        ret
+obx_move:
+        ld      (obx_sgn),a             ; το πρόσημο, πριν το neg
+        or      a
+        jp      p,obx_pos
+        neg
+obx_pos:
+        ld      c,a                     ; |βήμα|
+        ld      a,(oc_n)
+        dec     a                       ; k = n-1
+        push    hl
+        push    bc
+        call    ob_mul                  ; HL = |βήμα| * k
+        pop     bc
+        ld      d,h
+        ld      e,l                     ; DE = απόσταση
+        pop     hl
+        push    de
+        ld      a,(obx_w)
+        ld      c,a
+        ld      b,0
+        ex      de,hl
+        add     hl,bc
+        ex      de,hl                   ; DE = απόσταση + πλάτος
+        pop     bc                      ; BC = απόσταση
+        ld      a,(obx_sgn)
+        or      a
+        ret     p
+        or      a
+        sbc     hl,bc                   ; αρνητικό βήμα: αρχή = τελευταίο πλακίδιο
         ret
 
 ; ob_addsx — HL += A προσημασμένο.
@@ -933,12 +1114,16 @@ ob_struct:
         add     hl,hl                   ; 8*id
         ld      de,G_struct_tbl
         add     hl,de
+        push    hl
+        ld      de,ST_STATE
+        add     hl,de
+        ld      a,(hl)
+        pop     hl
+        or      a
+        ret     z
         ld      de,s_rec
         ld      bc,STRUCT_REC
         ldir
-        ld      a,(s_rec+ST_STATE)
-        or      a
-        ret     z
         ld      a,(s_rec+ST_KIND)
         add     a,a
         add     a,a
@@ -1139,8 +1324,14 @@ ofs_next:
 ob_draw_all:
         ld      bc,GA_PORT + PAGE_B6
         out     (c),c
+        ld      a,(ob_idx)
+        or      a
+        jr      z,oda_idxok
+        xor     a
+        ld      (ob_idx),a
         call    ob_conn_scan
         call    ob_fig_scan
+oda_idxok:
         ld      b,MAX_DOME
         ld      c,0
 oda_sh:
@@ -1289,6 +1480,17 @@ osa_key:
         ret
 
 ; ---------------------------------------------------------------------------
+; ob_touch — τα δύο ευρετήρια είναι παλιά· ξαναχτίσου στην επόμενη σχεδίαση.
+;
+; Χωρίς αυτό, οι δύο σαρώσεις (96 διάδρομοι + 128 πράκτορες) έτρεχαν σε ΚΑΘΕ
+; βήμα σκρολαρίσματος — 0,8 frames για δεδομένα που δεν είχαν αλλάξει.
+; ---------------------------------------------------------------------------
+ob_touch:
+        ld      a,1
+        ld      (ob_idx),a
+        ret
+
+; ---------------------------------------------------------------------------
 ; ob_clip_full / ob_clip_set — το παράθυρο σχεδίασης.
 ; ---------------------------------------------------------------------------
 ob_clip_full:
@@ -1344,6 +1546,7 @@ role_fig:
         db      1, 7, 2, 3, 4, 8, 5, 6
 
 ; --- μεταβλητές ------------------------------------------------------------
+ob_idx:     db 1                ; τα ευρετήρια θέλουν ξαναχτίσιμο
 clip_x0:    db 0
 clip_x1:    db SCR_W
 clip_y0:    db 0
@@ -1412,6 +1615,8 @@ ofs_slot:   db 0
 
 st_n:       db 0
 osa_j:      db 0
+obx_w:      db 0
+obx_sgn:    db 0
 st_ord:     defs MAX_STRUCT
 
 ; Δύο ευρετήρια που χτίζονται με ΕΝΑ πέρασμα και γλιτώνουν δύο βρόχους:

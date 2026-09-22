@@ -33,6 +33,9 @@ start:
         ld      (rep_n),a
 rep_loop:
         call    view_draw
+        ld      a,(hud_on)
+        or      a
+        call    nz,hud_draw
         ld      a,(rep_n)
         dec     a
         ld      (rep_n),a
@@ -55,14 +58,52 @@ oo_loop:
         ld      (done_flag),a
 oo_hang: jr     oo_hang
 
+; --- τρίτη είσοδος: σκρολάρισμα, για ισοδυναμία και για κόστος ---
+do_scroll:
+        ld      a,(sc_n)
+        ld      (sc_left),a
+ds_lp:
+        ld      a,(sc_dir)
+        call    view_scroll
+        ld      a,(hud_on)
+        or      a
+        call    nz,hud_draw
+        ld      a,(sc_left)
+        dec     a
+        ld      (sc_left),a
+        jr      nz,ds_lp
+        ld      a,#5A
+        ld      (done_flag),a
+ds_hang: jr     ds_hang
+
+; --- τέταρτη είσοδος: μόνο το HUD, για μέτρηση ---
+do_hud:
+        ld      a,(rep_n)
+        ld      (hu_n),a
+hu_loop:
+        call    hud_draw
+        ld      a,(hu_n)
+        dec     a
+        ld      (hu_n),a
+        jr      nz,hu_loop
+        ld      a,#5A
+        ld      (done_flag),a
+hu_hang: jr     hu_hang
+
+hu_n:       db 0
 rep_n:      db 0
 oo_n:       db 0
+sc_dir:     db 0
+sc_n:       db 1
+sc_left:    db 0
+hud_on:     db 1
 done_flag:  db 0
 
         include "../src/screen.asm"
         include "../src/blit.asm"
         include "../src/tiles.asm"
         include "../src/object.asm"
+        include "../src/hud.asm"
         include "../src/view.asm"
         include "../src/hw.asm"
 

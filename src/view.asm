@@ -74,10 +74,96 @@ view_cam:
         ret
 
 ; ---------------------------------------------------------------------------
+; view_scroll — ΕΝΑ tile προς μία κατεύθυνση (0 βορράς, 1 ανατολή, 2 νότος,
+; 3 δύση). Ολο το σκρολάρισμα είναι δύο εγγραφές στον CRTC· ό,τι ακολουθεί
+; αφορά μόνο τη ΛΩΡΙΔΑ που μόλις μπήκε στο κάδρο.
+;
+; Η προηγούμενη εικόνα ΔΕΝ μετακινείται στη μνήμη. Το περιεχόμενο στη θέση p
+; εμφανίζεται στο (p - cam_p), οπότε μια αύξηση 4 bytes στο cam_p το δείχνει
+; τέσσερα bytes αριστερότερα — και η αριστερή στήλη κάθε σειράς γίνεται η δεξιά
+; στήλη της από πάνω. Αυτή ακριβώς είναι η λωρίδα που ξαναγράφεται.
+; ---------------------------------------------------------------------------
+view_scroll:
+        and     3
+        ld      l,a
+        ld      h,0
+        ld      d,h
+        ld      e,l
+        add     hl,hl
+        add     hl,de
+        add     hl,hl                   ; dir*6
+        ld      de,vs_tab
+        add     hl,de
+        ld      a,(cam_tx)
+        add     a,(hl)
+        ld      (cam_tx),a
+        inc     hl
+        ld      a,(cam_ty)
+        add     a,(hl)
+        ld      (cam_ty),a
+        inc     hl
+        ld      a,(hl)
+        ld      (td_c0),a
+        inc     hl
+        ld      a,(hl)
+        ld      (td_r0),a
+        inc     hl
+        ld      a,(hl)
+        ld      (td_nc),a
+        inc     hl
+        ld      a,(hl)
+        ld      (td_nr),a
+        call    view_cliprect
+        call    view_cam
+        ld      bc,GA_PORT + PAGE_B4
+        out     (c),c
+        call    tile_draw_rect
+        ld      bc,GA_PORT + PAGE_B1
+        out     (c),c
+        call    ob_draw_all
+        jp      ob_clip_full
+
+; view_cliprect — το παράθυρο σχεδίασης από το ορθογώνιο tiles (td_c0..td_nr).
+view_cliprect:
+        ld      a,(td_c0)
+        add     a,a
+        add     a,a
+        ld      (clip_x0),a
+        ld      c,a
+        ld      a,(td_nc)
+        add     a,a
+        add     a,a
+        add     a,c
+        ld      (clip_x1),a
+        ld      a,(td_r0)
+        add     a,a
+        add     a,a
+        add     a,a
+        add     a,a
+        ld      (clip_y0),a
+        ld      c,a
+        ld      a,(td_nr)
+        add     a,a
+        add     a,a
+        add     a,a
+        add     a,a
+        add     a,c
+        ld      (clip_y1),a
+        ret
+
+; dtx, dty, c0, r0, nc, nr — ανά κατεύθυνση
+vs_tab:
+        db      0,-1,  0,0,          VIEW_TW,1         ; βορράς
+        db      1, 0,  VIEW_TW-1,0,  1,VIEW_TH         ; ανατολή
+        db      0, 1,  0,VIEW_TH-1,  VIEW_TW,1         ; νότος
+        db     -1, 0,  0,0,          1,VIEW_TH         ; δύση
+
+; ---------------------------------------------------------------------------
 ; view_draw — έδαφος και μετά αντικείμενα, μέσα στο τρέχον clip.
 ; Το έδαφος θέλει την τράπεζα 4· το πέρασμα αντικειμένων σελιδοποιεί μόνο του.
 ; ---------------------------------------------------------------------------
 view_draw:
+        call    ob_touch
         call    view_cam
         ld      bc,GA_PORT + PAGE_B4
         out     (c),c
