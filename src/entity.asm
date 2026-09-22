@@ -1,0 +1,380 @@
+; entity.asm — οι πράκτορες και η κίνησή τους (§6.1, §6.3)
+;
+; Δομή-από-πίνακες: ένα πεδίο ανά πίνακα των 128, δύο πεδία ανά σελίδα. Μια
+; ανάγνωση πεδίου είναι `ld h,σελίδα / ld l,id / ld a,(hl)` — και γι' αυτό το
+; agent_fields ΠΡΕΠΕΙ να είναι σε σελίδα.
+;
+; Η κίνηση έχει δύο καταστάσεις και τίποτε άλλο: στέκεται σε κόμβο, ή διασχίζει
+; ακμή. Ο επόμενος κόμβος βγαίνει από μία ανάγνωση του NEXTHOP — χωρίς
+; αναζήτηση, χωρίς λίστα ανοιχτών, χωρίς αποθηκευμένη διαδρομή.
+;
+; ΤΟ ΠΑΡΑΘΥΡΟ. Οι πράκτορες ζουν στην τράπεζα 6 και το NEXTHOP στην 5 — δεν
+; φαίνονται ταυτόχρονα. Η αναζήτηση σελιδοποιεί την 5, διαβάζει ΕΝΑ byte, και
+; γυρίζει την 6. Δύο out ανά πράκτορα που ξεκινά ταξίδι, δηλαδή ~10 us — και
+; μόνο γι' αυτούς, όχι για όλους.
+;
+; ΑΠΟΚΛΙΣΗ ΑΠΟ ΤΟ §6.1, ΣΚΟΠΙΜΗ: το πεδίο `edge` κρατά τη θέση του γείτονα
+; μέσα στη λίστα γειτνίασης του κόμβου (0..7), όχι καθολικό id διαδρόμου. Ετσι
+; ο κόμβος-στόχος βγαίνει με μία ανάγνωση αντί για ψάξιμο στον πίνακα
+; διαδρόμων.
+
+AG_PG       equ G_agent_fields / 256
+AG_FLAGS    equ G_agent_fields               ; +0 flags   +128 role
+AG_NODE     equ G_agent_fields + 256         ; +0 node    +128 slot
+AG_DEST     equ G_agent_fields + 512         ; +0 dest    +128 edge
+AG_PROG     equ G_agent_fields + 768         ; +0 progress +128 task
+AG_O2       equ G_agent_fields + 1024        ; +0 o2      +128 water
+AG_FOOD     equ G_agent_fields + 1280        ; +0 food    +128 sleep
+AG_HEALTH   equ G_agent_fields + 1536        ; +0 health  +128 morale
+AG_SKILL    equ G_agent_fields + 1792        ; +0 skill   +128 spare
+
+OCCPG       equ G_node_occ / 256
+
+F_ALIVE     equ 1
+F_INDOORS   equ 2
+F_ASLEEP    equ 4
+F_SICK      equ 8
+F_IDLE      equ 16
+
+NO_EDGE     equ 255
+NO_SLOT     equ 255
+N_AGENT     equ 128
+
+; ---------------------------------------------------------------------------
+; ent_move_slice — C = πρώτος πράκτορας, B = πλήθος. Αύξουσα σειρά (§7.1).
+; ---------------------------------------------------------------------------
+ent_move_slice:
+        inc     b                       ; φέτα μηδέν: το djnz θα έκανε 256 γύρους
+        dec     b
+        ret     z
+ems_lp:
+        ld      a,c
+        ld      (em_id),a
+        push    bc
+        call    ent_move_one
+        pop     bc
+        ld      a,c
+        inc     a
+        and     N_AGENT - 1
+        ld      c,a
+        djnz    ems_lp
+        ret
+
+; ---------------------------------------------------------------------------
+; ent_move_one — ένα βήμα για τον (em_id).
+; ---------------------------------------------------------------------------
+ent_move_one:
+        ld      a,(em_id)
+        ld      h,AG_PG
+        ld      l,a
+        ld      a,(hl)
+        and     F_ALIVE
+        ret     z
+
+        ld      a,(em_id)
+        ld      h,AG_PG + 2
+        ld      l,a
+        set     7,l
+        ld      a,(hl)                  ; edge
+        inc     a
+        jr      nz,em_trans             ; != 255 -> ταξιδεύει
+
+; --- ΣΤΑΘΕΡΟΣ: χρειάζεται να ξεκινήσει; ---
+        ld      a,(em_id)
+        ld      h,AG_PG + 2
+        ld      l,a
+        ld      a,(hl)                  ; dest
+        ld      e,a
+        ld      h,AG_PG + 1
+        ld      a,(em_id)
+        ld      l,a
+        ld      a,(hl)                  ; node
+        ld      (em_node),a
+        cp      e
+        ret     z                       ; είναι ήδη εκεί
+
+        ; --- NEXTHOP[node][dest] : μία ανάγνωση, μία σελιδοποίηση ---
+        ld      h,a
+        ld      l,0
+        srl     h
+        rr      l                       ; HL = node*128
+        ld      a,l
+        add     a,e                     ; + dest  (δεν κρατάει: l = 0 ή 128)
+        ld      l,a
+        set     6,h                     ; + &4000
+        ld      bc,GA_PORT + PAGE_B5
+        out     (c),c
+        ld      a,(hl)
+        ld      bc,GA_PORT + PAGE_B6
+        out     (c),c
+        cp      255
+        jr      nz,em_have
+
+        ; απρόσιτος: παραιτείται αντί να κολλήσει στη θέση του
+        ld      a,(em_node)
+        ld      e,a
+        ld      a,(em_id)
+        ld      h,AG_PG + 2
+        ld      l,a
+        ld      (hl),e                  ; dest = node
+        ret
+
+em_have:
+        ld      (em_nh),a
+        ; --- ποια θέση της λίστας γειτνίασης είναι ο nh; ---
+        ld      a,(em_node)
+        ld      h,NODEPG
+        ld      l,a
+        ld      b,(hl)                  ; deg[node]
+        inc     b
+        dec     b
+        ret     z                       ; κόμβος χωρίς ακμές — δεν συμβαίνει
+        ld      h,0
+        ld      l,a
+        add     hl,hl
+        add     hl,hl
+        add     hl,hl
+        ld      de,G_node_adj
+        add     hl,de
+        ld      a,(em_nh)
+        ld      c,0
+em_scan:
+        cp      (hl)
+        jr      z,em_found
+        inc     hl
+        inc     c
+        djnz    em_scan
+        ret                             ; μπαγιάτικο NEXTHOP — μένει ακίνητος
+
+em_found:
+        ; ελευθερώνει τη θέση του και μπαίνει στην ακμή C
+        call    ent_release
+        ld      a,(em_id)
+        ld      h,AG_PG + 2
+        ld      l,a
+        set     7,l
+        ld      (hl),c                  ; edge = k
+        ld      h,AG_PG + 3
+        ld      l,a
+        ld      (hl),0                  ; progress = 0
+        ret
+
+; --- ΤΑΞΙΔΕΥΕΙ ---
+em_trans:
+        ld      a,(em_id)
+        ld      h,AG_PG
+        ld      l,a
+        set     7,l
+        ld      a,(hl)                  ; role
+        and     7
+        ld      hl,role_speed
+        add     a,l
+        ld      l,a
+        ld      a,0
+        adc     a,h
+        ld      h,a
+        ld      e,(hl)                  ; ταχύτητα
+
+        ld      a,(em_id)
+        ld      h,AG_PG + 3
+        ld      l,a
+        ld      a,(hl)
+        add     a,e
+        jr      c,em_arrive
+        ld      (hl),a                  ; ακόμη στον σωλήνα
+        ret
+
+em_arrive:
+        ; ο κόμβος στην άλλη άκρη: node_adj[node*8 + edge]
+        ld      a,(em_id)
+        ld      h,AG_PG + 1
+        ld      l,a
+        ld      a,(hl)                  ; node
+        ld      (em_node),a
+        ld      h,0
+        ld      l,a
+        add     hl,hl
+        add     hl,hl
+        add     hl,hl
+        ld      de,G_node_adj
+        add     hl,de
+        ld      a,(em_id)
+        ld      d,h
+        ld      e,l
+        ld      h,AG_PG + 2
+        ld      l,a
+        set     7,l
+        ld      a,(hl)                  ; edge
+        add     a,e
+        ld      e,a
+        ld      a,0
+        adc     a,d
+        ld      d,a
+        ld      a,(de)                  ; ο κόμβος-στόχος
+        ld      (em_dst),a
+
+        call    ent_claim               ; A = θέση, ή 255
+        cp      NO_SLOT
+        jr      nz,em_landed
+        ; ο κόμβος γέμισε: περιμένει στην είσοδο και ξαναδοκιμάζει
+        ld      a,(em_id)
+        ld      h,AG_PG + 3
+        ld      l,a
+        ld      (hl),255
+        ret
+
+em_landed:
+        ld      e,a                     ; E = θέση
+        ld      a,(em_id)
+        ld      h,AG_PG + 1
+        ld      l,a
+        ld      a,(em_dst)
+        ld      (hl),a                  ; node = στόχος
+        set     7,l
+        ld      (hl),e                  ; slot
+        ld      a,(em_id)
+        ld      h,AG_PG + 2
+        ld      l,a
+        set     7,l
+        ld      (hl),NO_EDGE
+        ld      h,AG_PG + 3
+        res     7,l
+        ld      (hl),0                  ; progress = 0
+        ret
+
+; ---------------------------------------------------------------------------
+; ent_claim — A/(em_dst) = κόμβος. Επιστρέφει A = θέση, ή 255 αν γέμισε.
+;
+; Η σειρά γεμίσματος είναι το corr_fill των assets (0,4,2,6,1,5,3,7) ώστε οι
+; άνθρωποι να μη μοιάζουν στοιβαγμένοι στο δαχτυλίδι.
+; ---------------------------------------------------------------------------
+ent_claim:
+        ld      a,(em_dst)
+        ld      h,OCCPG
+        ld      l,a
+        ld      c,(hl)                  ; μάσκα κατοχής
+        push    hl
+        ld      hl,G_corr_fill
+        ld      b,8
+ec_lp:
+        ld      a,(hl)                  ; η θέση που δοκιμάζουμε
+        push    hl
+        ld      hl,bit_tab
+        add     a,l
+        ld      l,a
+        ld      a,0
+        adc     a,h
+        ld      h,a
+        ld      a,(hl)                  ; 1 << θέση
+        pop     hl
+        ld      e,a
+        and     c
+        jr      z,ec_free
+        inc     hl
+        djnz    ec_lp
+        pop     hl
+        ld      a,NO_SLOT
+        ret
+ec_free:
+        ld      a,(hl)                  ; ο αριθμός της θέσης
+        ld      d,a
+        ld      a,c
+        or      e
+        pop     hl
+        ld      (hl),a                  ; η μάσκα με τη νέα θέση πιασμένη
+        ld      a,d
+        ret
+
+; ---------------------------------------------------------------------------
+; ent_release — ελευθερώνει τη θέση του (em_id) στον (em_node).
+; ---------------------------------------------------------------------------
+ent_release:
+        push    bc
+        ld      a,(em_id)
+        ld      h,AG_PG + 1
+        ld      l,a
+        set     7,l
+        ld      a,(hl)                  ; slot
+        cp      NO_SLOT
+        jr      z,er_out
+        ld      (hl),NO_SLOT
+        ld      hl,bit_tab
+        add     a,l
+        ld      l,a
+        ld      a,0
+        adc     a,h
+        ld      h,a
+        ld      a,(hl)
+        cpl                             ; ~(1<<slot)
+        ld      c,a
+        ld      a,(em_node)
+        ld      h,OCCPG
+        ld      l,a
+        ld      a,(hl)
+        and     c
+        ld      (hl),a
+er_out:
+        pop     bc
+        ret
+
+; ---------------------------------------------------------------------------
+; ent_decay_slice — C = πρώτος, B = πλήθος. Οι ανάγκες πέφτουν (§6.6).
+;
+; Τέσσερα πεδία, τέσσερις ρυθμοί, και κανένα δεν περνά ποτέ κάτω από το μηδέν —
+; η αφαίρεση με κορεσμό είναι ο λόγος που δεν είναι ένα ldir.
+; ---------------------------------------------------------------------------
+ent_decay_slice:
+        inc     b
+        dec     b
+        ret     z
+eds_lp:
+        ld      a,c
+        ld      h,AG_PG
+        ld      l,a
+        ld      a,(hl)
+        and     F_ALIVE
+        jr      z,ed_next
+
+        ; Τέσσερα πεδία, δύο σελίδες, χωρίς κλήσεις: το ed_sub ως υπορουτίνα
+        ; κόστιζε 27 T-states ανά πεδίο σε call/ret, δηλαδή το ένα τέταρτο της
+        ; δουλειάς. Μετρημένο, όχι υποτιθέμενο.
+        ld      h,AG_PG + 4
+        ld      a,(hl)                  ; o2
+        sub     3
+        jr      nc,ed_1
+        xor     a
+ed_1:   ld      (hl),a
+        set     7,l
+        ld      a,(hl)                  ; water
+        sub     2
+        jr      nc,ed_2
+        xor     a
+ed_2:   ld      (hl),a
+        res     7,l
+        ld      h,AG_PG + 5
+        ld      a,(hl)                  ; food
+        sub     1
+        jr      nc,ed_3
+        xor     a
+ed_3:   ld      (hl),a
+        set     7,l
+        ld      a,(hl)                  ; sleep
+        sub     2
+        jr      nc,ed_4
+        xor     a
+ed_4:   ld      (hl),a
+ed_next:
+        ld      a,c
+        inc     a
+        and     N_AGENT - 1
+        ld      c,a
+        djnz    eds_lp
+        ret
+
+bit_tab:    db 1,2,4,8,16,32,64,128
+role_speed: db 40,40,36,44,48,56,64,52
+
+em_id:      db 0
+em_node:    db 0
+em_dst:     db 0
+em_nh:      db 0

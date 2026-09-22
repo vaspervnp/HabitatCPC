@@ -169,8 +169,17 @@ def build_runs(smap, blob):
     bank6.append(group("corr_slot_gfx",
                        sorted([n for n in smap if n.startswith("slot_")],
                               key=lambda n: smap[n].off)))
-    bank6.append(Run("entity_tables", 4096, None, note="ΔΕΣΜΕΥΣΗ — RAM"))
-    bank6.append(Run("job_board", 256, None, note="ΔΕΣΜΕΥΣΗ — RAM"))
+    # --- πίνακες οντοτήτων: δομή-από-πίνακες, σελιδοποιημένη (§6.1) ---
+    # Το agent_fields ΠΡΕΠΕΙ σε σελίδα: η ανάγνωση πεδίου είναι `ld h,σελίδα /
+    # ld l,id`, και χωρίς στοίχιση δεν υπάρχει τέτοια ανάγνωση.
+    bank6.append(Run("agent_fields", 2048, None, align=256,
+                     note="ΔΕΣΜΕΥΣΗ — 16 πεδία x 128, ΠΡΕΠΕΙ σε σελίδα"))
+    bank6.append(Run("node_occ", 256, None, align=256,
+                     note="ΔΕΣΜΕΥΣΗ — μάσκες θέσεων[0..127], 128 ελεύθερα"))
+    bank6.append(Run("dome_tbl", 64 * 16, None, note="ΔΕΣΜΕΥΣΗ — 64 θόλοι"))
+    bank6.append(Run("struct_tbl", 64 * 8, None, note="ΔΕΣΜΕΥΣΗ — 64 δομές"))
+    bank6.append(Run("corr_tbl", 96 * 5, None, note="ΔΕΣΜΕΥΣΗ — 96 διάδρομοι"))
+    bank6.append(Run("job_tbl", 32 * 5, None, note="ΔΕΣΜΕΥΣΗ — 32 εργασίες"))
     # Ο πάγκος διαδρομών ΕΦΥΓΕ από εδώ: η BFS σελιδοποιεί το &4000 όσο τρέχει,
     # οπότε δεν μπορεί να κρατά τα δεδομένα της σε σελιδοποιημένη τράπεζα.
     # Ζει τώρα στην τράπεζα 2 (rt_nodes, rt_row, node_adj).

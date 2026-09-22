@@ -319,9 +319,9 @@ must always be reachable is in bank 0 (`&0000–&3FFF`) or bank 2 (`&8000–&BFF
 | window | 1 | **distance matrix** `DIST[128][128]` | 16,384 | 0 |
 | window | 4 | **world plane** 128×128×1 byte | 16,384 | 0 |
 | window | 5 | **next-hop matrix** `NEXTHOP[128][128]` | 16,384 | 0 |
-| window | 6 | `flip_mode0` 256 · dome+ring `nw` quadrants 7,424 · slot figures 3,456 · entity tables 4,096 · job board 256 · path workspace 512 | 16,000 | 384 |
+| window | 6 | `flip_mode0` 256 · dome+ring `nw` quadrants 7,424 · slot figures 3,456 · entity tables 4,480 ([§6.1](#61-entities)) | 15,616 | 768 |
 | window | 7 | external structures 11,264 · plants 1,584 · `plant_ptr` 24 · text 1,024 · audio 2,048 | 15,944 | 440 |
-| `&8000–&BFFF` | 2 | graphics, flat — tiles, icons, machines, corridors, font, tables | 12,787 | **3,597** |
+| `&8000–&BFFF` | 2 | graphics, flat · node graph + BFS workspace 1,536 ([§6.4](#64-routing)) | 14,323 | **2,061** |
 | `&C000–&FFFF` | 3 | play-area screen | 16,384 | 0 |
 
 Every bank is spoken for. The two matrices in banks 1 and 5 are the clearest answer
@@ -371,7 +371,12 @@ the HUD moved into the play area's page and bank 2 became **flat 16 KB**:
 | Asset tables | 287 |
 | Generated pointer tables (`tile_ptr`, `icon_{s,m,l}_ptr`, `mach_ptr`) | 108 |
 | Cursor and UI chrome (reserve) | 256 |
-| **Total** | **12,787** of 16,384 — **3,597 free, contiguous** |
+| Node graph (`node_deg`, `node_adj`) and BFS workspace | 1,536 |
+| **Total** | **14,323** of 16,384 — **2,061 free, contiguous** |
+
+The graph is here and not in bank 6 because the BFS pages the window twice per
+source ([§6.4](#64-routing)). That 1,536 bytes is the first real claim on the space
+the failed raster split gave back, and it would not have fitted in the arenas at all.
 
 A failed technique that leaves the memory map simpler and nine times roomier is
 a good trade. The pointer tables stay: they were introduced because
@@ -692,12 +697,17 @@ is eight pages, 2,048 bytes.
 | `node` | node currently at, or source node if in transit |
 | `slot` | ring slot 0–7 at that node |
 | `dest` | final destination node |
-| `edge` | edge currently traversed, 255 = not in transit |
+| `edge` | **index 0–7 into the source node's adjacency list**, 255 = not in transit |
 | `progress` | 0–255 along that edge |
 | `task` | job board entry, 255 = idle |
 | `o2 water food sleep health morale` | needs, 0–255 |
 | `skill` | experience, feeds work speed |
 | `spare` | |
+
+`edge` was specified as a global corridor id. It is **the neighbour's slot in the
+node's own adjacency list** instead, so the far end of the hop is one read
+(`node_adj[node*8 + edge]`) rather than a search through 96 corridor entries. The
+change costs nothing and is why `ent_move_one` has no loops in its arrival path.
 
 Buildings use the same pattern:
 
@@ -708,7 +718,26 @@ Buildings use the same pattern:
 | Corridors | 96 | `a b dir len state` |
 | Jobs | 32 | `kind target agent priority age` |
 
-Total ≈ 4,096 bytes, the bank 6 allocation.
+One table is missing from the list above and is not optional: **`node_occ`, one
+byte per node**, the bitmask of which ring slots are taken. [§6.2](#62-the-node-graph)
+describes 8 slots per dome filled in `corr_fill` order, which cannot be enforced
+without it.
+
+Measured, as laid out by `tools/pack.py`:
+
+| Table | Bytes |
+|---|---|
+| `agent_fields` — 16 fields × 128, **must be page-aligned** | 2,048 |
+| `node_occ` — slot bitmasks (128 used, 128 spare in the page) | 256 |
+| Domes, 64 × 16 | 1,024 |
+| Structures, 64 × 8 | 512 |
+| Corridors, 96 × 5 | 480 |
+| Jobs, 32 × 5 | 160 |
+| **Total** | **4,480** |
+
+384 bytes over the 4,096 this section used to claim. Bank 6 absorbs it and closes
+at 640 free, because the BFS workspace that used to sit there moved out
+([§6.4](#64-routing)).
 
 ### 6.2 The node graph
 
@@ -721,6 +750,17 @@ The colony is a graph, and almost every system reads it rather than the tile gri
   `conn_points` direction.
 - **Node capacity**: 8 ring slots per dome (`corr_slots`), filled in `corr_fill` order
   `0,4,2,6,1,5,3,7` so people never look stacked; 1–2 work slots per external structure.
+
+**In memory** the graph is a fixed-width adjacency list, because the Z80 wants the
+neighbour list's address from one shift:
+
+```
+node_deg[128]      1 byte per node          128 B
+node_adj[128][8]   neighbour ids, row n at node_adj + n*8   1,024 B
+```
+
+Both live in **bank 2**, with the BFS workspace, for the reason in
+[§6.4](#64-routing). 1,152 bytes.
 
 External structures are never corridor-connected. Reaching one means leaving through an
 airlock and walking — which is exactly why airlock placement is a real decision, and why
@@ -768,7 +808,20 @@ if TRANS:                    p += speed
                              if p overflows: arrive, claim slot at far node -> AT
 ```
 
-Roughly 150 µs including the occasional 64 µs slot blit. No pathfinding, no collision,
+Two cases the sketch above leaves out, both of which the implementation has to
+answer and neither of which is a special case:
+
+- **The far node is full.** All 8 ring slots taken, so there is no slot to claim.
+  The agent stays in `TRANS` with `progress` pinned at 255 and retries next
+  revolution — it queues at the door. Deterministic, and it reads as a crowded dome.
+- **`NEXTHOP` says unreachable.** The agent sets `dest = node` and gives up rather
+  than standing still forever with an impossible order. This is what happens to
+  anyone whose destination was cut off while they were walking to it.
+
+**Measured at 130 µs per agent** (`tests/test_sim.py`), against the 150 µs estimated
+here — one of the few numbers in this document that came in under. A full movement
+slot of 12 agents is 1,560 µs against the 1,800 µs budgeted in
+[§7.2](#72-the-wheel). No pathfinding, no collision,
 no steering. **The art forced this and the art was right** — colonists in
 `assets/sprites.bin` exist only as ring-slot figures, and the empty variant of a slot
 restores exactly the pixels underneath it, so appearing and disappearing are both a
@@ -790,19 +843,67 @@ Two 128×128 byte matrices, a full 32 KB of the extra RAM:
 | Matrix | Bank | `[from][to]` holds |
 |---|---|---|
 | `NEXTHOP` | 5 | the next node to step to, 255 = unreachable |
-| `DIST` | 1 | hop-weighted distance, 254 = far, 255 = unreachable |
+| `DIST` | 1 | hop count, 254 = far, 255 = unreachable |
+
+Both rows come out of **one** breadth-first traversal per source, not two: when the
+search first reaches a neighbour of the source, that neighbour *is* the first step;
+every node discovered later inherits the first step of whoever discovered it. No
+second pass, no stored paths.
 
 Runtime routing is therefore **one table read**. Finding the nearest idle engineer to a
 broken machine is a scan of idle agents with one `DIST` read each. There is no A*, no
 open list, no per-agent path storage, and no frame-time spike when twenty people
 re-path at once.
 
-The price is rebuild cost. An all-pairs BFS over 128 nodes is ≈ 1,024 relaxations per
-source × ≈ 30 µs ≈ 30 ms — about 1.5 frames per source, 128 sources. So the rebuild is
-**batched: half a source per frame, 256 frames, about 5 seconds**, triggered whenever
-the network changes (a corridor built or destroyed — rare).
+#### The workspace cannot live in a paged bank
 
-During those 5 seconds the old matrix stays live and agents route on slightly stale
+The BFS writes its finished row into bank 1 *and* bank 5, so the `&4000` window
+changes twice per source. Anything the search reads must therefore be **outside the
+window**. The graph and the 384-byte workspace live in **bank 2**, which is always
+visible — 1,536 bytes of the space [§4.3](#43-bank-2-flat-again) freed. Earlier
+revisions put a "path workspace" in bank 6; that could not have worked.
+
+#### The cost, measured
+
+The estimate here was 1,024 relaxations per source × 30 µs. **Both halves were the
+wrong thing to count.** Measured by `tests/test_routing.py`:
+
+| Graph | Nodes | Avg degree | Full rebuild |
+|---|---|---|---|
+| Realistic colony | 48 | 2.2 | **0.62 s** |
+| Sparse, at the node cap | 128 | 2.0 | 3.55 s |
+| **The real ceiling** | 128 | 2.5 | **3.69 s** |
+| (Degree 8 everywhere — cannot happen) | 128 | 8.0 | 5.03 s |
+
+The last row is unreachable: the corridor table has **96 entries**
+([§6.1](#61-entities)), and external structures are never corridor-connected, so the
+graph cannot exceed 128 nodes with ~160 edges. Average degree tops out near 2.5, not 8.
+
+That changes what dominates. The cost is not the edge relaxations — it is **taking a
+node off the queue**, which happens `n` times per source and therefore **n² times per
+rebuild**:
+
+> **222 µs per node expansion, O(n²).**
+
+| Colonists' worth of nodes | Full rebuild, CPU |
+|---|---|
+| 16 | 0.06 s |
+| 32 | 0.23 s |
+| 64 | 0.91 s |
+| 128 | 3.64 s |
+
+A young colony re-routes in a blink; only a maxed-out one pays seconds. Sources run
+`0 .. n-1` where `n` is the **high-water node id + 1** — a demolished dome keeps its
+id with degree 0 and its row correctly comes back "unreachable from everywhere", so
+ids never need compacting and no 32 KB initialisation pass is needed.
+
+The rebuild is **sliced by node expansion**, not by source: one source is 28 ms and
+would blow the frame on its own. `rt_slice` takes a budget in expansions and
+suspends anywhere, with four bytes of state.
+
+At the 12-expansions-per-frame budget of [§7.2](#72-the-wheel) that is 3.8 s of
+wall-clock for a 48-node colony and about 27 s for a full one. During that time the
+old matrix stays live and agents route on slightly stale
 information. Building a corridor and watching traffic start using it a few seconds
 later is acceptable, and arguably reads as the colony reorganising. Destroying one is
 not acceptable to get wrong, so **edges carry a live `state` byte**: an agent about to
@@ -1001,23 +1102,40 @@ it could live here.
 
 **Sixteen slots, one advanced per frame. A full revolution is 16 frames = 320 ms ≈ 3.1 Hz.**
 
-| Slot | Pass | Slice | Budget |
-|---|---|---|---|
-| 0–7 | **Agent movement** | 12 agents each — every agent moves once per revolution | ≈ 1,800 µs |
-| 8–10 | Needs decay | 32 agents each | ≈ 1,300 µs |
-| 11 | Production | 16 domes — every dome produces every 4 revolutions | ≈ 4,000 µs |
-| 12 | Flow balance | power and oxygen supply vs demand, storage caps | ≈ 2,000 µs |
-| 13 | Job board | reap finished jobs, post new ones, up to 4 assignments | ≈ 3,000 µs |
-| 14 | Routing rebuild | half a BFS source, only when the network is dirty | ≈ 15,000 µs |
-| 15 | Events | one roll: weather, disaster, ship, day/night | ≈ 500 µs |
+| Slot | Pass | Slice | Budgeted | **Measured** |
+|---|---|---|---|---|
+| 0–7 | **Agent movement** | 12 agents each — every agent moves once per revolution | 1,800 µs | **1,560 µs** ✅ |
+| 8–10 | Needs decay | 32 agents each | 433 µs | **1,997 µs** ❌ 4.6× |
+| 11 | Production | 16 domes — every dome produces every 4 revolutions | 4,000 µs | not written |
+| 12 | Flow balance | power and oxygen supply vs demand, storage caps | 2,000 µs | not written |
+| 13 | Job board | reap finished jobs, post new ones, up to 4 assignments | 3,000 µs | not written |
+| 14 | *(free)* | — routing moved out, see below | — | — |
+| 15 | Events | one roll: weather, disaster, ship, day/night | 500 µs | not written |
+| — | wheel dispatch itself | every frame | — | **125 µs** |
 
-Every frame, regardless of slot: read input, move cursor and camera, advance the dirty
+Needs decay was budgeted at 13 µs per agent for four saturating byte subtractions,
+which was never possible; 62 µs is what it costs after inlining the inner loop (it
+was 109 µs before). **The budget was wrong, the design is not** — the worst
+simulation frame is 2,122 µs, 11 % of a frame.
+
+#### Routing is not a wheel slot any more
+
+This section used to give the routing rebuild slot 14. A slot runs **once per 16
+frames**, and at a measured 222 µs per node expansion with n² of them
+([§6.4](#64-routing)), a full colony would need minutes. So the rebuild is taken out
+of the wheel and given a **per-frame budget**, exactly like the dirty list: 12 node
+expansions every frame, ≈ 2,700 µs, and only while the graph is dirty.
+
+Slot 14 is left empty rather than renumbered, so every other slot keeps its number.
+
+Every frame, regardless of slot:Every frame, regardless of slot: read input, move cursor and camera, advance the dirty
 list ([§8.5](#85-the-dirty-list)) up to a 20,000 µs cap, tick animation, service audio.
 
-The worst frame is slot 14 during a routing rebuild: ≈ 15,000 µs of BFS plus input and
-audio, with the dirty list getting whatever is left. That is why the rebuild is half a
-source rather than a whole one, and why the dirty list is a *budget* rather than a
-queue that must be drained.
+The worst simulation frame is now a needs-decay slot during a routing rebuild:
+1,997 + 2,700 + 125 ≈ **4,800 µs, under a quarter of the frame**, leaving the rest
+for the dirty list, input and audio. Nothing in the wheel comes close to filling a
+frame, which is the whole point of slicing by identity — and the reason the dirty
+list is a *budget* rather than a queue that must be drained.
 
 ### 7.3 Degradation
 
@@ -1042,7 +1160,7 @@ Four more things are sliced, for the same reason:
 | Work | Slicing | Total |
 |---|---|---|
 | World generation | one pyramid level or one classify chunk per frame | **13.5 s measured**, with a real progress bar — new game only ([§5.9](#59-cost--measured)) |
-| Routing rebuild | half a BFS source per frame, slot 14 | ≈ 5 s, invisible |
+| Routing rebuild | 12 node expansions per frame, **not** a wheel slot | 3.8 s at 48 nodes, ~27 s at 128 ([§6.4](#64-routing)) |
 | Dome construction blit | one quadrant per frame | ≈ 8 frames |
 | Camera redraw after a jump | one tile column per frame | ≈ 20 frames |
 
@@ -1467,6 +1585,8 @@ order, and do not build gameplay on top of a scroll that has not been proven on 
 | **13.5 s** world generation feels long even on a cassette-era machine, and it is 3.9× the original estimate | Medium | New game only — loads read the plane off disc ([§5.10](#510-player-modification)). Real progress bar, music keeps playing. The identified 2× win ([§5.9](#59-cost--measured)) is held in reserve. |
 | A seed produces a technically valid but miserable map | Low | Feature anchors guarantee the necessities; the headless seed sweep ([§13](#13-build-and-test)) finds the rest. |
 | **Airlock: dome or structure?** The asset set now has both an `icon_airlock` room type and a standalone `airlock` structure sprite; the node graph in [§6.2](#62-the-node-graph) only models the dome | Medium | Decide before the node graph is written — it changes what an *outdoor edge* connects to. Recommendation and the comparison are in [§6.2](#62-the-node-graph). Cheap either way: the unused half is 400–512 bytes. |
+| A full-colony routing rebuild is ~27 s of stale routes at the current budget | Medium | Only at 128 nodes; 48 nodes is 3.8 s ([§6.4](#64-routing)). Two levers, both untaken: raise the per-frame budget while the camera is still, or tighten `rt_node` — its per-node setup re-reads the same three bytes and is worth about 2×. |
+| Slots 11, 12, 13 and 15 of the wheel are unwritten, and their budgets are estimates of the same kind that needs decay missed by 4.6× | Medium | The wheel dispatches them already; each is a `ret`. Measure as each lands, and expect the estimates to be low rather than high. |
 | Balance | Certain | Every number in [§6.5](#65-economy) is a first guess. The recipe table exists so that rebalancing is a data edit, not a code edit. |
 
 ---
@@ -1486,9 +1606,15 @@ order, and do not build gameplay on top of a scroll that has not been proven on 
 | `MAX_CORRIDORS` | 96 | |
 | `MAX_NODES` | 128 | domes + structures + pad + 8 build sites |
 | `MAX_JOBS` | 32 | |
+| `NODE_SLOTS` | 8 | ring slots per dome, `corr_fill` order |
+| `MAX_DEGREE` | 8 | edges per node — one per `conn_points` direction |
 | `WHEEL_SLOTS` | 16 | 320 ms per revolution |
 | `MOVE_SLOTS` | 8 | slots 0–7 |
-| `DELTA_MAX` | 512 | world modifications before a full dump |
+| `wh_move_n` | 12 | agents per movement slot — **RAM, not an assembled constant** ([§7.3](#73-degradation)) |
+| `wh_decay_n` | 32 | agents per decay slot, likewise |
+| `WH_RT_B` | 12 | routing node expansions per frame ([§7.2](#72-the-wheel)) |
+| `NO_EDGE` / `NO_SLOT` | 255 | "not in transit" / "holds no ring slot" |
+| `RT_FAR` / `RT_UNREACH` | 254 / 255 | distance ceiling / no route |
 | `R_PLATEAU` / `R_BLEND` / `R_RIM` | 5 / 10 / 57 | generator shaping radii |
 | `ANCHORS` | 6 | feature anchors per world |
 | `SOL_FRAMES` | 12,000 | 4 minutes |
@@ -1502,3 +1628,6 @@ order, and do not build gameplay on top of a scroll that has not been proven on 
 | Byte offsets and sizes of individual sprites | [`assets/sprites_map.txt`](assets/sprites_map.txt) |
 | Constants to `include` | [`assets/sprites.asm`](assets/sprites.asm) |
 | Where the art comes from and how to regenerate it | [`assets/README.md`](assets/README.md), [`sync-assets.sh`](sync-assets.sh) |
+| What is actually in each bank, at real addresses | `build/layout.txt`, produced by [`tools/pack.py`](tools/pack.py) |
+| The specification of every algorithm, in runnable form | [`tools/worldgen_ref.py`](tools/worldgen_ref.py), [`tools/graph.py`](tools/graph.py), [`tools/entity.py`](tools/entity.py), [`tools/world.py`](tools/world.py) |
+| Whether any number in this document is still true | `./tools/build.sh` — every measured figure here is asserted by a test |
