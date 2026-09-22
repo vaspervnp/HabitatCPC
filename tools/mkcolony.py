@@ -19,7 +19,7 @@ import colony, scene as S, world as W, pack
 
 def bank_offsets():
     """Πού κάθεται κάθε πίνακας μέσα στην τράπεζα 6."""
-    arena, bank6, bank7, ptr, images, free, report = pack.pack()
+    arena, bank1, bank6, bank7, ptr, images, free, report = pack.pack()
     off = {}
     for r in bank6:
         off[r.name] = r.addr - pack.WINDOW_BASE

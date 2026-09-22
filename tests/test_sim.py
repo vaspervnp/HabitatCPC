@@ -92,7 +92,7 @@ def run_z80(sym, g, sim, ticks, move_n=None, decay_n=None, off=(), pin=None):
 
     enter(m, sym, "SAVE_STATE")
     return (m.read_ram(STAGE_AG, 2048), m.read_ram(STAGE_OCC, 128), frames,
-            m.read_ram(STAGE_DOME, 1536), m.read_ram(STAGE_STR, 512),
+            m.read_ram(STAGE_DOME, 1536), m.read_ram(STAGE_STR, 32 * 8),
             m.read_ram(sym["G_ECON_STATE"], EC.ECON_BYTES),
             m.read_ram(sym["G_JOB_TBL"], EC.MAX_JOB * EC.JOB_REC),
             m.read_ram(sym["G_ROOM_N"], 12) +

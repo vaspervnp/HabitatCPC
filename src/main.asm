@@ -61,11 +61,8 @@ ml_high:
         include "view.asm"
         include "ghost.asm"
         include "input.asm"
-        include "build.asm"
         include "graph.asm"
-        include "route.asm"
         include "ui.asm"
-        include "newgame.asm"
         include "entity.asm"
         include "econ.asm"
         include "jobs.asm"
@@ -74,8 +71,20 @@ ml_high:
         include "wheel.asm"
         include "hw.asm"
 
+; --- ό,τι τρέχει από την ΤΡΑΠΕΖΑ 2 -----------------------------------------
+; Η τράπεζα 2 φαίνεται πάντα στο &8000, άρα ο κώδικας εκεί είναι απλώς κώδικας.
+; Διαλέχτηκαν τρία αρθρώματα που δεν είναι στον καυτό δρόμο και που δεν καλούν
+; το ένα το άλλο με jr: οι κλήσεις ανάμεσα στις δύο περιοχές είναι απόλυτες.
+        org     PAGE2_CODE
+        include "build.asm"
+        include "route.asm"
+        include "newgame.asm"
+zz_page2_end:
+
         org     #8000
         incbin  "../build/page2.bin"
+        org     #7000
+        incbin  "../build/bank1.bin"     ; εικονίδια m και l, πάνω από το DIST
 
         bankset 1
         org     #0000
