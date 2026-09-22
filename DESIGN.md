@@ -495,35 +495,42 @@ point can be evaluated at any time without evaluating its neighbours first. That
 property is what lets the generator be restarted, resumed, or run backwards for a
 test.
 
-### 5.4 Pyramid noise, not per-tile fBm
+### 5.4 One interpolated octave, not a pyramid
 
-The textbook approach — evaluate three octaves of bilinear value noise at every one of
-16,384 tiles — costs roughly 2,500 µs per tile on a Z80, or **41 seconds**. Unusable.
+The textbook approach — three octaves of bilinear value noise at every one of
+16,384 tiles — costs roughly 2,500 µs per tile on a Z80, or **41 seconds**.
+Unusable. The pyramid described in earlier revisions of this section fixed the
+speed but not the memory: upsample-and-add needs 5.4 KB of intermediate buffers,
+and the last expansion cannot be done in place (the write head overtakes the read
+head at output row 14), so it needs two 4 KB buffers — in a bank layout where
+every bank is already spoken for ([§4.2](#42-the-eight-banks)).
 
-Instead, synthesise **coarse-to-fine**, doing the interpolation once per output sample
-rather than once per octave per sample:
+**What is implemented instead:** one interpolated coarse octave plus two
+uninterpolated fine ones.
 
 ```
-grid 16×16    = H(gx,gy) at the coarsest lattice          256 samples
-  upsample ×2 -> 32×32    (tent filter: average neighbours)
-  add octave  += H(...)/2 at 32×32                      1,024 samples
-  upsample ×2 -> 64×64
-  add octave  += H(...)/4 at 64×64                      4,096 samples
-  upsample ×2 -> 128×128
-  add octave  += H(...)/4 at 128×128                   16,384 samples
+coarse   16×16 lattice, cell = 8 tiles, bilinear      -> the shape of the land
++ H(x>>2, y>>2) >> 3                                  -> 4-tile texture
++ H(x>>1, y>>1) >> 4                                  -> 2-tile texture
+- 23                                                   (the mean of the two)
 ```
 
-Each upsample step is an average of two adjacent bytes — `add a,b` / `rra` — and each
-octave add is a hash plus a shift. Total work ≈ 21,500 samples × ≈ 40 µs ≈ **0.9 s**
-per field. Two fields, ≈ 1.8 s.
+Only the coarse octave is interpolated, and it is interpolated **incrementally**:
+vertically once per row into a 16-byte lattice, then horizontally with an 8.8
+fixed-point accumulator, because `acc >> 8` after *f* steps equals
+`a + ((b-a)*f >> 3)` exactly. No multiply per tile, and the whole scheme needs
+**256 bytes of scratch** instead of 8 KB.
 
-Three octaves at 8-, 4- and 2-tile lattice spacing give landmasses about 20 tiles
-across with 4-tile coastline detail — which is the right texture for a world where a
-large dome is 8 tiles and a walk across the map is 128.
+The fine octaves are blocky by construction — 4-tile and 2-tile squares of noise.
+That is acceptable precisely because the autotiler quantises every class boundary
+to the tile grid anyway ([§8.3](#83-the-tile-pass)); texture below the tile is
+invisible, and shape is what the coarse octave is for.
 
-The tent filter is not a true bilinear interpolation; it produces slightly boxier
-features. At four visible tiles per lattice cell nobody will see the difference, and
-it is four times cheaper.
+> **The one that bit.** The difference of two bytes lives in −255…255 and does
+> **not** fit a signed byte. An early version computed `b - a` with an 8-bit
+> `sub` and then sign-extended *that*, so 195 was read as −61 and whole cells
+> ramped the wrong way. The comparison against the reference found it in one run;
+> no amount of looking at the map would have.
 
 ### 5.5 Centre plateau and world rim
 
@@ -549,21 +556,39 @@ A seed has to be playable, and noise alone does not promise a lake within walkin
 reachable water is a seed that cannot be played. Rejection-sampling the whole map is
 too slow. So the features are **placed, from the seed, before the classification**:
 
-Six anchors, derived from the seed as `(angle, radius, kind)`:
+Six anchors, derived from the seed as `(direction, radius, kind)`:
 
-| # | Kind | Radius from centre | Effect |
+| # | Kind | Radius | Effect |
 |---|---|---|---|
-| 1, 2 | lake | 12 … 28 tiles | elevation pushed down → water |
-| 3, 4 | ore ridge | 10 … 30 tiles | elevation pushed up, resource bit forced |
-| 5 | flat basin | 8 … 18 tiles | elevation pulled to mid → a second buildable area |
-| 6 | wildcard | 20 … 50 tiles | one of the above, from the seed |
+| 1, 2 | lake | 12 … 27 | elevation blended toward 0 → water |
+| 3, 4 | ore ridge | **14** … 29 | elevation blended toward 255, ore in the inner half |
+| 5 | flat basin | 8 … 15 | elevation blended toward mid |
+| 6 | wildcard | 20 … 35 | lake or ridge, from the seed |
 
-Each anchor stamps a radial bump into the elevation field, **inside its own bounding
-box only** — radius ≤ 12 tiles means 625 tiles per anchor, so six anchors cost
-6 × 625 × 40 µs ≈ 150 ms rather than the 4 seconds a full-map pass would take.
+Direction is one of 24, assigned as `k*4 + (rnd & 3)` so each anchor gets its own
+60° sector, and the anchor sits at distance ≈ its own radius from the centre.
 
-The angles are spread by construction (each anchor gets a 60° sector plus a seeded
-jitter) so the features never all end up on one side.
+**Three things here were learned by measuring, not by design:**
+
+- **A ridge of radius 10 is not a ridge.** It never lifts elevation past `M2`, so
+  it never becomes mountain, so it carries no ore — and the seed is unplayable.
+  The minimum radius of 14 is what makes the guarantee true rather than intended.
+- **Anchors must blend, not replace.** Asserting `e = min(e, MID - bump)` does
+  guarantee the lake, but the ceiling bites across the *whole* neighbourhood —
+  including where the bump is zero — and the lakes come out literally square. The
+  implemented form weights toward a target: `w` reaches 255 at the centre (so the
+  guarantee holds) and falls to 0 at the rim (so the noise draws the edge).
+  `w = min(255, (rad - d) * (256 / rad))`, one division per anchor.
+- **Distance is octagonal**, `max + min/2`. Chebyshev gives squares; Euclidean
+  needs a square root; this is within about 6% of Euclidean for the cost of a
+  shift.
+
+Precedence — lake over ridge over basin — replaces application order. With the
+anchor distance equal to its radius, two neighbouring sectors always overlap, so
+whichever was applied last used to erase the other, and seeds lost their water.
+
+Measured over 512 seeds: **512 of 512 have water and an ore vein within 30 tiles
+of the centre.**
 
 Because the anchors are a pure function of the seed, the map stays pure. A seed is
 still one number, and the guarantee — *water and ore within 30 tiles, always* — holds
@@ -607,23 +632,26 @@ Then the landing zone is carved unconditionally: every tile with `r ≤ 4` becom
 **foundation** class, occupancy free, whatever the noise said. The starting pod is
 placed at `(0,0)`.
 
-### 5.9 Cost, and why it is still batched
+### 5.9 Cost — measured
 
-| Pass | Cost |
+| Pass | Measured |
 |---|---|
-| Permutation table | negligible |
-| Elevation pyramid | ≈ 0.9 s |
-| Moisture pyramid | ≈ 0.9 s |
-| Shape + anchors | ≈ 0.2 s |
-| Classify | ≈ 0.5 s |
-| Clean | ≈ 1.0 s |
-| **Total** | **≈ 3.5 s** |
+| Permutation, anchors, coarse grids | negligible |
+| Row fields (2 × 128 rows) plus the bank dump | 2.9 s |
+| Per-tile: octaves, anchors, shape, classify | **8.9 s** |
+| Despeckle | 0.7 s |
+| **Total** | **13.5 s** |
 
-Three and a half seconds behind a `GENERATING WORLD` screen is fine. But the generator
-is still written as a resumable state machine that does one chunk per frame and returns,
-for three reasons: the progress bar is real rather than a lie; the music keeps playing;
-and a generator that can stop and resume is a generator that can be single-stepped when
-a seed comes out wrong.
+**The estimate in earlier revisions was 3.5 s. The truth is 13.5 s** — 3.9×,
+timed by `tests/test_worldgen.py` on the emulator. The per-tile pass dominates at
+541 µs per tile, which is ~2,200 T-states: three hash lookups, about thirty
+`ld a,(nn)` round-trips at 16 T-states each, and four calls. The identified win
+is holding `u`, `v` and the world pointer in registers across `gen_tile` and
+inlining the hash — worth perhaps 2×, and not taken yet.
+
+The generator is still written to run in slices with a real progress bar, and
+13.5 s behind one is tolerable for a new game. **It is not tolerable on load** —
+see [§5.10](#510-player-modification).
 
 ### 5.10 Player modification
 
@@ -642,7 +670,11 @@ entries are folded into a full 16 KB plane dump in the save file, and the list r
 The headless emulator at `~/cpcemu` makes this mechanical, and it should be a test
 from the first day the generator exists:
 
-1. Boot, generate seed `A3F2`, dump bank 4 to a file via a debug hook.
+1. Boot, generate the seed, dump bank 4 to a file via a debug hook. The hook is
+   needed because **the emulator's `read_ram` does not follow paging** — at
+   `&4000` it sees base bank 1, not bank 4. `tests/gentest.asm` walks the plane
+   down into base bank 1 in 256-byte steps, alternating the page each step,
+   since no configuration shows both at once.
 2. Repeat on a cold boot. **The two dumps must be byte-identical.**
 3. Keep a checked-in golden dump per generator version for a handful of seeds; any
    diff is either a bug or a deliberate version bump.

@@ -30,3 +30,4 @@ python3 tests/test_pack.py
 python3 tests/test_blit.py
 python3 tests/test_pack_z80.py
 python3 tests/test_tiles.py
+python3 tests/test_worldgen.py
