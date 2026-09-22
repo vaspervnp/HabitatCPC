@@ -18,12 +18,13 @@ sys.path.insert(0, "/home/vasilhs/cpcemu")
 
 import graph as G                                                # noqa: E402
 import entity as E                                               # noqa: E402
+import econ as EC                                                # noqa: E402
 
 RASM = os.path.expanduser("~/rasm/rasm.exe")
 SNA = os.path.join(ROOT, "build", "simtest.sna")
 FRAME_US = 19968
 TICKS = 640                 # 40 πλήρεις περιστροφές
-STAGE_AG, STAGE_OCC = 0xC000, 0xC800
+STAGE_AG, STAGE_OCC, STAGE_DOME, STAGE_STR = 0xC000, 0xC800, 0xC900, 0xCF00
 
 
 def build():
@@ -56,7 +57,7 @@ def enter(m, sym, label, limit=600):
     return n
 
 
-def run_z80(sym, g, sim, ticks, move_n=None, decay_n=None):
+def run_z80(sym, g, sim, ticks, move_n=None, decay_n=None, off=()):
     from cpc import CPC
     m = CPC()
     m.run_frames(60)
@@ -69,8 +70,13 @@ def run_z80(sym, g, sim, ticks, move_n=None, decay_n=None):
 
     m.write_ram(STAGE_AG, sim.a.to_bytes())
     m.write_ram(STAGE_OCC, bytes(sim.occ) + bytes(128))
+    m.write_ram(STAGE_DOME, bytes(sim.e.dome))
+    m.write_ram(STAGE_STR, bytes(sim.e.struct))
+    m.write_ram(sym["G_ECON_STATE"], EC.to_bytes(sim.e))   # τράπεζα 2, βασική
     enter(m, sym, "LOAD_STATE")
 
+    for slot in off:
+        m.poke(sym["WH_ON"] + slot, 0)
     if move_n is not None:
         m.poke(sym["WH_MOVE_N"], move_n)
     if decay_n is not None:
@@ -80,7 +86,9 @@ def run_z80(sym, g, sim, ticks, move_n=None, decay_n=None):
     frames = enter(m, sym, "RUN_TICKS")
 
     enter(m, sym, "SAVE_STATE")
-    return (m.read_ram(STAGE_AG, 2048), m.read_ram(STAGE_OCC, 128), frames)
+    return (m.read_ram(STAGE_AG, 2048), m.read_ram(STAGE_OCC, 128), frames,
+            m.read_ram(STAGE_DOME, 1536), m.read_ram(STAGE_STR, 512),
+            m.read_ram(sym["G_ECON_STATE"], EC.ECON_BYTES))
 
 
 def describe(blob, sim):
@@ -115,20 +123,35 @@ def check_occ(blob, occ, g):
     return None
 
 
+def fresh(g, nexthop, src):
+    """Αντίγραφο της αρχικής κατάστασης — ο Z80 και η αναφορά ξεκινούν ίδια."""
+    s = E.Sim(g, nexthop)
+    s.a.from_bytes(src.a.to_bytes())
+    s.occ = bytearray(src.occ)
+    s.e.dome = bytearray(src.e.dome)
+    s.e.struct = bytearray(src.e.struct)
+    s.e.stock = list(src.e.stock)
+    for f in ("power_store", "power_cap", "power_prod", "power_use",
+              "mach_power", "o2_prod", "o2_use", "acc_power", "acc_o2",
+              "power_ok", "o2_ok", "prod_dome", "day", "wind", "sol",
+              "frame", "rnd", "n_dome", "n_struct"):
+        setattr(s.e, f, getattr(src.e, f))
+    return s
+
+
 def main():
     sym = build()
     g = G.GRAPHS["colony"]()
     _, nexthop = G.all_pairs(g)
 
-    sim = E.populate(E.Sim(g, nexthop))
-    before = E.Agents().from_bytes(sim.a.to_bytes())
-    sim_occ0 = bytes(sim.occ)
-    start = E.Sim(g, nexthop)
-    start.a.from_bytes(sim.a.to_bytes())
-    start.occ = bytearray(sim.occ)
+    sim0 = E.populate(E.Sim(g, nexthop))
+    EC.populate(sim0.e)
+    before = E.Agents().from_bytes(sim0.a.to_bytes())
 
-    got_a, got_occ, frames = run_z80(sym, g, start, TICKS)
+    got_a, got_occ, frames, got_dome, got_str, got_econ = \
+        run_z80(sym, g, fresh(g, nexthop, sim0), TICKS)
 
+    sim = fresh(g, nexthop, sim0)
     for _ in range(TICKS):
         sim.tick()
     want_a, want_occ = sim.a.to_bytes(), bytes(sim.occ)
@@ -163,32 +186,87 @@ def main():
     print("OK θέσεις:    κάθε μάσκα συμφωνεί με το πού στέκεται ο καθένας, "
           "καμία διπλοκρατημένη")
 
+    # --- η οικονομία ---
+    if got_dome != bytes(sim.e.dome) or got_str != bytes(sim.e.struct):
+        n = sum(1 for i in range(1536) if got_dome[i] != sim.e.dome[i])
+        print(f"ΑΠΟΤΥΧΙΑ πίνακες: {n} bytes θόλων διαφέρουν")
+        return 1
+    want_econ = EC.to_bytes(sim.e)
+    if got_econ != want_econ:
+        names = ([f"stock:{n}" for n in EC.STOCKS] +
+                 ["power_store", "power_cap", "power_prod", "power_use",
+                  "mach_power", "o2_prod", "o2_use", "acc_power", "acc_o2"])
+        print("ΑΠΟΤΥΧΙΑ οικονομία:")
+        for i, n in enumerate(names):
+            gv = got_econ[i*2] | got_econ[i*2+1] << 8
+            wv = want_econ[i*2] | want_econ[i*2+1] << 8
+            if gv != wv:
+                print(f"    {n:18s} Z80 {gv:6d} != αναφορά {wv:6d}")
+        for j, n in enumerate(["power_ok", "o2_ok", "prod_dome", "day",
+                               "wind", "sol"]):
+            i = 46 + j
+            if got_econ[i] != want_econ[i]:
+                print(f"    {n:18s} Z80 {got_econ[i]:6d} != "
+                      f"αναφορά {want_econ[i]:6d}")
+        for n, i in (("frame", 52), ("rnd", 54)):
+            gv = got_econ[i] | got_econ[i+1] << 8
+            wv = want_econ[i] | want_econ[i+1] << 8
+            if gv != wv:
+                print(f"    {n:18s} Z80 {gv:6d} != αναφορά {wv:6d}")
+        return 1
+
+    e = sim.e
+    produced = [EC.STOCKS[i] for i in range(EC.N_STOCK)
+                if e.stock[i] != sim0.e.stock[i]]
+    if len(produced) < 3:
+        print(f"ΑΠΟΤΥΧΙΑ: η αλυσίδα δεν κινήθηκε — άλλαξαν μόνο {produced}")
+        return 1
+    print(f"OK οικονομία: {len(produced)} αποθέματα κινήθηκαν "
+          f"({', '.join(produced[:6])}...)")
+    print(f"              ρεύμα {e.power_prod} παραγωγή / {e.power_use} χρήση, "
+          f"μπαταρία {e.power_store}/{e.power_cap}, "
+          f"{'ΟΚ' if e.power_ok else 'ΜΠΛΑΚΑΟΥΤ'}")
+    print(f"              οξυγόνο {e.o2_prod}/{e.o2_use} "
+          f"{'ΟΚ' if e.o2_ok else 'ΕΛΛΕΙΜΜΑ'}, sol {e.sol} "
+          f"{'μέρα' if e.day else 'νύχτα'}, άνεμος {e.wind}")
+
     # --- κόστος ανά ΕΙΔΟΣ θέσης ---
-    # Τρία τρεξίματα, και η διαφορά τους απομονώνει το καθένα. Με φέτα 0 η
-    # θέση γυρίζει αμέσως, οπότε μένει μόνο ο τροχός.
-    def timed(mv, dc):
-        st = E.Sim(g, nexthop)
-        st.a.from_bytes(before.to_bytes())
-        st.occ = bytearray(sim_occ0)
-        return run_z80(sym, g, st, TICKS, move_n=mv, decay_n=dc)[2] * FRAME_US
+    # Σβήνουμε μία κατηγορία τη φορά και κρατάμε τη διαφορά. Χωρίς αυτό η
+    # «διανομή» φαίνεται να κοστίζει 967 us, που είναι στην πραγματικότητα η
+    # οικονομία κρυμμένη μέσα της.
+    def timed(off):
+        return run_z80(sym, g, fresh(g, nexthop, sim0), TICKS,
+                       off=off)[2] * FRAME_US
 
+    REV = TICKS // 16
     t_all = frames * FRAME_US
-    t_nomove = timed(0, E.WH_DECAY_N)
-    t_none = timed(0, 0)
+    t1 = timed(tuple(range(8)))                       # χωρίς κίνηση
+    t2 = timed(tuple(range(11)))                      # ούτε φθορά
+    t3 = timed(tuple(range(12)))                      # ούτε παραγωγή
+    t4 = timed(tuple(range(13)))                      # ούτε ισοζύγιο
+    t5 = timed(tuple(range(16)))                      # τίποτα: μόνο διανομή
 
-    move_us = (t_all - t_nomove) / (TICKS // 2)         # 8 στις 16 θέσεις
-    decay_us = (t_nomove - t_none) / (TICKS * 3 // 16)  # 3 στις 16
-    over_us = t_none / TICKS
+    move_us = (t_all - t1) / (REV * 8)
+    decay_us = (t1 - t2) / (REV * 3)
+    prod_us = (t2 - t3) / REV
+    flow_us = (t3 - t4) / REV
+    event_us = (t4 - t5) / REV
+    over_us = t5 / TICKS
 
-    print(f"\nκόστος ανά θέση τροχού ({TICKS} θέσεις = {TICKS//16} περιστροφές):")
-    print(f"  κίνηση  {move_us:7.0f} us  ({E.WH_MOVE_N} πράκτορες)"
-          f"   — το §7.2 προϋπολόγιζε 1.800 us")
-    print(f"  φθορά   {decay_us:7.0f} us  ({E.WH_DECAY_N} πράκτορες)"
-          f"   — το §7.2 προϋπολόγιζε  433 us")
-    print(f"  τροχός  {over_us:7.0f} us  (μόνο η διανομή)")
-    worst = max(move_us, decay_us) + over_us
-    which = "κίνηση" if move_us > decay_us else "φθορά"
-    print(f"  χειρότερο frame: {worst:.0f} us ({which}) από τα 19.968 "
+    print(f"\nκόστος ανά θέση τροχού ({TICKS} θέσεις = {REV} περιστροφές):")
+    rows = [("κίνηση", move_us, 1800, f"{E.WH_MOVE_N} πράκτορες"),
+            ("φθορά", decay_us, 433, f"{E.WH_DECAY_N} πράκτορες"),
+            ("παραγωγή", prod_us, 4000, f"{EC.PROD_DOMES} θόλοι"),
+            ("ισοζύγιο", flow_us, 2000, "64 δομές + 128 πράκτορες"),
+            ("συμβάντα", event_us, 500, "μία ζαριά")]
+    for name, got, budget, what in rows:
+        mark = "OK " if got <= budget else "ΕΚΤΟΣ"
+        print(f"  {name:9s} {got:7.0f} us  (προϋπ. {budget:5d})  {mark}  {what}")
+    print(f"  {'διανομή':9s} {over_us:7.0f} us  (κάθε frame)")
+
+    worst_name, worst = max(((n, v) for n, v, _, _ in rows), key=lambda r: r[1])
+    worst += over_us
+    print(f"  χειρότερο frame: {worst:.0f} us ({worst_name}) από τα 19.968 "
           f"= {100*worst/FRAME_US:.0f}%")
 
     if worst > FRAME_US:

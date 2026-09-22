@@ -25,6 +25,7 @@ bytes, αλλιώς ένας από τους δύο έχει άδικο.
 από το node_adj αντί για ψάξιμο στον πίνακα διαδρόμων.
 """
 import graph as G
+import econ as EC
 
 MAXAGENT = 128              # η πλευρά των πινάκων (§6.1: 80 άποικοι + 16 ρομπότ)
 NSLOT = 8                   # θέσεις δαχτυλιδιού ανά κόμβο
@@ -168,6 +169,7 @@ class Sim:
         self.nexthop = nexthop
         self.occ = bytearray(G.MAXNODE)
         self.slot = 0
+        self.e = EC.Econ()
 
     def tick(self):
         """Ενα frame: μία θέση του τροχού. Η δρομολόγηση δεν είναι θέση."""
@@ -178,8 +180,16 @@ class Sim:
                        s * WH_MOVE_N, WH_MOVE_N)
         elif s < 11:
             decay_slice(self.a, (s - 8) * WH_DECAY_N, WH_DECAY_N)
-        # 11-15: παραγωγή, ισοζύγιο, εργασίες, ελεύθερη, συμβάντα — δεν έχουν
-        # γραφτεί ακόμη, ούτε εδώ ούτε στον Z80.
+        elif s == 11:
+            EC.production_slice(self.e)
+        elif s == 12:
+            alive = sum(1 for i in range(MAXAGENT)
+                        if self.a.flags[i] & F_ALIVE)
+            EC.flow_balance(self.e, alive)
+        elif s == 15:
+            EC.events(self.e)
+        # 13 πίνακας εργασιών, 14 ελεύθερη — δεν έχουν γραφτεί, ούτε εδώ ούτε
+        # στον Z80.
 
 
 def populate(sim, n_agents=96, seed=7):

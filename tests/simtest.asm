@@ -14,6 +14,10 @@
 
 STAGE_AG    equ #C000                   ; 2.048 bytes πεδία πρακτόρων
 STAGE_OCC   equ #C800                   ; 256 bytes μάσκες θέσεων
+STAGE_DOME  equ #C900                   ; 1.536 bytes πίνακας θόλων
+STAGE_STR   equ #CF00                   ; 512 bytes πίνακας δομών
+; Το econ_state ζει στην τράπεζα 2, δηλαδή στη βασική μνήμη: ο host το γράφει
+; και το διαβάζει κατευθείαν, χωρίς σκάλα.
 
 ; --- 1. χτίζει τους πίνακες δρομολόγησης από τον γράφο που ήρθε ---
 build_routes:
@@ -44,6 +48,14 @@ load_state:
         ld      hl,STAGE_OCC
         ld      de,G_node_occ
         ld      bc,256
+        ldir
+        ld      hl,STAGE_DOME
+        ld      de,G_dome_tbl
+        ld      bc,1536
+        ldir
+        ld      hl,STAGE_STR
+        ld      de,G_struct_tbl
+        ld      bc,512
         ldir
         ld      bc,GA_PORT + PAGE_B1
         out     (c),c
@@ -91,6 +103,14 @@ save_state:
         ld      de,STAGE_OCC
         ld      bc,256
         ldir
+        ld      hl,G_dome_tbl
+        ld      de,STAGE_DOME
+        ld      bc,1536
+        ldir
+        ld      hl,G_struct_tbl
+        ld      de,STAGE_STR
+        ld      bc,512
+        ldir
         ld      bc,GA_PORT + PAGE_B1
         out     (c),c
         ld      a,#5A
@@ -99,6 +119,7 @@ b4:     jr      b4
 
         include "../src/graph.asm"
         include "../src/entity.asm"
+        include "../src/econ.asm"
         include "../src/wheel.asm"
 
 done_flag:   db 0
