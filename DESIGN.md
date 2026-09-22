@@ -119,12 +119,12 @@ Consequences, computed once here and referred to throughout:
 
 | Operation | Bytes | Cost | Frames |
 |---|---|---|---|
-| One terrain tile | 64 opaque | **929 µs measured** | 0.047 |
-| One viewport column (10 tiles) | 640 | **9,300 µs** | 0.47 |
-| One viewport row (20 tiles) | 1,280 | **18,600 µs** | 0.93 |
-| Full play area (200 tiles) | 12,800 | **185,700 µs** | **9.3** |
-| One colonist slot | 16 opaque | ≈ 64 µs | 0.003 |
-| One machine / plant | 132 opaque | ≈ 530 µs | 0.027 |
+| One terrain tile | 64 opaque | **958 µs measured** | 0.048 |
+| One viewport column (10 tiles) | 640 | **9,580 µs** | 0.48 |
+| One viewport row (20 tiles) | 1,280 | **19,160 µs** | 0.96 |
+| Full play area (200 tiles) | 12,800 | **191,600 µs** | **9.6** |
+| One colonist slot, blit alone | 16 opaque | ≈ 64 µs | 0.003 |
+| One machine / plant, blit alone | 132 opaque | ≈ 530 µs | 0.027 |
 | Small dome, ring + dome, all 4 quadrants | 2,048 masked data | ≈ 28,700 µs | **1.4** |
 | Medium dome, likewise | 4,608 | ≈ 64,500 µs | **3.2** |
 | Large dome, likewise | 8,192 | ≈ 114,700 µs | **5.7** |
@@ -136,7 +136,17 @@ Consequences, computed once here and referred to throughout:
 > of 64 spent copying, and the CPC's gate array contention puts real throughput
 > about 22% below nominal 4 MHz. Splitting the measurement: **579 µs is the blit
 > and the loop, 350 µs is the per-tile logic** (class, variant, autotile, ore).
-> See [§8.3](#83-the-tile-pass).
+> See [§8.3](#83-the-tile-pass). The figure rose from 929 to **958 µs** when the
+> camera moved into the address arithmetic: `scr_addr` now adds the display
+> offset and the 2 KB ring needs masking at two points of the tile loop
+> ([§8.2](#82-camera)). 3% for a camera that costs no redraw is a good trade.
+
+> **The two "blit alone" rows above are traps, and the dirty list found out how
+> big a trap.** Drawing one colonist slot really is 64 µs of copying — but
+> *reaching* it costs paging the bank, reading the dome record, computing the
+> frame and testing visibility, and **that is 1,498 µs measured**
+> ([§8.5](#85-the-dirty-list)). For small redraws the preparation is the cost
+> and the blit is the rounding error.
 
 Read the dome rows carefully — **drawing one large dome costs almost six
 frames.** That single fact drives the whole architecture: nothing may ever be
@@ -369,13 +379,19 @@ the HUD moved into the play area's page and bank 2 became **flat 16 KB**:
 | Corridors + connectors | 896 |
 | 4×8 font, 96 glyphs | 1,536 |
 | Asset tables, `room_machines` included | 313 |
-| Generated pointer tables (`tile_ptr`, `icon_{s,m,l}_ptr`, `mach_ptr`) | 112 |
+| Generated pointer tables (`tile_ptr`, `icon_{s,m,l}_ptr`, `mach_ptr`, `struct_ptr`) | 176 |
 | Cursor and UI chrome (reserve) | 256 |
 | Node graph (`node_deg`, `node_adj`) and BFS workspace | 1,536 |
 | Machine recipes (12 × 10) + the "needs an operator" lookup | 132 |
 | Economy state — stocks, flows, clock, weather, ships, milestones | 82 |
 | Job board 160 · room index 108 | 268 |
-| **Total** | **15,104** of 16,384 — **1,280 free, contiguous** |
+| **Total** | **15,163** of 16,384 — **1,024 free, contiguous** |
+
+`struct_ptr` is new: the renderer indexes external structures as
+`kind*4 + size` and four of the eight kinds exist in one size only, so the table
+carries zeros for the gaps exactly as `struct_dims` does. Adding 64 bytes cost
+256, because the three 256-aligned routing tables that follow it had to move up a
+page. That is the price of alignment and it is paid once.
 
 The graph is here and not in bank 6 because the BFS pages the window twice per
 source ([§6.4](#64-routing)). That 1,536 bytes is the first real claim on the space
@@ -1389,8 +1405,21 @@ ignores a mid-frame start address.
   play area. When the camera scrolls, the ring rotates, and the HUD's *memory*
   moves even though its *screen position* does not. So the HUD must be
   **re-rendered after every scroll step** — at its new addresses, same pixels.
-  Estimated ≈ 0.4 frames (roughly 1.2 KB of glyph and bar blits); to be measured
-  when the HUD renderer exists.
+
+  **Measured: 2.55 frames** (`tests/test_hud.py`), against the 0.4 estimated
+  here. Six times. 200 cells × 16 bytes is 3,200 bytes, and the addressing
+  around each one costs more than the bytes do. Two cuts took it down from 3.5:
+  the screen pointer is computed **once per row** instead of once per glyph, and
+  the eighty blank cells of rows 3–4 are **filled with zeros rather than drawn**
+  — glyph 32 of the font *is* sixteen zeros, so the result is byte-identical and
+  ten times cheaper.
+
+  **The escape hatch, not yet taken:** a camera step moves the whole HUD block by
+  a fixed distance inside the ring (4 bytes east, 160 bytes south), so the block
+  could be **moved** with 3,200 bytes of `lddr` — about 0.85 frames — instead of
+  re-rendered. It is held in reserve for the same reason as the tile-pair idea in
+  [§8.3](#83-the-tile-pass): the current cost does not yet justify the
+  complication.
 - **Bank 2 stops being a screen page**, which is the good news hiding in the bad.
   It becomes a flat 16 KB of data ([§4.3](#43-bank-2-flat-again)).
 
@@ -1426,9 +1455,68 @@ built for, but they leave a half-visible tile at two edges and need a partial-ti
 blit variant. **Not taken now**; whole-tile steps keep the tile pass free of
 clipping.
 
+#### The 2 KB ring is not bookkeeping
+
+Earlier text here said the wrap was "bookkeeping rather than a new mechanism".
+It is a mechanism, and it had to be built.
+
+The 6845 hands the Gate Array a 14-bit address and **the Gate Array drops bits 10
+and 11**: `MA9..MA0` go to `A10..A1`. So the scan wraps every **1,024 words =
+2,048 bytes**, and the screen uses 2,000 of them. The moment the camera offset
+passes 24 words, the wrap point lands *inside the visible image*. Every screen
+address is therefore
+
+```
+p    = ((y>>3)*80 + x + 2*cam_off) mod 2048
+addr = &C000 + (y&7)*&800 + p
+```
+
+and a sprite line that crosses `p = 2047` **must be written in two runs**. An
+implementation that ignores it writes 2 KB earlier — somewhere else on the same
+screen, silently, and only for some camera positions. The check is three
+instructions per line (`(d&7)==7` is a necessary condition, true for one line in
+eight at worst), not per byte; per byte it would cost 70%.
+
+Tiles never straddle, and that is not luck: the camera moves in whole tiles, so
+`cam_off` is always even, `p` is always a multiple of 4 for a tile, and a 4-byte
+tile inside a 2,048-byte ring cannot cross. Sprites are not so lucky and go
+through the split.
+
+`tests/test_object.py` includes a camera whose wrap point falls inside a dome;
+deleting the split makes three of its five cameras fail.
+
+#### What a scroll step actually costs
+
+| | frames per tile step |
+|---|---|
+| Terrain strip alone (one column) | 0.48 |
+| Terrain strip alone (one row) | 0.96 |
+| **Whole step, open ground** | **3.0 – 3.2** |
+| **Whole step, through the middle of the base** | **4.2 – 8.8** |
+| HUD re-render, on top of any of the above | **2.55** |
+
+The 0.9 figure this section used to quote counted **only the terrain**. The rest
+is the objects that overlap the strip, and they have to be redrawn because the
+memory they occupied has just rotated in from the far edge of the ring.
+
+The mechanism that makes this affordable is the **clip rectangle**, and it is the
+same one that makes a partly off-screen dome legal: every blit is cut to a
+rectangle, so redrawing a large dome for a 4-byte column costs an eighth of a
+dome, not a dome. Three separate cuts were needed before the number was sane:
+
+- **one rectangle test per dome**, before its eight doors, eight machine slots and
+  eight colonist slots are each culled individually;
+- **read the state byte before copying the record** — 52 of the 64 dome slots are
+  empty and each was costing a 24-byte `ldir`;
+- **mirror only the bytes that survive the clip** — a flipped quadrant was
+  reversing 16 pairs to write 4.
+
+`tests/test_scroll.py` proves the result by **equivalence**: start five tiles
+back, draw fully, scroll five times, and the screen memory must be identical to a
+full draw at the destination — in all four directions.
+
 The 16 KB page wraps — the ring is 1,024 words — so the newly exposed strip's
-addresses wrap too. The blit computes addresses from the current offset anyway,
-so this is bookkeeping rather than a new mechanism.
+addresses wrap too, and the blits handle it as described above.
 
 ### 8.3 The tile pass
 
@@ -1452,11 +1540,12 @@ Measured cost, from `tests/test_tiles.py`:
 |---|---|
 | `blit_tile` plus the column loop | 579 |
 | class, variant, autotile, ore overlay | 350 |
-| **total** | **929** |
+| the camera: display offset and ring masking ([§8.2](#82-camera)) | 29 |
+| **total** | **958** |
 
-A scroll step costs one column — 0.47 frames — which is the number that matters,
-and it is comfortable. A full redraw is 9.3 frames and is already sliced
-([§7.4](#74-batched-work-outside-the-wheel)).
+A scroll step costs one column of *terrain* — 0.48 frames — and that part is
+comfortable. It is not the whole step ([§8.2](#82-camera)). A full redraw is 9.6
+frames and is already sliced ([§7.4](#74-batched-work-outside-the-wheel)).
 
 **If it ever needs to be faster,** the identified win is blitting *tile pairs*:
 eight bytes per line instead of four halves the per-line overhead per byte, worth
@@ -1487,25 +1576,85 @@ Corridors are drawn between steps 2 and 3 of the domes they join. External struc
 are drawn after all domes, sorted by `cy` so that southern structures overlap northern
 ones.
 
+**Built and checked byte-for-byte** (`tests/test_object.py`) against an
+independent Python renderer written from `assets/SPRITES.md` §10 rather than
+from the Z80 (`tools/scene.py`), at five camera positions chosen to break things:
+a dome clipped at the bottom edge, a dome clipped at the left edge — which is
+where clipping meets *mirroring*, the hard case — the western structures, and a
+camera whose ring wrap falls inside a dome.
+
+Because corridors must be under the connectors but over the shells, the global
+order is two passes over the domes rather than one: **all shells, then all
+corridors, then all fittings, then the structures.**
+
+Three things the prose did not say and the implementation had to decide:
+
+- **Position.** Every anchor is a centre in half-tiles ([§3.4](#34-anchors-are-centres)),
+  so `sx = 2*cx - 4*cam_tx` and `sy = 8*cy - 16*cam_ty`, and the frame's top-left
+  is that minus half the frame. Until now no dome had ever had coordinates: the
+  simulation never looked at `cx`/`cy` and the first two bytes of every record
+  were zero. The renderer is their first reader, and `tools/colony.py` their
+  first writer.
+- **Diagonal corridors do not start from the connector.** The axis-aligned ones
+  do — the connector sits on the ring and the corridor continues where it ends.
+  A diagonal step is one tile on both axes, so two domes a diagonal apart share
+  the *same* lattice of tile positions measured from their centres, and the run
+  must be placed on that lattice or its two ends will not meet. `DIAG_K` says at
+  which lattice step the run begins, per dome size; it is three bytes and it was
+  chosen **by looking**, because the step is 16 lines while the ring's diagonal
+  radius is 17, 28 and 40 — never a multiple. The rule when in doubt is *a little
+  overlap onto the ring, never a gap*: the corridor's grey and the ring's grey
+  are the same grey.
+- **The engineer has no figure.** The art has four robots (carrier, driller,
+  engineer, constructor); the simulation has three, plus a **human** engineer.
+  The human takes figure 7 — the one the art calls the robot engineer — because
+  at 6×6 visual pixels the colour *is* the identity, and cyan already reads as
+  "the one who fixes things" ([ASSET-9](#12-asset-gaps)).
+
 ### 8.5 The dirty list
 
 After the initial draw, **nothing is redrawn unless it changed.** A 32-entry ring of
 `(kind, id)` records what changed; the renderer knows the minimal redraw for each kind,
 straight out of `assets/SPRITES.md` §8:
 
-| Change | Redraw | Cost |
-|---|---|---|
-| Colonist enters or leaves a slot | one slot | 64 µs |
-| Machine changes state or breaks | one machine | 530 µs |
-| Plant grows a stage | one plant | 530 µs |
-| Room type changes | one icon | ≈ 800 µs |
-| Corridor added | one connector | ≈ 450 µs |
-| Terrain tile changes (mine, meteor) | one tile + 4 neighbours' autotiles | ≈ 1,600 µs |
-| Dome built | everything, sliced over 8 frames | 1.4 – 5.7 frames |
+| Change | Redraw | Estimated | **Measured** |
+|---|---|---|---|
+| Colonist enters or leaves a slot | one slot | 64 µs | **1,498 µs** |
+| Machine changes state or breaks | one machine | 530 µs | **4,992 µs** |
+| Plant grows a stage | one plant | 530 µs | **4,992 µs** |
+| Room type changes | one icon | ≈ 800 µs | **1,997 µs** |
+| Corridor added | one connector | ≈ 450 µs | **2,995 µs** |
+| Terrain tile changes, open ground | 3×3 tiles | ≈ 1,600 µs | **9,984 µs** |
+| Terrain tile changes, under a dome | 3×3 tiles + every object over them | — | **99,840 µs** |
+| Dome built | everything, sliced over 8 frames | 1.4 – 5.7 frames | not built — [§6.9](#69-construction) |
+
+**All five estimates were low, by 2× to 21×, and for one reason.** The blit is
+not the cost. Reaching it is: page the bank, read the 24-byte dome record,
+compute the frame, test visibility — all of that to write sixteen bytes. The
+estimates counted the bytes.
+
+The one cut that mattered is in the last two rows. A terrain change only needs
+the object pass if an object stands on it, and [§3.5](#35-the-world-byte)'s
+occupancy bits already say so: two bits per tile, read while bank 4 is still
+paged in, and a robot digging in open country costs 9,984 µs instead of 99,840.
 
 The list is processed under a **20,000 µs per-frame cap** with the remainder carried
-over. A meteor shower that dirties forty tiles takes four frames to draw and never
-drops one.
+over, and **one item always comes out** — otherwise an item costing more than the
+budget would block the list for ever. That is exactly the "under a dome" row: it
+overruns its frame alone, deliberately, rather than never being drawn.
+
+If the 32-entry ring fills, nothing is discarded: an **overflow flag** is raised
+and the caller owes a full redraw. A dropped change leaves a lie on the screen
+for ever; a full redraw only costs.
+
+`tests/test_dirty.py` checks the list by **equivalence** — the same mutation
+applied once through the list and once by redrawing everything must leave
+identical screen memory — plus a second check that the mutation changes the
+picture at all, because two paths that both do nothing agree perfectly. That is
+how it found the real defect: the **empty figure variant was never drawn**.
+Skipping it is right in a full redraw, where the ring has just been painted
+underneath; in the dirty list it meant a colonist who walked out stayed drawn in
+a dome he had left.
 
 ### 8.6 Palette
 
@@ -1558,16 +1707,34 @@ Forty lines, five character rows, 80 bytes wide. Mode 0 gives 20 columns with an
 font, which is not enough for anything, so Habitat uses a **4×8 font — 40 columns**
 ([ASSET-4](#12-asset-gaps)).
 
+Forty columns is not much, so the layout is fixed and every column is always
+written — which is also why there is no clearing pass. **As built:**
+
 ```
-row 0   O2 ███████░░  PWR █████░░░░  H2O ████████░  FOOD ██░░░░░░░
-row 1   Fe 120  BIO 40  PRC 12  SPR 8  MED 3  GUN 0  BOT 2
-row 2   POP 34/40   sol 17   ☼ day        [ alert line ]
-row 3-4 selection panel: what the cursor is over, or the open menu
+col 0         10        20        30        39
+row 0   O2 ██████ PWR ██████ H2O ████·· FOD ██····
+row 1   FE120 BI 40 PR 12 SP  8 ME  3 BO  2
+row 2   POP 34/48SOL 17 DAY ALL SYSTEMS OK
+row 3-4 (blank — the selection panel, §9.3)
 ```
 
-Flows (O₂, power) are bars because what matters is the margin. Stocks are numbers
-because what matters is the quantity. The alert line is the game's voice, and it should
-be specific: `NO POWER — OXYGEN GEN 2` beats `WARNING`.
+Four bars of six cells, six stocks of three digits, and a twenty-character alert
+line. Flows (O₂, power) are bars because what matters is the margin; stocks are
+numbers because what matters is the quantity. **A bar turns red below one third**,
+which is the only place in the HUD where a colour carries meaning on its own.
+
+The alert line is the game's voice and it should be specific: `NO POWER — OXYGEN
+GEN 2` beats `WARNING`. Today it names the condition but not yet the machine —
+`NO POWER`, `NO OXYGEN`, `SANDSTORM`, `COLONY LOST`, `ALL SYSTEMS OK` — because
+naming the machine needs the selection the build mode has not built yet.
+
+Checked byte-for-byte against `tools/hudref.py` in two states, the second chosen
+because the first exercised neither leading-zero suppression nor the alert line.
+And checked at the **boundary**: the play area is filled with a marker, the world
+is drawn without the HUD, and the marker must survive — opening the clip to line
+200 puts 1,886 bytes of dome into the numbers.
+
+Cost: **2.55 frames**, paid after every camera step ([§8.1](#81-screen-layout)).
 
 ### 9.3 Build flow
 
@@ -1731,6 +1898,22 @@ Delivery notes, for the record:
   either case. At 4 px, `M`, `N`, `W`, `m` and `w` are drawn with a single diagonal
   rather than two filled rows — two filled rows in three pixels is a solid block.
 
+**ASSET-8 — a broken machine looks exactly like a working one.** There is one
+sprite per machine type and no damaged variant, so when a machine breaks
+([§6.10](#610-events-and-hazards)) the dome shows no sign of it; only the HUD's
+alert line knows. The dirty list already redraws a single slot for 4,992 µs, so a
+second variant would cost 132 bytes per machine (1,584 for all twelve) and
+nothing in time. Until then, **breakage is audible in the economy and invisible
+on the screen**, which is the wrong way round for a game about watching a colony.
+
+**ASSET-9 — the engineer is a robot in the art and a human in the simulation.**
+`assets/SPRITES.md` §7 lists four robot figures (carrier, driller, engineer,
+constructor); [§6.1](#61-entities) has three robots plus a human engineer. The
+renderer maps the human onto figure 7 and nothing is lost visually — the figure
+is six pixels of cyan — but the names disagree and someone will trip over it.
+Renaming the figure is free; renaming the *role* is not, because `tools/econ.py`
+and `tools/pack.py` hard-code the list.
+
 ---
 
 ## 13. Build and test
@@ -1757,6 +1940,10 @@ tests in this document runnable rather than aspirational:
 | Map quality | render each golden seed to PNG, review by eye |
 | Frame budget | instrument the ISR with a frame counter; assert no slot exceeds its budget |
 | Blit correctness | render a known scene, compare against a golden PNG |
+| Object pass | independent Python renderer from the prose, compared byte-for-byte at five camera positions (`test_object.py`) |
+| Scrolling | equivalence: scroll *k* steps and compare with a full draw at the destination (`test_scroll.py`) |
+| HUD | content against a reference, boundary against a marker, cost against a limit (`test_hud.py`) |
+| Dirty list | equivalence: the same mutation through the list and through a full redraw (`test_dirty.py`) |
 | Playability of every seed | headless run of N seeds, assert water and ore within 30 tiles of centre |
 
 That last one is the kind of test that is impossible on real hardware and trivial here.
@@ -1773,7 +1960,8 @@ It should be run over a few thousand seeds before release.
 | 3 | Terrain tiles + tile pass; draw a hand-made 20×10 map | the tile grid |
 | 4 | World generator; `GENERATING` screen; determinism test green | [§5](#5-procedural-world-generation) |
 | 5 | Camera: CRTC offset scroll + edge redraw + HUD raster split | the riskiest rendering claim ([§15](#15-open-risks)) |
-| 6 | Build mode: ghost, validation, place a dome, corridors | [§9.3](#93-build-flow), [§9.4](#94-corridor-routing) |
+| 6a | **Renderer**: object pass, camera with strip scrolling, dirty list, HUD | [§8.4](#84-object-pass-and-draw-order), [§8.5](#85-the-dirty-list), [§9.2](#92-hud) |
+| 6b | Build mode: input, ghost, validation, place a dome, corridors | [§9.3](#93-build-flow), [§9.4](#94-corridor-routing) |
 | 7 | Entities, node graph, routing matrices, **the wheel** | [§7](#7-the-batch-scheduler) |
 | 8 | Needs, jobs, production; the colony runs itself | the game exists |
 | 9 | Events, ships, trade, milestones | the game is a game |
@@ -1783,6 +1971,12 @@ Milestones 1–5 are the ones that can fail for hardware reasons. Do them first,
 order, and do not build gameplay on top of a scroll that has not been proven on a real
 6128.
 
+**Milestone 6 split in two once it was attempted.** It assumed a renderer that
+did not exist: there is no ghost without an object pass, no validation without
+occupancy on screen, and no build menu without a HUD. 6a is that renderer and it
+is done; 6b is the half the player touches. Milestones 7–9 were built before
+either, out of order, because they needed no pixels.
+
 ---
 
 ## 15. Open risks
@@ -1790,7 +1984,7 @@ order, and do not build gameplay on top of a scroll that has not been proven on 
 | Risk | Severity | Mitigation |
 |---|---|---|
 | ~~CRTC offset scrolling with a two-page raster split~~ | ~~High~~ | **Resolved at milestone 5, and split in two.** Offset scrolling works to the pixel ([§8.2](#82-camera)). The mid-frame page change does **not** — the CRTC latches the start address once per frame — so the HUD moved into the play page and bank 2 went flat ([§8.1](#81-screen-layout), [§4.3](#43-bank-2-flat-again)). |
-| HUD re-render on every scroll step, ≈ 0.4 frames, **estimated not measured** | Medium | Measure when the HUD renderer exists. If it is too slow, the escape hatch is rupture — with the CRTC-type compatibility risk that comes with it. |
+| ~~HUD re-render on every scroll step, ≈ 0.4 frames, estimated not measured~~ | ~~Medium~~ | **Measured: 2.55 frames**, six times the estimate ([§8.1](#81-screen-layout)). Not rupture — the escape hatch is to *move* the HUD block inside the ring (≈ 0.85 frames) instead of re-rendering it. Held in reserve. |
 | Mid-frame writes land where aimed, but only on the emulator's CRTC | Low | The border control in `tests/test_camera.py` hits line 160 exactly. Real hardware still wants a check, but nothing now depends on a mid-frame *address* write. |
 | Memory map slack: 1,536 contiguous in bank 2, **288 in bank 6**, 440 in bank 7 | Medium | Bank 6 is the tight one now and the entity tables grew into it. The next thing that needs space there moves `plants` out of bank 7 first, or takes the `s` room-icon set (864 B) as [§4.2](#42-the-eight-banks) names. |
 | Routing rebuild latency of ≈ 5 s after a network change | Low | Stale routes are inefficient, never invalid ([§6.4](#64-routing)). If it grates: cache paths for the 16 busiest pairs and rebuild those first. |
@@ -1803,8 +1997,12 @@ order, and do not build gameplay on top of a scroll that has not been proven on 
 | ~~Needs, health and death are not written~~ | ~~High~~ | **Written.** Colonists eat, drink, sleep, get treated, die, and grieve; the only loss condition is live ([§6.6](#66-needs)). |
 | ~~Nothing produces food~~ | ~~High~~ | **Greenhouses grow.** Plants sit in the machine slots, `plant_class` decides the crop, and every plant needs a biologist ([§6.5](#65-economy)). |
 | ~~Ships, trade and milestones are unbuilt~~ | ~~Medium~~ | **Built**, except Automation, which waits on bot-eligible jobs ([§10.2](#102-milestones)). |
-| **A heavy sim frame plus a scroll column now comes to 19.9 ms of 20** | High | The flow-balance slot grew with the structure count. It re-scans 64 structures every revolution for numbers that change slowly; the fix is the same one production already took — accumulate during a pass that walks them anyway. Until then the dirty list must spread the scroll edge over two frames. |
-| Nothing the player does exists: no build mode, no input, no HUD, nothing drawn since milestone 5 | High | Everything since has been simulation, verified headlessly against a reference. [§9](#9-interface) and [§6.9](#69-construction) are the whole remaining half of the game. |
+| ~~A heavy sim frame plus a scroll column comes to 19.9 ms of 20~~ | High | **Worse than that, and now measured.** A scroll step is 3.0–8.8 frames of world plus 2.55 of HUD ([§8.2](#82-camera)), so it was never going to fit in one frame and does not need to: the dirty list is a budget and the strip fills over several frames. What this costs is **latency, not frame rate** — about a quarter of a second per tile through a dense base. The flow-balance slot still wants the fix described below. |
+| **The flow-balance wheel slot re-scans 64 structures every revolution** | Medium | 7,887 µs for numbers that change slowly. The fix is the one production already took: accumulate during a pass that walks the structures anyway ([§7.2](#72-the-wheel)). |
+| ~~Nothing the player does exists: no build mode, no input, no HUD, nothing drawn since milestone 5~~ | ~~High~~ | **Half resolved.** The colony is drawn, the camera scrolls, the dirty list keeps it honest and the HUD reports. **Still no input and no build mode**: the player watches and cannot act. [§9.1](#91-controls), [§9.3](#93-build-flow), [§9.4](#94-corridor-routing) and [§6.9](#69-construction) are what remains. |
+| **Nothing in the simulation pushes into the dirty list yet** | High | The list works and is tested, but the wheel does not call it: no `dirty_push` when a colonist takes a slot, a machine breaks, or a plant grows. Until that wiring exists the screen only changes when the camera does. It is a dozen call sites, and every one of them is a place where the two halves can silently disagree — which is what [§8.5](#85-the-dirty-list)'s equivalence test is for. |
+| **Scrolling is 4 to 8 tiles per second through a built-up base** | Medium | 3.0–3.2 frames per tile in open ground, up to 8.8 in the base, plus 2.55 for the HUD. Playable, not smooth. Three levers, all untaken: move the HUD block instead of redrawing it ([§8.1](#81-screen-layout)), index which objects overlap which strip instead of testing all 224 records, and blit tile pairs ([§8.3](#83-the-tile-pass)). |
+| **A broken machine is invisible on screen** ([ASSET-8](#12-asset-gaps)) | Medium | One sprite per machine, no damaged variant. The economy knows, the alert line knows, the picture does not — wrong way round for a game about watching a colony. 132 bytes per machine would fix it. |
 | Meteors and intruders are unbuilt, and both need the renderer first | Medium | Meteors write terrain, so they need the world plane and the dirty list; intruders need edge spawning and combat. Neither is a simulation problem, which is why neither is in [§6.10](#610-events-and-hazards) yet. |
 | Ships, trade and milestones are unbuilt — [§6.11](#611-ships-and-arrivals) and [§10.2](#102-milestones) | Medium | The colony sustains itself but cannot grow: no new colonists arrive and nothing can be traded for. This is what makes it a sandbox rather than a game. |
 | The balance numbers in [§6.5](#65-economy) are first guesses and three of them were unlivable | Medium | Corrected against the first working colony ([§6.6](#66-needs)). Expect the same of the rest: they cannot be checked by reading, only by running the loop and looking at who is where. |

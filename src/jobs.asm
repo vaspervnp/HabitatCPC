@@ -29,7 +29,6 @@ NO_JOB      equ 255
 NO_TASK     equ 255
 J_OPERATE   equ 1
 J_REPAIR    equ 4
-S_SPARE     equ 6
 JOB_SCAN    equ 4
 JOB_ASSIGN  equ 4
 JOB_LOOK    equ 32                  ; πράκτορες που εξετάζονται ανά επίσκεψη

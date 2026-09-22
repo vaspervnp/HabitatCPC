@@ -41,31 +41,54 @@ tile_addr:
 ; ---------------------------------------------------------------------------
 ; tile_draw_all — όλο το κάδρο από (cam_tx, cam_ty), που είναι το ΠΑΝΩ-ΑΡΙΣΤΕΡΑ
 ; ορατό tile.
+;
+; tile_draw_rect — μόνο ένα ορθογώνιο από tiles του κάδρου: (td_c0, td_r0) και
+; (td_nc, td_nr). Αυτό είναι όλο το σκρολάρισμα — μία στήλη ή μία σειρά.
 ; ---------------------------------------------------------------------------
 tile_draw_all:
-        ld      a,(cam_ty)
-        ld      (td_ty),a
         xor     a
+        ld      (td_c0),a
+        ld      (td_r0),a
+        ld      a,VIEW_TW
+        ld      (td_nc),a
+        ld      a,VIEW_TH
+        ld      (td_nr),a
+
+tile_draw_rect:
+        ld      a,(td_nr)
+        or      a
+        ret     z
+        ld      (td_left),a
+        ld      hl,td_r0
+        ld      a,(cam_ty)
+        add     a,(hl)
+        ld      (td_ty),a
+        ld      a,(td_r0)
         ld      (td_row),a
 
 td_next_row:
         ; --- δείκτης κόσμου και διεύθυνση οθόνης για την αρχή της σειράς ---
+        ld      hl,td_c0
         ld      a,(cam_tx)
+        add     a,(hl)
         ld      b,a
         ld      a,(td_ty)
         ld      c,a
         call    tile_addr
         ld      (t_wptr),hl
+        ld      a,(td_c0)
+        add     a,a
+        add     a,a                 ; col*4 bytes
+        ld      c,a
         ld      a,(td_row)
         add     a,a
         add     a,a
         add     a,a
         add     a,a                 ; row*16 γραμμές
-        ld      c,0
         call    scr_addr
         ld      (t_sptr),de
 
-        ld      a,VIEW_TW
+        ld      a,(td_nc)
         ld      (td_col),a
 td_next_col:
         call    tile_one
@@ -75,6 +98,9 @@ td_next_col:
         ld      hl,(t_sptr)
         ld      de,TILE_W
         add     hl,de
+        ld      a,h
+        and     #C7                 ; το δαχτυλίδι: p mod 2048 (screen.asm)
+        ld      h,a
         ld      (t_sptr),hl
         ld      a,(td_col)
         dec     a
@@ -87,7 +113,9 @@ td_next_col:
         ld      a,(td_row)
         inc     a
         ld      (td_row),a
-        cp      VIEW_TH
+        ld      a,(td_left)
+        dec     a
+        ld      (td_left),a
         jr      nz,td_next_row
         ret
 
@@ -297,6 +325,7 @@ blit_tile:
         ld      e,a
         ld      a,d
         adc     a,0
+        and     #C7                 ; και εδώ το δαχτυλίδι — μία εντολή ανά tile
         ld      d,a
         repeat  8
         push    de
@@ -317,6 +346,11 @@ cam_ty:     db 0
 td_ty:      db 0
 td_row:     db 0
 td_col:     db 0
+td_c0:      db 0                ; το ορθογώνιο μέσα στο κάδρο, σε tiles
+td_r0:      db 0
+td_nc:      db VIEW_TW
+td_nr:      db VIEW_TH
+td_left:    db 0
 t_wptr:     dw 0
 t_sptr:     dw 0
 t_cur:      db 0                ; το world byte του τρέχοντος tile

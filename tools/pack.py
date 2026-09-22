@@ -143,6 +143,16 @@ def build_runs(smap, blob):
               "planet_pens", "conn_points", "struct_dims", "palette_fw"):
         arena.append(spr(n))
 
+    # struct_ptr[kind*4 + size]: τέσσερις θέσεις ανά είδος, με κενά. Το ορυχείο,
+    # ο αεροθάλαμος, η πλατφόρμα και το σκάφος υπάρχουν σε ΕΝΑ μέγεθος — το 0 —
+    # και οι άλλες τρεις θέσεις τους είναι μηδέν, όπως και στο struct_dims.
+    sp = []
+    for k in ("solar", "turbine", "collector", "extractor"):
+        sp += [f"{k}_{s}" for s in ("s", "m", "l")] + [None]
+    for k in ("mine", "airlock", "pad", "ship"):
+        sp += [k, None, None, None]
+    ptr["struct_ptr"] = sp
+
     # --- παραγόμενοι πίνακες δεικτών ---------------------------------------
     for tab, names in ptr.items():
         if tab != "plant_ptr":
@@ -244,7 +254,7 @@ def pack():
         r = by_name[tab]
         data = bytearray()
         for n in names:
-            data += by_name[n].addr.to_bytes(2, "little")
+            data += (0 if n is None else by_name[n].addr).to_bytes(2, "little")
         r.data = bytes(data)
 
     # --- εικόνες ------------------------------------------------------------

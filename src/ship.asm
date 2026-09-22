@@ -21,7 +21,6 @@ VIS_FOOD    equ 6
 VIS_MORALE  equ 24
 POP_PER_CTL equ 48
 R_CONTROL   equ 1
-K_PAD       equ 6
 
 M_FOOTHOLD  equ 1
 M_INDUSTRY  equ 2
