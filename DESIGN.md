@@ -365,17 +365,17 @@ the HUD moved into the play area's page and bank 2 became **flat 16 KB**:
 |---|---|
 | Terrain tiles | 3,584 |
 | Room icons, 12 types × 3 sizes | 4,800 |
-| Machines, 10 types packed of 12 in the asset set | 1,320 |
+| Machines, **all 12**, `beds` and `medstore` included | 1,584 |
 | Corridors + connectors | 896 |
 | 4×8 font, 96 glyphs | 1,536 |
-| Asset tables | 289 |
-| Generated pointer tables (`tile_ptr`, `icon_{s,m,l}_ptr`, `mach_ptr`) | 108 |
+| Asset tables, `room_machines` included | 313 |
+| Generated pointer tables (`tile_ptr`, `icon_{s,m,l}_ptr`, `mach_ptr`) | 112 |
 | Cursor and UI chrome (reserve) | 256 |
 | Node graph (`node_deg`, `node_adj`) and BFS workspace | 1,536 |
-| Machine recipes + the "needs an operator" lookup | 110 |
-| Economy state — 14 stocks, flows, clock, weather | 58 |
-| Job board, 32 × 5 | 160 |
-| **Total** | **14,850** of 16,384 — **1,534 free, contiguous** |
+| Machine recipes (12 × 10) + the "needs an operator" lookup | 132 |
+| Economy state — stocks, flows, clock, weather, ships, milestones | 82 |
+| Job board 160 · room index 108 | 268 |
+| **Total** | **15,104** of 16,384 — **1,280 free, contiguous** |
 
 The graph is here and not in bank 6 because the BFS pages the window twice per
 source ([§6.4](#64-routing)). That 1,536 bytes is the first real claim on the space
