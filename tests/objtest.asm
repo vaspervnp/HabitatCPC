@@ -77,10 +77,16 @@ ds_lp:
 ds_hang: jr     ds_hang
 
 ; --- τέταρτη είσοδος: μόνο το HUD, για μέτρηση ---
+; Το hu_cold ακυρώνει την κρυφή μνήμη πριν από κάθε πέρασμα: έτσι μετριούνται
+; χωριστά η ΚΡΥΑ επανασχεδίαση (μετά από βήμα κάμερας, όπου τίποτα δεν ισχύει)
+; και η ΖΕΣΤΗ (κάθε τικ HUD, όπου αλλάζουν τρία κελιά).
 do_hud:
         ld      a,(rep_n)
         ld      (hu_n),a
 hu_loop:
+        ld      a,(hu_cold)
+        or      a
+        call    nz,hud_inval
         call    hud_draw
         ld      a,(hu_n)
         dec     a
@@ -222,6 +228,7 @@ oo_b:       db 0
 o1_n:       db 0
 dd_ticks:   db 0
 hu_n:       db 0
+hu_cold:    db 0
 rep_n:      db 0
 oo_n:       db 0
 sc_dir:     db 0

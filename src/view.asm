@@ -49,6 +49,9 @@ view_cam:
         ld      (cam_off),hl
         add     hl,hl                   ; σε bytes
         ld      (cam_p),hl
+        ; Το δαχτυλίδι γύρισε: τα bytes του HUD δεν είναι πια εκεί που τα
+        ; άφησε η κρυφή μνήμη του (§9.2), κι ας μην κουνήθηκε στην οθόνη.
+        call    hud_inval
         ; --- R12 / R13 ---
         ld      hl,(cam_off)
         ld      a,h

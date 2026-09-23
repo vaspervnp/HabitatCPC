@@ -144,14 +144,22 @@ def main():
             print(f"OK περιεχόμενο ({name}): 40 στήλες x 5 σειρές ταυτόσημες")
 
     # --- 3. το κόστος ----------------------------------------------------
-    m = load(sym, g, STATE)
-    m.poke(sym["REP_N"], 1)
-    run(m, sym, "START")
-    m.poke(sym["REP_N"], REPS)
-    n = run(m, sym, "DO_HUD")
-    us = n * 19968 / REPS
-    print(f"\nκόστος πλήρους HUD: {us:.0f} us = {us/19968:.2f} frames")
-    print(f"  (το §8.1 εκτιμούσε 0.4 frames· ξαναγράφεται σε ΚΑΘΕ βήμα κάμερας)")
+    costs = {}
+    for cold in (1, 0):
+        m = load(sym, g, STATE)
+        m.poke(sym["REP_N"], 1)
+        run(m, sym, "START")
+        m.poke(sym["HU_COLD"], cold)
+        m.poke(sym["REP_N"], REPS)
+        n = run(m, sym, "DO_HUD")
+        costs[cold] = n * 19968 / REPS
+    us = costs[1]
+    print(f"\nκόστος HUD, κρύο (μετά από βήμα κάμερας): {costs[1]:.0f} us = "
+          f"{costs[1]/19968:.2f} frames")
+    print(f"           ζεστό (κάθε τικ, τίποτα δεν άλλαξε): {costs[0]:.0f} us = "
+          f"{costs[0]/19968:.2f} frames")
+    print(f"  (το §8.1 εκτιμούσε 0.4 frames· η κρυφή μνήμη κελιών του §9.2 "
+          f"κρατά το ζεστό στο μισό)")
     # Μετρημένο όριο. Ο δρόμος διαφυγής, αν χρειαστεί, είναι να ΜΕΤΑΚΙΝΕΙΤΑΙ το
     # μπλοκ του HUD αντί να ξαναγράφεται: ένα βήμα κάμερας το μετατοπίζει κατά
     # 4 bytes μέσα στο δαχτυλίδι, δηλαδή 3.200 bytes lddr = 0,85 frames.
