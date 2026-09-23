@@ -27,6 +27,7 @@ start:
         di
         ld      sp,#0100
         call    hw_mode0
+        call    hw_clear                ; ό,τι άφησε ο φορτωτής, φεύγει τώρα
         ld      hl,G_palette_fw
         call    pal_set
         ; Ο πλανήτης ζει στα τέσσερα bytes που άφησε η γεννήτρια στην τράπεζα 6

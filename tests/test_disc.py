@@ -90,15 +90,54 @@ def main():
     def w16(a):
         return m.peek(a) | (m.peek(a + 1) << 8)
 
-    running, frames = False, 0
+    # Στον δρόμο κρατάμε και την ΟΘΟΝΗ: ως το βήμα 21 ο παίκτης κοίταζε μισό
+    # λεπτό το «Ready» του BASIC (§13.2). Τώρα βλέπει τίτλο, τελείες ανά αρχείο
+    # και μπάρα που προχωρά — και αυτό ελέγχεται εδώ, γιατί υπάρχει μόνο στον
+    # δρόμο του δίσκου: το snapshot δεν περνά ποτέ από τον φορτωτή.
+    def scr():
+        return m.read_ram(0xC000, 0x4000)
+
+    def bar_bytes(ram):
+        # πόσα από τα 64 bytes της μπάρας είναι γεμάτα (χαρακτηρο-σειρά 16)
+        base = 16 * 80 + 8
+        return sum(1 for i in range(64) if ram[base + i] == 0xFF)
+
+    def inked(ram, row, rows=1):
+        # μη μηδενικά bytes σε χαρακτηρο-σειρές
+        n = 0
+        for r in range(row, row + rows):
+            for line in range(8):
+                o = line * 0x800 + r * 80
+                n += sum(1 for i in range(80) if ram[o + i])
+        return n
+
+    running, frames, bars, seen_title = False, 0, [], None
     for _ in range(120):          # η γεννήτρια μόνη της θέλει 13,5 s
         m.run_frames(30)
         frames += 30
+        if seen_title is None and frames >= 300:
+            ram = scr()
+            # ο φορτωτής μετράει σειρές από το 1 (firmware), η μνήμη από το 0
+            seen_title = (inked(ram, 4, 3), inked(ram, 0, 2))
+        if 300 <= frames <= 1400:
+            bars.append(bar_bytes(scr()))
         if w16(g + 2) == 40 and m.peek(g + 58) == 4:
             running = True
             break
     check(running, f"το RUN\"HABITAT έφτασε στο game_new "
                    f"(PC=#{m.pc:04X}, τροφή {w16(g + 2)})")
+
+    # --- 1β. η οθόνη φόρτωσης --------------------------------------------
+    title, basic = seen_title
+    check(title > 0 and basic == 0,
+          f"η οθόνη φόρτωσης έσβησε το BASIC: {title} bytes τίτλου, "
+          f"{basic} στις δύο πρώτες σειρές (εκεί έγραφε το «Amstrad 128K»)")
+    # Η μπάρα είναι το ΜΟΝΟ πράγμα που κινείται επί 13,5 δευτερόλεπτα: πρέπει
+    # να ξεκινά άδεια, να μη γυρίζει ποτέ πίσω, και να φτάνει ως το τέρμα.
+    mono = all(b <= c for b, c in zip(bars, bars[1:]))
+    check(bars and bars[0] == 0 and mono and max(bars) == 64,
+          f"η μπάρα προχώρησε 0 -> {max(bars) if bars else 0} από 64, "
+          f"μονότονα ({len(bars)} δείγματα)")
     if not running:
         m.screenshot(os.path.join(ROOT, "build", "disc.png"), aspect=True)
         return 1
@@ -137,6 +176,18 @@ def main():
           "ο κόσμος ΔΕΝ είναι το έτοιμο επίπεδο του snapshot — τρέχει η γεννήτρια")
 
     m.screenshot(os.path.join(ROOT, "build", "disc.png"), aspect=True)
+
+    # --- 5. το σβήσιμο της οθόνης ----------------------------------------
+    # Ο φορτωτής αφήνει τη δική του οθόνη και το παιχνίδι ξεκινά ΠΑΝΩ της. Ως
+    # το βήμα 21 το «run"habitat» φαινόταν γραμμένο μέσα στην αποικία μέχρι την
+    # πρώτη πλήρη σχεδίαση. Εδώ ελέγχεται η ίδια η ρουτίνα, με σημάδι.
+    m.write_ram(0xC000, bytes([0xAA]) * 0x4000)
+    m.run_code(0x3E00, bytes([0xCD, sym["HW_CLEAR"] & 0xFF,
+                              sym["HW_CLEAR"] >> 8, 0x18, 0xFE]))
+    m.run_frames(10)                     # 16 KB ldir = 86 ms, δηλαδή 4,3 frames
+    left = sum(1 for b in m.read_ram(0xC000, 0x4000) if b)
+    check(left == 0, f"το hw_clear σβήνει και τα 16 KB της οθόνης ({left} bytes "
+                     f"έμειναν)")
     print(f"\nεκκίνηση: {frames} frames = {frames / 50:.0f} s από το ENTER ως "
           f"την αποικία (τα 13,5 είναι η γεννήτρια)")
     print(f"build/habitat.dsk: {os.path.getsize(DSK)} bytes, "

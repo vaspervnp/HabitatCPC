@@ -28,6 +28,9 @@
 CAS_IN_OPEN     equ #BC77
 CAS_IN_DIRECT   equ #BC83
 CAS_IN_CLOSE    equ #BC7A
+SCR_SET_MODE    equ #BC0E
+TXT_SET_CURSOR  equ #BB75
+TXT_OUTPUT      equ #BB5A
 
 LF_BUF          equ #9800               ; 2 KB, βασική RAM
 GEN_ORG         equ #8000               ; όπου φορτώνεται η γεννήτρια
@@ -38,6 +41,27 @@ ENDGAME         equ #3E00               ; το επίμετρο, με τα ROM �
         org     #9000
 
 boot:
+        ; --- η οθόνη φόρτωσης (§13.2) ---
+        ; Πρώτη πράξη, πριν από οτιδήποτε άλλο: το SCR SET MODE ΣΒΗΝΕΙ την
+        ; οθόνη, οπότε το «Ready» και το run"habitat φεύγουν αμέσως. Ως εδώ ο
+        ; παίκτης κοίταζε μισό λεπτό μια οθόνη BASIC.
+        ;
+        ; MODE 1 και όχι 0: σαράντα στήλες χωρούν λέξεις, είκοσι όχι. Το
+        ; παιχνίδι γυρίζει σε MODE 0 μόνο του, αφού σβήσουν τα ROM.
+        ld      a,1
+        call    SCR_SET_MODE
+        ld      b,5
+        ld      c,17
+        ld      hl,t_title
+        call    pr_at
+        ld      b,7
+        ld      c,9
+        ld      hl,t_sub
+        call    pr_at
+        ld      b,11
+        ld      c,8
+        ld      hl,t_load
+        call    pr_at
         ld      a,2
         call    bd_border
         ld      hl,n_bank6
@@ -86,7 +110,17 @@ boot:
         call    ld_file
         ld      a,3
         call    bd_border
+        ; Η γένεση κρατά 13,5 δευτερόλεπτα. Το λέει, και δείχνει και μπάρα: το
+        ; gen.asm γράφει κατευθείαν στη χαρακτηρο-σειρά 16.
+        ld      b,14
+        ld      c,8
+        ld      hl,t_world
+        call    pr_at
         call    GEN_ORG
+        ld      b,14
+        ld      c,8
+        ld      hl,t_ready
+        call    pr_at
         ; --- ο κώδικας του παιχνιδιού, κάτω από την κάτω ROM ---
         ld      a,26
         call    bd_border
@@ -163,6 +197,14 @@ ld_bank:
 ; ---------------------------------------------------------------------------
 ld_file:
         ld      (lf_dest),de
+        push    bc
+        push    de
+        push    hl
+        ld      a,'.'                   ; μία τελεία ανά αρχείο — ο δρομέας
+        call    TXT_OUTPUT              ; μένει εκεί που τον άφησε το t_load
+        pop     hl
+        pop     de
+        pop     bc
         ld      de,LF_BUF
         call    CAS_IN_OPEN
         jr      nc,lf_fail
@@ -179,6 +221,28 @@ lf_fail:
 lf_hang:
         jr      lf_hang
 
+; ---------------------------------------------------------------------------
+; pr_at — B = γραμμή, C = στήλη (1-25 / 1-40), HL = κείμενο με τερματικό 0.
+;
+; Το TXT OUTPUT χαλάει τα πάντα εκτός από το IX/IY, γι' αυτό ο δείκτης του
+; κειμένου πηγαινοέρχεται από τη στοίβα σε κάθε χαρακτήρα.
+; ---------------------------------------------------------------------------
+pr_at:
+        push    hl
+        ld      h,c
+        ld      l,b
+        call    TXT_SET_CURSOR
+        pop     hl
+pr_str:
+        ld      a,(hl)
+        or      a
+        ret     z
+        inc     hl
+        push    hl
+        call    TXT_OUTPUT
+        pop     hl
+        jr      pr_str
+
 ; bd_border — A = hardware ink του περιγράμματος.
 bd_border:
         ld      c,a
@@ -189,6 +253,12 @@ bd_border:
         or      c
         out     (c),a
         ret
+
+t_title:    db "H A B I T A T",0
+t_sub:      db "a colony on a dead world",0
+t_load:     db "LOADING ",0
+t_world:    db "BUILDING THE WORLD",0
+t_ready:    db "READY             ",0
 
 n_bank1:    db "BANK1.BIN"
 n_bank1_e:

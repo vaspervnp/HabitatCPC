@@ -90,6 +90,11 @@ SAVE_T0 = 24
 # φορτωτή πάνω στην εικόνα και θα έτρεχε από εκεί — δηλαδή δεν θα έτρεχε.
 PAGE2_END = 0xC000
 
+# Η γεννήτρια φορτώνεται στο #8000 και ΔΕΝ επιτρέπεται να φτάσει στη στοίβα του
+# BASIC (#8F00-#8FFF, από το MEMORY &8FFF του stub) ούτε στον φορτωτή (#9000).
+# Το AMSDOS είναι ακόμη ζωντανό όταν τρέχει, και το BASIC περιμένει να γυρίσει.
+GEN_END = 0x8F00
+
 
 def symbols():
     sym = {}
@@ -143,6 +148,10 @@ def build():
     slack = check_fit()
     sym = symbols()
     lo, slack2 = check_page2(sym)
+    gen_top = 0x8000 + os.path.getsize(os.path.join(BUILD, "gen.bin"))
+    if gen_top > GEN_END:
+        sys.exit(f"η γεννήτρια φτάνει στο #{gen_top:04X} και πατά τη στοίβα του "
+                 f"BASIC στο #{GEN_END:04X} ({gen_top - GEN_END} bytes πάνω)")
     # Η διεύθυνση φόρτωσης του GAME2.BIN ΔΕΝ γράφεται με το χέρι: το PAGE2_CODE
     # κουνήθηκε στο βήμα 19 (120 bytes για την κρυφή μνήμη του HUD) και ο
     # πίνακας εδώ έμεινε πίσω. Τον φορτωτή δεν τον ένοιαξε — φορτώνει σε δικό
@@ -152,7 +161,9 @@ def build():
         if f[0] == "GAME2.BIN":
             FILES[i] = (f[0], f[1], lo, f[3])
     print(f"τράπεζα 0: {slack} bytes ως το επίμετρο του φορτωτή· "
-          f"τράπεζα 2: κώδικας στο #{lo:04X}, {slack2} bytes ως το #C000")
+          f"τράπεζα 2: κώδικας στο #{lo:04X}, {slack2} bytes ως το #C000· "
+          f"γεννήτρια ως το #{gen_top:04X}, {GEN_END - gen_top} bytes ως τη "
+          f"στοίβα του BASIC")
     stage = os.path.join(BUILD, "dsk")
     shutil.rmtree(stage, ignore_errors=True)
     os.makedirs(stage)

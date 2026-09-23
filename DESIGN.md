@@ -706,13 +706,12 @@ inlining the hash — worth perhaps 2×, and not taken yet.
 [§5.10](#510-player-modification).
 
 The generator was going to run in slices behind a `GENERATING` progress bar. It
-does not. It runs in one blocking call from the loader, before the game's own code
-exists, with the **border colour** as the only feedback — BASIC's text is still on
-the screen at that point, because the loader never touches the screen page and the
-firmware's palette is still in force. A progress bar would need the game's tile
-pass, its palette and its font, all of which arrive after the world does. The slice
-structure is still in the generator and costs nothing; nothing calls it that way
-yet.
+still runs in one blocking call from the loader, before the game's own code exists
+— but **there is a progress bar now**, and it needed none of the game: the loader
+puts the machine in Mode 1 and writes a title with firmware text calls, and the
+generator pokes a 64-byte bar straight into screen memory, one byte per two rows of
+`wg_plane` ([§13.2](#132-the-loading-screen)). Thirty bytes of code. The slice
+structure is still unused, and the border codes are still there underneath.
 
 ### 5.10 Player modification
 
@@ -2451,6 +2450,48 @@ loaded into bank 5 first and copied down by an **endgame** — twenty bytes copi
 itself and over BASIC's stack. It takes its two lengths in `BC` and `IX` rather
 than reading them from memory that is about to disappear.
 
+### 13.2 The loading screen
+
+**For thirty-one seconds the player looked at BASIC.** `Ready`, `|disc`,
+`run"habitat`, and a border that changed colour seven times. Then the colony
+appeared *on top of that text*, which stayed visible until the first full redraw
+covered it. Nothing was wrong in any test; it was found by taking screenshots of the
+disc boot and looking at them.
+
+Three changes, in three different places, because the thirty-one seconds belong to
+three different programs:
+
+- **The loader** (`boot.asm`, firmware alive) calls `SCR SET MODE 1` as its first
+  instruction — which clears the screen — then writes `HABITAT`, a subtitle, and
+  `LOADING` through `TXT OUTPUT`. Every `ld_file` prints one dot, so the row of dots
+  *is* the file count. Mode 1 rather than Mode 0 for one reason: forty columns hold
+  words and twenty do not. The border codes are kept; they cost nothing and they say
+  which file is loading if the screen is ever wrong.
+- **The generator** (`gen.asm`, firmware alive but no calls to it) draws a progress
+  bar **straight into screen memory**. It is the only part of the boot that takes
+  real time — 13.5 s, [§5.9](#59-cost--measured) — and the only one with something
+  to count: `wg_plane` walks 128 rows, the bar is 64 bytes wide, so one byte per two
+  rows. `wg_prog` is 30 bytes and preserves every register; `worldgen.asm` calls it
+  once per row and defines an empty default, so `tests/gentest.asm`, which has no
+  screen, is unaffected.
+- **The game** clears the screen before it draws anything (`hw_clear`, 16 KB of
+  `ldir`, 86 ms). That is what removes the loader's own screen — and, on the snapshot
+  path, whatever the emulator left behind.
+
+`tests/test_disc.py` checks all three from the running disc: the two top character
+rows are **empty** at the four-second mark (that is where `Amstrad 128K Microcomputer`
+was) while the title rows are not; the bar is sampled every 30 frames through the
+whole generation and must start at zero, never go backwards, and reach all 64; and
+`hw_clear` is run against a screen filled with `#AA`. Negative controls: without
+`SCR SET MODE` the BASIC text is still there (292 bytes in the top two rows), and
+without the per-row call the bar stays at zero for the whole 13.5 seconds.
+
+**What is still missing is sound.** Music through the wait is the obvious next thing
+([§9.5](#95-sound) drives the chip already), but the generator runs with interrupts
+off and nothing calls `snd_tick`, so the tune would have to be ticked by
+`wg_prog` — one more call in the same place, and a tune small enough to live in the
+generator's 768 spare bytes or in bank 7's reserved 2,048.
+
 ---
 
 ## 14. Delivery plan
@@ -2510,7 +2551,7 @@ tuning — and music, which is the one piece of audio that is designed for
 | Mid-frame writes land where aimed, but only on the emulator's CRTC | Low | The border control in `tests/test_camera.py` hits line 160 exactly. Real hardware still wants a check, but nothing now depends on a mid-frame *address* write. |
 | Memory map slack: 1,536 contiguous in bank 2, **288 in bank 6**, 440 in bank 7 | Medium | Bank 6 is the tight one now and the entity tables grew into it. The next thing that needs space there moves `plants` out of bank 7 first, or takes the `s` room-icon set (864 B) as [§4.2](#42-the-eight-banks) names. |
 | Routing rebuild latency of ≈ 5 s after a network change | Low | Stale routes are inefficient, never invalid ([§6.4](#64-routing)). If it grates: cache paths for the 16 busiest pairs and rebuild those first. |
-| **13.5 s** world generation feels long even on a cassette-era machine, and it is 3.9× the original estimate | Medium | New game only — loads read the plane off disc ([§5.10](#510-player-modification)). Real progress bar and music are still the plan; the sound chip is driven now ([§9.5](#95-sound)) but the generator runs with interrupts off and nothing calls `snd_tick`, so a tune there needs the generator to tick it itself. The identified 2× win ([§5.9](#59-cost--measured)) is held in reserve. |
+| **13.5 s** world generation feels long even on a cassette-era machine, and it is 3.9× the original estimate | Medium | New game only — loads read the plane off disc ([§5.10](#510-player-modification)). **The progress bar is built** ([§13.2](#132-the-loading-screen)): title, a dot per file, and a bar that moves once per two world rows. Music is not; the generator runs with interrupts off and nothing calls `snd_tick`, so a tune there has to be ticked by `wg_prog` itself. The identified 2× win ([§5.9](#59-cost--measured)) is held in reserve. |
 | A seed produces a technically valid but miserable map | Low | Feature anchors guarantee the necessities; the headless seed sweep ([§13](#13-build-and-test)) finds the rest. |
 | **Airlock: dome or structure?** The asset set now has both an `icon_airlock` room type and a standalone `airlock` structure sprite; the node graph in [§6.2](#62-the-node-graph) only models the dome | Medium | Decide before the node graph is written — it changes what an *outdoor edge* connects to. Recommendation and the comparison are in [§6.2](#62-the-node-graph). Cheap either way: the unused half is 400–512 bytes. |
 | A full-colony routing rebuild is ~27 s of stale routes at the current budget | Medium | Only at 128 nodes; 48 nodes is 3.8 s ([§6.4](#64-routing)). Two levers, both untaken: raise the per-frame budget while the camera is still, or tighten `rt_node` — its per-node setup re-reads the same three bytes and is worth about 2×. |
