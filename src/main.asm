@@ -30,6 +30,14 @@ start:
         call    hw_mode0
         ld      hl,G_palette_fw
         call    pal_set
+        ; Ο πλανήτης ζει στα τέσσερα bytes που άφησε η γεννήτρια στην τράπεζα 6
+        ; (§5.7): τέσσερα pens εδάφους, τίποτε άλλο.
+        ld      bc,GA_PORT + PAGE_B6
+        out     (c),c
+        ld      a,(G_worldinfo + 2)
+        ld      bc,GA_PORT + PAGE_B1
+        out     (c),c
+        call    pal_planet
         xor     a
         call    pal_border
         ; Ο renderer παρουσιάζεται στην προσομοίωση: από εδώ και πέρα κάθε

@@ -25,19 +25,18 @@ wr_seed_ok:
         ; αντίγραψε τα κατώφλια του πλανήτη σε σταθερές θέσεις
         ld      a,(gen_planet)
         and     3
+        ; ΕΞΙ bytes ανά πλανήτη, όχι τέσσερα. Η προηγούμενη εκδοχή έβγαζε
+        ; planet*4 ενώ ο σχολιασμός της έλεγε *6, και κανείς δεν το έβλεπε:
+        ; ο πλανήτης ήταν πάντα 0, όπου τα δύο συμπίπτουν. Με πλανήτη 1 τα
+        ; κατώφλια διαβάζονταν δύο bytes μέσα στη σειρά — γονιμότητα ως βάθος
+        ; νερού.
         ld      l,a
         ld      h,0
-        add     hl,hl
-        add     hl,hl
+        add     hl,hl               ; p*2
         ld      d,h
         ld      e,l
-        add     hl,hl               ; *4... θέλουμε *6
-        ld      a,l
-        sub     e
-        ld      l,a
-        ld      a,h
-        sbc     a,d
-        ld      h,a                 ; HL = planet*6
+        add     hl,hl               ; p*4
+        add     hl,de               ; HL = planet*6
         ld      de,gen_planets
         add     hl,de
         ld      de,thr_W2

@@ -10,7 +10,7 @@
                που η ταυτότητα μπορεί να μην την πιάσει, αν τύχει.
   ΠΑΙΞΙΜΟΤΗΤΑ  κάθε seed έχει νερό ΚΑΙ φλέβα μέσα σε 30 tiles.
 """
-import os, subprocess, sys
+import collections, os, subprocess, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -110,6 +110,23 @@ def main():
             print(f"OK seed {seed:04X}: 16384 bytes ταυτόσημα με την αναφορά")
             save_png(got, seed)
 
+    # --- και οι τέσσερις πλανήτες (§5.7) ---
+    # Ο πλανήτης είναι επτά κατώφλια, τίποτε άλλο· ο Z80 τα αντιγράφει από τον
+    # gen_planets και η αναφορά από το PLANETS. Ως το βήμα 17 δοκιμαζόταν μόνο
+    # ο 0, και η γεννήτρια δεν είχε κληθεί ποτέ με άλλον — ούτε από το παιχνίδι,
+    # που έγραφε πάντα μηδέν.
+    for planet in (1, 2, 3):
+        got, _ = run_z80(sym, 0xACE1, planet)
+        want = bytes(G.generate(0xACE1, planet).buf)
+        if got != want:
+            diff_report(got, want, 0xACE1)
+            fails += 1
+        else:
+            cls = collections.Counter(b & 7 for b in got)
+            print(f"OK πλανήτης {planet}: 16384 bytes ταυτόσημα, "
+                  f"νερό {cls[4] + cls[5]:>5}  βουνό {cls[3]:>5}  "
+                  f"γόνιμο {sum(1 for b in got if b & 7 == 0 and b & 8):>5}")
+
     if fails:
         return 1
 
@@ -123,12 +140,14 @@ def main():
 
     # --- παιξιμότητα, στην αναφορά (ίδια με τον Z80, μόλις το αποδείξαμε) ---
     N = SWEEP
-    bad = [s for s in range(0x4000, 0x4000 + N)
-           if not all(G.playable(G.generate(s)))]
-    print(f"OK παιξιμότητα: {N - len(bad)}/{N} seeds με νερό και φλέβα σε 30 tiles")
-    if bad:
-        print(f"   απέτυχαν: {[f'{s:04X}' for s in bad[:5]]}")
-        return 1
+    for planet in range(4):
+        bad = [s for s in range(0x4000, 0x4000 + N)
+               if not all(G.playable(G.generate(s, planet)))]
+        print(f"OK παιξιμότητα πλανήτη {planet}: {N - len(bad)}/{N} seeds με νερό "
+              f"και φλέβα σε 30 tiles")
+        if bad:
+            print(f"   απέτυχαν: {[f'{s:04X}' for s in bad[:5]]}")
+            return 1
 
     sec = frames * 19968 / 1e6
     print(f"\nκόστος: {frames} frames = {sec:.2f} s για έναν κόσμο")

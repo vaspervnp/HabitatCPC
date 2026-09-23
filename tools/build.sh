@@ -45,3 +45,4 @@ python3 tests/test_game.py
 python3 tests/test_disc.py
 python3 tests/test_fdc.py
 python3 tests/test_save.py
+python3 tests/test_palette.py

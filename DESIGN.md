@@ -656,6 +656,25 @@ One tile set, four looks. The same water tiles read as ice under the ice palette
 the same ground reads as regolith under the moon palette. This is the single cheapest
 content multiplier in the design — four planets for about 60 bytes of threshold tables.
 
+**Built, and it cost 63 bytes of code.** The planet is `(seed_hi XOR seed_lo) AND 3`,
+chosen by the generator, so two bytes of seed still name a whole world — planet
+included. It travels in the four `worldinfo` bytes the generator leaves in bank 6,
+goes into the save header, and reaches the screen as four pen writes
+([§8.6](#86-palette)). Measured on seed `ACE1`, out of 16,384 tiles:
+
+| Planet | Water | Mountain | Fertile ground |
+|---|---|---|---|
+| 0 desert | 4,070 | 3,914 | 3,394 |
+| 1 ice | 6,743 | 4,167 | 2,453 |
+| 2 storm | 2,840 | 5,297 | 1,961 |
+| 3 barren | 1,134 | 4,729 | **0** |
+
+All four are playable — water and ore within 30 tiles of the centre for 64 seeds
+each (`tests/test_worldgen.py`). **The Z80 had never run with a planet other than
+zero**, and when it finally did, it read the thresholds from `planet*4` instead of
+`planet*6`: the comment said `*6`, the code said `*4`, and at planet 0 the two agree.
+The reference comparison caught it on the first run.
+
 ### 5.8 Cleanup and the landing zone
 
 A single 4-neighbour majority pass over the plane removes isolated specks (a lone
@@ -1783,9 +1802,22 @@ Two consequences, both good:
 - The icons lose four colours. They are 12–20 px symbols; five pens is enough.
 - **The four terrain pens are the planet palette.** Swapping those four values turns
   the desert into ice or regolith without touching a byte of art ([§5.7](#57-classification-and-planet-types)).
+  `pal_planet` does exactly that and nothing else.
 - Water animates by **cycling one pen** on a timer — no second frame, no blit, no cost.
 
 This is an asset-side change and is [ASSET-7](#12-asset-gaps).
+
+**Three of the twenty-seven firmware-to-hardware colour entries were wrong from
+milestone 1 to milestone 17, and two of them were in use.** Pen 6 is the colonists
+and asks for firmware 24, bright yellow; the table sent the gate array `&50` and
+painted them dark blue on a dark background. Pen 5 asks for 26, bright white, and got
+a grey. Nothing caught it because **every other test compares pen numbers**: the
+Python reference renderer and the Z80 blitter both work in pen indices, and the golden
+PNGs are coloured by the same `palette.py` table that the hardware never sees.
+`tests/test_palette.py` closes that gap — it fills the screen with a pattern in which
+pen *n* covers *n+1* bytes, reads the emulator's framebuffer, and checks that each
+colour's **share of the screen** is the one its pen asked for. It reproduces all three
+errors when the old table is restored.
 
 ---
 
@@ -2228,6 +2260,7 @@ tests in this document runnable rather than aspirational:
 | The disc | `RUN"HABITAT` from a cold BASIC prompt: the game arrives, the start state is there, the HUD is drawn, and the world is **generated** rather than loaded (`test_disc.py`) |
 | Disc driver | the μPD765 without AMSDOS: reads the disc's own **catalogue** and compares it with the host's `.dsk` byte for byte, then writes three sectors, reads them back, and checks the neighbouring sector is untouched (`test_fdc.py`) |
 | Save and load | freeze the wheel, photograph the state, `S`, run 12,000 frames until it has moved, `L`, and assert the economy, the world plane and the **picture** are back — plus a load from an empty slot that must be refused (`test_save.py`) |
+| Palette | the only test that looks at **colour** rather than pen number: a share-per-pen pattern on screen, weighed against `palette_fw` and against each planet's four pens (`test_palette.py`) |
 | Playability of every seed | headless run of N seeds, assert water and ore within 30 tiles of centre |
 
 That last one is the kind of test that is impossible on real hardware and trivial here.

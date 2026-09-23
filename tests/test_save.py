@@ -101,6 +101,15 @@ def main():
                      for y in range(160) for x in range(80))
         return econ, plane, play
 
+    def image(tag):
+        """Η οθόνη ΜΕ ΤΑ ΧΡΩΜΑΤΑ ΤΗΣ. Τα bytes της οθόνης είναι αριθμοί pen:
+        αν το φόρτωμα ξεχνούσε την παλέτα του πλανήτη (§5.7), θα ήταν ίδια ως
+        το τελευταίο byte και άλλη στο μάτι."""
+        from PIL import Image
+        path = os.path.join(ROOT, "build", f"save_{tag}.png")
+        m.screenshot(path)
+        return list(Image.open(path).convert("RGB").getdata())
+
     def tap(key, frames=400):
         m.key_down(key)
         m.run_frames(4)
@@ -124,6 +133,7 @@ def main():
     freeze(True)
     m.run_frames(4)
     a_econ, a_plane, a_play = snap()
+    a_img = image("a")
     nsave = tap_timed("S")
     check(m.peek(sym["SV_SLOT"]) == 0 and m.peek(sym["FD_TRK"]) >= 24,
           f"το σώσιμο έτρεξε (slot {m.peek(sym['SV_SLOT'])}, "
@@ -201,6 +211,11 @@ def main():
     fdiff = sum(1 for x, y in zip(f_play, a_play) if x != y)
     check(fdiff <= 8,
           f"και η εικόνα: {fdiff} bytes διαφορά από το Α")
+    f_img = image("f")
+    pdiff = sum(1 for x, y in zip(f_img, a_img) if x != y)
+    check(pdiff == 0,
+          f"και ΤΑ ΧΡΩΜΑΤΑ: {pdiff} pixel διαφορά — ο πλανήτης ήρθε με το "
+          f"σωσμένο παιχνίδι")
 
     m.screenshot(os.path.join(ROOT, "build", "save.png"), aspect=True)
     if FAIL:
