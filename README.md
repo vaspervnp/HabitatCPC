@@ -13,7 +13,8 @@ in a Z80 and 128 KB.
 > colony and hands it over — with a title screen, a dot per file and a progress bar
 > through the thirteen seconds of world generation; the player builds, the colonists
 > work, `S` / `L` save and load the game, and it makes noises at you.
-> Three save slots, all reachable. Left: music, tuning — and 37 free bytes in bank 0.
+> Three save slots, all reachable. Left: music, tuning — and 488 free bytes in bank 0,
+> because every string the game prints now lives in bank 7.
 > Build it with `tools/build.sh` — that also runs every test — and read
 > [`DESIGN.md`](DESIGN.md) first.
 

@@ -227,5 +227,11 @@ zz_page2_end:
         incbin  "../build/world_new.bin"
         org     #8000
         incbin  "../build/bank6.bin"
+        ; Η τράπεζα 7 έρχεται σε ΔΥΟ κομμάτια, με τα κείμενα στη μέση: ο rasm
+        ; δεν δέχεται org μέσα σε περιοχή που έχει ήδη γεμίσει, και το
+        ; δεσμευμένο κενό «text» του pack.py (§4.2) είναι ακριβώς εκεί.
         org     #C000
-        incbin  "../build/bank7.bin"
+        incbin  "../build/bank7.bin", 0, G_text - #4000
+        include "uitext.asm"
+        org     #C000 + G_text + TEXT_MAX - #4000
+        incbin  "../build/bank7.bin", G_text + TEXT_MAX - #4000

@@ -51,6 +51,7 @@ FILES = [
     ("BANK1.BIN",   "bank1.bin", 0x7000, 0x0000),
     ("BANK6.BIN",   "bank6.bin", 0x4000, 0x0000),
     ("BANK7.BIN",   "bank7.bin", 0x4000, 0x0000),
+    ("TEXT.BIN",    "text.bin",  0,      0x0000),   # από το layout: G_text
 ]
 
 
@@ -94,6 +95,14 @@ PAGE2_END = 0xC000
 # BASIC (#8F00-#8FFF, από το MEMORY &8FFF του stub) ούτε στον φορτωτή (#9000).
 # Το AMSDOS είναι ακόμη ζωντανό όταν τρέχει, και το BASIC περιμένει να γυρίσει.
 GEN_END = 0x8F00
+
+
+def g_text():
+    """Πού κάθεται το δεσμευμένο κενό κειμένων μέσα στην τράπεζα 7."""
+    for line in open(os.path.join(BUILD, "layout.asm"), encoding="utf-8"):
+        if line.startswith("G_text"):
+            return int(line.split("#")[1].split()[0], 16)
+    sys.exit("δεν βρέθηκε το G_text στο layout.asm")
 
 
 def symbols():
@@ -160,6 +169,8 @@ def build():
     for i, f in enumerate(FILES):
         if f[0] == "GAME2.BIN":
             FILES[i] = (f[0], f[1], lo, f[3])
+        elif f[0] == "TEXT.BIN":
+            FILES[i] = (f[0], f[1], g_text(), f[3])
     print(f"τράπεζα 0: {slack} bytes ως το επίμετρο του φορτωτή· "
           f"τράπεζα 2: κώδικας στο #{lo:04X}, {slack2} bytes ως το #C000· "
           f"γεννήτρια ως το #{gen_top:04X}, {GEN_END - gen_top} bytes ως τη "

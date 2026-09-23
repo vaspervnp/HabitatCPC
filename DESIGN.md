@@ -394,12 +394,63 @@ reading the symbol table back):
 | | | `wheel.asm` | 212 |
 | | | `hw.asm` + `screen.asm` | 267 |
 
-**37 bytes are left.** The cheapest move is not to optimise any of them: it is to send
+**Milestone 22 ended with 37 bytes left**, and the cheapest move looked like sending
 `fdc.asm` + `save.asm` (634) and `newgame.asm` (667) to bank 2, all three being code
-that runs once or on a keypress and never inside the wheel. Bank 2 has 69 bytes of
-code space, so that move has to be paid for first — from `GH_LOG` (1,600 bytes of
-ghost undo log) or `DOME_FIG` (512) — and neither has been measured against what it
-actually needs. That measurement is the next memory job, not a guess.
+that runs once or on a keypress and never inside the wheel — paid for out of `GH_LOG`.
+
+#### The ghost log is not slack, and that was measured before anything moved
+
+Milestone 22 ended with 37 free bytes in bank 0 and a plan: move `fdc.asm`,
+`save.asm` and `newgame.asm` (1,301 bytes of cold code) into bank 2, paying for the
+room out of `GH_LOG` — 1,600 bytes of ghost undo log that *looked* generous.
+
+**It is not generous. A `DOME L` ghost logs 1,532 of those 1,600 bytes.** Measured by
+reading `gh_ptr` while each ghost is on screen:
+
+| footprint | logged |
+|---|---|
+| cursor alone (`LOOK`) | 124 |
+| 2×2 | 348 |
+| 3×3 | 592 |
+| 4×4 | 776–876 |
+| 6×6 (`DOME M`) | 1,204 |
+| **8×8 (`DOME L`)** | **1,532** |
+
+68 bytes of headroom. `gh_run` refuses to log a strip it cannot undo — it silently
+*skips drawing* it — so a smaller log would not corrupt anything, it would quietly
+drop pieces of the biggest ghost. The plan was wrong and the measurement cost an hour
+instead of a milestone.
+
+A first attempt at the same measurement said the log runs to 1,600 with nothing but
+the cursor on screen. That was the *measurement* breaking the thing it measured:
+filling the buffer with a marker byte destroys the records `gh_undo` is about to
+replay, and `gh_undo` then walks garbage headers and scribbles over memory until it
+happens to land on `gh_ptr`. Reading `gh_ptr` while the ghost is up costs nothing and
+tells the truth.
+
+**Milestone 23 spent the `text` block.** All 35 strings of `hud.asm` and `ui.asm` —
+496 bytes — moved to `src/uitext.asm`, which assembles into bank 7 at `G_text`, and
+bank 0 went from **37 to 488 free**. The mechanism is 14 bytes: `hud_text7` pages
+bank 7 in, calls `hud_text`, pages bank 1 back. `ui_msg` does the same around both
+its print *and* its length walk, and `sl_digit` around its three patches.
+
+Three things that are true of that bank and of nothing else:
+
+- **Only read-only data can go there.** Bank 7 lives in the `&4000–&7FFF` window, so
+  code placed there would erase itself the moment it paged bank 4 or 6 in.
+- **The address has two forms.** Inside rasm's `bankset 1` the bank sits at `&C000`;
+  paged in the game it sits at `&4000`. `uitext.asm` writes the bytes at the first and
+  defines every label as the second. (`bank 7` would give the right labels directly,
+  but rasm refuses it once `bankset 1` has claimed the bank.)
+- **The disc needs a ninth file.** `BANK7.BIN` is built by `tools/pack.py`, which
+  knows nothing about the game's words, so the text is saved separately as `TEXT.BIN`
+  and the loader drops it over the reserved hole — *after* `BANK7.BIN`, which would
+  otherwise overwrite it.
+
+What is left of the reserves: 528 bytes of the `text` block, the 2,048-byte `audio`
+block (the sound of [§9.5](#95-sound) fitted in bank 2 instead), and bank 7's own 440.
+Bank 2's code area is still 69 bytes and there is still no way to grow it.
+
 
 **Every bank now fits, and the numbers above are produced by `tools/pack.py`,
 which lays the assets out for real and refuses to build if anything overflows.**
@@ -2406,7 +2457,8 @@ game lives in seven places at once — see [§13.1](#131-three-ways-a-loader-doe
 | `HABITAT.BAS` | — | 3 lines | `MEMORY &8FFF` · `LOAD"LOADER.BIN",&9000` · `CALL &9000` |
 | `LOADER.BIN` | `&9000` | 342 | the loader |
 | `BANK6.BIN` | bank 6 | 16,384 | quadrants, figures, entity tables |
-| `BANK7.BIN` | bank 7 | 16,384 | structures, plants, text, audio |
+| `BANK7.BIN` | bank 7 | 16,384 | structures, plants, and the reserved holes |
+| `TEXT.BIN` | bank 7, over the hole | 487 | every string the game prints ([§4.2](#42-the-eight-banks)) |
 | `BANK1.BIN` | `&7000` | 4,096 | room icons above the distance matrix |
 | `PAGE2.BIN` | bank 5, then `&8000` | 11,264 | bank 2's graphics and tables |
 | `GAME2.BIN` | bank 5, then `PAGE2_CODE` | 2,819 | bank 2's code — the address comes from the symbol table, not from a constant in the build script, because it moved once and the script did not |
@@ -2604,7 +2656,7 @@ tuning — and music, which is the one piece of audio that is designed for
 | **The flow-balance wheel slot re-scans 64 structures every revolution** | Medium | 7,887 µs for numbers that change slowly. The fix is the one production already took: accumulate during a pass that walks the structures anyway ([§7.2](#72-the-wheel)). |
 | ~~Nothing the player does exists: no build mode, no input, no HUD, nothing drawn since milestone 5~~ | ~~High~~ | **Resolved.** The colony is drawn, the camera scrolls, the dirty list keeps it honest, the HUD reports — and the player now moves a cursor, opens a menu, places a dome and routes a corridor between two of them ([§9.1](#91-controls), [§9.3](#93-build-flow), [§9.4](#94-corridor-routing), [§6.9](#69-construction)). |
 | ~~The two halves have never been assembled into one binary~~ | ~~Medium~~ | **Assembled, and it did not fit: 20,571 bytes wanted 16,128.** Resolved by moving the generator out, cutting `MAX_NODES` to 96 and putting code in bank 2 ([§4.2](#42-the-eight-banks)). It also turned up duplicate constants in three files and, worse, [§7.4](#74-one-convention-per-half-and-they-disagreed)'s paging disagreement. |
-| **Memory is the binding constraint from here on** | High | **37 bytes free in bank 0 and 69 in bank 2's code area** — the slot chooser of [§11](#11-save-and-load) cost 281 of the 339 that milestone 21 left, measured by `tools/mkdsk.py` at every build — both ceilings are now checks that stop the build rather than comments. Save/load, four planets and sound have been spent out of the figures below. The reserves left, in order: bank 7's `text` (1,024) and `audio` (2,048) blocks, the 1,600-byte ghost log `GH_LOG` and the 512-byte `DOME_FIG` cache in bank 2, size-optimising `route.asm`/`ui.asm`/`object.asm` (1,000–1,500 by estimate), and the cuts [§4.2](#42-the-eight-banks) already names. Every new feature now costs a decision, and the next one that needs bank 2 has to take it from something. |
+| **Memory is the binding constraint from here on** | High | **488 bytes free in bank 0 and 69 in bank 2's code area** — milestone 23 moved every string into bank 7's reserved `text` block ([§4.2](#42-the-eight-banks)), which is the last easy 450 bytes there will be, measured by `tools/mkdsk.py` at every build — both ceilings are now checks that stop the build rather than comments. Save/load, four planets and sound have been spent out of the figures below. The reserves left, in order: bank 7's `text` (1,024) and `audio` (2,048) blocks, the 1,600-byte ghost log `GH_LOG` and the 512-byte `DOME_FIG` cache in bank 2, size-optimising `route.asm`/`ui.asm`/`object.asm` (1,000–1,500 by estimate), and the cuts [§4.2](#42-the-eight-banks) already names. Every new feature now costs a decision, and the next one that needs bank 2 has to take it from something. |
 | ~~Nothing finishes what the player starts~~ | ~~High~~ | **Built.** A Build job is picked up, the agent routes to the site, works it 32 points a visit, and at 255 the building turns `DS_ACTIVE` and is drawn ([§6.9](#69-construction)). `tests/test_game.py` walks the whole chain: place a solar panel with 30 Metal, and about six seconds later the HUD says `ALL SYSTEMS OK` with no key pressed in between. |
 | **A completed building stalls the game for 0.8 s** | Medium | The full redraw of [§6.9](#69-construction) step 4, in place of the eight-chunk reveal that is specified and unwritten. Rare — once per building — but it is a visible freeze, and it is the first thing to fix if building ever becomes frequent. |
 | ~~The simulation still pushes nothing into the dirty list~~ | ~~High~~ | **Wired for ring slots**, which is what moves: `ent_claim` and `ent_release` push a `DK_SLOT`, and the figure cache is rebuilt once per burst rather than once per slot ([§8.5](#85-the-dirty-list)). Machines breaking, plants growing and room changes still push nothing. |

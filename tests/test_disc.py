@@ -115,13 +115,17 @@ def main():
     for _ in range(120):          # η γεννήτρια μόνη της θέλει 13,5 s
         m.run_frames(30)
         frames += 30
+        started = w16(g + 2) == 40 and m.peek(g + 58) == 4
         if seen_title is None and frames >= 300:
             ram = scr()
             # ο φορτωτής μετράει σειρές από το 1 (firmware), η μνήμη από το 0
             seen_title = (inked(ram, 4, 3), inked(ram, 0, 2))
-        if 300 <= frames <= 1400:
+        # ΜΟΝΟ ΟΣΟ ΦΟΡΤΩΝΕΙ: μόλις ξεκινήσει το παιχνίδι, τα bytes της μπάρας
+        # είναι εικόνα του κάδρου. Το όριο ήταν σταθερός αριθμός frames και
+        # έσπασε μόλις μπήκε ένα ένατο αρχείο στον δίσκο (§4.2).
+        if frames >= 300 and not started:
             bars.append(bar_bytes(scr()))
-        if w16(g + 2) == 40 and m.peek(g + 58) == 4:
+        if started:
             running = True
             break
     check(running, f"το RUN\"HABITAT έφτασε στο game_new "

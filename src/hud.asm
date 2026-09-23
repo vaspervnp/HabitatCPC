@@ -227,7 +227,23 @@ hbl_col:
         ret
 
 ; ---------------------------------------------------------------------------
-; hud_text — HL = κείμενο, τερματισμένο με 0.
+; hud_text7 — HL = κείμενο στην ΤΡΑΠΕΖΑ 7 (§4.2, src/uitext.asm).
+;
+; ΟΛΑ τα κείμενα του παιχνιδιού ζουν εκεί από το βήμα 23, γιατί η τράπεζα 0
+; τελείωσε. Σελιδοποιεί την 7, τυπώνει, και ξαναβάζει την 1 — που είναι αυτό
+; που βλέπει ο υπόλοιπος κώδικας του βρόχου. Η μόνη συμβολοσειρά που ΔΕΝ περνά
+; από εδώ είναι το όνομα του καταλόγου (bd_name), που ζει στην τράπεζα 2.
+; ---------------------------------------------------------------------------
+hud_text7:
+        ld      bc,GA_PORT + PAGE_B7
+        out     (c),c
+        call    hud_text
+        ld      bc,GA_PORT + PAGE_B1
+        out     (c),c
+        ret
+
+; ---------------------------------------------------------------------------
+; hud_text — HL = κείμενο, τερματισμένο με 0, σε μνήμη που φαίνεται ήδη.
 ; ---------------------------------------------------------------------------
 hud_text:
         ld      a,(hl)
@@ -394,25 +410,25 @@ hud_draw:
         xor     a
         call    hud_go
         ld      hl,txt_o2
-        call    hud_text
+        call    hud_text7
         ld      hl,(EC_O2PROD)
         ld      de,(EC_O2USE)
         call    hud_bar_safe
         call    hud_space
         ld      hl,txt_pwr
-        call    hud_text
+        call    hud_text7
         ld      hl,(EC_PSTORE)
         ld      de,(EC_PCAP)
         call    hud_bar_safe
         call    hud_space
         ld      hl,txt_h2o
-        call    hud_text
+        call    hud_text7
         ld      hl,(EC_STOCK + S_WATER*2)
         ld      de,EC_CAP
         call    hud_bar
         call    hud_space
         ld      hl,txt_fod
-        call    hud_text
+        call    hud_text7
         ld      hl,(EC_STOCK + S_FOOD*2)
         ld      de,EC_CAP
         call    hud_bar
@@ -465,7 +481,7 @@ hd_stock:
         ld      a,2
         call    hud_go
         ld      hl,txt_pop
-        call    hud_text
+        call    hud_text7
         ld      a,(EC_ALIVE)
         ld      l,a
         ld      h,0
@@ -479,7 +495,7 @@ hd_stock:
         ld      b,2
         call    hud_num
         ld      hl,txt_sol
-        call    hud_text
+        call    hud_text7
         ld      a,(EC_SOL)
         ld      l,a
         ld      h,0
@@ -492,7 +508,7 @@ hd_stock:
         jr      z,hd_night
         ld      hl,txt_day
 hd_night:
-        call    hud_text
+        call    hud_text7
         call    hud_space
         call    hud_alert
 
@@ -540,22 +556,9 @@ hud_alert:
         jr      nz,hd_say
         ld      hl,txt_ok
 hd_say:
-        jp      hud_text
+        jp      hud_text7
 
 ; --- κείμενα ---------------------------------------------------------------
-txt_o2:     db "O2 ",0
-txt_pwr:    db "PWR",0
-txt_h2o:    db "H2O",0
-txt_fod:    db "FOD",0
-txt_pop:    db "POP ",0
-txt_sol:    db " SOL",0
-txt_day:    db "DAY",0
-txt_night:  db "NGT",0
-txt_ok:     db "ALL SYSTEMS OK     ",0
-txt_nopwr:  db "NO POWER           ",0
-txt_noo2:   db "NO OXYGEN          ",0
-txt_storm:  db "SANDSTORM          ",0
-txt_lost:   db "COLONY LOST        ",0
 
 ; δύο γράμματα και ο δείκτης αποθέματος, ανά στήλη της σειράς 1
 stock_row:

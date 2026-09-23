@@ -257,4 +257,7 @@ done_flag:  db 0
         org     #8000                   ; τράπεζα 6 — τεταρτημόρια ΚΑΙ πίνακες
         incbin  "../build/bank6_col.bin"
         org     #C000                   ; τράπεζα 7
-        incbin  "../build/bank7.bin"
+        incbin  "../build/bank7.bin", 0, G_text - #4000
+        include "../src/uitext.asm"
+        org     #C000 + G_text + TEXT_MAX - #4000
+        incbin  "../build/bank7.bin", G_text + TEXT_MAX - #4000

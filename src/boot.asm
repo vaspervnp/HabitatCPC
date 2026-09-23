@@ -76,6 +76,14 @@ boot:
         ld      de,SCRATCH
         ld      c,PAGE_B7
         call    ld_bank
+        ; Τα κείμενα (§4.2) πάνε ΠΑΝΩ στο δεσμευμένο κενό της τράπεζας 7, άρα
+        ; ΜΕΤΑ από αυτήν. Ξεχωριστό αρχείο επειδή το pack.py φτιάχνει την
+        ; BANK7.BIN χωρίς να ξέρει τι λέει το παιχνίδι.
+        ld      hl,n_text
+        ld      b,n_text_e - n_text
+        ld      de,G_text
+        ld      c,PAGE_B7
+        call    ld_bank
         ; Η «τράπεζα 1» είναι η βασική RAM στο παράθυρο, όχι επέκταση: τα
         ; εικονίδια κάθονται πάνω από τον πίνακα DIST, χωρίς σελιδοποίηση.
         ld      a,9
@@ -266,6 +274,8 @@ n_bank6:    db "BANK6.BIN"
 n_bank6_e:
 n_bank7:    db "BANK7.BIN"
 n_bank7_e:
+n_text:     db "TEXT.BIN"
+n_text_e:
 n_page2:    db "PAGE2.BIN"
 n_page2_e:
 n_game2:    db "GAME2.BIN"

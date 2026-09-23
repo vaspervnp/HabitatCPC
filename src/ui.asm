@@ -271,11 +271,15 @@ ui_askslot:
 ; αλλάζει και ο αριθμός εδώ — γι' αυτό το test_save διαβάζει το ψηφίο από την
 ; ΟΘΟΝΗ και όχι από τη μνήμη.
 sl_digit:
+        ld      bc,GA_PORT + PAGE_B7    ; τα κείμενα ζουν στην τράπεζα 7
+        out     (c),c
         ld      a,(sl_pick)
         add     a,'1'
         ld      (t_saved + 14),a
         ld      (t_loaded + 17),a
         ld      (t_empty + 16),a
+        ld      bc,GA_PORT + PAGE_B1
+        out     (c),c
         ret
 
 sl_mode:    db 0
@@ -283,6 +287,10 @@ sl_pick:    db 0
 
 ; ui_msg — μία γραμμή στη σειρά 3 του HUD, και το υπόλοιπο σβηστό.
 ui_msg:
+        ; Η τράπεζα 7 ανοίγει ΜΙΑ φορά και για τα δύο: και το τύπωμα και το
+        ; μέτρημα του μήκους διαβάζουν από εκεί (§4.2).
+        ld      bc,GA_PORT + PAGE_B7
+        out     (c),c
         push    hl
         ld      a,3
         call    hud_go
@@ -299,19 +307,14 @@ um_len:
         dec     b
         jr      um_len
 um_blank:
+        push    bc
+        ld      bc,GA_PORT + PAGE_B1
+        out     (c),c
+        pop     bc
         ld      a,MSG_TICKS
         ld      (ui_hold),a
         jp      hud_blank
 
-t_saving:   db "SAVING TO DISC...   ",0
-t_saved:    db "SAVED TO SLOT 1     ",0
-t_loading:  db "LOADING FROM DISC...",0
-t_loaded:   db "LOADED FROM SLOT 1  ",0
-t_dskerr:   db "DISC ERROR          ",0
-t_empty:    db "NOTHING IN SLOT 1   ",0
-t_slsave:   db "SAVE TO SLOT  ",0
-t_slload:   db "LOAD FROM SLOT",0
-t_slkeys:   db "LEFT RIGHT FIRE ESC ",0
         endif
 
 ; --- MENU ------------------------------------------------------------------
@@ -960,7 +963,7 @@ uipc_go:
         or      a
         jr      nz,uip_notlook
         ld      hl,t_look
-        call    hud_text
+        call    hud_text7
         ld      b,40-19
         call    hud_blank
         jp      uip_row4
@@ -974,7 +977,7 @@ uip_notlook:
         jr      z,uip_slt
         ld      hl,t_slload
 uip_slt:
-        call    hud_text
+        call    hud_text7
         ld      b,1
         call    hud_blank
         ld      a,(sl_pick)
@@ -1013,7 +1016,7 @@ uipi_go:
         ld      b,1
         call    hud_blank
         ld      hl,(bd_name)
-        call    hud_text
+        call    hud_text   ; τράπεζα 2, όχι 7
         ld      b,1
         call    hud_blank
         ld      a,'>'
@@ -1021,14 +1024,14 @@ uipi_go:
         ld      b,2
         call    hud_blank
         ld      hl,t_fe
-        call    hud_text
+        call    hud_text7
         ld      hl,(uip_fe)
         ld      b,3
         call    hud_num
         ld      b,2
         call    hud_blank
         ld      hl,t_bi
-        call    hud_text
+        call    hud_text7
         ld      hl,(uip_bi)
         ld      b,3
         call    hud_num
@@ -1048,7 +1051,7 @@ uip_row4:
         jr      z,uip_say
         endif
         ld      hl,t_keys
-        call    hud_text
+        call    hud_text7
         ld      b,40-20                 ; το t_keys είναι 20 χαρακτήρες, όχι 24:
         call    hud_blank               ; οι τέσσερις τελευταίες στήλες έμεναν
         jr      uip_spd
@@ -1084,7 +1087,7 @@ uip_ln:
         jr      nz,uip_say
         ld      hl,t_ok
 uip_say:
-        call    hud_text
+        call    hud_text7
         ld      b,40-20
         call    hud_blank
         ; fall through
@@ -1108,19 +1111,10 @@ uip_spd:
         inc     hl
         ld      h,(hl)
         ld      l,a
-        jp      hud_text
+        jp      hud_text7
 
 t_spd_ptr:  dw t_pause, t_x1, t_x2, t_x2, t_x4
-t_pause:    db "PAUSE",0
-t_x1:       db "  x1 ",0
-t_x2:       db "  x2 ",0
-t_x4:       db "  x4 ",0
 
-t_look:     db "LOOK  SPACE=BUILD  ",0
-t_keys:     db "FIRE=PLACE ESC=BACK ",0
-t_ok:       db "READY  FIRE TO BUILD",0
-t_block:    db "BLOCKED             ",0
-t_poor:     db "NOT ENOUGH MATERIAL ",0
 ; ui_sig — η υπογραφή των σειρών 3-4 στο uip_now.
 ui_sig:
         ld      hl,uip_now
@@ -1184,10 +1178,6 @@ ui_hudall:
         call    ui_dirty                ; ο πίνακας δεν ξέρει τι έγινε από κάτω
         jp      ui_panel
 
-t_ln1:      db "PICK THE FIRST DOME ",0
-t_ln2:      db "NO ROUTE FROM THERE ",0
-t_fe:       db "FE",0
-t_bi:       db "BI",0
 
 ui_state:   db 0
 ui_sel:     db 0
