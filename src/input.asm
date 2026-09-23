@@ -19,9 +19,7 @@
 ; και τα δύο πλήρη» είναι ένας πίνακας με δύο στήλες, όχι δεύτερος οδηγός.
 
 KEY_LINES   equ 10
-PPI_CTRL    equ #F700
-PPI_A       equ #F400
-PPI_C       equ #F600
+; PPI_A / PPI_C / PPI_CTRL: στο const.asm — τα μοιράζεται με το sound.asm.
 
 ; --- οι ενέργειες, ως bits του act_now / act_hit ---
 A_UP        equ 0

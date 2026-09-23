@@ -27,7 +27,6 @@
 
 CRTC_SEL    equ #BC00
 CRTC_VAL    equ #BD00
-PPI_B       equ #F500               ; bit 0 = VSync
 
 PLAY_PAGE   equ 3                   ; &C000
 HUD_PAGE    equ 2                   ; &8000

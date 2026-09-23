@@ -102,6 +102,8 @@ uist_look:
         ld      (ui_state),a
         ld      a,(ui_sel)
         call    bd_select
+        ld      a,SFX_MENU
+        call    snd_play
         jp      ui_show
 
 ; ---------------------------------------------------------------------------
@@ -234,6 +236,8 @@ uim_fire:
         ld      a,UI_LINK
 uim_go:
         ld      (ui_state),a
+        ld      a,SFX_MENU              ; «διάλεξες»: το FIRE στον κατάλογο δεν
+        call    snd_play                ; αλλάζει τίποτα ορατό εκτός φαντάσματος
         jp      ui_show
 uim_lr:
         ld      a,A_RIGHT
@@ -260,6 +264,8 @@ uim_set:
         call    ui_hide
         ld      a,(ui_sel)
         call    bd_select
+        ld      a,SFX_MENU
+        call    snd_play
         jp      ui_show
 
 ; --- PLACE -----------------------------------------------------------------
@@ -277,17 +283,26 @@ uip_fire:
         jr      z,uip_move
         call    ui_validate
         or      a
-        ret     nz                      ; άκυρη θέση — το FIRE δεν κάνει τίποτα
+        jr      nz,uip_deny             ; άκυρη θέση — το FIRE δεν κάνει τίποτα
         call    bd_afford
-        ret     nz
+        jr      nz,uip_deny             ; ούτε τα υλικά φτάνουν
         call    ui_hide
         call    bd_commit
         cp      255
         jr      z,uip_nospace
+        ld      a,SFX_BUILD
+        call    snd_play
         call    view_draw               ; το νέο αντικείμενο μπαίνει στη σκηνή
+        jr      uip_after
 uip_nospace:
+        ld      a,SFX_DENY
+        call    snd_play
+uip_after:
         call    ui_hudall
         jp      ui_show
+uip_deny:
+        ld      a,SFX_DENY
+        jp      snd_play
 uip_move:
         jp      ui_move
 
@@ -329,22 +344,31 @@ uil_fire:
 uil_second:
         call    ln_plan
         or      a
-        ret     nz                      ; άκυρη διαδρομή — το FIRE δεν κάνει τίποτα
+        jr      nz,uil_deny             ; άκυρη διαδρομή — το FIRE δεν κάνει τίποτα
         ld      a,(cr_n)
         or      a
-        ret     z
+        jr      z,uil_deny
         call    cr_afford
-        ret     nz
+        jr      nz,uil_deny
         call    ui_hide
         call    cr_commit
         or      a
-        jr      nz,uil_nospace
+        jr      nz,uil_full
         ld      a,255
         ld      (ln_a),a                ; μια διαδρομή τη φορά
+        ld      a,SFX_BUILD
+        call    snd_play
         call    view_draw
-uil_nospace:
+        jr      uil_after
+uil_full:
+        ld      a,SFX_DENY
+        call    snd_play
+uil_after:
         call    ui_hudall
         jp      ui_show
+uil_deny:
+        ld      a,SFX_DENY
+        jp      snd_play
 
 ; ---------------------------------------------------------------------------
 ; ui_dome — ποιος θόλος είναι κάτω από τον κέρσορα; A = id ή 255.
@@ -518,6 +542,8 @@ um_go:
         ld      (hl),a
         call    ui_follow
         call    ui_show
+        ld      a,SFX_MOVE
+        call    snd_play
         ld      a,1
         or      a
         ret

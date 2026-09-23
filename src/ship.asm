@@ -75,6 +75,8 @@ st_here:
 st_land:
         ld      a,SHIP_LANDED
         ld      (EC_SHSTATE),a
+        ld      a,SFX_SHIP
+        call    snd_ping
         ld      hl,SHIP_STAY
         ld      (EC_SHETA),hl
         ld      a,(EC_SHKIND)

@@ -134,6 +134,7 @@ b4:     jr      b4
         include "../src/needs.asm"
         include "../src/ship.asm"
         include "../src/wheel.asm"
+        include "../src/sound.asm"
 
 done_flag:   db 0
 tick_count:  dw 0

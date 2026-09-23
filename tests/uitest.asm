@@ -13,7 +13,6 @@
         include "../build/layout.asm"
 
 FLIPTAB     equ G_flip_mode0
-PPI_B       equ #F500
 
 start:
         di
@@ -232,6 +231,7 @@ goto_st:    db 0
         include "../src/route.asm"
         include "../src/ui.asm"
         include "../src/hw.asm"
+        include "../src/sound.asm"
 
         org     #8000
         incbin  "../build/page2.bin"

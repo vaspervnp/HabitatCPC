@@ -45,7 +45,7 @@ STUB = ('10 MEMORY &8FFF\r\n'
 FILES = [
     ("LOADER.BIN",  "boot.bin",  0x9000, 0x9000),
     ("GAME.BIN",    "game.bin",  0x0100, 0x0000),
-    ("GAME2.BIN",   "game2.bin", 0xB440, 0x0000),
+    ("GAME2.BIN",   "game2.bin", 0,      0x0000),   # από το σύμβολο
     ("GEN.BIN",     "gen.bin",   0x8000, 0x8000),
     ("PAGE2.BIN",   "page2.bin", 0x8000, 0x0000),
     ("BANK1.BIN",   "bank1.bin", 0x7000, 0x0000),
@@ -85,6 +85,29 @@ ENDGAME = 0x3E00
 # στο πρώτο σώσιμο, χωρίς κανένα μήνυμα.
 SAVE_T0 = 24
 
+# Ο κώδικας της τράπεζας 2 τελειώνει εδώ: πάνω από το #C000 δεν υπάρχει τράπεζα
+# 2, υπάρχει η ΟΘΟΝΗ. Ενα game2.bin που ξεπερνά το όριο θα αντιγραφόταν από τον
+# φορτωτή πάνω στην εικόνα και θα έτρεχε από εκεί — δηλαδή δεν θα έτρεχε.
+PAGE2_END = 0xC000
+
+
+def symbols():
+    sym = {}
+    for line in open(os.path.join(ROOT, "src", "rasmoutput.sym"),
+                     encoding="utf-8", errors="replace"):
+        p = line.split()
+        if len(p) >= 2 and p[1].startswith("#"):
+            sym[p[0].upper()] = int(p[1][1:], 16)
+    return sym
+
+
+def check_page2(sym):
+    lo, hi = sym["ZZ_PAGE2_CODE"], sym["ZZ_PAGE2_END"]
+    if hi > PAGE2_END:
+        sys.exit(f"ο κώδικας της τράπεζας 2 φτάνει στο #{hi:04X} και ξεπερνά "
+                 f"το #{PAGE2_END:04X} ({hi - PAGE2_END} bytes πάνω από το όριο)")
+    return lo, PAGE2_END - hi
+
 
 def check_fit():
     n = os.path.getsize(os.path.join(BUILD, "game.bin"))
@@ -118,7 +141,18 @@ def check_saves():
 def build():
     assemble()
     slack = check_fit()
-    print(f"τράπεζα 0: {slack} bytes ως το επίμετρο του φορτωτή")
+    sym = symbols()
+    lo, slack2 = check_page2(sym)
+    # Η διεύθυνση φόρτωσης του GAME2.BIN ΔΕΝ γράφεται με το χέρι: το PAGE2_CODE
+    # κουνήθηκε στο βήμα 19 (120 bytes για την κρυφή μνήμη του HUD) και ο
+    # πίνακας εδώ έμεινε πίσω. Τον φορτωτή δεν τον ένοιαξε — φορτώνει σε δικό
+    # του scratch και αντιγράφει στο σύμβολο — αλλά η κεφαλίδα AMSDOS έλεγε
+    # ψέματα σε όποιον φόρτωνε το αρχείο μόνο του.
+    for i, f in enumerate(FILES):
+        if f[0] == "GAME2.BIN":
+            FILES[i] = (f[0], f[1], lo, f[3])
+    print(f"τράπεζα 0: {slack} bytes ως το επίμετρο του φορτωτή· "
+          f"τράπεζα 2: κώδικας στο #{lo:04X}, {slack2} bytes ως το #C000")
     stage = os.path.join(BUILD, "dsk")
     shutil.rmtree(stage, ignore_errors=True)
     os.makedirs(stage)

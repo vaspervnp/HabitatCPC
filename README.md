@@ -10,8 +10,8 @@ Systems are modelled on *Planetbase* (Madruga Works, 2015), cut down until they 
 in a Z80 and 128 KB.
 
 > **Status: it runs.** `RUN"HABITAT` on a 6128 generates a world, builds the starting
-> colony and hands it over; the player builds, the colonists work, and `S` / `L` save
-> and load the game. Left: audio, four planets, a slot picker, tuning.
+> colony and hands it over; the player builds, the colonists work, `S` / `L` save
+> and load the game, and it makes noises at you. Left: music, a slot picker, tuning.
 > Build it with `tools/build.sh` — that also runs every test — and read
 > [`DESIGN.md`](DESIGN.md) first.
 

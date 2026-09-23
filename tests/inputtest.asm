@@ -13,7 +13,6 @@
         include "../src/const.asm"
         include "../src/input.asm"
 
-PPI_B       equ #F500
 
 start:
         di

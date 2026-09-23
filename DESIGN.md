@@ -1439,7 +1439,8 @@ Slot 14 was left empty rather than renumbered, so every other slot kept its numb
 The room index of [§6.6](#66-needs) has since moved into it.
 
 Every frame, regardless of slot:Every frame, regardless of slot: read input, move cursor and camera, advance the dirty
-list ([§8.5](#85-the-dirty-list)) up to a 20,000 µs cap, tick animation, service audio.
+list ([§8.5](#85-the-dirty-list)) up to a 20,000 µs cap, tick animation, service audio
+(**measured: 100 µs silent, 195 µs while an effect plays**, [§9.5](#95-sound)).
 
 The worst *frame* is a flow-balance slot during a routing rebuild: 7,887 + 2,700 + 94
 ≈ **10,700 µs, just over half the frame**. That leaves 9,300 µs for rendering — and a
@@ -2069,6 +2070,82 @@ starts from, and **which tiles it covers**. Then it compares the *picture*: the 
 screen against the Python renderer at two cameras, one per kind of bend. Moving the
 bend by one tile changes 224 bytes, which is the negative control.
 
+### 9.5 Sound
+
+**The AY-3-8912 has no ports of its own on this machine.** It hangs off the PPI's
+port A — and the *keyboard* hangs off the AY's own port A. One write to a sound
+register is five port writes: PPI control `#82` (port A to output), port A = the
+register number, port C = `#C0` then `#00` (latch the address), port A = the value,
+port C = `#80` then `#00` (write it). Miss one and nothing reaches the chip, silently.
+It is the same protocol `in_scan` uses to read keys ([§9.1](#91-controls)), and the
+two now share their constants rather than each declaring their own.
+
+**Bit 6 of R7 stays zero forever.** It is the direction of the AY's port A: set it and
+every keyboard row reads `#FF` — every key pressed at once. The mixer is written only
+from a shadow byte that starts `#3F` and never touches bits 6–7.
+
+**Three channels, one effect each, and priority decides.**
+
+| | bytes | meaning |
+|---|---|---|
+| effect header | 2 | channel 0–2, priority |
+| step | 4 | frames, volume, period lo, period hi |
+| end | 1 | a zero frame count |
+
+A volume with bit 7 set makes the step *noise*: the low byte goes to R6 and the mixer
+opens noise instead of tone on that channel. Tone period is `62500 / Hz` — the AY's
+1 MHz clock divided by 16 — so 284 is A3 at 220 Hz and 120 is C5.
+
+An effect takes its channel only if its priority is **greater than or equal to** what
+is playing there. Without that rule the cursor — fifteen steps a second with the key
+held — would cut the alarm to pieces.
+
+| Effect | Channel | Priority | Fires when |
+|---|---|---|---|
+| `MOVE` | 2 | 1 | the cursor steps |
+| `MENU` | 2 | 2 | the catalogue opens or the selection changes |
+| `DENY` | 2 | 4 | invalid position, not enough material, no room in the tables |
+| `BUILD` | 1 | 3 | a dome or a corridor is committed |
+| `DONE` | 1 | 5 | a building finishes and turns `DS_ACTIVE` |
+| `SHIP` | 0 | 6 | a ship touches the pad |
+| `ALERT` | 0 | 8 | power or oxygen **just** failed |
+| `DEATH` | 0 | 9 | a colonist dies |
+
+Channel 2 is the interface, 1 is building, 0 is the colony — so a placement never cuts
+an alarm and the cursor never cuts either.
+
+**The alarm is an edge, not a state.** `ml_alert` compares power-and-oxygen with a
+shadow byte once every sixteen frames, on the HUD's clock, and sounds only on the fall.
+The shadow starts at 0 — *things are already bad* — because [§10.1](#101-start-state)
+starts with no power and an alarm in the first second of a new game says nothing.
+
+**Cost: 100 µs a frame in silence, 195 µs while something plays** — half a percent of
+a frame, against the "service audio" line in [§7](#7-the-batch-scheduler)'s per-frame
+list. Registers are written only when a *step* changes, not every frame. The player
+lives in bank 2 next to `build.asm` and `route.asm`, so it is callable from the
+simulation without paging; `snd_ping` is the register-preserving door the simulation
+uses, since `nd_die` and `st_land` are holding agent pointers when they ring.
+
+**Testing sound is the same problem as testing pixels, and it has the same two
+answers.** The headless emulator now exposes the AY's sixteen registers
+(`cpcemu_psg_reg`), so `tests/test_sound.py` reads what reached the *chip*: every
+effect is played tick by tick against a Python reference written from the format above,
+and the keyboard is scanned alternately with the sound to prove the shared PPI survives.
+Three negative controls: drop the PSG's "write" strobe and nothing changes; make a step
+last one frame too long and the reference diverges at tick 1; set bit 6 of R7 and the
+keyboard reports every key held.
+
+And because sound cannot be looked at, it is **rendered**: `tools/ayrender.py` turns
+the captured register timeline into `build/sounds.wav` — square waves, a 17-bit noise
+LFSR and the chip's logarithmic volume curve. That is how the effects were judged, and
+how the octave error in the renderer itself was caught: the first version clocked the
+tone counter at clock/16 instead of clock/8, and everything came out an octave low.
+
+**There is no music.** The 2,048-byte audio reservation in bank 7
+([§4.2](#42-the-eight-banks)) is still untouched — effects cost ~450 bytes total, code
+and data, in bank 2. A tune during world generation is the obvious next use for it
+([§15](#15-open-risks)).
+
 ---
 
 ## 10. Progression
@@ -2293,7 +2370,7 @@ game lives in seven places at once — see [§13.1](#131-three-ways-a-loader-doe
 | `BANK7.BIN` | bank 7 | 16,384 | structures, plants, text, audio |
 | `BANK1.BIN` | `&7000` | 4,096 | room icons above the distance matrix |
 | `PAGE2.BIN` | bank 5, then `&8000` | 11,264 | bank 2's graphics and tables |
-| `GAME2.BIN` | bank 5, then `&B440` | 2,300 | bank 2's code |
+| `GAME2.BIN` | bank 5, then `PAGE2_CODE` | 2,819 | bank 2's code — the address comes from the symbol table, not from a constant in the build script, because it moved once and the script did not |
 | `GEN.BIN` | `&8000` | 3,072 | the world generator: runs once, returns |
 | `GAME.BIN` | `&0100` | 14,125 | the game |
 
@@ -2306,7 +2383,7 @@ firmware still owns the screen.
 |---|---|---|
 | `rasm` | `~/rasm/rasm.exe` | assembler; handles banking directives and `align 256` |
 | `iDSK` | `~/idsk/iDSK` | builds the `.dsk` image |
-| `cpcemu` | `~/cpcemu/cpc.py` | **headless** CPC 6128 — Z80 + gate array + CRTC + PPI + FDC, renders to a framebuffer, dumps PNG |
+| `cpcemu` | `~/cpcemu/cpc.py` | **headless** CPC 6128 — Z80 + gate array + CRTC + PPI + FDC + PSG, renders to a framebuffer, dumps PNG. **Extended for milestone 20**: `cpcemu_psg_reg` / `cpcemu_psg_addr` in `cpcheadless.c` expose the AY's registers, because sound is otherwise invisible to every check — the emulator ran with `audio.volume = 0` and nothing outside the chip could say whether a write arrived. Additive; the old `.so` is kept beside the new one |
 
 The headless emulator is the most valuable thing in this list, because it makes the
 tests in this document runnable rather than aspirational:
@@ -2321,6 +2398,7 @@ tests in this document runnable rather than aspirational:
 | Object pass | independent Python renderer from the prose, compared byte-for-byte at five camera positions (`test_object.py`) |
 | Scrolling | equivalence: scroll *k* steps and compare with a full draw at the destination (`test_scroll.py`) |
 | HUD | content against a reference, boundary against a marker, cost against a limit (`test_hud.py`) |
+| Sound | every effect tick by tick against a Python reference, read back from the AY's own registers; priority; the shared PPI with the keyboard; cost (`test_sound.py`) |
 | Dirty list | equivalence: the same mutation through the list and through a full redraw (`test_dirty.py`) — the mutation moves an **agent**, not the renderer's figure cache, because the cache is now rebuilt from the agents |
 | Input | every action, keyboard and joystick, one edge per press (`test_input.py`) |
 | Build mode | cursor, ghost-leaves-no-trace, the panel rows after a camera step (marked with `#AA` first, so a cell nobody rewrote is visible), validation, placement, payment (`test_build.py`) |
@@ -2415,8 +2493,11 @@ construction site had no graph edge, so nobody could ever walk to it.
 `build/habitat.dsk`; `RUN"HABITAT` on a 6128 generates a world and drops the player
 into the colony ([§13](#13-build-and-test)), and `S` / `L` save and load a game
 through the machine's own floppy controller ([§11](#11-save-and-load)). That is
-milestone 10's delivery and save/load halves. What is left of it is audio, the four
-planets, and tuning.
+milestone 10's delivery and save/load halves. **The four planets are built**
+([§5.7](#57-planets)), **and so is the sound** ([§9.5](#95-sound)): eight effects on
+the AY, checked against the chip's own registers. What is left of milestone 10 is
+tuning — and music, which is the one piece of audio that is designed for
+([§4.2](#42-the-eight-banks) reserves 2,048 bytes in bank 7) and not written.
 
 ---
 
@@ -2429,7 +2510,7 @@ planets, and tuning.
 | Mid-frame writes land where aimed, but only on the emulator's CRTC | Low | The border control in `tests/test_camera.py` hits line 160 exactly. Real hardware still wants a check, but nothing now depends on a mid-frame *address* write. |
 | Memory map slack: 1,536 contiguous in bank 2, **288 in bank 6**, 440 in bank 7 | Medium | Bank 6 is the tight one now and the entity tables grew into it. The next thing that needs space there moves `plants` out of bank 7 first, or takes the `s` room-icon set (864 B) as [§4.2](#42-the-eight-banks) names. |
 | Routing rebuild latency of ≈ 5 s after a network change | Low | Stale routes are inefficient, never invalid ([§6.4](#64-routing)). If it grates: cache paths for the 16 busiest pairs and rebuild those first. |
-| **13.5 s** world generation feels long even on a cassette-era machine, and it is 3.9× the original estimate | Medium | New game only — loads read the plane off disc ([§5.10](#510-player-modification)). Real progress bar, music keeps playing. The identified 2× win ([§5.9](#59-cost--measured)) is held in reserve. |
+| **13.5 s** world generation feels long even on a cassette-era machine, and it is 3.9× the original estimate | Medium | New game only — loads read the plane off disc ([§5.10](#510-player-modification)). Real progress bar and music are still the plan; the sound chip is driven now ([§9.5](#95-sound)) but the generator runs with interrupts off and nothing calls `snd_tick`, so a tune there needs the generator to tick it itself. The identified 2× win ([§5.9](#59-cost--measured)) is held in reserve. |
 | A seed produces a technically valid but miserable map | Low | Feature anchors guarantee the necessities; the headless seed sweep ([§13](#13-build-and-test)) finds the rest. |
 | **Airlock: dome or structure?** The asset set now has both an `icon_airlock` room type and a standalone `airlock` structure sprite; the node graph in [§6.2](#62-the-node-graph) only models the dome | Medium | Decide before the node graph is written — it changes what an *outdoor edge* connects to. Recommendation and the comparison are in [§6.2](#62-the-node-graph). Cheap either way: the unused half is 400–512 bytes. |
 | A full-colony routing rebuild is ~27 s of stale routes at the current budget | Medium | Only at 128 nodes; 48 nodes is 3.8 s ([§6.4](#64-routing)). Two levers, both untaken: raise the per-frame budget while the camera is still, or tighten `rt_node` — its per-node setup re-reads the same three bytes and is worth about 2×. |
@@ -2442,7 +2523,7 @@ planets, and tuning.
 | **The flow-balance wheel slot re-scans 64 structures every revolution** | Medium | 7,887 µs for numbers that change slowly. The fix is the one production already took: accumulate during a pass that walks the structures anyway ([§7.2](#72-the-wheel)). |
 | ~~Nothing the player does exists: no build mode, no input, no HUD, nothing drawn since milestone 5~~ | ~~High~~ | **Resolved.** The colony is drawn, the camera scrolls, the dirty list keeps it honest, the HUD reports — and the player now moves a cursor, opens a menu, places a dome and routes a corridor between two of them ([§9.1](#91-controls), [§9.3](#93-build-flow), [§9.4](#94-corridor-routing), [§6.9](#69-construction)). |
 | ~~The two halves have never been assembled into one binary~~ | ~~Medium~~ | **Assembled, and it did not fit: 20,571 bytes wanted 16,128.** Resolved by moving the generator out, cutting `MAX_NODES` to 96 and putting code in bank 2 ([§4.2](#42-the-eight-banks)). It also turned up duplicate constants in three files and, worse, [§7.4](#74-one-convention-per-half-and-they-disagreed)'s paging disagreement. |
-| **Memory is the binding constraint from here on** | High | 2,108 bytes free in bank 0 and 708 in bank 2, for save/load, audio, meteors and intruders. The reserves left, in order: bank 7's `text` block (1,024, already allocated for exactly this), size-optimising `route.asm`/`ui.asm`/`object.asm` (1,000–1,500 by estimate), and the cuts [§4.2](#42-the-eight-banks) already names. Every new feature now costs a decision. |
+| **Memory is the binding constraint from here on** | High | **339 bytes free in bank 0 and 69 in bank 2's code area**, measured by `tools/mkdsk.py` at every build — both ceilings are now checks that stop the build rather than comments. Save/load, four planets and sound have been spent out of the figures below. The reserves left, in order: bank 7's `text` (1,024) and `audio` (2,048) blocks, the 1,600-byte ghost log `GH_LOG` and the 512-byte `DOME_FIG` cache in bank 2, size-optimising `route.asm`/`ui.asm`/`object.asm` (1,000–1,500 by estimate), and the cuts [§4.2](#42-the-eight-banks) already names. Every new feature now costs a decision, and the next one that needs bank 2 has to take it from something. |
 | ~~Nothing finishes what the player starts~~ | ~~High~~ | **Built.** A Build job is picked up, the agent routes to the site, works it 32 points a visit, and at 255 the building turns `DS_ACTIVE` and is drawn ([§6.9](#69-construction)). `tests/test_game.py` walks the whole chain: place a solar panel with 30 Metal, and about six seconds later the HUD says `ALL SYSTEMS OK` with no key pressed in between. |
 | **A completed building stalls the game for 0.8 s** | Medium | The full redraw of [§6.9](#69-construction) step 4, in place of the eight-chunk reveal that is specified and unwritten. Rare — once per building — but it is a visible freeze, and it is the first thing to fix if building ever becomes frequent. |
 | ~~The simulation still pushes nothing into the dirty list~~ | ~~High~~ | **Wired for ring slots**, which is what moves: `ent_claim` and `ent_release` push a `DK_SLOT`, and the figure cache is rebuilt once per burst rather than once per slot ([§8.5](#85-the-dirty-list)). Machines breaking, plants growing and room changes still push nothing. |

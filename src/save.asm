@@ -73,6 +73,10 @@ sv_load:
 
 ; sv_begin — μοτέρ, και η κεφαλή στον πρώτο track του slot.
 sv_begin:
+        ; Ο δίσκος κρατά τη μηχανή 35 frames με di: ό,τι ήχος έπαιζε θα έμενε
+        ; να σφυρίζει όλη αυτή την ώρα, γιατί κανείς δεν προλαβαίνει να κάνει
+        ; snd_tick (§9.5).
+        call    snd_off
         call    fdc_on
         ld      a,(sv_slot)
         add     a,a                     ; x2
