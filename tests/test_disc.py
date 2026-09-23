@@ -169,8 +169,8 @@ def main():
     # --- 2. η κατάσταση εκκίνησης ----------------------------------------
     stock = [w16(g + i * 2) for i in range(7)]
     pop = m.peek(g + 58)
-    check(50 <= stock[0] <= 60 and stock[1] == 40 and stock[3] == 30
-          and stock[4] == 10 and stock[6] == 4 and pop == 4,
+    check(50 <= stock[0] <= 60 and stock[1] == 40 and stock[3] == 55
+          and stock[4] == 30 and stock[6] == 4 and pop == 4,
           f"§10.1 από τον δίσκο: {stock} πληθυσμός {pop}")
 
     # --- 3. το HUD είναι γραμμένο ----------------------------------------

@@ -237,15 +237,17 @@ def need_one(a, e, occ, i):
 def satisfy(a, e, i, d):
     """Στέκεται στον θόλο d. Οτι έχει να του δώσει, του το δίνει."""
     room = e.dome[d * EC.DOME_REC + EC.D_ROOM]
+    # Γεμάτη μπάρα, όχι +64: βλ. src/needs.asm — με +64 ένας άποικος έτρωγε
+    # δώδεκα φορές το sol και η αρχική αποικία πέθαινε από πείνα σε ένα.
     if room == EC.R_QUARTERS:
-        a.sleep[i] = min(255, a.sleep[i] + 64)   # μια νύχτα, όχι ένας υπνάκος
+        a.sleep[i] = 255
     elif room == EC.R_CANTEEN:
         if a.food[i] < NEED_LOW and e.stock[EC.S_FOOD] > 0:
             e.stock[EC.S_FOOD] -= 1
-            a.food[i] = min(255, a.food[i] + 64)
+            a.food[i] = 255
         if a.water[i] < NEED_LOW and e.stock[EC.S_WATER] > 0:
             e.stock[EC.S_WATER] -= 1
-            a.water[i] = min(255, a.water[i] + 64)
+            a.water[i] = 255
     elif room == EC.R_MEDBAY:
         if a.health[i] < NEED_LOW and e.stock[EC.S_MEDI] > 0:
             e.stock[EC.S_MEDI] -= 1

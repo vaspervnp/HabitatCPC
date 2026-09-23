@@ -14,8 +14,13 @@ in a Z80 and 128 KB.
 > through the thirteen seconds of world generation; the player builds, the colonists
 > work, `S` / `L` save and load the game, and it makes noises at you.
 > Three save slots, all reachable, and a tune through the thirteen seconds of world
-> generation. Left: tuning — and 488 free bytes in bank 0, because every string the
-> game prints now lives in bank 7.
+> generation. **The numbers are measured now**: `tools/balance.py` runs the real
+> binary at ×4 for eight sols and prints the colony's curve, and what it found was
+> not mis-tuned rates but an economy with no clock, power that counted consumption
+> instead of demand, and a starting colony whose Quarters were a second oxygen
+> generator. Do nothing and everyone is dead on sol 2, of asphyxiation; build the
+> panel, the collector and the pump and they live until the Food runs out — which
+> nothing can yet fix, because a new dome cannot be given a room.
 > Build it with `tools/build.sh` — that also runs every test — and read
 > [`DESIGN.md`](DESIGN.md) first.
 

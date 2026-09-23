@@ -1140,23 +1140,76 @@ much easier to rebalance. It is generated into bank 2 by `tools/pack.py` straigh
 Without that buffer each slot would need the other's answer inside the same frame.
 This section already said *buffered*; this is what it buys.
 
+#### The economy has a clock, and it was missing
+
+Every rate in the table below reads **per sol**. Nothing in the code did. Production
+and the flow balance are wheel slots, so they ran **750 times a sol**: the oxygen
+generator drank the colony's 60 Water in twenty seconds and everyone was dead inside a
+sol and a half, with a solar panel or without one. The rates were not wrong. The clock
+was missing. Measured by `tools/balance.py`, which runs the real binary at ×4 and
+samples the economy every few seconds — the curve cannot be read off the source.
+
+There is a clock now, and it has two hands:
+
+- **`ECON_DIV = 16`.** Production visits 16 domes once every 16 revolutions, so a full
+  64-dome sweep — and therefore **every machine** — comes round once per **64
+  revolutions**: 11.7 times a sol. That is the economy's cycle.
+- **`FLOW_DIV = 64`.** The battery charges and the pumps deliver on that same cycle.
+  Charging per *revolution* made a 360-unit collector drain in 18 of them — 6% of a
+  300-revolution night, a battery that was decoration. On the cycle the same 360 is
+  more than thirty cycles of the opening colony's demand, which is what makes a
+  collector a decision instead of a decoration.
+
+Two things stay on the fast clock, and both for a reason. The **living are counted
+every revolution**, because that is [§10.3](#103-win-and-loss)'s only loss condition
+and it should not wait twenty seconds. And a **building that finishes kicks the
+balance** to run on the next revolution instead of up to 64 later: without it the
+player's first solar panel produced power while the HUD still said `NO POWER`.
+
+#### Power is demand, not consumption
+
+`mach_power` used to be what the machines *burned*. During a blackout they burn
+nothing — so demand read zero, the balance found 0 ≥ 0, the power came back, the
+machines ran, demand rose, and the power went out again. **At 50% duty, forever.** A
+colony with no power source at all got half its oxygen free and lived five sols on it.
+The accumulator now counts what each machine *would* draw — operator present, inputs
+in stock, only the power missing — so a blackout stays a blackout until something
+changes it, and [§10.1](#101-start-state)'s "you need power before anything else"
+became true for the first time.
+
 `machine_rules` in the asset data already constrains placement: `mach_oxygen` is
 `bit0` only, meaning **oxygen generators fit only in small domes**. That is honoured as
 a design constraint rather than patched around — it forces a spread of small life-support
 domes rather than one oxygen cathedral, which is a better-shaped base.
 
-First-pass balance, per sol (one sol = 4 real minutes):
+Balance, with the clock above in force. **Power is a rate**, compared production
+against demand once per cycle; **materials are amounts**, delivered once per cycle,
+which is 11.7 times a sol (one sol = 4 real minutes):
 
-| | Produces | Consumes |
-|---|---|---|
-| Colonist | — | 2 O₂, 2 Water, 1 Meal |
-| `mach_oxygen` | 20 O₂ | 4 Power, 1 Water |
-| `solar` s/m/l/xl | 2 / 8 / 18 / 32 Power | daylight only |
-| `turbine` s/m/l | 3 / 12 / 27 Power | wind-dependent |
-| `collector` s/m/l | stores 40 / 160 / 360 Power | |
-| `extractor` s/m/l | 6 / 24 / 54 Water | 2 / 6 / 12 Power |
-| `mine` | 20 Ore | 8 Power, 2 drillers |
-| Greenhouse slot | 3 Starch / 2 Vegetables / 2 Medicinal, by `plant_class` | 1 Water, 1 Power |
+| | Produces | Consumes | Per sol |
+|---|---|---|---|
+| Colonist | — | 2 O₂ | ≈ 1 Water, 1 Meal |
+| `mach_oxygen` | 20 O₂ | 4 Power, 1 Water | 12 Water |
+| `solar` s/m/l | 2 / 8 / 18 Power | daylight only | — |
+| `turbine` s/m/l | 3 / 12 / 27 Power | wind-dependent | — |
+| `collector` s/m/l | stores 40 / 160 / 360 Power | | fills at the day's surplus |
+| `extractor` s/m/l | 1 / 2 / 5 Water | 1 / 3 / 6 Power | 12 / 23 / 58 Water |
+| `mine` | 2 Ore | 8 Power, 2 drillers | 23 Ore |
+| `mach_iron` | 1 Metal | 2 Ore, 3 Power | 12 Metal from 23 Ore |
+| Greenhouse slot | 3 Starch / 2 Vegetables / 2 Medicinal, by `plant_class` | 1 Water, 1 Power | ×11.7 |
+
+**The extractor also used to draw 12 Power**, two thirds of the large solar panel
+that is the player's first building. That one number closed the opening: with the pump
+running, the day's surplus fell to 1, a collector never charged, and the night took the
+oxygen out whatever else was built ([§10.1](#101-start-state)). A pump is a third of a
+panel now.
+
+**The extractor and the mine used to read 6/24/54 Water and 20 Ore**, which were the
+per-sol figures written straight into a per-cycle table: one small pump out-produced
+the whole colony's thirst sixty-four times over and the water bar simply pinned at the
+storage cap. The numbers above are the same intent at the cycle's scale — one large
+pump covers the opening colony several times over — Water reaches 419 by sol 8 —
+and one mine feeds exactly one `mach_iron`.
 
 These numbers are a starting point for tuning, not a balance claim — and three of
 them turned out to be unlivable the first time the whole loop ran
@@ -1227,6 +1280,16 @@ three were wrong in the same direction — they made the colony unlivable:
 | Decay per visit | 3 / 2 / 1 / 2 | 1 each | Six times faster than [§6.5](#65-economy)'s own per-sol figures |
 | Walking speed | 40–64 | 88–144 | An edge took 6 revolutions; a 5-hop trip lasted as long as the need that sent you |
 | Oxygen per colony | 2 generators | 10 | 40 O₂ against 192 demanded: everyone quietly asphyxiating from frame one |
+
+**Three more came out of running the real binary for eight sols** (`tools/balance.py`,
+milestone 25) — the first working colony was a *test* colony, ninety-six people on a
+hand-built map; this was the colony the player is actually given:
+
+| | Was | Now | Why |
+|---|---|---|---|
+| Eating and drinking | `+64` to the bar | fills it to **255** | A trip to the canteen that buys a quarter of a bar means twelve trips and twelve Meals a sol. The canteen is a journey, not a sip. One visit a sol, one Meal, one Water — which is what [§6.5](#65-economy)'s table said all along. |
+| Visitor ships | 1 roll in 64 revolutions | 1 in 2,048 | Guests ate 70 Food a sol out of a start state holding 40 ([§6.11](#611-ships-and-arrivals)) |
+| The economy's clock | there wasn't one | `ECON_DIV`, `FLOW_DIV` | Every per-sol rate in [§6.5](#65-economy) ran 750 times a sol |
 
 With the first set, **no colonist ever reached a workplace** — the entire population
 spent its life commuting. That is not something a budget or a unit test would have
@@ -1420,6 +1483,33 @@ fired together or not at all. Each test now reads a different field: low bits of
 first for wind, **high** bits of the second for storms, low bits of the third for a
 malfunction and its high bits for a flare.
 
+**And the victim has to come out of the bits the test did not use.** Picking the
+machine with `r2` while testing `r3` looks like that same rule — it is the exact
+opposite of it. `r2` is the *previous* draw, and the polynomial `#B400` has a zero low
+byte, so it never touches the bottom eight bits: "the low seven bits of `r3` are zero"
+forces `r2 % 64` to **zero**, every time — seven breaks a sol, every one of them on
+dome 0, which in [§10.1](#101-start-state)'s colony is the only oxygen generator. That
+was a tuning pass finding a trap in its own change, in a line that reads as though it
+were following the rule above. The victim comes from `r3 >> 7`: the bits the test left
+alone.
+
+#### How often, measured
+
+| | Was | Now | What that is |
+|---|---|---|---|
+| Sandstorm | 1 roll in 128 revolutions, 32 revolutions long | 1 in 512 | a quarter of every sol with the panels covered → **5%** |
+| Malfunction | 1 roll in 32 | 1 in 128 | on the start colony, **1.1 breaks a sol** → 0.25 |
+| Solar flare | 1 roll in 256, three machines each | 1 in 1,024 | three flares a sol → 0.7 |
+
+The malfunction rate was the one that decided games. [§10.1](#101-start-state)'s colony
+has two machines and four Spares; nothing in it makes Spares; one of the two machines
+is the only thing producing oxygen, and two thirds of the breaks landed on it. The four
+Spares were gone before sol 3 and the next break was fatal — the colony asphyxiated
+with a full battery and 300 Water in the tanks. Something breaks every four sols now,
+which is what a Spare is for, and the rate still scales with the base: `break_one`
+picks a dome out of 64 and gives up if nothing is there, so a colony with forty domes
+sees the same roll land fifteen times as often.
+
 ### 6.11 Ships and arrivals
 
 A Control room lets you call ships to the landing pad. **One ship at a time**, and
@@ -1445,7 +1535,11 @@ that calls it belongs in [§9](#9-interface). Trading sets a flag that breaks th
 no-trade streak, which is the whole reason Independence in
 [§10.2](#102-milestones) is hard to keep rather than hard to reach.
 
-Merchants and colonist ships must be **called**; visitors arrive on their own roll.
+Merchants and colonist ships must be **called**; visitors arrive on their own roll —
+**1 in 2,048 revolutions, one every 2.7 sols.** The roll was 1 in 64, which is a
+visitor every twenty seconds of play, and a visitor eats 6 Food: seventy Food a sol
+against a start state that holds forty. `tools/balance.py` showed the colony's food
+running out inside one sol and the *visitors* eating it, not the colonists.
 
 ---
 
@@ -1480,20 +1574,27 @@ slot is still bounded; there are simply more of them.
 |---|---|---|---|---|
 | 0–7 | Agent movement | 12 agents each | 1,800 µs | **1,298 µs** ✅ |
 | 8–10 | Needs, health, death, deciding | 8 colonists each ([§6.6](#66-needs)) | 433 µs | **2,796 µs** ❌ 6.5× |
-| 11 | Production, machines and plants | 16 domes | 4,000 µs | **5,691 µs** ❌ 1.4× |
-| 12 | Flow balance | 64 structures, plus counting the living | 2,000 µs | **7,887 µs** ❌ 3.9× |
+| 11 | Production, machines and plants | 16 domes, **one revolution in 16** ([§6.5](#65-economy)) | 4,000 µs | **5,691 µs when it fires, 599 µs a visit** |
+| 12 | Flow balance | the living every revolution, 64 structures **one in 64** | 2,000 µs | **5,990 µs on the cycle, 1,797 µs a visit** |
 | 13 | Job board — reap, arrive, post, assign | 4 domes, 32 agents | 3,000 µs | **4,692 µs** ❌ 1.6× |
 | 14 | Room index, amenity, pad, population cap | 64 domes | *(was empty)* | **7,188 µs** |
 | 15 | Events, ships, and the milestone check once a sol | three rolls | 500 µs | **499 µs** ✅ |
 | — | wheel dispatch itself | every frame | — | **94 µs** |
 
-**A whole revolution costs 73,400 µs spread over 16 frames — under a quarter of the
-machine — and the worst single frame is 7,887 µs, 40 % of one.** That is the number the
+**A whole revolution costs 61,400 µs spread over 16 frames — under a fifth of the
+machine — and the worst single frame is 6,889 µs, 34 % of one.** That is the number the
 design lives or dies by, and it has room.
 
-Five of the seven budgets were low, by 1.3× to 6.2×. The one pass that came in under
+Four of the seven budgets were low, by 1.2× to 6.5×. The one pass that came in under
 budget is the one whose cost was derived from a measured blit rather than guessed.
 **Budget the remaining passes pessimistically.**
+
+**Two of those slots now cost what they cost divided by their clock.** Production and
+the flow balance run on the economy's cycle ([§6.5](#65-economy)) rather than every
+revolution, which was done for the balance and not for the microseconds — but the
+microseconds came too: the revolution dropped from 73,400 µs to 61,400. The *worst
+frame* is unchanged in size and 64 times rarer, and the pinned-wheel measurement
+reports the average across 200 calls, which is why both figures are given above.
 
 #### These numbers are measured directly, not by difference
 
@@ -1518,8 +1619,8 @@ Every frame, regardless of slot:Every frame, regardless of slot: read input, mov
 list ([§8.5](#85-the-dirty-list)) up to a 20,000 µs cap, tick animation, service audio
 (**measured: 100 µs silent, 195 µs while an effect plays**, [§9.5](#95-sound)).
 
-The worst *frame* is a flow-balance slot during a routing rebuild: 7,887 + 2,700 + 94
-≈ **10,700 µs, just over half the frame**. That leaves 9,300 µs for rendering — and a
+The worst *frame* is a room-index slot during a routing rebuild: 6,889 + 2,700 + 94
+≈ **9,700 µs, just under half the frame** (it used to be the flow balance, at 10,700). That leaves 9,300 µs for rendering — and a
 single scroll column costs 9,300 µs ([§8.3](#83-the-tile-pass)). **The two together
 very nearly fill the frame**, which is exactly why the dirty list is a *budget* rather
 than a queue that must be drained: on a frame where the sim is heavy, the scroll edge
@@ -2272,16 +2373,58 @@ siren about a power failure that had always been true. The alarm now waits three
 At `(0,0)`, on guaranteed flat foundation: a landing pad, one small **Oxygen** dome with
 one `mach_oxygen`, one small **Quarters**, one small **Storage**, and the corridors
 joining them. Four colonists: two workers, one engineer, one biologist. Starting stock:
-60 Water, 40 Food, 30 Metal, 10 Bioplastic, 4 Spares.
+60 Water, 40 Food, **55 Metal, 30 Bioplastic**, 4 Spares.
 
 Enough to live about two sols without doing anything, which is exactly how long it
 should take to realise you need power before you need anything else.
 
-**Written** (`src/newgame.asm`), with two departures from the paragraph above.
+**The metal and bioplastic were 30 and 10, and that bought exactly one building.**
+A colony that lives needs **three**: a solar panel (15 Metal + 8 Bioplastic) for
+oxygen by day, a collector (14 + 10) for the 40% of the sol that has no sun
+([§6.10](#610-events-and-hazards)), and an extractor (22 + 8) for water. 51 and 26 —
+and nothing in the start state makes metal: no mine, no `mach_iron`, and no way yet to
+put either into a dome. With 30 and 10 the player bought one building, and it did not
+matter which: every line ended before sol 5. 55 and 30 buy all three and leave 4 and
+4, which is not a fourth building.
+
+**Measured, at ×4, eight sols, with nobody touching the controls afterwards**
+(`tools/balance.py`, which builds through the real menu and then watches):
+
+| The player builds | First death | Of what |
+|---|---|---|
+| nothing | **sol 2** | oxygen — 54 Water and 36 Food still in store |
+| a solar panel | sol 7 | thirst, then hunger; life support runs in daylight |
+| panel + collector | sol 5 | thirst — but oxygen never drops, day or night |
+| panel + turbine | sol 5 | thirst — the same answer by the other route |
+| panel + extractor | **none in 8 sols** | Water reaches 247, Food is gone by sol 6 |
+| panel + collector + extractor | sol 8 | hunger — Water 419 and climbing, battery full |
+
+Every line that solves water ends at the same wall: **Food**, which needs a greenhouse
+and a `mach_food`, which needs a dome that can be given a room — and that is
+[§15](#15-open-risks)'s open risk, not a number. The allowance above should be looked
+at again the day a machine can be installed, because then metal has somewhere else to
+go.
+
+That is the shape [§10.1](#101-start-state) always claimed and never had: before the
+economy got a clock ([§6.5](#65-economy)) the answer was "sol 1½, of thirst, whatever
+you build".
+
+**Written** (`src/newgame.asm`), with three departures from the paragraph above.
 The three domes sit 8 tiles apart centre to centre, because that is the closest
 spacing that leaves a whole number of corridor tiles between two small domes
-([§9.4](#94-corridor-routing)); and **the pad is joined by an outdoor edge, not a
-corridor**, because a corridor record can only name domes.
+([§9.4](#94-corridor-routing)); **the pad is joined by an outdoor edge, not a
+corridor**, because a corridor record can only name domes; and the third dome is a
+**Canteen, not a Storage**, because the needs pass looks for exactly three room types
+([§6.6](#66-needs)) and without a canteen nobody ever eats or drinks — the two sols
+above would have been spent dying of thirst beside full tanks. Storage is the room no
+pass reads yet, so it was the cheapest one to give up.
+
+**And for a while the Quarters were a second oxygen generator.** `ob_domeadr`
+destroys `DE`, which is where the setup loop was holding the machine id, so every
+dome in the start state was given machine 0. Nothing looked wrong — sleep is
+satisfied by the *room*, not by the beds — but life support drank twice the water and
+demanded twice the power, and that is the whole of the opening's balance. It was
+found by measuring the colony's curve, not by reading the loop.
 
 The table that matters most is the job board: **its empty value is 255 and zero
 means `J_BUILD`**, so a board that was never initialised reads as thirty-two Build
@@ -2693,7 +2836,7 @@ gap.
 | ~~Nothing produces food~~ | ~~High~~ | **Greenhouses grow.** Plants sit in the machine slots, `plant_class` decides the crop, and every plant needs a biologist ([§6.5](#65-economy)). |
 | ~~Ships, trade and milestones are unbuilt~~ | ~~Medium~~ | **Built**, except Automation, which waits on bot-eligible jobs ([§10.2](#102-milestones)). |
 | ~~A heavy sim frame plus a scroll column comes to 19.9 ms of 20~~ | High | **Worse than that, and now measured.** A scroll step is 3.0–8.8 frames of world plus 2.20 of HUD ([§8.2](#82-camera)), so it was never going to fit in one frame and does not need to: the dirty list is a budget and the strip fills over several frames. What this costs is **latency, not frame rate** — about a quarter of a second per tile through a dense base. The flow-balance slot still wants the fix described below. |
-| **The flow-balance wheel slot re-scans 64 structures every revolution** | Medium | 7,887 µs for numbers that change slowly. The fix is the one production already took: accumulate during a pass that walks the structures anyway ([§7.2](#72-the-wheel)). |
+| ~~The flow-balance wheel slot re-scans 64 structures every revolution~~ | ~~Medium~~ | **Resolved, and not for speed.** 7,887 µs for numbers that change slowly — but the reason it moved was [§6.5](#65-economy)'s clock: a battery that charges 750 times a sol is not a battery. The scan, the battery and the pumps now run once per 64 revolutions (`FLOW_DIV`), the living are still counted every revolution, and a finished building kicks the balance so the panel the player just paid for shows up at once. |
 | ~~Nothing the player does exists: no build mode, no input, no HUD, nothing drawn since milestone 5~~ | ~~High~~ | **Resolved.** The colony is drawn, the camera scrolls, the dirty list keeps it honest, the HUD reports — and the player now moves a cursor, opens a menu, places a dome and routes a corridor between two of them ([§9.1](#91-controls), [§9.3](#93-build-flow), [§9.4](#94-corridor-routing), [§6.9](#69-construction)). |
 | ~~The two halves have never been assembled into one binary~~ | ~~Medium~~ | **Assembled, and it did not fit: 20,571 bytes wanted 16,128.** Resolved by moving the generator out, cutting `MAX_NODES` to 96 and putting code in bank 2 ([§4.2](#42-the-eight-banks)). It also turned up duplicate constants in three files and, worse, [§7.4](#74-one-convention-per-half-and-they-disagreed)'s paging disagreement. |
 | **Memory is the binding constraint from here on** | High | **488 bytes free in bank 0 and 69 in bank 2's code area** — milestone 23 moved every string into bank 7's reserved `text` block ([§4.2](#42-the-eight-banks)), which is the last easy 450 bytes there will be, measured by `tools/mkdsk.py` at every build — both ceilings are now checks that stop the build rather than comments. Save/load, four planets and sound have been spent out of the figures below. The reserves left, in order: bank 7's `text` (1,024) and `audio` (2,048) blocks, the 1,600-byte ghost log `GH_LOG` and the 512-byte `DOME_FIG` cache in bank 2, size-optimising `route.asm`/`ui.asm`/`object.asm` (1,000–1,500 by estimate), and the cuts [§4.2](#42-the-eight-banks) already names. Every new feature now costs a decision, and the next one that needs bank 2 has to take it from something. |
@@ -2709,7 +2852,8 @@ gap.
 | Meteors and intruders are unbuilt, and both need the renderer first | Medium | Meteors write terrain, so they need the world plane and the dirty list; intruders need edge spawning and combat. Neither is a simulation problem, which is why neither is in [§6.10](#610-events-and-hazards) yet. |
 | Ships, trade and milestones are unbuilt — [§6.11](#611-ships-and-arrivals) and [§10.2](#102-milestones) | Medium | The colony sustains itself but cannot grow: no new colonists arrive and nothing can be traded for. This is what makes it a sandbox rather than a game. |
 | The balance numbers in [§6.5](#65-economy) are first guesses and three of them were unlivable | Medium | Corrected against the first working colony ([§6.6](#66-needs)). Expect the same of the rest: they cannot be checked by reading, only by running the loop and looking at who is where. |
-| Balance | Certain | Every number in [§6.5](#65-economy) is a first guess. The recipe table exists so that rebalancing is a data edit, not a code edit. |
+| **A new dome has no room and no machines, and nothing can give it either** | High | `bd_commit` writes room 0 and eight `NO_MACH` slots — "until the choice exists" ([§6.9](#69-construction)) — and no screen assigns a room type or installs a machine. So everything the player builds after the start state is an empty shell: the colony's industry is exactly what `src/newgame.asm` laid down, and the greenhouse-to-meals chain of [§6.5](#65-economy) is unreachable in play. Measured consequence: panel and pump hold water indefinitely, and then the colony starves, with no move available. **This is the next thing the game needs**, ahead of any further balance number. |
+| Balance | ~~Certain~~ Medium | Every number in [§6.5](#65-economy) was a first guess; the ones on the path a player actually walks are now **measured** rather than guessed, by `tools/balance.py` — which runs the real binary at ×4 for eight sols and prints the curve — and held by `tests/test_balance.py`. What measurement turned up was not mis-tuned numbers but three structural faults: the economy had no clock, power counted consumption instead of demand, and the start colony's quarters were a second oxygen generator ([§10.1](#101-start-state)). The rates past the first two buildings — the whole machine chain — are still guesses, and stay guesses until a dome can be given a room. |
 
 ---
 

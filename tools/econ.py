@@ -96,9 +96,9 @@ K_SOLAR, K_TURBINE, K_COLLECTOR, K_EXTRACTOR, K_MINE, K_AIRLOCK, K_PAD, K_SHIP \
 SOLAR_OUT = [2, 8, 18]              # §6.5, ανά μέγεθος
 TURBINE_OUT = [3, 12, 27]
 COLLECTOR_CAP = [40, 160, 360]
-EXTRACTOR_OUT = [6, 24, 54]
-EXTRACTOR_POWER = [2, 6, 12]
-MINE_OUT, MINE_POWER = 20, 8
+EXTRACTOR_OUT = [1, 2, 5]      # ανά κύκλο ροής — δες FLOW_DIV
+EXTRACTOR_POWER = [1, 3, 6]     # ένα τρίτο πάνελ, όχι δύο — βλ. src/econ.asm
+MINE_OUT, MINE_POWER = 2, 8
 
 O2_PER_COLONIST = 2
 
@@ -107,6 +107,8 @@ class Econ:
     """Ο,τι κρατά η οικονομία ανάμεσα σε δύο frames."""
 
     def __init__(self):
+        self.prod_div = 1               # §6.5: το ρολόι της οικονομίας
+        self.flow_div = 1
         self.stock = [0] * N_STOCK
         self.cap = 600                      # από τους θόλους αποθήκευσης
         self.dome = bytearray(MAX_DOME * DOME_REC)
@@ -188,6 +190,14 @@ def take_stock(e, s, q):
 SOL_FRAMES = 12000          # §10.4 — τέσσερα πραγματικά λεπτά
 DAY_FRAMES = SOL_FRAMES * 3 // 5
 PROD_DOMES = 16             # θόλοι ανά επίσκεψη (§7.2) — σάρωμα σε 4 περιστροφές
+# Το ρολόι της οικονομίας: μία παραγωγή (και μία άντληση) ανά 16 περιστροφές.
+# Βλ. src/econ.asm και §6.5 — οι ρυθμοί έτρεχαν 750 φορές το sol ενώ ο πίνακας
+# τους έγραφε ΑΝΑ SOL, και η αρχική αποικία πέθαινε σε ενάμιση sol.
+ECON_DIV = 16
+# Και ο κύκλος της ροής: τέσσερις επισκέψεις παραγωγής χρειάζονται για να δουν
+# και τους 64 θόλους, άρα μια μηχανή τρέχει ανά 64 περιστροφές. Η μπαταρία και
+# οι αντλίες πατάνε στον ίδιο κύκλο — βλ. src/econ.asm.
+FLOW_DIV = ECON_DIV * 4
 
 
 def lfsr(x):
@@ -212,8 +222,10 @@ def run_plant(e, base, s, plant, plant_class):
     """Μία υποδοχή θερμοκηπίου. Νερό και ρεύμα μέσα, χλωρίδα έξω."""
     if e.stock[S_WATER] < PLANT_WATER:
         return
+    e.acc_power += PLANT_POWER          # ζητάει, είτε το πάρει είτε όχι
+    if not e.power_ok:
+        return
     e.stock[S_WATER] -= PLANT_WATER
-    e.acc_power += PLANT_POWER
     out, qty = PLANT_OUT[plant_class[plant] & 3]
     if out is not None:
         add_stock(e, out, qty)
@@ -233,7 +245,7 @@ def run_dome(e, d, plant_class=None):
             p = e.dome[base + D_MACH + s]
             if p == NO_MACH or e.dome[base + D_HEALTH + s] == 0:
                 continue
-            if s >= ops or not e.power_ok:      # τα φυτά θέλουν φροντίδα
+            if s >= ops:                        # τα φυτά θέλουν φροντίδα
                 continue
             run_plant(e, base, s, p, plant_class)
             continue
@@ -245,15 +257,17 @@ def run_dome(e, d, plant_class=None):
         r = RECIPE[m]
         if (r[9] & MF_OPERATOR) and s >= ops:       # χωρίς χειριστή
             continue
-        if not e.power_ok:                          # μπλακάουτ
-            continue
         ins = ((r[0], r[1]), (r[2], r[3]), (r[4], r[5]))
         if any(st != NO_STOCK and e.stock[st] < q for st, q in ins):
             continue                                # λείπει είσοδος: δεν καίει
+        # Το ρεύμα μετράει ως ΖΗΤΗΣΗ: όσα θα έτρεχαν αν υπήρχε. Με «όσα κάηκαν»
+        # το μπλακάουτ μηδένιζε τη ζήτηση και το ρεύμα ξαναγύριζε μόνο του.
+        e.acc_power += r[8]
+        if not e.power_ok:                          # μπλακάουτ
+            continue
         for st, q in ins:
             if st != NO_STOCK:
                 e.stock[st] -= q
-        e.acc_power += r[8]
         if r[9] & MF_FLOW:
             e.acc_o2 += r[7]
         elif r[6] != NO_STOCK:              # τα κρεβάτια δεν παράγουν τίποτα
@@ -263,6 +277,11 @@ def run_dome(e, d, plant_class=None):
 
 def production_slice(e, count=PROD_DOMES, plant_class=None):
     """Θέση 11: PROD_DOMES θόλοι. Στο τέλος του σαρώματος δημοσιεύει."""
+    e.prod_div -= 1
+    if e.prod_div:
+        return
+    e.prod_div = ECON_DIV
+
     for _ in range(count):
         run_dome(e, e.prod_dome, plant_class)
         e.prod_dome += 1
@@ -276,6 +295,19 @@ def production_slice(e, count=PROD_DOMES, plant_class=None):
 
 def flow_balance(e, alive):
     """Θέση 12: παραγωγή απέναντι σε κατανάλωση, και η μπαταρία."""
+    e.flow_div -= 1
+    if e.flow_div == 0:
+        e.flow_div = FLOW_DIV
+        flow_cycle(e)
+    # Η μέτρηση ζωντανών είναι η συνθήκη ήττας (§10.3): κάθε περιστροφή.
+    e.o2_use = alive * O2_PER_COLONIST
+    e.o2_ok = 1 if e.o2_prod >= e.o2_use else 0
+    e.alive = alive
+    if alive == 0:
+        e.gameover = 1
+
+
+def flow_cycle(e):
     prod = cap = water = ore = 0
     use = e.mach_power
     for i in range(MAX_STRUCT):
@@ -314,17 +346,11 @@ def flow_balance(e, alive):
         add_stock(e, S_WATER, water)
         add_stock(e, S_ORE, ore)
         # Το νερό και το μετάλλευμα βγαίνουν από ΔΟΜΕΣ, όχι από μηχανές
-        # θόλου, αλλά βγαίνουν εδώ — και η «ανεξαρτησία» του §10.2 τα θέλει.
+        # θόλου, αλλά βγαίνουν εδώ — και το §10.2 τα θέλει.
         if water:
             e.prod_mask |= 1 << S_WATER
         if ore:
             e.prod_mask |= 1 << S_ORE
-
-    e.o2_use = alive * O2_PER_COLONIST
-    e.o2_ok = 1 if e.o2_prod >= e.o2_use else 0
-    e.alive = alive
-    if alive == 0:                      # §10.3 — η μόνη συνθήκη ήττας
-        e.gameover = 1
 
 
 STORM_LEN = 32          # περιστροφές — περίπου δέκα δευτερόλεπτα
@@ -376,19 +402,33 @@ def events(e):
     if (r1 & 15) == 0:                      # ο άνεμος αλλάζει σπάνια
         e.wind = (r1 >> 4) & 3
 
+    # ΟΙ ΤΡΕΙΣ ΣΥΧΝΟΤΗΤΕΣ ΕΙΝΑΙ ΜΕΤΡΗΜΕΝΕΣ, ΟΧΙ ΕΙΚΑΣΜΕΝΕΣ (tools/balance.py):
+    # η θύελλα ήταν 1/128 ανά περιστροφή επί 32 περιστροφές = ένα τέταρτο του
+    # sol χωρίς ήλιο· η βλάβη 1/32, δηλαδή η μηχανή οξυγόνου της αρχικής
+    # αποικίας σταματούσε κάθε 1,3 sol και τα τέσσερα ανταλλακτικά του §10.1
+    # τελείωναν σε τρία sols — μετά την πρώτη βλάβη χωρίς ανταλλακτικό,
+    # ασφυξία. Και η έκλαμψη 1/256, δηλαδή τρεις φορές το sol.
     if e.storm:                             # αμμοθύελλα: τα πάνελ σκεπάζονται
         e.storm -= 1
-    elif (r2 >> 9) == 0:                    # τα ΨΗΛΑ bits του δεύτερου
+    elif (r2 >> 7) == 0:                    # τα ΨΗΛΑ bits του δεύτερου, 1/512
         e.storm = STORM_LEN
 
-    if (r3 & 0x1F) == 0:                    # απλή βλάβη: τα χαμηλά του τρίτου
-        break_one(e, r3 >> 5)
+    if (r3 & 0x7F) == 0:                    # απλή βλάβη: τα χαμηλά του τρίτου
+        # Ο ΔΕΙΚΤΗΣ ΑΠΟ ΤΑ BITS ΠΟΥ ΠΕΡΙΣΣΕΨΑΝ, και από ΚΑΝΕΝΑ άλλο νούμερο:
+        # το r2 είναι η προηγούμενη ρίψη του ίδιου Galois, και ο πολλαπλασιαστής
+        # #B400 δεν αγγίζει το χαμηλό byte — άρα με μηδενικά τα χαμηλά του r3
+        # το r2 % 64 είναι ΠΑΝΤΑ 0. Κάθε βλάβη χτυπούσε τον θόλο 0, που είναι
+        # η μοναδική γεννήτρια οξυγόνου: επτά βλάβες το sol, όλες στο ίδιο
+        # μηχάνημα. Μετρημένο· δεν φαινόταν διαβάζοντας.
+        break_one(e, r3 >> 7)
 
-    if (r2 & 0x3F) == 0 and e.ship_state == SHIP_NONE and e.pad_node != 255:
+    # Ενας επισκέπτης ανά ~2,7 sol, όχι δώδεκα το sol: βλ. src/econ.asm — με
+    # 1/64 ανά περιστροφή οι επισκέπτες έτρωγαν 70 τρόφιμα το sol.
+    if (r2 & 0x7FF) == 0 and e.ship_state == SHIP_NONE and e.pad_node != 255:
         call_ship(e, SK_VISITOR)            # απρόσκλητοι (§6.11)
 
-    if (r3 >> 8) == 0:                      # ηλιακή έκλαμψη: τα ψηλά του ίδιου
-        break_one(e, r3 + 37)
+    if (r3 >> 6) == 0:                      # ηλιακή έκλαμψη: τα ψηλά του ίδιου
+        break_one(e, r3 + 37)               # 1/1024 — τρεις ανά τέσσερα sols
         break_one(e, (r3 >> 3) + 101)
         break_one(e, (r3 >> 1) + 173)
 
