@@ -453,6 +453,15 @@ wg_prog:
         ret
         endif
 
+; wg_beat — ο χτύπος. Το gen.asm δίνει τον δικό του (μουσική)· οι δοκιμές που
+; τρέχουν τη γέννηση χωρίς ήχο παίρνουν αυτόν.
+        ifndef WG_PROGRESS
+wg_beat:
+        ret
+        endif
+
+wg_beatn:   db 32
+
 wg_plane:
         xor     a
         ld      (gp_v),a
@@ -483,6 +492,15 @@ gpl_row:
         xor     a
         ld      (gp_u),a
 gpl_col:
+        ; Ο χτύπος της μουσικής (§9.5): ένα τικ ανά 32 πλακίδια, δηλαδή περίπου
+        ; κάθε 17 ms — αρκετά σταθερό για ρυθμό, και ο διαιρέτης είναι εδώ ώστε
+        ; ο βρόχος να πληρώνει έναν dec και όχι μια κλήση.
+        ld      hl,wg_beatn
+        dec     (hl)
+        jr      nz,gpl_nb
+        ld      (hl),32
+        call    wg_beat
+gpl_nb:
         ld      a,(gp_u)
         sub     64
         ld      (gp_x),a

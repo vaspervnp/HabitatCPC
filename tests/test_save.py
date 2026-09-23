@@ -140,7 +140,10 @@ def main():
                                        for l in range(8) for k in range(2)), "#")
                        for c in range(40))
 
-    def press(key, frames=12):
+    def press(key, frames=24):
+        # 4 + 24 > 16: ΤΟ ΡΟΛΟΙ ΤΟΥ HUD. Ο πίνακας ξαναγράφεται ανά δεκαέξι
+        # frames (§9.2), οπότε με μικρότερη αναμονή η οθόνη μπορεί να δείχνει
+        # ακόμη την προηγούμενη κατάσταση — και η δοκιμή να πέφτει στα ίσα.
         m.key_down(key)
         m.run_frames(4)
         m.key_up(key)
@@ -297,9 +300,9 @@ def main():
 
     # η τρίτη θέση ζει στα tracks 36-41: η κεφαλή δεν έχει πάει ποτέ εκεί
     freeze(False)
-    m.run_frames(3000)
-    freeze(True)
-    m.run_frames(4)
+    m.run_frames(9000)                   # όχι 3.000: με τόσο λίγη προσομοίωση
+    freeze(True)                         # οι δύο καταστάσεις διέφεραν 8 bytes,
+    m.run_frames(4)                      # δηλαδή όσο και η ανοχή του ελέγχου
     g_econ, _, _ = snap()
     disc_op("S", 2)
     check(m.peek(sym["SV_SLOT"]) == 2 and m.peek(sym["FD_TRK"]) >= 36,

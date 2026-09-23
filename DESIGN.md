@@ -2217,10 +2217,51 @@ LFSR and the chip's logarithmic volume curve. That is how the effects were judge
 how the octave error in the renderer itself was caught: the first version clocked the
 tone counter at clock/16 instead of clock/8, and everything came out an octave low.
 
-**There is no music.** The 2,048-byte audio reservation in bank 7
-([§4.2](#42-the-eight-banks)) is still untouched — effects cost ~450 bytes total, code
-and data, in bank 2. A tune during world generation is the obvious next use for it
-([§15](#15-open-risks)).
+**In-game music is not planned.** Three channels are three channels: a tune would have
+to fight the effects for them, and a colony sim is listened to, not danced to. The
+2,048-byte audio reservation in bank 7 ([§4.2](#42-the-eight-banks)) is still
+untouched; the effects cost ~450 bytes in bank 2 and the loading music below lives in
+the generator.
+#### Music, and why the generator has a second player
+
+**The thirteen and a half seconds of world generation now have a tune**, and it is
+played by a *different* player from the one above. The game's sound lives in bank 2,
+and bank 2 does not exist yet while the generator runs: `PAGE2.BIN` is sitting in
+scratch memory waiting for the endgame to copy it down ([§13.1](#131-three-ways-a-loader-does-not-run)).
+So `gen.asm` carries its own: two channels, a list of notes each, 420 bytes of the
+768 it had spare.
+
+**The clock is the world being built.** Interrupts are off — the generator pages bank 4
+in and out and is not sharing that with the firmware — so there is no frame interrupt
+to keep time. The tile loop keeps it instead: one beat every 32 tiles, which at the
+measured 541 µs per tile is about 17 ms. **The tempo therefore wobbles**, and by more
+than a little: measured note lengths of 22, 21, 30, 12, 74, 47, 56 and 112 frames
+against a score that says 30, 30, 45, 15, 60, 30, 30, 60 beats. Tiles are not equal
+work — water and mountains cost more than dust — so the music slows down where the
+world gets complicated and stops entirely for `gen_despeckle`. It sounds like a music
+box winding down, which for this particular thirteen seconds is not the worst thing.
+The fix, if it ever matters, is to let the generator run with interrupts on and hang
+the player off the firmware's ticker.
+
+**The volume is software, not the AY's envelope generator.** The hardware envelope is
+two register writes a note and would have been cheaper — but then `R8` says only *"use
+the envelope"* and the actual loudness is invisible to anything reading the registers.
+Neither `tests/test_disc.py` nor `tools/ayrender.py` could then tell whether a note
+sounded. Instead every second beat drops the volume by one, 13 down to 0 in about half
+a second, and **what is audible is exactly what the registers say**. That property is
+what makes the whole sound chapter testable, and it was worth twenty bytes to keep it.
+
+`tests/test_disc.py` samples the chip every 30 frames through the whole load: at least
+five distinct pitches must appear, at least ten samples must have volume, and when the
+game starts the chip must be **silent** — that last one caught a real bug.
+
+**Every new game sounded the alarm in its first second.** `ml_alert` fires on the edge
+from "fine" to "not fine", and the start state of [§10.1](#101-start-state) begins with
+the economy's `POK` flag still saying *fine* — it only becomes 0 when the first
+revolution of the wheel actually computes the power balance. So every game began with a
+siren about a power failure that had always been true. The alarm now waits three calls
+— about a second — before it starts watching.
+
 
 ---
 
@@ -2578,11 +2619,9 @@ whole generation and must start at zero, never go backwards, and reach all 64; a
 `SCR SET MODE` the BASIC text is still there (292 bytes in the top two rows), and
 without the per-row call the bar stays at zero for the whole 13.5 seconds.
 
-**What is still missing is sound.** Music through the wait is the obvious next thing
-([§9.5](#95-sound) drives the chip already), but the generator runs with interrupts
-off and nothing calls `snd_tick`, so the tune would have to be ticked by
-`wg_prog` — one more call in the same place, and a tune small enough to live in the
-generator's 768 spare bytes or in bank 7's reserved 2,048.
+**And it has sound.** The tune is the generator's own, clocked by its own tile loop,
+in 420 of the 768 spare bytes it had — [§9.5](#95-sound) has the reasons for both the
+second player and the wobbling tempo.
 
 ---
 
@@ -2629,8 +2668,9 @@ through the machine's own floppy controller ([§11](#11-save-and-load)). That is
 milestone 10's delivery and save/load halves. **The four planets are built**
 ([§5.7](#57-planets)), **and so is the sound** ([§9.5](#95-sound)): eight effects on
 the AY, checked against the chip's own registers. What is left of milestone 10 is
-tuning — and music, which is the one piece of audio that is designed for
-([§4.2](#42-the-eight-banks) reserves 2,048 bytes in bank 7) and not written.
+tuning. **Music is written too** — for the one place it belongs, the thirteen seconds
+of world generation ([§9.5](#95-sound)); in-game music is a decision against, not a
+gap.
 
 ---
 
@@ -2643,7 +2683,7 @@ tuning — and music, which is the one piece of audio that is designed for
 | Mid-frame writes land where aimed, but only on the emulator's CRTC | Low | The border control in `tests/test_camera.py` hits line 160 exactly. Real hardware still wants a check, but nothing now depends on a mid-frame *address* write. |
 | Memory map slack: 1,536 contiguous in bank 2, **288 in bank 6**, 440 in bank 7 | Medium | Bank 6 is the tight one now and the entity tables grew into it. The next thing that needs space there moves `plants` out of bank 7 first, or takes the `s` room-icon set (864 B) as [§4.2](#42-the-eight-banks) names. |
 | Routing rebuild latency of ≈ 5 s after a network change | Low | Stale routes are inefficient, never invalid ([§6.4](#64-routing)). If it grates: cache paths for the 16 busiest pairs and rebuild those first. |
-| **13.5 s** world generation feels long even on a cassette-era machine, and it is 3.9× the original estimate | Medium | New game only — loads read the plane off disc ([§5.10](#510-player-modification)). **The progress bar is built** ([§13.2](#132-the-loading-screen)): title, a dot per file, and a bar that moves once per two world rows. Music is not; the generator runs with interrupts off and nothing calls `snd_tick`, so a tune there has to be ticked by `wg_prog` itself. The identified 2× win ([§5.9](#59-cost--measured)) is held in reserve. |
+| **13.5 s** world generation feels long even on a cassette-era machine, and it is 3.9× the original estimate | Medium | New game only — loads read the plane off disc ([§5.10](#510-player-modification)). **Both halves are built**: the progress bar of [§13.2](#132-the-loading-screen) — title, a dot per file, a bar that moves once per two world rows — and, since milestone 24, **music** ([§9.5](#95-sound)), played by the generator's own player and clocked by its own tile loop, because interrupts are off down there. The identified 2× win ([§5.9](#59-cost--measured)) is held in reserve. |
 | A seed produces a technically valid but miserable map | Low | Feature anchors guarantee the necessities; the headless seed sweep ([§13](#13-build-and-test)) finds the rest. |
 | **Airlock: dome or structure?** The asset set now has both an `icon_airlock` room type and a standalone `airlock` structure sprite; the node graph in [§6.2](#62-the-node-graph) only models the dome | Medium | Decide before the node graph is written — it changes what an *outdoor edge* connects to. Recommendation and the comparison are in [§6.2](#62-the-node-graph). Cheap either way: the unused half is 400–512 bytes. |
 | A full-colony routing rebuild is ~27 s of stale routes at the current budget | Medium | Only at 128 nodes; 48 nodes is 3.8 s ([§6.4](#64-routing)). Two levers, both untaken: raise the per-frame budget while the camera is still, or tighten `rt_node` — its per-node setup re-reads the same three bytes and is worth about 2×. |

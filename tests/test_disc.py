@@ -111,7 +111,7 @@ def main():
                 n += sum(1 for i in range(80) if ram[o + i])
         return n
 
-    running, frames, bars, seen_title = False, 0, [], None
+    running, frames, bars, seen_title, tones = False, 0, [], None, []
     for _ in range(120):          # η γεννήτρια μόνη της θέλει 13,5 s
         m.run_frames(30)
         frames += 30
@@ -125,6 +125,13 @@ def main():
         # έσπασε μόλις μπήκε ένα ένατο αρχείο στον δίσκο (§4.2).
         if frames >= 300 and not started:
             bars.append(bar_bytes(scr()))
+        # Και ο ΗΧΟΣ της αναμονής (§9.5): η γεννήτρια έχει δικό της παίκτη,
+        # γιατί ο ήχος του παιχνιδιού ζει στην τράπεζα 2 που δεν υπάρχει ακόμη.
+        # Δειγματοληψία ανά 30 frames· μια νότα κρατά ~25, οπότε περνούν όλες
+        # από μπροστά μας έστω μία φορά.
+        if not started:
+            r = m.psg_regs()
+            tones.append((r[0] | ((r[1] & 15) << 8), r[8], r[10]))
         if started:
             running = True
             break
@@ -142,6 +149,18 @@ def main():
     check(bars and bars[0] == 0 and mono and max(bars) == 64,
           f"η μπάρα προχώρησε 0 -> {max(bars) if bars else 0} από 64, "
           f"μονότονα ({len(bars)} δείγματα)")
+
+    # --- 1γ. η μουσική της αναμονής --------------------------------------
+    pitches = {t[0] for t in tones if t[0]}
+    loud = sum(1 for t in tones if t[1] or t[2])
+    check(len(pitches) >= 5 and loud >= 10,
+          f"η γεννήτρια παίζει: {len(pitches)} διαφορετικές νότες σε "
+          f"{len(tones)} δείγματα, {loud} με ένταση")
+    # και ΣΩΠΑΙΝΕΙ όταν τελειώσει: το παιχνίδι ξεκινά χωρίς κατάλοιπο
+    m.run_frames(60)
+    r = m.psg_regs()
+    check(r[8] == 0 and r[9] == 0 and r[10] == 0,
+          f"και σωπαίνει πριν το παιχνίδι: εντάσεις {r[8:11]}")
     if not running:
         m.screenshot(os.path.join(ROOT, "build", "disc.png"), aspect=True)
         return 1

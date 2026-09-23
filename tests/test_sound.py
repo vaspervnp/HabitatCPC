@@ -351,6 +351,10 @@ def main():
                          encoding="utf-8"):
             if line.startswith("G_econ_state"):
                 ec = int(line.split("#")[1].strip(), 16)
+    # Το ml_alert έχει τρεις κλήσεις αναμονής — αλλιώς κάθε νέο παιχνίδι
+    # χτυπούσε συναγερμό μόλις η οικονομία έκανε την πρώτη της περιστροφή
+    # (§9.5). Εδώ τις καίμε, γιατί η δοκιμή θέλει την ΑΚΜΗ.
+    g.poke(gsym["ML_WARM"], 0)
     g.poke(ec + 46, 1)                              # POK
     g.poke(ec + 47, 1)                              # O2OK
     g.run_code(0x3F00, bytes(call("ML_ALERT") + [0x18, 0xFE]))
