@@ -55,6 +55,17 @@ ge_seed:
         ld      (gen_seed),hl
         xor     a
         ld      (gen_planet),a
+        ; Το seed ΕΠΙΒΙΩΝΕΙ της γεννήτριας. Σε τέσσερα bytes της τράπεζας 6,
+        ; που φορτώθηκε πριν από εδώ και δεν ξαναγράφεται: αυτό το αρχείο
+        ; σβήνεται σε λίγο από τον κώδικα του παιχνιδιού, και χωρίς αυτά το
+        ; παιχνίδι δεν ξέρει ποτέ από ποιο seed βγήκε ο κόσμος του (§11).
+        ld      bc,GA_PORT + PAGE_B6
+        out     (c),c
+        ld      (G_worldinfo),hl
+        xor     a
+        ld      (G_worldinfo + 2),a
+        ld      a,GEN_VERSION
+        ld      (G_worldinfo + 3),a
         ld      bc,GA_PORT + PAGE_B4
         out     (c),c
         call    worldgen_run

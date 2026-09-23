@@ -25,6 +25,8 @@
 """
 import os, shutil, subprocess, sys
 
+from dsk import Dsk
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 BUILD = os.path.join(ROOT, "build")
@@ -70,8 +72,53 @@ def assemble():
     run([RASM, "boot.asm", "-oi", os.path.join(BUILD, "boot.sna"), "-v2"], cwd=src)
 
 
+# Ο κώδικας της τράπεζας 0 δεν επιτρέπεται να φτάσει εδώ: στο #3E00 ο φορτωτής
+# αφήνει το επίμετρό του, και το αντιγράφει ΑΦΟΥ φορτώσει το παιχνίδι. Αν το
+# game.bin έφτανε ως εκεί, το επίμετρο θα έγραφε πάνω σε κώδικα που πρόκειται
+# να τρέξει — και θα φαινόταν ως τυχαίο κρέμασμα μετά το φόρτωμα, όχι ως
+# σφάλμα build.
+ENDGAME = 0x3E00
+
+# Τα slots του §11 ζουν στα tracks 24-41, ΧΩΡΙΣ αρχείο AMSDOS από πάνω τους: ο
+# δίσκος είναι του παιχνιδιού. Αυτό ισχύει όσο τα αρχεία δεν φτάνουν ως εκεί —
+# και αυτό ελέγχεται, γιατί ένα αρχείο που θα έμπαινε στο track 24 θα σβηνόταν
+# στο πρώτο σώσιμο, χωρίς κανένα μήνυμα.
+SAVE_T0 = 24
+
+
+def check_fit():
+    n = os.path.getsize(os.path.join(BUILD, "game.bin"))
+    top = 0x0100 + n
+    if top > ENDGAME:
+        sys.exit(f"ο κώδικας της τράπεζας 0 φτάνει στο #{top:04X} και πατά το "
+                 f"επίμετρο του φορτωτή στο #{ENDGAME:04X} "
+                 f"({top - ENDGAME} bytes πάνω από το όριο)")
+    return ENDGAME - top
+
+
+def check_saves():
+    """Κανένα αρχείο δεν φτάνει στην περιοχή των slots."""
+    d = Dsk(DSK)
+    top = 0
+    for si in range(4):
+        sec = d.sector(0, 0xC1 + si)
+        for e in range(0, len(sec), 32):
+            if sec[e] == 0xE5:                  # σβησμένη εγγραφή
+                continue
+            for b in sec[e + 16:e + 32]:
+                if b:
+                    top = max(top, b)
+    track = (top * 2) // 9                      # 1 KB ανά block, 9 τομείς/track
+    if track >= SAVE_T0:
+        sys.exit(f"τα αρχεία φτάνουν ως το track {track}· τα slots ξεκινούν "
+                 f"στο {SAVE_T0}")
+    return track
+
+
 def build():
     assemble()
+    slack = check_fit()
+    print(f"τράπεζα 0: {slack} bytes ως το επίμετρο του φορτωτή")
     stage = os.path.join(BUILD, "dsk")
     shutil.rmtree(stage, ignore_errors=True)
     os.makedirs(stage)
@@ -93,5 +140,8 @@ def build():
 
 if __name__ == "__main__":
     total = build()
+    last = check_saves()
+    print(f"αρχεία ως το track {last}· slots στα {SAVE_T0}-41 "
+          f"({(42 - SAVE_T0) // 6} x 6 tracks)")
     print(run([IDSK, DSK, "-l"]).rstrip())
     print(f"build/habitat.dsk: {len(FILES)} αρχεία, {total} bytes")

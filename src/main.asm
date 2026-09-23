@@ -22,6 +22,7 @@
 
 FLIPTAB     equ G_flip_mode0
 PPI_B       equ #F500
+HAS_DISC    equ 1                        ; το ui.asm δίνει S/L μόνο εδώ (§11)
 
 start:
         di
@@ -106,6 +107,8 @@ ml_hud:
         include "needs.asm"
         include "ship.asm"
         include "wheel.asm"
+        include "fdc.asm"
+        include "save.asm"
         include "hw.asm"
         include "newgame.asm"
 zz_bank0_end:

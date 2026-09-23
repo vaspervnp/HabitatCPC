@@ -362,10 +362,18 @@ wanted 16,128. Three decisions closed it:
   `route.asm`, the ghost's 1,600-byte undo log and the 512-byte figure table live
   above it.
 
-The result is 2,108 free in bank 0 and 708 in bank 2 — about 2.8 KB for save/load,
+The result was 2,108 free in bank 0 and 708 in bank 2 — about 2.8 KB for save/load,
 audio, meteors and intruders, with bank 7's reserved 1,024-byte `text` block
 untouched behind it. `tests/test_game.py` builds the whole thing, so the number
 cannot drift back without a test failing to assemble.
+
+**Save and load spent 842 of it** (`fdc.asm`, `save.asm`, and the two keys in the
+UI), and the ceiling turned out to be lower than `&4000`: the loader leaves its
+endgame at `&3E00` and copies it there *after* the game is in memory
+([§13.1](#131-three-ways-a-loader-does-not-run)), so bank-0 code must stop below
+that. **649 bytes left**, checked by `tools/mkdsk.py` on every build — the failure
+mode otherwise is a machine that loads perfectly and hangs, with nothing in the
+build to point at.
 
 **Every bank now fits, and the numbers above are produced by `tools/pack.py`,
 which lays the assets out for real and refuses to build if anything overflows.**
@@ -1795,9 +1803,10 @@ a joystick alternative, read in one pass over the PSG keyboard matrix.
 | Fire / `COPY` | select, confirm, place |
 | `ESC` | cancel, back |
 | `SPACE` | open the build menu |
-| `1`…`4` | speed: pause, normal, fast, very fast (wheel advances 0 / 1 / 2 / 4 slots per frame) |
+| `1`…`4` | speed: pause, normal, fast, very fast (wheel advances 0 / 1 / 2 / 4 slots per frame) — **bound, not yet acted on**: the keys reach `act_hit` and nothing reads them |
 | `TAB` | cycle alerts — jump the camera to the next problem |
 | `H` | centre on `(0,0)` |
+| `S` / `L` | save to disc, load from disc ([§11](#11-save-and-load)) — only from `LOOK` |
 
 `TAB` matters more than it looks. In a base that is 6 viewports wide, the thing that is
 killing you is usually off-screen.
@@ -2038,20 +2047,49 @@ technically alive, and being allowed to try to save it is the point.
 ## 11. Save and load
 
 Three slots on disc, written by the game's own FDC routines — AMSDOS cannot be used,
-because its workspace at `&A700–&BFFF` is occupied by bank 2 data.
+because its workspace at `&A700–&BFFF` is occupied by bank 2 data. **Built**: `S`
+saves, `L` loads, both only from `LOOK`.
 
-| Section | Bytes |
-|---|---|
-| Header: magic, generator version, seed, planet, sol, camera, RNG state | 32 |
-| **World plane, verbatim** | 16,384 |
-| Entity tables (agents, domes, structures, corridors, jobs) | ≈ 4,100 |
-| Economy: stocks, flows, buffers, milestone flags | 128 |
-| **Total** | **≈ 20.2 KB** |
+| Sector | Section | Bytes |
+|---|---|---|
+| 0 | Header: magic, version, seed, planet, camera, cursor, slot | 512 |
+| 1–32 | **World plane, verbatim** — bank 4 | 16,384 |
+| 33–41 | Agents, domes, structures, corridors, slot occupancy, seed — bank 6 `&6C00–&7DFF` | 4,608 |
+| 42–45 | Economy, job board, node graph — bank 2 `&A400–&ABFF` | 2,048 |
+| | **Total** | **23,552** |
 
 The world plane **is** saved, in full. Regenerating it from the seed would cost
-13.5 s on every load ([§5.10](#510-player-modification)); reading 16 KB off the disc
-costs an estimated 4 s and takes the modified-tile bookkeeping with it. A 178 KB
-disc side holds eight such saves.
+13.5 s on every load ([§5.10](#510-player-modification)); the 46 sectors cost
+**0.7 s measured in the emulator** (`tests/test_save.py`) — real hardware will be
+several times that, because the emulator has no rotational latency and a real
+drive waits for each sector to come round.
+
+**Nothing derived is saved**, and that is the rule that makes the file this small:
+not `NEXTHOP` (12 KB, rebuilt by the wheel), not the figure cache (rebuilt from the
+agents), not the dirty list, not the wheel's position. Loading rebuilds all of it in
+the same order a new game does — `wheel_reset`, `rt_mark`, `dirty_reset`, `gh_reset`,
+then a full draw. `NEXTHOP` is **zeroed** first, exactly as the loader leaves it at
+boot ([§13.1](#131-three-ways-a-loader-does-not-run)): a stale next-hop is not
+garbage, it is a *valid neighbour of another world*, and an agent reading one walks
+off in a direction that made sense in a game that no longer exists.
+
+**Where on the disc.** A slot is 6 tracks (54 sectors, 46 used) and the three live at
+tracks 24, 30 and 36 — the disc holds 42. `sv_save` and `sv_load` take a slot number;
+**the keyboard reaches slot 1 only**, because a slot picker is a screen and there is
+no screen for it yet. They belong to no AMSDOS file: this is the
+game's own disc, `tools/mkdsk.py` checks at build time that no file reaches track 24,
+and a save that overwrote one would be silent otherwise.
+
+The header is checked **before** a single byte of the game is overwritten. An empty
+slot is `&E5` from end to end — perfectly valid bytes, an invalid game — and without
+the magic, *load* on an untouched slot would fill the world with rubbish and hang the
+simulation. `tests/test_save.py` loads from an empty slot on purpose and asserts that
+nothing moves.
+
+The seed survives the generator in four bytes of bank 6 (`worldinfo`), written by
+`GEN.BIN` before the game's code exists. Without them the running game has no idea
+which seed built its world, because the generator is a separate loadable that is
+overwritten by bank 2's data ([§13](#13-build-and-test)).
 
 ---
 
@@ -2188,6 +2226,8 @@ tests in this document runnable rather than aspirational:
 | Corridor routing | independent Python router compared on every pair of domes, then the *picture* compared at both kinds of bend (`test_route.py`) |
 | The whole game | `src/main.asm` booted: start state, the economy moving inside the loop, a building placed and **finished**, and the HUD following it with no input (`test_game.py`) |
 | The disc | `RUN"HABITAT` from a cold BASIC prompt: the game arrives, the start state is there, the HUD is drawn, and the world is **generated** rather than loaded (`test_disc.py`) |
+| Disc driver | the μPD765 without AMSDOS: reads the disc's own **catalogue** and compares it with the host's `.dsk` byte for byte, then writes three sectors, reads them back, and checks the neighbouring sector is untouched (`test_fdc.py`) |
+| Save and load | freeze the wheel, photograph the state, `S`, run 12,000 frames until it has moved, `L`, and assert the economy, the world plane and the **picture** are back — plus a load from an empty slot that must be refused (`test_save.py`) |
 | Playability of every seed | headless run of N seeds, assert water and ore within 30 tiles of centre |
 
 That last one is the kind of test that is impossible on real hardware and trivial here.
@@ -2268,10 +2308,12 @@ halves were assembled together: the two halves disagreed about which bank the
 window holds ([§7.4](#74-one-convention-per-half-and-they-disagreed)), and a fresh
 construction site had no graph edge, so nobody could ever walk to it.
 
-**And it boots from a disc.** `tools/mkdsk.py` builds `build/habitat.dsk`;
-`RUN"HABITAT` on a 6128 generates a world and drops the player into the colony
-([§13](#13-build-and-test)). That is milestone 10's delivery half, ahead of its
-save/load half.
+**And it boots from a disc, and writes back to it.** `tools/mkdsk.py` builds
+`build/habitat.dsk`; `RUN"HABITAT` on a 6128 generates a world and drops the player
+into the colony ([§13](#13-build-and-test)), and `S` / `L` save and load a game
+through the machine's own floppy controller ([§11](#11-save-and-load)). That is
+milestone 10's delivery and save/load halves. What is left of it is audio, the four
+planets, and tuning.
 
 ---
 

@@ -9,8 +9,11 @@ either keep the oxygen running or do not.
 Systems are modelled on *Planetbase* (Madruga Works, 2015), cut down until they fit
 in a Z80 and 128 KB.
 
-> **Status: design.** The art is finished and documented. No engine code exists yet.
-> Read [`DESIGN.md`](DESIGN.md) before writing any.
+> **Status: it runs.** `RUN"HABITAT` on a 6128 generates a world, builds the starting
+> colony and hands it over; the player builds, the colonists work, and `S` / `L` save
+> and load the game. Left: audio, four planets, a slot picker, tuning.
+> Build it with `tools/build.sh` — that also runs every test — and read
+> [`DESIGN.md`](DESIGN.md) first.
 
 ---
 
@@ -26,9 +29,10 @@ in a Z80 and 128 KB.
 
 Two decisions shape everything else:
 
-- **The world is a pure function of its seed.** Terrain is generated once into a
-  dedicated 16 KB bank and never saved — a save file stores the seed and a short list
-  of what the player changed, so a 16 KB map costs two bytes on disc.
+- **The world is a pure function of its seed.** Terrain is generated once, into a
+  dedicated 16 KB bank, by a program that is loaded, run and then overwritten by the
+  game itself. Saves keep the whole 16 KB rather than the seed: regenerating costs
+  13.5 seconds and reading it back costs one.
 - **Nothing runs all at once.** Agents, production, routing, rendering and even world
   generation are sliced across a 16-frame wheel with a fixed per-frame budget. The
   simulation is allowed to think more slowly as the colony grows; the frame rate is

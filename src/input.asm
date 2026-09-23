@@ -37,7 +37,9 @@ A_SPD1      equ 9
 A_SPD2      equ 10
 A_SPD3      equ 11
 A_SPD4      equ 12
-A_ACTIONS   equ 13
+A_SAVE      equ 13
+A_LOAD      equ 14
+A_ACTIONS   equ 15
 
 ; ---------------------------------------------------------------------------
 ; in_scan — και οι δέκα γραμμές στο key_now. 1 = πατημένο.
@@ -202,6 +204,8 @@ act_src:
         db      8,#02,255,0             ; 2 κανονικά
         db      7,#02,255,0             ; 3 γρήγορα
         db      7,#01,255,0             ; 4 πολύ γρήγορα
+        db      7,#10,255,0             ; S σώσε
+        db      4,#10,255,0             ; L φόρτωσε
 
 key_now:    defs KEY_LINES
 act_now:    dw 0

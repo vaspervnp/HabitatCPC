@@ -124,9 +124,9 @@ def main():
     check(row2.startswith("POP  4/"), f"το HUD σχεδιάστηκε: |{row2}|")
 
     # --- 4. ο κόσμος είναι παραγμένος ------------------------------------
-    m.run_code(0x3800, open(os.path.join(ROOT, "build", "plane.bin"), "rb").read())
+    m.run_code(0x3E00, open(os.path.join(ROOT, "build", "plane.bin"), "rb").read())
     m.run_frames(2)
-    sample = bytes(m.read_ram(0x3900, 256))
+    sample = bytes(m.read_ram(0x3F00, 256))
     classes = {W.cls_of(b) for b in sample}
     check(len(classes) >= 3,
           f"το επίπεδο έχει ποικιλία εδάφους: {sorted(classes)} σε 256 δείγματα")

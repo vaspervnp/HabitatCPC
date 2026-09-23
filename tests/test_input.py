@@ -20,9 +20,10 @@ RASM = os.path.expanduser("~/rasm/rasm.exe")
 SNA = os.path.join(ROOT, "build", "inputtest.sna")
 
 A_UP, A_DOWN, A_LEFT, A_RIGHT, A_FIRE, A_CANCEL, A_MENU, A_NEXT, A_HOME, \
-    A_SPD1, A_SPD2, A_SPD3, A_SPD4 = range(13)
+    A_SPD1, A_SPD2, A_SPD3, A_SPD4, A_SAVE, A_LOAD = range(15)
 NAMES = ["πάνω", "κάτω", "αριστερά", "δεξιά", "FIRE", "ακύρωση", "μενού",
-         "επόμενο", "κέντρο", "ταχ.1", "ταχ.2", "ταχ.3", "ταχ.4"]
+         "επόμενο", "κέντρο", "ταχ.1", "ταχ.2", "ταχ.3", "ταχ.4", "σώσε",
+         "φόρτωσε"]
 
 
 def build():
@@ -61,6 +62,8 @@ def main():
         ("2",                dict(key="2"),       A_SPD2,   8, 0x02),
         ("3",                dict(key="3"),       A_SPD3,   7, 0x02),
         ("4",                dict(key="4"),       A_SPD4,   7, 0x01),
+        ("S σώσε",           dict(key="S"),       A_SAVE,   7, 0x10),
+        ("L φόρτωσε",        dict(key="L"),       A_LOAD,   4, 0x10),
         ("joy πάνω",         dict(joy=JOY_UP),    A_UP,     9, 0x01),
         ("joy κάτω",         dict(joy=JOY_DOWN),  A_DOWN,   9, 0x02),
         ("joy αριστερά",     dict(joy=JOY_LEFT),  A_LEFT,   9, 0x04),
@@ -94,7 +97,7 @@ def main():
             print(f"ΑΠΟΤΥΧΙΑ {name:18s} ωμή γραμμή {line} = #{raw:02X}, "
                   f"περίμενα το bit #{bit:02X}")
             continue
-        hits = [m.peek(sym["HIT_N"] + i) for i in range(13)]
+        hits = [m.peek(sym["HIT_N"] + i) for i in range(len(NAMES))]
         got = [i for i, h in enumerate(hits) if h]
         if got == [want] and hits[want] == 1:
             print(f"OK {name:18s} -> {NAMES[want]}, μία ακμή σε 10 frames")

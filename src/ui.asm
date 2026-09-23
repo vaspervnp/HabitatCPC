@@ -82,6 +82,17 @@ uit_state:
 ; --- LOOK ------------------------------------------------------------------
 uist_look:
         call    ui_move                 ; -> NZ αν κουνήθηκε
+        ; Ο δίσκος υπάρχει μόνο στο πλήρες παιχνίδι: τα tests/uitest.asm και
+        ; tests/objtest.asm δένουν τον renderer χωρίς τροχό και χωρίς οδηγό
+        ; δισκέτας, και δεν έχουν πού να σώσουν.
+        ifdef HAS_DISC
+        ld      a,A_SAVE
+        call    in_hit
+        jp      nz,ui_dosave
+        ld      a,A_LOAD
+        call    in_hit
+        jp      nz,ui_doload
+        endif
         ld      a,A_MENU
         call    in_hit
         ret     z
@@ -91,6 +102,69 @@ uist_look:
         ld      a,(ui_sel)
         call    bd_select
         jp      ui_show
+
+        ifdef HAS_DISC
+; --- δίσκος ----------------------------------------------------------------
+; Μόνο από το LOOK, και με τον κέρσορα σβηστό: το σώσιμο κρατά περίπου δύο
+; δευτερόλεπτα με τις διακοπές ανοιχτές και τίποτα δεν σχεδιάζεται στο μεταξύ.
+; Το μήνυμα μένει ως το επόμενο ui_panel, δηλαδή ως μία περιστροφή τροχού.
+ui_dosave:
+        call    ui_hide
+        ld      hl,t_saving
+        call    ui_msg
+        xor     a
+        call    sv_save
+        ld      hl,t_saved
+        jr      z,uds_end
+        ld      hl,t_dskerr
+uds_end:
+        call    ui_msg
+        call    ui_dirty
+        jp      ui_show
+
+ui_doload:
+        call    ui_hide
+        ld      hl,t_loading
+        call    ui_msg
+        xor     a
+        call    sv_load                 ; πετυχαίνοντας, ξανασχεδιάζει τα πάντα
+        push    af
+        ld      hl,t_loaded
+        jr      z,udl_end
+        ld      hl,t_dskerr
+udl_end:
+        call    ui_msg
+        call    ui_dirty
+        pop     af
+        jp      nz,ui_show              ; αποτυχία: ο κέρσορας ήταν κρυμμένος
+        ret                             ; επιτυχία: το sv_after τον έδειξε ήδη
+
+; ui_msg — μία γραμμή στη σειρά 3 του HUD, και το υπόλοιπο σβηστό.
+ui_msg:
+        push    hl
+        ld      a,3
+        call    hud_go
+        pop     hl
+        push    hl
+        call    hud_text
+        pop     hl
+        ld      b,40
+um_len:
+        ld      a,(hl)
+        or      a
+        jr      z,um_blank
+        inc     hl
+        dec     b
+        jr      um_len
+um_blank:
+        jp      hud_blank
+
+t_saving:   db "SAVING TO DISC...   ",0
+t_saved:    db "SAVED  SLOT 1       ",0
+t_loading:  db "LOADING FROM DISC...",0
+t_loaded:   db "LOADED SLOT 1       ",0
+t_dskerr:   db "DISC ERROR          ",0
+        endif
 
 ; --- MENU ------------------------------------------------------------------
 uist_menu:
