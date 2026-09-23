@@ -1390,6 +1390,12 @@ it could live here.
    feels broken. A colony that thinks a little more slowly when it has eighty people in
    it feels like a colony with eighty people in it.
 
+Rule 4 has exactly one exception, and the player asks for it: at double and quadruple
+speed the loop runs two or four wheel slots per frame, the frame overruns, and the
+screen drops frames ([§9.1](#91-controls)). Trading frame rate for simulation rate is
+fine when it is a key press and not a surprise. Rule 1 still holds underneath — each
+slot is still bounded; there are simply more of them.
+
 ### 7.2 The wheel
 
 **Sixteen slots, one advanced per frame. A full revolution is 16 frames = 320 ms ≈ 3.1 Hz.**
@@ -1835,13 +1841,34 @@ a joystick alternative, read in one pass over the PSG keyboard matrix.
 | Fire / `COPY` | select, confirm, place |
 | `ESC` | cancel, back |
 | `SPACE` | open the build menu |
-| `1`…`4` | speed: pause, normal, fast, very fast (wheel advances 0 / 1 / 2 / 4 slots per frame) — **bound, not yet acted on**: the keys reach `act_hit` and nothing reads them |
+| `1`…`4` | speed: pause, normal, fast, very fast — the wheel advances 0 / 1 / 2 / 4 slots per frame |
 | `TAB` | cycle alerts — jump the camera to the next problem |
 | `H` | centre on `(0,0)` |
 | `S` / `L` | save to disc, load from disc ([§11](#11-save-and-load)) — only from `LOOK` |
 
 `TAB` matters more than it looks. In a base that is 6 viewports wide, the thing that is
 killing you is usually off-screen.
+
+**Speed is more work per frame, not faster work**, and it is the one place where
+rule 1 of [§7.1](#71-the-rules) is deliberately broken: four wheel slots in a frame
+is four times the simulation, the frame overruns, and the screen drops frames. That
+is the player's choice to make. Measured against the wheel's own frame counter
+(`tests/test_speed.py`), over 400 frames each:
+
+| Key | Wheel slots/frame | Simulation runs at |
+|---|---|---|
+| `1` | 0 | **stopped** — and the HUD stops being redrawn with it |
+| `2` | 1 | 0.84× nominal |
+| `3` | 2 | 1.68× |
+| `4` | 4 | 3.40× |
+
+**Normal speed is 0.84, not 1.00, and the missing sixth is the HUD.** One HUD
+redraw costs three frames; with `ret` poked over it the ratio is exactly 1.00. That
+is the cheapest remaining optimisation in the engine and it is in
+[§9.2](#92-hud), not here.
+
+Pause does not pause the player: the cursor still moves, the build menu still opens,
+and a dome can be placed on a frozen colony. That is the useful kind of pause.
 
 **Buttons are read on the edge, the cursor on the level, and that distinction was
 not a style choice.** A `ui_tick` lasts one frame when nothing moves and **3 to 9**
@@ -1885,6 +1912,18 @@ The alert line is the game's voice and it should be specific: `NO POWER — OXYG
 GEN 2` beats `WARNING`. Today it names the condition but not yet the machine —
 `NO POWER`, `NO OXYGEN`, `SANDSTORM`, `COLONY LOST`, `ALL SYSTEMS OK` — because
 naming the machine needs the selection the build mode has not built yet.
+
+**A HUD redraw costs three frames, and it has its own clock: every 16 frames of real
+time.** It used to run once per wheel rotation, which broke twice over when the speed
+control arrived ([§9.1](#91-controls)): the gate was `wh_slot == 0`, and at double
+speed the slot counter steps by two — if the speed changed on an odd slot, zero never
+came round again and **the HUD froze while the colony carried on**. Worse, tying it to
+rotations meant three frames of HUD per four of simulation at `x4`, which capped that
+speed at 2.3×. A fixed real-time clock fixes both: the player sees the HUD 2.6 times a
+second at every speed, and `x4` delivers 3.4×.
+
+The three frames are a full rewrite of forty cells across three rows, every time,
+whether or not a digit changed. Redrawing only what changed is the next cheap win.
 
 Checked byte-for-byte against `tools/hudref.py` in two states, the second chosen
 because the first exercised neither leading-zero suppression nor the alert line.
@@ -2261,6 +2300,7 @@ tests in this document runnable rather than aspirational:
 | Disc driver | the μPD765 without AMSDOS: reads the disc's own **catalogue** and compares it with the host's `.dsk` byte for byte, then writes three sectors, reads them back, and checks the neighbouring sector is untouched (`test_fdc.py`) |
 | Save and load | freeze the wheel, photograph the state, `S`, run 12,000 frames until it has moved, `L`, and assert the economy, the world plane and the **picture** are back — plus a load from an empty slot that must be refused (`test_save.py`) |
 | Palette | the only test that looks at **colour** rather than pen number: a share-per-pen pattern on screen, weighed against `palette_fw` and against each planet's four pens (`test_palette.py`) |
+| Game speed | the four speed keys against the simulation's own frame counter, and the HUD indicator read back off the screen (`test_speed.py`) |
 | Playability of every seed | headless run of N seeds, assert water and ore within 30 tiles of centre |
 
 That last one is the kind of test that is impossible on real hardware and trivial here.

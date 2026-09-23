@@ -102,13 +102,20 @@ def main():
         return econ, plane, play
 
     def image(tag):
-        """Η οθόνη ΜΕ ΤΑ ΧΡΩΜΑΤΑ ΤΗΣ. Τα bytes της οθόνης είναι αριθμοί pen:
+        """Το ΚΑΔΡΟ με τα χρώματά του. Τα bytes της οθόνης είναι αριθμοί pen:
         αν το φόρτωμα ξεχνούσε την παλέτα του πλανήτη (§5.7), θα ήταν ίδια ως
-        το τελευταίο byte και άλλη στο μάτι."""
+        το τελευταίο byte και άλλη στο μάτι.
+
+        ΧΩΡΙΣ ΤΟ HUD, για δύο λόγους που δεν έχουν σχέση με την παλέτα: μετά
+        το φόρτωμα η σειρά 3 γράφει «LOADED SLOT 1», και από το βήμα 18 το HUD
+        ξαναγράφεται με δικό του ρολόι — μια φωτογραφία μπορεί να πέσει στη
+        μέση του. Το κάδρο είναι οι πρώτες 160 γραμμές, δηλαδή ό,τι είναι πάνω
+        από τη γραμμή 200 της εικόνας."""
         from PIL import Image
         path = os.path.join(ROOT, "build", f"save_{tag}.png")
         m.screenshot(path)
-        return list(Image.open(path).convert("RGB").getdata())
+        im = Image.open(path).convert("RGB")
+        return list(im.crop((0, 0, im.size[0], 200)).getdata())
 
     def tap(key, frames=400):
         m.key_down(key)

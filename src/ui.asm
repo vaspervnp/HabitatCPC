@@ -18,7 +18,7 @@ UI_MENU     equ 1
 UI_PLACE    equ 2
 UI_LINK     equ 3                       ; διάλεξε θόλο, διάλεξε θόλο (§9.4)
 
-UIP_NSIG    equ 7                       ; bytes υπογραφής των σειρών 3-4
+UIP_NSIG    equ 8                       ; bytes υπογραφής των σειρών 3-4
 UI_MARGIN   equ 1                       ; tiles από το χείλος πριν σκρολάρει
 PEN_CUR     equ 15                      ; ροζ — το λευκό χανόταν πάνω στα χείλη
                                     ; των διαδρόμων, που είναι κι αυτά λευκά
@@ -58,6 +58,7 @@ ui_center:
 ; ---------------------------------------------------------------------------
 ui_tick:
         call    in_read
+        call    ui_speed
         ld      a,A_HOME
         call    in_hit
         jr      z,uit_state
@@ -102,6 +103,50 @@ uist_look:
         ld      a,(ui_sel)
         call    bd_select
         jp      ui_show
+
+; ---------------------------------------------------------------------------
+; ui_speed — τα πλήκτρα 1-4 (§9.1). Δουλεύουν σε ΚΑΘΕ κατάσταση: η παύση είναι
+; χρήσιμη ακριβώς όταν χτίζεις, και το x4 όταν περιμένεις.
+;
+; ΔΕΝ ΜΠΑΙΝΕΙ ΑΝΑΜΕΣΑ ΣΤΟ uit_state ΚΑΙ ΣΤΟ uist_look. Εκεί το έβαλα την πρώτη
+; φορά, και η κατάσταση LOOK φτάνει με ΠΤΩΣΗ μετά τον διαλογέα: το παιχνίδι
+; σταμάτησε να απαντά στο SPACE και το ui_spd γέμισε σκουπίδια — που σημαίνει
+; 255 θέσεις τροχού ανά frame, δηλαδή μηχάνημα που φαίνεται κολλημένο.
+;
+; Ο δείκτης ζωγραφίζεται ΜΕΤΑ τον βρόχο και μόνο αν άλλαξε κάτι: το ui_panel
+; χαλάει HL και BC, και μέσα στον βρόχο θα διάβαζε ο επόμενος γύρος τον πίνακα
+; από λάθος θέση.
+; ---------------------------------------------------------------------------
+ui_speed:
+        ld      a,(ui_spd)
+        ld      (uis_was),a
+        ld      hl,ui_spd_tab
+        ld      c,A_SPD1
+        ld      b,4
+uis_lp:
+        push    bc
+        push    hl
+        ld      a,c
+        call    in_hit
+        pop     hl
+        pop     bc
+        jr      z,uis_next
+        ld      a,(hl)
+        ld      (ui_spd),a
+uis_next:
+        inc     hl
+        inc     c
+        djnz    uis_lp
+        ld      a,(ui_spd)
+        ld      hl,uis_was
+        cp      (hl)
+        ret     z
+        call    ui_dirty                ; στην παύση ο τροχός δεν ξαναφτάνει
+        jp      ui_panel                ; στη θέση 0: δείξ' το τώρα ή ποτέ
+
+ui_spd_tab: db 0, 1, 2, 4
+ui_spd:     db 1                    ; 0 παύση · 1 κανονικά · 2 γρήγορα · 4 πολύ
+uis_was:    db 1
 
         ifdef HAS_DISC
 ; --- δίσκος ----------------------------------------------------------------
@@ -840,7 +885,8 @@ uip_row4:
         ld      hl,t_keys
         call    hud_text
         ld      b,40-24
-        jp      hud_blank
+        call    hud_blank
+        jr      uip_spd
 uip_st:
         ld      a,(ui_bad)
         or      a
@@ -875,7 +921,35 @@ uip_ln:
 uip_say:
         call    hud_text
         ld      b,40-20
-        jp      hud_blank
+        call    hud_blank
+        ; fall through
+
+; uip_spd — η ταχύτητα, στις πέντε τελευταίες στήλες της σειράς 3. Είναι το
+; μόνο σημείο του HUD που γράφεται από τα δεξιά: οι σειρές 0-2 είναι γεμάτες
+; ως το τελευταίο κελί (§9.2) και η σειρά 3 τελειώνει με κενά σε κάθε
+; κατάσταση.
+uip_spd:
+        ld      a,3
+        call    hud_go
+        ld      b,35
+        call    hud_adv
+        ld      a,(ui_spd)
+        add     a,a
+        ld      l,a
+        ld      h,0
+        ld      de,t_spd_ptr
+        add     hl,de
+        ld      a,(hl)
+        inc     hl
+        ld      h,(hl)
+        ld      l,a
+        jp      hud_text
+
+t_spd_ptr:  dw t_pause, t_x1, t_x2, t_x2, t_x4
+t_pause:    db "PAUSE",0
+t_x1:       db "  x1 ",0
+t_x2:       db "  x2 ",0
+t_x4:       db "  x4 ",0
 
 t_look:     db "LOOK  SPACE=BUILD  ",0
 t_keys:     db "FIRE=PLACE ESC=BACK ",0
@@ -917,6 +991,9 @@ uisg_link:
         call    cr_afford
 uisg_st:
         pop     hl
+        ld      (hl),a
+        inc     hl
+        ld      a,(ui_spd)            ; ο δείκτης ταχύτητας ζει στη σειρά 3
         ld      (hl),a
         ret
 
