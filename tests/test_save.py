@@ -32,6 +32,7 @@ RASM = os.path.expanduser("~/rasm/rasm.exe")
 DSK = os.path.join(ROOT, "build", "habitat.dsk")
 PLANE = os.path.join(ROOT, "build", "plane.bin")
 FAIL = []
+LAST_MSG = ""
 
 
 def check(ok, msg):
@@ -117,31 +118,83 @@ def main():
         im = Image.open(path).convert("RGB")
         return list(im.crop((0, 0, im.size[0], 200)).getdata())
 
-    def tap(key, frames=400):
+    # --- η επιλογή θέσης (§11) --------------------------------------------
+    # Από το βήμα 22 το S και το L ΔΕΝ σώζουν κατευθείαν: ανοίγουν επιλογή και
+    # περιμένουν FIRE. Το FIRE έρχεται από COPY ή από το χειριστήριο· εδώ από
+    # το χειριστήριο, που όσο είναι αναμμένο κλέβει τα βελάκια από τη μήτρα —
+    # γι' αυτό ανάβει και σβήνει γύρω από κάθε πάτημα.
+    from sprites import load_map, load_bin
+    from cpc import KEY_RIGHT, KEY_ESC
+    smap, sblob = load_map(), load_bin()
+    _f = smap["font_gfx"]
+    _font = sblob[_f.off:_f.off + _f.size]
+    GLYPH = {bytes(_font[i * 16:(i + 1) * 16]): chr(32 + i) for i in range(96)}
+
+    def hud_row(row):
+        off = w16(sym["CAM_OFF"])
+        ram = m.read_ram(0xC000, 0x4000)
+
+        def byte(x, y):
+            return ram[(y & 7) * 0x800 + (((y >> 3) * 80 + x + 2 * off) & 0x7FF)]
+        return "".join(GLYPH.get(bytes(byte(c * 2 + k, 160 + row * 8 + l)
+                                       for l in range(8) for k in range(2)), "#")
+                       for c in range(40))
+
+    def press(key, frames=12):
         m.key_down(key)
         m.run_frames(4)
         m.key_up(key)
         m.run_frames(frames)
 
-    def tap_timed(key):
-        """Πατά το πλήκτρο και μετρά ΠΟΣΑ frames κρατά η κίνηση της κεφαλής."""
-        m.poke(sym["FD_TRK"], 0)
-        m.key_down(key)
+    def fire(frames=12):
+        m.set_joystick_type(1)
+        m.run_frames(2)
+        m.joystick(0x10)
         m.run_frames(4)
-        m.key_up(key)
+        m.joystick(0)
+        m.set_joystick_type(0)
+        m.run_frames(frames)
+
+    SV_SLOTS = 3
+
+    def disc_op(key, slot=0):
+        """S ή L, μετά (slot) φορές δεξιά, μετά FIRE. Γυρίζει τα frames που
+        κράτησε η κεφαλή."""
+        press(key)
+        # Η επιλογή ΘΥΜΑΤΑΙ την τελευταία θέση — γι' αυτό πάμε προς τα εκεί
+        # αντί να μετράμε πατήματα από το μηδέν.
         n = 0
-        while n < 900 and m.peek(sym["FD_TRK"]) < 29:
+        while m.peek(sym["SL_PICK"]) != slot and n < 2 * SV_SLOTS:
+            press(KEY_RIGHT)
+            n += 1
+        assert m.peek(sym["SL_PICK"]) == slot, "η επιλογή δεν έφτασε στη θέση"
+        m.poke(sym["FD_TRK"], 0)
+        fire(4)
+        # ΤΟ ΤΕΛΟΣ ΤΗΣ ΔΟΥΛΕΙΑΣ ΕΙΝΑΙ ΤΟ ΜΗΝΥΜΑ, όχι η θέση της κεφαλής: μια
+        # άδεια θέση απορρίπτεται στην πρώτη πίστα και η κεφαλή δεν φτάνει ποτέ
+        # εκεί που θα έφτανε ένα κανονικό φόρτωμα. Και το μήνυμα είναι
+        # στιγμιαίο — το πρώτο ui_panel, μέσα σε δεκαέξι frames, το σβήνει —
+        # οπότε διαβάζεται κάθε frame.
+        global LAST_MSG
+        LAST_MSG = ""
+        n = 0
+        while n < 300:
             m.run_frames(1)
             n += 1
+            r = hud_row(3)
+            if "SLOT" in r or "ERROR" in r:
+                LAST_MSG = r.rstrip()
+                break
         m.run_frames(30)
         return n + 4
+
 
     # --- 1. φωτογραφία Α και σώσιμο ---------------------------------------
     freeze(True)
     m.run_frames(4)
     a_econ, a_plane, a_play = snap()
     a_img = image("a")
-    nsave = tap_timed("S")
+    nsave = disc_op("S")
     check(m.peek(sym["SV_SLOT"]) == 0 and m.peek(sym["FD_TRK"]) >= 24,
           f"το σώσιμο έτρεξε (slot {m.peek(sym['SV_SLOT'])}, "
           f"track #{m.peek(sym['FD_TRK'])})")
@@ -159,7 +212,7 @@ def main():
           f"{sum(1 for x, y in zip(b_econ, a_econ) if x != y)} bytes)")
 
     # --- 3. φόρτωμα --------------------------------------------------------
-    nload = tap_timed("L")
+    nload = disc_op("L")
     m.run_frames(120)
     c_econ, c_plane, c_play = snap()
     check(c_plane == a_plane, "το επίπεδο κόσμου γύρισε ακριβώς")
@@ -208,7 +261,7 @@ def main():
           f"η κρύα εκκίνηση έφτιαξε ΑΛΛΟΝ κόσμο "
           f"({sum(1 for x, y in zip(e_plane, a_plane) if x != y)}/256 δείγματα "
           f"διαφέρουν)")
-    tap_timed("L")
+    disc_op("L")
     m.run_frames(120)
     f_econ, f_plane, f_play = snap()
     check(f_plane == a_plane, "το σωσμένο επίπεδο αντικατέστησε ολόκληρο το νέο")
@@ -223,6 +276,58 @@ def main():
     check(pdiff == 0,
           f"και ΤΑ ΧΡΩΜΑΤΑ: {pdiff} pixel διαφορά — ο πλανήτης ήρθε με το "
           f"σωσμένο παιχνίδι")
+
+    # --- 6. Η ΕΠΙΛΟΓΗ ΘΕΣΗΣ, ΚΑΙ ΟΙ ΑΛΛΕΣ ΔΥΟ ΘΕΣΕΙΣ ----------------------
+    # Ο δίσκος είχε τρεις θέσεις από το βήμα 16· το UI έδινε πάντα `xor a`,
+    # οπότε 46 KB δεν είχαν γραφτεί ΠΟΤΕ — ούτε από δοκιμή. Εδώ γράφονται.
+    press("S")
+    r3 = hud_row(3)
+    check(m.peek(sym["UI_STATE"]) == 4 and "SAVE TO SLOT   1" in r3
+          and r3.rstrip().endswith("x1"),
+          f"το S ανοίγει επιλογή: |{r3.rstrip()}|")
+    press(KEY_RIGHT)
+    r3b = hud_row(3)
+    check("SAVE TO SLOT   2" in r3b and m.peek(sym["SL_PICK"]) == 1,
+          f"το δεξί βελάκι αλλάζει θέση: |{r3b.rstrip()}|")
+    trk = m.peek(sym["FD_TRK"])
+    press(KEY_ESC)
+    check(m.peek(sym["UI_STATE"]) == 0 and m.peek(sym["FD_TRK"]) == trk,
+          f"το ESC ακυρώνει χωρίς να αγγίξει τον δίσκο (κατάσταση "
+          f"{m.peek(sym['UI_STATE'])}, κεφαλή {m.peek(sym['FD_TRK'])})")
+
+    # η τρίτη θέση ζει στα tracks 36-41: η κεφαλή δεν έχει πάει ποτέ εκεί
+    freeze(False)
+    m.run_frames(3000)
+    freeze(True)
+    m.run_frames(4)
+    g_econ, _, _ = snap()
+    disc_op("S", 2)
+    check(m.peek(sym["SV_SLOT"]) == 2 and m.peek(sym["FD_TRK"]) >= 36,
+          f"σώθηκε στην τρίτη θέση (slot {m.peek(sym['SV_SLOT'])}, "
+          f"track #{m.peek(sym['FD_TRK'])})")
+    check("SAVED TO SLOT 3" in LAST_MSG, f"και το λέει: |{LAST_MSG}|")
+
+    # η πρώτη θέση δεν πειράχτηκε: φόρτωσέ την και γύρνα στο Α
+    disc_op("L", 0)
+    m.run_frames(120)
+    h_econ, h_plane, _ = snap()
+    check(h_plane == a_plane and
+          sum(1 for x, y in zip(h_econ, a_econ) if x != y) <= 8,
+          "η πρώτη θέση έμεινε ανέπαφη από το γράψιμο της τρίτης")
+
+    # και η τρίτη έχει το ΔΙΚΟ της παιχνίδι
+    disc_op("L", 2)
+    m.run_frames(120)
+    i_econ, _, _ = snap()
+    check(sum(1 for x, y in zip(i_econ, g_econ) if x != y) <= 8 and
+          sum(1 for x, y in zip(i_econ, a_econ) if x != y) > 8,
+          f"και η τρίτη το δικό της: {sum(1 for x, y in zip(i_econ, g_econ) if x != y)} "
+          f"bytes από το Γ, {sum(1 for x, y in zip(i_econ, a_econ) if x != y)} από το Α")
+
+    # --- 7. άδεια θέση ΔΕΝ είναι βλάβη δίσκου -----------------------------
+    disc_op("L", 1)
+    check("NOTHING IN SLOT 2" in LAST_MSG,
+          f"η άδεια θέση το λέει με λόγια, όχι «DISC ERROR»: |{LAST_MSG}|")
 
     m.screenshot(os.path.join(ROOT, "build", "save.png"), aspect=True)
     if FAIL:

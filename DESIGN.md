@@ -375,6 +375,32 @@ that. **649 bytes left**, checked by `tools/mkdsk.py` on every build — the fai
 mode otherwise is a machine that loads perfectly and hangs, with nothing in the
 build to point at.
 
+
+**Bank 0, module by module, measured** (milestone 22, by marking every `include` and
+reading the symbol table back):
+
+| | bytes | | bytes |
+|---|---|---|---|
+| `object.asm` | 2,891 | `newgame.asm` | 667 |
+| `ui.asm` | 2,334 | `tiles.asm` | 629 |
+| `econ.asm` | 1,391 | `ship.asm` | 571 |
+| `hud.asm` | 1,072 | `blit.asm` | 415 |
+| `jobs.asm` | 1,020 | `ghost.asm` | 396 |
+| `needs.asm` | 957 | `save.asm` | 350 |
+| `dirty.asm` | 669 | `graph.asm` | 314 |
+| | | `input.asm` | 288 |
+| | | `fdc.asm` | 284 |
+| | | `view.asm` | 242 |
+| | | `wheel.asm` | 212 |
+| | | `hw.asm` + `screen.asm` | 267 |
+
+**37 bytes are left.** The cheapest move is not to optimise any of them: it is to send
+`fdc.asm` + `save.asm` (634) and `newgame.asm` (667) to bank 2, all three being code
+that runs once or on a keypress and never inside the wheel. Bank 2 has 69 bytes of
+code space, so that move has to be paid for first — from `GH_LOG` (1,600 bytes of
+ghost undo log) or `DOME_FIG` (512) — and neither has been measured against what it
+actually needs. That measurement is the next memory job, not a guess.
+
 **Every bank now fits, and the numbers above are produced by `tools/pack.py`,
 which lays the assets out for real and refuses to build if anything overflows.**
 `tests/test_pack.py` then checks the result structurally and
@@ -1848,7 +1874,7 @@ a joystick alternative, read in one pass over the PSG keyboard matrix.
 | `1`…`4` | speed: pause, normal, fast, very fast — the wheel advances 0 / 1 / 2 / 4 slots per frame |
 | `TAB` | cycle alerts — jump the camera to the next problem |
 | `H` | centre on `(0,0)` |
-| `S` / `L` | save to disc, load from disc ([§11](#11-save-and-load)) — only from `LOOK` |
+| `S` / `L` | save to disc, load from disc ([§11](#11-save-and-load)) — only from `LOOK`. Each opens the slot chooser: left/right pick one of three, `FIRE` goes, `ESC` backs out |
 
 `TAB` matters more than it looks. In a base that is 6 viewports wide, the thing that is
 killing you is usually off-screen.
@@ -2225,7 +2251,7 @@ technically alive, and being allowed to try to save it is the point.
 
 Three slots on disc, written by the game's own FDC routines — AMSDOS cannot be used,
 because its workspace at `&A700–&BFFF` is occupied by bank 2 data. **Built**: `S`
-saves, `L` loads, both only from `LOOK`.
+and `L` open a slot chooser, both only from `LOOK`.
 
 | Sector | Section | Bytes |
 |---|---|---|
@@ -2251,17 +2277,31 @@ garbage, it is a *valid neighbour of another world*, and an agent reading one wa
 off in a direction that made sense in a game that no longer exists.
 
 **Where on the disc.** A slot is 6 tracks (54 sectors, 46 used) and the three live at
-tracks 24, 30 and 36 — the disc holds 42. `sv_save` and `sv_load` take a slot number;
-**the keyboard reaches slot 1 only**, because a slot picker is a screen and there is
-no screen for it yet. They belong to no AMSDOS file: this is the
-game's own disc, `tools/mkdsk.py` checks at build time that no file reaches track 24,
-and a save that overwrote one would be silent otherwise.
+tracks 24, 30 and 36 — the disc holds 42. `sv_save` and `sv_load` take a slot number,
+and **all three are now reachable**: `S` and `L` no longer save and load on the spot,
+they open a one-line chooser in the panel — `SAVE TO SLOT 2`, left and right to
+change, `FIRE` to go, `ESC` to back out. The choice is *remembered*, because a player
+who saves into slot 3 usually saves into slot 3 again. Until milestone 22 the UI
+passed `xor a` and two of the three slots — 46 KB of disc — had never been written by
+anything, test included; `tests/test_save.py` now writes slot 3 (tracks 36–41), reads
+slot 1 back to prove it was untouched, and reads slot 3 back to prove it holds its own
+game. They belong to no AMSDOS file: this is the game's own disc, `tools/mkdsk.py`
+checks at build time that no file reaches track 24, and a save that overwrote one
+would be silent otherwise.
 
 The header is checked **before** a single byte of the game is overwritten. An empty
 slot is `&E5` from end to end — perfectly valid bytes, an invalid game — and without
 the magic, *load* on an untouched slot would fill the world with rubbish and hang the
 simulation. `tests/test_save.py` loads from an empty slot on purpose and asserts that
-nothing moves.
+nothing moves. An empty slot now **says so** — `NOTHING IN SLOT 2`, not `DISC ERROR`;
+`sv_hdr_ok` returns `&FF` and the controller returns anything else, so the two are
+told apart at no cost.
+
+**And a message stays on screen for two seconds.** It used to live until the next
+`ml_hud`, sixteen frames away. A save takes two seconds of disc, so its message was
+visible the whole time by accident; a rejected empty slot is decided in one seek and
+the player saw a flash. `ui_msg` sets a counter that `ui_panel` decrements instead of
+repainting — six HUD ticks, sixteen bytes of code.
 
 The seed survives the generator in four bytes of bank 6 (`worldinfo`), written by
 `GEN.BIN` before the game's code exists. Without them the running game has no idea
@@ -2564,7 +2604,7 @@ tuning — and music, which is the one piece of audio that is designed for
 | **The flow-balance wheel slot re-scans 64 structures every revolution** | Medium | 7,887 µs for numbers that change slowly. The fix is the one production already took: accumulate during a pass that walks the structures anyway ([§7.2](#72-the-wheel)). |
 | ~~Nothing the player does exists: no build mode, no input, no HUD, nothing drawn since milestone 5~~ | ~~High~~ | **Resolved.** The colony is drawn, the camera scrolls, the dirty list keeps it honest, the HUD reports — and the player now moves a cursor, opens a menu, places a dome and routes a corridor between two of them ([§9.1](#91-controls), [§9.3](#93-build-flow), [§9.4](#94-corridor-routing), [§6.9](#69-construction)). |
 | ~~The two halves have never been assembled into one binary~~ | ~~Medium~~ | **Assembled, and it did not fit: 20,571 bytes wanted 16,128.** Resolved by moving the generator out, cutting `MAX_NODES` to 96 and putting code in bank 2 ([§4.2](#42-the-eight-banks)). It also turned up duplicate constants in three files and, worse, [§7.4](#74-one-convention-per-half-and-they-disagreed)'s paging disagreement. |
-| **Memory is the binding constraint from here on** | High | **339 bytes free in bank 0 and 69 in bank 2's code area**, measured by `tools/mkdsk.py` at every build — both ceilings are now checks that stop the build rather than comments. Save/load, four planets and sound have been spent out of the figures below. The reserves left, in order: bank 7's `text` (1,024) and `audio` (2,048) blocks, the 1,600-byte ghost log `GH_LOG` and the 512-byte `DOME_FIG` cache in bank 2, size-optimising `route.asm`/`ui.asm`/`object.asm` (1,000–1,500 by estimate), and the cuts [§4.2](#42-the-eight-banks) already names. Every new feature now costs a decision, and the next one that needs bank 2 has to take it from something. |
+| **Memory is the binding constraint from here on** | High | **37 bytes free in bank 0 and 69 in bank 2's code area** — the slot chooser of [§11](#11-save-and-load) cost 281 of the 339 that milestone 21 left, measured by `tools/mkdsk.py` at every build — both ceilings are now checks that stop the build rather than comments. Save/load, four planets and sound have been spent out of the figures below. The reserves left, in order: bank 7's `text` (1,024) and `audio` (2,048) blocks, the 1,600-byte ghost log `GH_LOG` and the 512-byte `DOME_FIG` cache in bank 2, size-optimising `route.asm`/`ui.asm`/`object.asm` (1,000–1,500 by estimate), and the cuts [§4.2](#42-the-eight-banks) already names. Every new feature now costs a decision, and the next one that needs bank 2 has to take it from something. |
 | ~~Nothing finishes what the player starts~~ | ~~High~~ | **Built.** A Build job is picked up, the agent routes to the site, works it 32 points a visit, and at 255 the building turns `DS_ACTIVE` and is drawn ([§6.9](#69-construction)). `tests/test_game.py` walks the whole chain: place a solar panel with 30 Metal, and about six seconds later the HUD says `ALL SYSTEMS OK` with no key pressed in between. |
 | **A completed building stalls the game for 0.8 s** | Medium | The full redraw of [§6.9](#69-construction) step 4, in place of the eight-chunk reveal that is specified and unwritten. Rare — once per building — but it is a visible freeze, and it is the first thing to fix if building ever becomes frequent. |
 | ~~The simulation still pushes nothing into the dirty list~~ | ~~High~~ | **Wired for ring slots**, which is what moves: `ent_claim` and `ent_release` push a `DK_SLOT`, and the figure cache is rebuilt once per burst rather than once per slot ([§8.5](#85-the-dirty-list)). Machines breaking, plants growing and room changes still push nothing. |

@@ -17,8 +17,10 @@ UI_LOOK     equ 0
 UI_MENU     equ 1
 UI_PLACE    equ 2
 UI_LINK     equ 3                       ; διάλεξε θόλο, διάλεξε θόλο (§9.4)
+UI_SLOT     equ 4                       ; ποια από τις τρεις θέσεις δίσκου (§11)
+MSG_TICKS   equ 6                       ; τικ HUD που κρατά ένα μήνυμα (§11)
 
-UIP_NSIG    equ 9                       ; bytes υπογραφής των σειρών 3-4
+UIP_NSIG    equ 10                      ; bytes υπογραφής των σειρών 3-4
 UI_MARGIN   equ 1                       ; tiles από το χείλος πριν σκρολάρει
 PEN_CUR     equ 15                      ; ροζ — το λευκό χανόταν πάνω στα χείλη
                                     ; των διαδρόμων, που είναι κι αυτά λευκά
@@ -78,6 +80,10 @@ uit_state:
         jp      z,uist_place
         cp      UI_LINK
         jp      z,uist_link
+        ifdef HAS_DISC
+        cp      UI_SLOT
+        jp      z,uist_slot
+        endif
         ; fall through — UI_LOOK
 
 ; --- LOOK ------------------------------------------------------------------
@@ -89,10 +95,16 @@ uist_look:
         ifdef HAS_DISC
         ld      a,A_SAVE
         call    in_hit
-        jp      nz,ui_dosave
+        jr      z,usv_load
+        xor     a                       ; 0 = σώσιμο
+        jp      ui_askslot
+usv_load:
         ld      a,A_LOAD
         call    in_hit
-        jp      nz,ui_doload
+        jr      z,usv_none
+        ld      a,1                     ; 1 = φόρτωμα
+        jp      ui_askslot
+usv_none:
         endif
         ld      a,A_MENU
         call    in_hit
@@ -156,10 +168,11 @@ uis_was:    db 1
 ; δευτερόλεπτα με τις διακοπές ανοιχτές και τίποτα δεν σχεδιάζεται στο μεταξύ.
 ; Το μήνυμα μένει ως το επόμενο ui_panel, δηλαδή ως μία περιστροφή τροχού.
 ui_dosave:
+        call    sl_digit
         call    ui_hide
         ld      hl,t_saving
         call    ui_msg
-        xor     a
+        ld      a,(sl_pick)
         call    sv_save
         ld      hl,t_saved
         jr      z,uds_end
@@ -170,13 +183,20 @@ uds_end:
         jp      ui_show
 
 ui_doload:
+        call    sl_digit
         call    ui_hide
         ld      hl,t_loading
         call    ui_msg
-        xor     a
+        ld      a,(sl_pick)
         call    sv_load                 ; πετυχαίνοντας, ξανασχεδιάζει τα πάντα
         push    af
         ld      hl,t_loaded
+        jr      z,udl_end
+        ; Αδεια θέση ΔΕΝ είναι βλάβη δίσκου, και το μήνυμα το έλεγε λάθος: το
+        ; sv_hdr_ok γυρίζει #FF όταν η υπογραφή δεν ταιριάζει, ο ελεγκτής
+        ; οτιδήποτε άλλο.
+        cp      #FF
+        ld      hl,t_empty
         jr      z,udl_end
         ld      hl,t_dskerr
 udl_end:
@@ -185,6 +205,81 @@ udl_end:
         pop     af
         jp      nz,ui_show              ; αποτυχία: ο κέρσορας ήταν κρυμμένος
         ret                             ; επιτυχία: το sv_after τον έδειξε ήδη
+
+
+; --- SLOT: ποιο από τα τρία -------------------------------------------------
+; Ο δίσκος είχε ΠΑΝΤΑ τρεις θέσεις (§11) και το παιχνίδι έγραφε πάντα στην
+; πρώτη: το sv_save έπαιρνε slot σε A και το UI έδινε `xor a`. Δύο από τις
+; τρεις — 46 KB δίσκου — δεν είχαν γραφτεί ποτέ, ούτε σε δοκιμή.
+;
+; Η κατάσταση είναι κοινή για σώσιμο και φόρτωμα· το sl_mode ξεχωρίζει.
+uist_slot:
+        ld      a,A_CANCEL
+        call    in_hit
+        jr      z,usl_fire
+        ld      a,UI_LOOK
+        ld      (ui_state),a
+        ret
+usl_fire:
+        ld      a,A_FIRE
+        call    in_hit
+        jr      z,usl_lr
+        ld      a,UI_LOOK
+        ld      (ui_state),a
+        ld      a,(sl_mode)
+        or      a
+        ld      a,(sl_pick)
+        jp      z,ui_dosave
+        jp      ui_doload
+usl_lr:
+        ld      a,A_RIGHT
+        call    in_hit
+        jr      z,usl_left
+        ld      a,(sl_pick)
+        inc     a
+        cp      SV_SLOTS
+        jr      c,usl_set
+        xor     a
+        jr      usl_set
+usl_left:
+        ld      a,A_LEFT
+        call    in_hit
+        ret     z
+        ld      a,(sl_pick)
+        or      a
+        jr      nz,usl_dec
+        ld      a,SV_SLOTS
+usl_dec:
+        dec     a
+usl_set:
+        ld      (sl_pick),a
+        ld      a,SFX_MENU
+        jp      snd_play
+
+; ui_askslot — μπαίνει στην επιλογή. A = 0 σώσιμο, 1 φόρτωμα.
+; (ΟΧΙ «ui_slot»: ο rasm δεν ξεχωρίζει ετικέτα από alias, και το UI_SLOT
+; είναι ήδη σταθερά.)
+ui_askslot:
+        ld      (sl_mode),a
+        ld      a,UI_SLOT
+        ld      (ui_state),a
+        ld      a,SFX_MENU
+        jp      snd_play
+
+; sl_digit — το νούμερο της θέσης μέσα στα τρία μηνύματα, γραμμένο πριν φανούν.
+; Οι τρεις μετατοπίσεις είναι μετρημένες στα κείμενα από κάτω: αν αλλάξει λέξη,
+; αλλάζει και ο αριθμός εδώ — γι' αυτό το test_save διαβάζει το ψηφίο από την
+; ΟΘΟΝΗ και όχι από τη μνήμη.
+sl_digit:
+        ld      a,(sl_pick)
+        add     a,'1'
+        ld      (t_saved + 14),a
+        ld      (t_loaded + 17),a
+        ld      (t_empty + 16),a
+        ret
+
+sl_mode:    db 0
+sl_pick:    db 0
 
 ; ui_msg — μία γραμμή στη σειρά 3 του HUD, και το υπόλοιπο σβηστό.
 ui_msg:
@@ -204,13 +299,19 @@ um_len:
         dec     b
         jr      um_len
 um_blank:
+        ld      a,MSG_TICKS
+        ld      (ui_hold),a
         jp      hud_blank
 
 t_saving:   db "SAVING TO DISC...   ",0
-t_saved:    db "SAVED  SLOT 1       ",0
+t_saved:    db "SAVED TO SLOT 1     ",0
 t_loading:  db "LOADING FROM DISC...",0
-t_loaded:   db "LOADED SLOT 1       ",0
+t_loaded:   db "LOADED FROM SLOT 1  ",0
 t_dskerr:   db "DISC ERROR          ",0
+t_empty:    db "NOTHING IN SLOT 1   ",0
+t_slsave:   db "SAVE TO SLOT  ",0
+t_slload:   db "LOAD FROM SLOT",0
+t_slkeys:   db "LEFT RIGHT FIRE ESC ",0
         endif
 
 ; --- MENU ------------------------------------------------------------------
@@ -824,6 +925,18 @@ ui_syt:
 ; του hud_inval είναι το ένατο byte της, γιατί ένα βήμα κάμερας αλλάζει τα
 ; pixel των σειρών 3-4 χωρίς να αλλάξει τίποτα από όσα λένε.
 ui_panel:
+        ; ΤΟ ΜΗΝΥΜΑ ΚΡΑΤΙΕΤΑΙ. Χωρίς αυτό ζούσε ως το επόμενο ml_hud — δεκαέξι
+        ; frames, ένα τρίτο του δευτερολέπτου. Για ένα σώσιμο δύο δευτερολέπτων
+        ; δεν φαινόταν (το μήνυμα έμενε όσο κρατούσε ο δίσκος), αλλά ένα «δεν
+        ; υπάρχει τίποτα εδώ» απορρίπτεται στην πρώτη πίστα και ο παίκτης έβλεπε
+        ; μια αναλαμπή. Εξι τικ HUD = δύο δευτερόλεπτα.
+        ld      hl,ui_hold
+        ld      a,(hl)
+        or      a
+        jr      z,uip_start
+        dec     (hl)
+        ret
+uip_start:
         call    ui_sig
         ld      hl,uip_sig
         ld      de,uip_now
@@ -845,12 +958,32 @@ uipc_go:
         call    hud_go
         ld      a,(ui_state)
         or      a
-        jr      nz,uip_item
+        jr      nz,uip_notlook
         ld      hl,t_look
         call    hud_text
         ld      b,40-19
         call    hud_blank
-        jr      uip_row4
+        jp      uip_row4
+uip_notlook:
+        ifdef HAS_DISC
+        cp      UI_SLOT
+        jr      nz,uip_item
+        ld      hl,t_slsave             ; «SAVE TO SLOT  » / «LOAD FROM SLOT»
+        ld      a,(sl_mode)
+        or      a
+        jr      z,uip_slt
+        ld      hl,t_slload
+uip_slt:
+        call    hud_text
+        ld      b,1
+        call    hud_blank
+        ld      a,(sl_pick)
+        add     a,'1'
+        call    hud_char
+        ld      b,40-16
+        call    hud_blank
+        jp      uip_row4
+        endif
 uip_item:
         ; Το κόστος που δείχνεται είναι ΟΛΗΣ της διαδρομής όταν υπάρχει
         ; διαδρομή: ο κατάλογος γράφει την τιμή ενός πλακιδίου διαδρόμου, και
@@ -909,6 +1042,11 @@ uip_row4:
         jr      z,uip_ln
         cp      UI_PLACE
         jr      z,uip_st
+        ifdef HAS_DISC
+        cp      UI_SLOT
+        ld      hl,t_slkeys
+        jr      z,uip_say
+        endif
         ld      hl,t_keys
         call    hud_text
         ld      b,40-20                 ; το t_keys είναι 20 χαρακτήρες, όχι 24:
@@ -1025,6 +1163,13 @@ uisg_st:
         inc     hl
         ld      a,(hud_gen)           ; γύρισε το δαχτυλίδι; τότε οι σειρές 3-4
         ld      (hl),a                ; δείχνουν έδαφος, ό,τι κι αν λέει το υπόλοιπο
+        inc     hl
+        ifdef HAS_DISC
+        ld      a,(sl_pick)
+        else
+        xor     a
+        endif
+        ld      (hl),a
         ret
 
 ; ui_dirty — «οι σειρές 3-4 δεν λένε πια αυτό που νομίζω».
@@ -1063,6 +1208,10 @@ uid_cx:     db 0
 uid_cy:     db 0
 uip_fe:     dw 0
 uip_bi:     dw 0
+; Το ui_hold ζει ΕΞΩ από το ifdef του δίσκου: το ui_panel το διαβάζει πάντα,
+; και το tests/uitest.asm χτίζεται χωρίς μηνύματα δίσκου. (Το όνομα δεν είναι
+; UI_HOLD γιατί ο rasm δεν ξεχωρίζει ετικέτα από alias.)
+ui_hold:    db 0
 uip_sig:    defs UIP_NSIG, 255
 uip_now:    defs UIP_NSIG
 cur_hx:     db 0
