@@ -369,11 +369,16 @@ cannot drift back without a test failing to assemble.
 
 **Save and load spent 842 of it** (`fdc.asm`, `save.asm`, and the two keys in the
 UI), and the ceiling turned out to be lower than `&4000`: the loader leaves its
-endgame at `&3E00` and copies it there *after* the game is in memory
+endgame at `&3F80` and copies it there *after* the game is in memory
 ([§13.1](#131-three-ways-a-loader-does-not-run)), so bank-0 code must stop below
-that. **649 bytes left**, checked by `tools/mkdsk.py` on every build — the failure
-mode otherwise is a machine that loads perfectly and hangs, with nothing in the
-build to point at.
+that, checked by `tools/mkdsk.py` on every build — the failure mode otherwise is a
+machine that loads perfectly and hangs, with nothing in the build to point at.
+
+**That address was `&3E00` until milestone 26, and the endgame is forty bytes.** A
+round number was holding 512 for a routine that needs 128 with room to spare, and
+the rooms of [§6.1](#61-the-colony-as-tables) did not fit in what was left. Moving
+it to `&3F80` handed bank 0 back **384 bytes** — the cheapest space in the project,
+and it was sitting in a constant.
 
 
 **Bank 0, module by module, measured** (milestone 22, by marking every `include` and
@@ -993,6 +998,17 @@ answer and neither of which is a special case:
   than standing still forever with an impossible order. This is what happens to
   anyone whose destination was cut off while they were walking to it.
 
+  **And it drops the job as well**, which it did not until milestone 26. Giving up
+  the destination while keeping `task` leaves the job board holding an assignment on
+  someone who is never going to start: the board only reaps a job when the agent's
+  task stops pointing at it ([§6.7](#67-jobs)). The window that makes this happen is
+  ordinary — a building placed while the routing rebuild is still running
+  ([§6.4](#64-routing)) is unreachable for about five seconds, and whoever is handed
+  the Build job in those five seconds resigns and keeps it. Measured: the same small
+  dome finished in **400 frames** or in **10,800**, and the 10,800 was how long it
+  took the engineer to get hungry, because a need is the only other thing that clears
+  a task.
+
 **Measured at 130 µs per agent** (`tests/test_sim.py`), against the 150 µs estimated
 here — one of the few numbers in this document that came in under. A full movement
 slot of 12 agents is 1,560 µs against the 1,800 µs budgeted in
@@ -1215,6 +1231,22 @@ These numbers are a starting point for tuning, not a balance claim — and three
 them turned out to be unlivable the first time the whole loop ran
 ([§6.6](#66-needs)).
 
+#### A room comes with its machines
+
+The player picks a room ([§9.3](#93-build-flow)); the dome fills its own slots. Two
+asset tables already say everything needed: `room_machines[room]` is a 12-bit mask of
+what belongs in that room, `machine_rules[machine]` a 3-bit mask of the dome sizes it
+fits. The commit walks the mask, keeps what fits, and deals the survivors **round
+robin** into the slots — so a large Factory comes out with iron, bioplastic, weapons,
+robots, spares and then repeats, rather than eight of the same machine. A greenhouse
+takes the twelve plants the same way, which is what mixes starch, vegetables,
+medicinal and a morale tree in one dome.
+
+The machines are **not costed separately**; the dome's price by size covers what is
+inside it. Per-machine pricing needs a per-slot screen to spend it on, and that is the
+same screen that would let the player ask for eight iron machines instead of the
+spread. Until it exists, a room is a decision and its contents are a consequence.
+
 **A greenhouse keeps plants in the same slots another dome keeps machines.** Same
 field, different meaning, and the room type says which. `plant_class` decides the
 output: starch, vegetables, medicine, or nothing at all for a tree, which is there for
@@ -1400,6 +1432,12 @@ describes belongs to build mode ([§9.3](#93-build-flow)), which is not written.
 
 **As built, three of those differ, and each for a reason:**
 
+- **The machines go in at commit and appear at completion.** The record is filled
+  the moment the site is paid for — nothing reads a dome that is not `DS_ACTIVE`
+  ([§6.5](#65-economy), [§6.6](#66-needs)), so there is no second pass to write
+  when the building finishes. What did have to change is the *drawing*: the object
+  pass now gives a site the empty-room icon and skips its machines, or a
+  half-built dome would show a finished interior from the first frame.
 - **The cost is spent at commit, not reserved.** There is no reservation pool in
   the economy record and inventing one would have meant a second number beside
   every stock, kept in step by hand. A fake reservation is worse than an honest
@@ -1416,6 +1454,14 @@ describes belongs to build mode ([§9.3](#93-build-flow)), which is not written.
   Fixing it means either giving corridors node ids or adding an edge-shaped job
   kind, and both are changes to [§6.7](#67-jobs) rather than to the build mode.
   Until then a corridor appears finished the moment it is paid for.
+- **The site is linked to the nearest *other* dome.** A construction site is already
+  "live" the moment it is written, and it sits exactly under the cursor, so the
+  nearest live dome to it was **itself** — distance zero — and the self-check below
+  that returned without building any edge at all. Every dome the player placed was
+  therefore unreachable, its Build job permanently open, and nothing ever finished. Structures
+  never showed it, because a structure takes a node id of 64 or more and can never
+  equal a dome index; and no test had ever waited for a dome to be built. Found in
+  milestone 26, by building one and watching.
 - **"at least one corridor route must be possible" is not checked** when a dome is
   placed. It would need the router run against every existing dome on every cursor
   step; the router is cheap but the answer is also wrong, because the dome the
@@ -2145,14 +2191,35 @@ Cost: **2.20 frames** after a camera step, **1.15** on an ordinary tick ([§8.1]
 
 `SPACE` → item → a ghost follows the cursor, snapped to the correct parity
 ([§3.4](#34-anchors-are-centres)), with invalid footprint tiles tinted. Fire commits,
-`ESC` backs out. A dome's room type is chosen immediately after placement, and can be
-changed later at a cost.
+`ESC` backs out.
 
 **The menu is flat, not `category → item → size`.** Eleven things — three dome
 sizes, corridor, four energy structures, mine, airlock, landing pad — fit on one
 40-column row with their costs, and left/right cycles them. The tree cost three
 presses where the list costs one, and its only advantage appears at about thirty
 items, which is where it should come back.
+
+#### The room is the second axis of the same menu
+
+This section used to say a dome's room type is *chosen immediately after placement,
+and can be changed later at a cost*. It is chosen **before** placement, on the menu
+row that is already there: **left/right picks the item, up/down picks the room**, and
+a dome shows its room where the other items show their name — `< OXYGEN     S >`
+rather than `< DOME S >`, because "oxygen, small" is what the player is actually
+choosing. Ten rooms are offered in the order you need them: Oxygen, Canteen,
+Quarters, Greenhouse, Factory, Lab, Medbay, Control, Storage, Lounge.
+
+A screen that picks a room *after* placement would need its own interface state, its
+own ghost and its own notion of "which dome are you pointing at"; the second axis of
+a menu that exists costs none of those. What it gives up is changing a room later,
+which nothing else in the game needs yet.
+
+**A room that cannot work in that size is not offered.** `machine_rules` says
+`mach_oxygen` fits only small domes ([§6.5](#65-economy)), so the Oxygen room
+disappears from a medium or large dome and the selection moves to the next one that
+fits — otherwise the player would pay for a dome that can never produce. The choice
+is sticky rather than remembered: coming back to a small dome keeps the room you
+ended on, one press away from the one you wanted.
 
 **The ghost keeps an undo log, and that is why the cursor is cheap.** Every line
 it writes is recorded with the bytes it covered, and hiding it writes them back —
@@ -2721,8 +2788,8 @@ thing in the file.
 
 The fourth constraint is a collision rather than a surprise: bank 2's data
 (`&8000–&ABFF`) and code (`&B440`) both land inside AMSDOS's workspace. They are
-loaded into bank 5 first and copied down by an **endgame** — twenty bytes copied to
-`&3E00` and entered with both ROMs off, because the copy passes over the loader
+loaded into bank 5 first and copied down by an **endgame** — forty bytes copied to
+`&3F80` and entered with both ROMs off, because the copy passes over the loader
 itself and over BASIC's stack. It takes its two lengths in `BC` and `IX` rather
 than reading them from memory that is about to disappear.
 
@@ -2839,7 +2906,7 @@ gap.
 | ~~The flow-balance wheel slot re-scans 64 structures every revolution~~ | ~~Medium~~ | **Resolved, and not for speed.** 7,887 µs for numbers that change slowly — but the reason it moved was [§6.5](#65-economy)'s clock: a battery that charges 750 times a sol is not a battery. The scan, the battery and the pumps now run once per 64 revolutions (`FLOW_DIV`), the living are still counted every revolution, and a finished building kicks the balance so the panel the player just paid for shows up at once. |
 | ~~Nothing the player does exists: no build mode, no input, no HUD, nothing drawn since milestone 5~~ | ~~High~~ | **Resolved.** The colony is drawn, the camera scrolls, the dirty list keeps it honest, the HUD reports — and the player now moves a cursor, opens a menu, places a dome and routes a corridor between two of them ([§9.1](#91-controls), [§9.3](#93-build-flow), [§9.4](#94-corridor-routing), [§6.9](#69-construction)). |
 | ~~The two halves have never been assembled into one binary~~ | ~~Medium~~ | **Assembled, and it did not fit: 20,571 bytes wanted 16,128.** Resolved by moving the generator out, cutting `MAX_NODES` to 96 and putting code in bank 2 ([§4.2](#42-the-eight-banks)). It also turned up duplicate constants in three files and, worse, [§7.4](#74-one-convention-per-half-and-they-disagreed)'s paging disagreement. |
-| **Memory is the binding constraint from here on** | High | **488 bytes free in bank 0 and 69 in bank 2's code area** — milestone 23 moved every string into bank 7's reserved `text` block ([§4.2](#42-the-eight-banks)), which is the last easy 450 bytes there will be, measured by `tools/mkdsk.py` at every build — both ceilings are now checks that stop the build rather than comments. Save/load, four planets and sound have been spent out of the figures below. The reserves left, in order: bank 7's `text` (1,024) and `audio` (2,048) blocks, the 1,600-byte ghost log `GH_LOG` and the 512-byte `DOME_FIG` cache in bank 2, size-optimising `route.asm`/`ui.asm`/`object.asm` (1,000–1,500 by estimate), and the cuts [§4.2](#42-the-eight-banks) already names. Every new feature now costs a decision, and the next one that needs bank 2 has to take it from something. |
+| **Memory is the binding constraint from here on** | High | **369 bytes free in bank 0 and 50 in bank 2's code area** — after milestone 26 moved the loader's endgame and handed back 384 ([§4.2](#42-the-eight-banks)), then spent most of them on rooms. Bank 7's `text` block is 620 of 1,024 used. The figures below are from milestone 23: **488 bytes free in bank 0 and 69 in bank 2's code area** — milestone 23 moved every string into bank 7's reserved `text` block ([§4.2](#42-the-eight-banks)), which is the last easy 450 bytes there will be, measured by `tools/mkdsk.py` at every build — both ceilings are now checks that stop the build rather than comments. Save/load, four planets and sound have been spent out of the figures below. The reserves left, in order: bank 7's `text` (1,024) and `audio` (2,048) blocks, the 1,600-byte ghost log `GH_LOG` and the 512-byte `DOME_FIG` cache in bank 2, size-optimising `route.asm`/`ui.asm`/`object.asm` (1,000–1,500 by estimate), and the cuts [§4.2](#42-the-eight-banks) already names. Every new feature now costs a decision, and the next one that needs bank 2 has to take it from something. |
 | ~~Nothing finishes what the player starts~~ | ~~High~~ | **Built.** A Build job is picked up, the agent routes to the site, works it 32 points a visit, and at 255 the building turns `DS_ACTIVE` and is drawn ([§6.9](#69-construction)). `tests/test_game.py` walks the whole chain: place a solar panel with 30 Metal, and about six seconds later the HUD says `ALL SYSTEMS OK` with no key pressed in between. |
 | **A completed building stalls the game for 0.8 s** | Medium | The full redraw of [§6.9](#69-construction) step 4, in place of the eight-chunk reveal that is specified and unwritten. Rare — once per building — but it is a visible freeze, and it is the first thing to fix if building ever becomes frequent. |
 | ~~The simulation still pushes nothing into the dirty list~~ | ~~High~~ | **Wired for ring slots**, which is what moves: `ent_claim` and `ent_release` push a `DK_SLOT`, and the figure cache is rebuilt once per burst rather than once per slot ([§8.5](#85-the-dirty-list)). Machines breaking, plants growing and room changes still push nothing. |
@@ -2852,7 +2919,9 @@ gap.
 | Meteors and intruders are unbuilt, and both need the renderer first | Medium | Meteors write terrain, so they need the world plane and the dirty list; intruders need edge spawning and combat. Neither is a simulation problem, which is why neither is in [§6.10](#610-events-and-hazards) yet. |
 | Ships, trade and milestones are unbuilt — [§6.11](#611-ships-and-arrivals) and [§10.2](#102-milestones) | Medium | The colony sustains itself but cannot grow: no new colonists arrive and nothing can be traded for. This is what makes it a sandbox rather than a game. |
 | The balance numbers in [§6.5](#65-economy) are first guesses and three of them were unlivable | Medium | Corrected against the first working colony ([§6.6](#66-needs)). Expect the same of the rest: they cannot be checked by reading, only by running the loop and looking at who is where. |
-| **A new dome has no room and no machines, and nothing can give it either** | High | `bd_commit` writes room 0 and eight `NO_MACH` slots — "until the choice exists" ([§6.9](#69-construction)) — and no screen assigns a room type or installs a machine. So everything the player builds after the start state is an empty shell: the colony's industry is exactly what `src/newgame.asm` laid down, and the greenhouse-to-meals chain of [§6.5](#65-economy) is unreachable in play. Measured consequence: panel and pump hold water indefinitely, and then the colony starves, with no move available. **This is the next thing the game needs**, ahead of any further balance number. |
+| ~~A new dome has no room and no machines, and nothing can give it either~~ | ~~High~~ | **Built, and it took three bugs with it.** The room is the menu's second axis ([§9.3](#93-build-flow)), the dome fills its own slots from `room_machines` and `machine_rules` ([§6.5](#65-economy)), and a greenhouse comes up full of plants. On the way: a construction site linked itself to *itself* and no dome the player placed had ever been finished ([§6.9](#69-construction)); an agent that found its destination unreachable kept the job ([§6.3](#63-movement)); and the loader's endgame was holding 512 bytes for forty ([§4.2](#42-the-eight-banks)). |
+| **A machine cannot be chosen, only its room** | Medium | The slots are dealt round robin from what the room allows, so a large Factory is one of each rather than eight of what the colony is short of, and there is no way to ask for the eight. The screen that fixes it is the same one that would let machines be costed individually ([§6.5](#65-economy)) — and the same one that would let a built dome change its room. Nothing is blocked by this; the colony is simply less sharp than the player. |
+| **The colony can spend its starting metal and never make more** | High | The chain that makes Metal is a mine (30 + 12) *and* a Factory dome with `mach_iron` (20 + 10) *and* the power for both — 65 Metal and 30 Bioplastic against a start state of 55 and 30 ([§10.1](#101-start-state)). So every game is still played out of the opening allowance: rooms are buildable now, but growth is not. The next measurement is whether the ore-to-metal chain works at all once it is reachable, and the levers are the start state, the catalogue's costs, and what a Control room's ships can be traded for ([§6.11](#611-ships-and-arrivals)). |
 | Balance | ~~Certain~~ Medium | Every number in [§6.5](#65-economy) was a first guess; the ones on the path a player actually walks are now **measured** rather than guessed, by `tools/balance.py` — which runs the real binary at ×4 for eight sols and prints the curve — and held by `tests/test_balance.py`. What measurement turned up was not mis-tuned numbers but three structural faults: the economy had no clock, power counted consumption instead of demand, and the start colony's quarters were a second oxygen generator ([§10.1](#101-start-state)). The rates past the first two buildings — the whole machine chain — are still guesses, and stay guesses until a dome can be given a room. |
 
 ---

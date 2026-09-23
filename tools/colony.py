@@ -48,9 +48,16 @@ def build(cols=4, rows=3, seed=1):
             hx = (i - (cols - 1) / 2) * SPACING
             hy = (j - (rows - 1) / 2) * SPACING
             assert hx == int(hx) and hy == int(hy), "το SPACING πρέπει να δίνει ακέραια κέντρα"
+            # ΕΝΑΣ ΘΟΛΟΣ ΜΙΣΟΧΤΙΣΜΕΝΟΣ, και όχι για ποικιλία: από το βήμα 26
+            # ένα εργοτάξιο ζωγραφίζεται ΑΔΕΙΟ — κενό εικονίδιο, καμία μηχανή
+            # — παρόλο που η εγγραφή του έχει ήδη και δωμάτιο και μηχανήματα
+            # (§6.9). Χωρίς έναν τέτοιο εδώ, ο κανόνας δεν θα περνούσε ποτέ
+            # από τη σύγκριση Z80 προς αναφορά του tests/test_object.py.
+            state = S.DS_BUILDING if d == 7 else S.DS_ACTIVE
             _put(c.dome, d, S.DOME_REC, {
                 S.D_CX: int(hx), S.D_CY: int(hy), S.D_SIZE: sz, S.D_ROOM: rm,
-                S.D_STATE: S.DS_ACTIVE, S.D_INTEG: 255, S.D_OPS: 0})
+                S.D_STATE: state, S.D_INTEG: 255 if state == S.DS_ACTIVE else 96,
+                S.D_OPS: 0})
             grid[(i, j)] = d
             sizes.append(sz)
             rooms.append(rm)

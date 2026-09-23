@@ -30,6 +30,10 @@ SNA = os.path.join(ROOT, "build", "main.sna")
 FAIL = []
 
 
+def sb(v):
+    return v - 256 if v > 127 else v
+
+
 def check(ok, msg):
     print(("OK " if ok else "ΛΑΘΟΣ ") + msg)
     if not ok:
@@ -61,7 +65,7 @@ def build():
 
 def main():
     sym, g = build()
-    from cpc import CPC, KEY_SPACE, KEY_RIGHT
+    from cpc import CPC, KEY_SPACE, KEY_RIGHT, KEY_LEFT, KEY_UP
     smap, blob = load_map(), load_bin()
     f = smap["font_gfx"]
     font = blob[f.off:f.off + f.size]
@@ -172,6 +176,96 @@ def main():
           and alert1.strip() == "ALL SYSTEMS OK",
           f"το HUD το ΔΕΙΧΝΕΙ χωρίς πάτημα: |{alert0.strip()}| -> "
           f"|{alert1.strip()}|")
+    # --- 5. ένας θόλος που ο παίκτης του δίνει δουλειά (§6.1) -------------
+    # ΚΑΝΕΝΑΣ ΘΟΛΟΣ ΤΟΥ ΠΑΙΚΤΗ ΔΕΝ ΤΕΛΕΙΩΝΕ ΠΟΤΕ ως το βήμα 26: το bd_link
+    # έψαχνε τον κοντινότερο ζωντανό θόλο για να δώσει ακμή στο εργοτάξιο, και
+    # ο κοντινότερος ήταν το ΙΔΙΟ το εργοτάξιο — απόσταση μηδέν. Επιστροφή
+    # χωρίς ακμή, κόμβος απρόσιτος, εργασία Build για πάντα ανοιχτή. Οι δομές
+    # δεν το έδειχναν (παίρνουν κόμβο 64+), και καμία δοκιμή δεν είχε περιμένει
+    # θόλο να τελειώσει.
+    import world as W
+    plane = open(os.path.join(ROOT, "build", "world_new.bin"), "rb").read()
+    ok = {W.GROUND, W.DUST, W.FOUNDATION}
+    at = None
+    for r in range(6, 16):
+        for ty in range(-r, r + 1):
+            for tx in range(-r, r + 1):
+                if at or max(abs(tx), abs(ty)) != r:
+                    continue
+                if all(W.cls_of(plane[W.index(tx + i, ty + j)]) in ok
+                       for i in range(4) for j in range(4)):
+                    at = (2 * tx + 4, 2 * ty + 4)
+    m.set_joystick_type(1)
+    for _ in range(2):                   # πίσω στην ήρεμη κατάσταση
+        m.joystick(0x20)
+        m.run_frames(4)
+        m.joystick(0)
+        m.run_frames(10)
+    m.set_joystick_type(0)
+    tap(KEY_SPACE)                       # -> MENU· θυμάται πού έμεινε (SOLAR)
+    tap(KEY_LEFT, 4)                     # -> DOME S
+    # Το δωμάτιο έμεινε CANTEEN από το πέρασμα στους μεγάλους θόλους, όπου το
+    # οξυγόνο δεν χωράει: ένα πάτημα πάνω το γυρίζει.
+    tap(KEY_UP)
+    check(m.peek(sym["BD_KIND"]) == 0 and m.peek(sym["BD_RSEL"]) == 0,
+          f"ο κατάλογος στο DOME S / OXYGEN (είδος "
+          f"{m.peek(sym['BD_KIND'])}, δωμάτιο {m.peek(sym['BD_RSEL'])})")
+    # Ο ΚΕΡΣΟΡΑΣ ΜΠΑΙΝΕΙ ΤΕΛΕΥΤΑΙΟΣ: κάθε αλλαγή αντικειμένου τον κουμπώνει
+    # στην ισοτιμία του πλάτους (§3.4), οπότε ένα poke πριν από τον κατάλογο
+    # μετακινείται από κάτω του — τέσσερα βήματα αριστερά τον πήγαιναν +2.
+    m.poke(sym["CUR_HX"], at[0] & 0xFF)
+    m.poke(sym["CUR_HY"], at[1] & 0xFF)
+    m.key_up("\x01")
+    m.set_joystick_type(1)
+    fire()                               # -> PLACE
+    metal0 = w16(g + 3 * 2)
+    mpow0, o2p0 = w16(g + 36), w16(g + 38)
+    fire()                               # -> τοποθέτηση
+    m.set_joystick_type(0)
+    m.run_frames(30)
+    check(w16(g + 3 * 2) == metal0 - 20,
+          f"πληρώθηκε ο θόλος στο {at}: μέταλλο {metal0} -> {w16(g + 3 * 2)} "
+          f"(ui_bad={m.peek(sym['UI_BAD'])}, κέρσορας "
+          f"{sb(m.peek(sym['CUR_HX']))},{sb(m.peek(sym['CUR_HY']))})")
+    # Η ΕΡΓΑΣΙΑ BUILD ΕΙΝΑΙ Η ΑΠΑΝΤΗΣΗ: φεύγει από τον πίνακα μόνο όταν η
+    # ακεραιότητα φτάσει 255 και ο θόλος γίνει DS_ACTIVE (§6.9). Η ζήτηση
+    # ρεύματος δεν κάνει για σημάδι — τα κρεβάτια θέλουν χειριστή και ο
+    # χειριστής πάει για φαγητό.
+    jt = None
+    for line in open(os.path.join(ROOT, "build", "layout.asm"), encoding="utf-8"):
+        if line.startswith("G_job_tbl"):
+            jt = int(line.split("#")[1].strip(), 16)
+    node = m.peek(sym["BD_NODE"])
+
+    def building():
+        return any(m.peek(jt + j * 5) == 0 and m.peek(jt + j * 5 + 1) == node
+                   for j in range(32))
+
+    # ΜΕΤΡΗΜΕΝΟ: 400 frames. Ηταν 10.800 όσο ο πράκτορας που έβρισκε τον
+    # προορισμό απρόσιτο κρατούσε τη δουλειά του (§6.3) — η εργασία κολλούσε
+    # πάνω του ώσπου να πεινάσει. Το παράθυρο είναι δεκαπλάσιο του μετρημένου:
+    # ο μηχανικός εξακολουθεί να πηγαίνει όποτε τον αφήνουν οι ανάγκες του.
+    got, took = 0, 0
+    for k in range(80):
+        m.run_frames(50)
+        if not building():
+            got, took = 1, 50 * (k + 1)
+            break
+    check(got, f"ο θόλος {node} τελείωσε: η εργασία Build έκλεισε σε "
+               f"{took} frames")
+
+    # ΚΑΙ ΔΟΥΛΕΥΕΙ. Το ρολόι πάει στην αρχή του sol ώστε να είναι μέρα: χωρίς
+    # ήλιο δεν υπάρχει ρεύμα, χωρίς ρεύμα δεν παράγει καμία μηχανή, και η
+    # δοκιμή θα μετρούσε τη νύχτα αντί για τον θόλο.
+    m.poke(g + 52, 0)
+    m.poke(g + 53, 0)
+    for _ in range(60):
+        m.run_frames(50)
+        if w16(g + 38) >= 2 * o2p0:
+            break
+    check(w16(g + 38) >= 2 * o2p0,
+          f"και η γεννήτρια μέσα του παράγει: οξυγόνο {o2p0} -> {w16(g + 38)}")
+
     live(sym, g)
     return 1 if FAIL else 0
 

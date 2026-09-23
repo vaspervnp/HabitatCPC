@@ -511,6 +511,18 @@ ob_fittings:
         or      a
         ret     z
         call    ob_conns
+        ; ΤΟ ΕΡΓΟΤΑΞΙΟ ΕΙΝΑΙ ΑΔΕΙΟ. Τα μηχανήματα γράφονται στην ΤΟΠΟΘΕΤΗΣΗ
+        ; (§6.9, src/rooms.asm) ώστε να μη χρειάζεται δεύτερο πέρασμα όταν
+        ; τελειώσει το χτίσιμο — αλλά αν φαίνονταν από τότε, ο μισοχτισμένος
+        ; θόλος θα έδειχνε τελειωμένος. Το κενό εικονίδιο είναι το 0.
+        ld      a,(d_rec+D_STATE)
+        cp      DS_ACTIVE
+        jr      z,obf_full
+        xor     a
+        ld      (d_rec+D_ROOM),a
+        call    ob_icon
+        jp      ob_figures
+obf_full:
         call    ob_icon
         call    ob_machines
         jp      ob_figures

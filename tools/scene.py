@@ -243,7 +243,11 @@ def draw_fittings(canvas, a, cam, colony, d, clip, agents=None):
         py = a.conn_points[sz * 16 + dr * 2 + 1]
         blit(canvas, a.rows(f"conn_{DIRS[dr]}"), fx + px, fy + py, True, clip)
 
-    room = colony.d(d, D_ROOM)
+    # Το εργοτάξιο είναι άδειο: κενό εικονίδιο, καμία μηχανή — βλ. ob_fittings
+    # στο src/object.asm. Τα μηχανήματα υπάρχουν ήδη στην εγγραφή από την ώρα
+    # της τοποθέτησης· απλώς δεν φαίνονται ως να χτιστεί ο θόλος.
+    site = colony.d(d, D_STATE) != DS_ACTIVE
+    room = 0 if site else colony.d(d, D_ROOM)
     ix = signed(a.interior_ofs[sz * 2])
     iy = signed(a.interior_ofs[sz * 2 + 1])
     icon = f"icon_{SIZES[sz]}_{ROOMS[room]}"
@@ -251,7 +255,7 @@ def draw_fittings(canvas, a, cam, colony, d, clip, agents=None):
     blit(canvas, a.rows(icon), fx + qw + ix, fy + qh + iy, False, clip)
 
     green = room == R_GREENHOUSE
-    for s in range(a.machine_count[sz]):
+    for s in range(0 if site else a.machine_count[sz]):
         m = colony.d(d, D_MACH + s)
         if m == NO_MACH:
             continue

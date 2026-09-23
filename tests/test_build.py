@@ -233,16 +233,55 @@ def main():
     if m3.peek(sym["UI_STATE"]) != UI_MENU:
         print("ΑΠΟΤΥΧΙΑ: το SPACE δεν άνοιξε το μενού")
         fails += 1
+    # Ο ΘΟΛΟΣ ΔΕΝ ΕΧΕΙ ΟΝΟΜΑ, ΕΧΕΙ ΔΩΜΑΤΙΟ (§6.1). Ο κατάλογος δείχνει το
+    # δωμάτιο και το μέγεθος ως γράμμα: «OXYGEN     S».
     row3 = hud(m3, 3)
-    if "DOME S" not in row3:
+    if "OXYGEN" not in row3 or " S " not in row3:
         print(f"ΑΠΟΤΥΧΙΑ μενού: σειρά 3 = |{row3}|")
         fails += 1
     else:
         print(f"OK μενού: |{row3.rstrip()}|")
+    row4 = hud(m3, 4)
+    if "UP/DN=ROOM" not in row4:
+        print(f"ΑΠΟΤΥΧΙΑ: η σειρά 4 δεν λέει για το δωμάτιο: |{row4}|")
+        fails += 1
+    else:
+        print(f"OK η σειρά 4 λέει πώς: |{row4.rstrip()}|")
+    tap(m3, KEY_DOWN)                   # -> CANTEEN
+    m3.run_frames(20)                   # ο πίνακας γράφεται στο ρολόι του HUD
+    if "CANTEEN" not in hud(m3, 3):
+        print(f"ΑΠΟΤΥΧΙΑ: το κάτω δεν άλλαξε δωμάτιο: |{hud(m3, 3)}|")
+        fails += 1
+    else:
+        print("OK το κάτω βελάκι αλλάζει δωμάτιο: CANTEEN")
     tap(m3, KEY_RIGHT, 2)               # -> DOME L
+    m3.run_frames(20)
     if m3.peek(sym["BD_W"]) != 8:
         print(f"ΑΠΟΤΥΧΙΑ: δύο δεξιά -> πλάτος {m3.peek(sym['BD_W'])}, περίμενα 8")
         fails += 1
+    # Η γεννήτρια οξυγόνου χωράει ΜΟΝΟ σε μικρό θόλο (machine_rules bit0), άρα
+    # το δωμάτιο έπρεπε να αλλάξει μόνο του όταν μεγάλωσε ο θόλος.
+    if "OXYGEN" in hud(m3, 3):
+        print(f"ΑΠΟΤΥΧΙΑ: οξυγόνο σε μεγάλο θόλο: |{hud(m3, 3)}|")
+        fails += 1
+    else:
+        print(f"OK ο μεγάλος θόλος δεν δέχεται οξυγόνο: |{hud(m3, 3).rstrip()}|")
+    # Η ΕΠΙΛΟΓΗ ΕΙΝΑΙ ΚΟΛΛΗΜΕΝΗ, ΟΧΙ ΜΝΗΜΟΝΙΚΗ: γυρίζοντας σε μικρό θόλο το
+    # δωμάτιο μένει αυτό που βρέθηκε, και το οξυγόνο θέλει ένα πάτημα πάνω.
+    tap(m3, KEY_LEFT, 2)
+    m3.run_frames(20)
+    if "CANTEEN" not in hud(m3, 3):
+        print(f"ΑΠΟΤΥΧΙΑ: το δωμάτιο δεν κράτησε: |{hud(m3, 3)}|")
+        fails += 1
+    tap(m3, KEY_UP)
+    m3.run_frames(20)
+    if "OXYGEN" not in hud(m3, 3):
+        print(f"ΑΠΟΤΥΧΙΑ: το πάνω δεν γύρισε στο οξυγόνο: |{hud(m3, 3)}|")
+        fails += 1
+    else:
+        print("OK και το πάνω βελάκι γυρίζει πίσω: OXYGEN")
+    tap(m3, KEY_RIGHT, 2)               # -> DOME L για τη συνέχεια
+    m3.run_frames(20)
     m3.key_down("\x01")                 # COPY δεν στέλνεται· το FIRE έρχεται
     m3.key_up("\x01")                   # από το joystick παρακάτω
     m3.set_joystick_type(1)
@@ -331,13 +370,22 @@ def main():
     for line in open(os.path.join(ROOT, "build", "layout.asm"), encoding="utf-8"):
         if line.startswith("G_dome_tbl"):
             dome_tbl = int(line.split("#")[1].strip(), 16)
-    rec = snoop(m4, 0xC6, dome_tbl + node * 24, 8)
-    want = [(2 * tx + 4) & 0xFF, (2 * ty + 4) & 0xFF, 0, 0, 1]
+    # R_OXYGEN = 4: ο μικρός θόλος του καταλόγου ξεκινά στο πρώτο δωμάτιο.
+    rec = snoop(m4, 0xC6, dome_tbl + node * 24, 24)
+    want = [(2 * tx + 4) & 0xFF, (2 * ty + 4) & 0xFF, 0, 4, 1]
     if rec[:5] != want:
         print(f"ΑΠΟΤΥΧΙΑ εγγραφή θόλου {node}: {rec[:5]}, περίμενα {want}")
         fails += 1
     else:
-        print(f"OK ο θόλος {node} μπήκε ως DS_BUILDING στο ({tx},{ty})")
+        print(f"OK ο θόλος {node} μπήκε ως DS_BUILDING στο ({tx},{ty}), "
+              f"δωμάτιο οξυγόνου")
+    # ΚΑΙ ΜΕ ΤΟ ΜΗΧΑΝΗΜΑ ΜΕΣΑ. Η υποδοχή 0 παίρνει mach_oxygen (0) με υγεία
+    # 200· οι υπόλοιπες επτά μένουν NO_MACH, γιατί ο μικρός θόλος έχει μία.
+    if rec[8] != 0 or rec[16] != 200 or rec[9] != 255:
+        print(f"ΑΠΟΤΥΧΙΑ εξοπλισμός: υποδοχές {rec[8:12]}, υγείες {rec[16:20]}")
+        fails += 1
+    else:
+        print("OK και το μηχάνημα μέσα: υποδοχή 0 = mach_oxygen, υγεία 200")
 
     w = snoop(m4, 0xC4, 0x4000 + ((ty + 64) << 7) + (tx + 64), 4)
     if any((b & 7) != 7 or not (b & 0x30) for b in w):

@@ -127,7 +127,11 @@ def move_one(a, i, g, nexthop, occ, e=None):
         return
     nh = nexthop[a.node[i] * G.MAXNODE + a.dest[i]]
     if nh == G.UNREACH:
-        a.dest[i] = a.node[i]            # απρόσιτος: παραιτείται, δεν κολλάει
+        # Παραιτείται ΚΑΙ αφήνει τη δουλειά: αλλιώς ο πίνακας εργασιών κρατά
+        # την ανάθεση πάνω σε κάποιον που δεν πρόκειται να ξεκινήσει ποτέ —
+        # βλ. src/entity.asm.
+        a.dest[i] = a.node[i]
+        a.task[i] = NO_TASK
         return
     base = a.node[i] * G.MAXDEG
     for k in range(g.deg[a.node[i]]):

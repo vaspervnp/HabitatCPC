@@ -20,7 +20,7 @@ UI_LINK     equ 3                       ; διάλεξε θόλο, διάλεξ�
 UI_SLOT     equ 4                       ; ποια από τις τρεις θέσεις δίσκου (§11)
 MSG_TICKS   equ 6                       ; τικ HUD που κρατά ένα μήνυμα (§11)
 
-UIP_NSIG    equ 10                      ; bytes υπογραφής των σειρών 3-4
+UIP_NSIG    equ 11                      ; bytes υπογραφής των σειρών 3-4
 UI_MARGIN   equ 1                       ; tiles από το χείλος πριν σκρολάρει
 PEN_CUR     equ 15                      ; ροζ — το λευκό χανόταν πάνω στα χείλη
                                     ; των διαδρόμων, που είναι κι αυτά λευκά
@@ -344,6 +344,28 @@ uim_go:
         call    snd_play                ; αλλάζει τίποτα ορατό εκτός φαντάσματος
         jp      ui_show
 uim_lr:
+        ; ΔΥΟ ΑΞΟΝΕΣ ΣΤΟ ΙΔΙΟ ΜΕΝΟΥ: δεξιά-αριστερά το αντικείμενο, πάνω-κάτω το
+        ; δωμάτιο του θόλου (§6.1). Το πάνω-κάτω δεν έκανε τίποτα ως τώρα.
+        ld      a,(bd_kind)
+        or      a                       ; BK_DOME
+        jr      nz,uim_item
+        ld      a,A_UP
+        call    in_hit                  ; Z = ΔΕΝ πατήθηκε (βλ. uim_fire πιο πάνω)
+        jr      z,uim_dn
+        ld      a,255                   ; πάνω = πίσω στη λίστα
+        jr      uim_room
+uim_dn:
+        ld      a,A_DOWN
+        call    in_hit
+        jr      z,uim_item
+        ld      a,1
+uim_room:
+        call    rm_step
+        ld      a,SFX_MENU
+        call    snd_play
+        jp      ui_panel                ; το φάντασμα δεν αλλάζει σχήμα, ο
+                                        ; πίνακας όμως λέει άλλο δωμάτιο
+uim_item:
         ld      a,A_RIGHT
         call    in_hit
         jr      z,uim_left
@@ -1015,8 +1037,33 @@ uipi_go:
         call    hud_char
         ld      b,1
         call    hud_blank
+        ; ΓΙΑ ΘΟΛΟ ΤΟ ΟΝΟΜΑ ΕΙΝΑΙ ΤΟ ΔΩΜΑΤΙΟ, και το μέγεθος ένα γράμμα από
+        ; πίσω: «OXYGEN     S» λέει και τα δύο σε μία λέξη λιγότερη από
+        ; «DOME S». Τα υπόλοιπα του καταλόγου κρατούν το όνομά τους, που ζει
+        ; στην τράπεζα 2 μαζί με το build.asm.
+        ld      a,(bd_kind)
+        or      a
+        jr      nz,uipi_nm
+        call    rm_name
+        call    hud_text7
+        ld      b,1
+        call    hud_blank
+        ld      a,(bd_param)
+        ld      hl,uip_szc
+        add     a,l
+        ld      l,a
+        ld      a,0
+        adc     a,h
+        ld      h,a
+        ld      a,(hl)
+        call    hud_char
+        jr      uipi_arrow
+uipi_nm:
         ld      hl,(bd_name)
         call    hud_text   ; τράπεζα 2, όχι 7
+        ld      b,3                     ; τα ονόματα καταλόγου είναι 9· τα
+        call    hud_blank               ; δωμάτια 10 συν το γράμμα μεγέθους
+uipi_arrow:
         ld      b,1
         call    hud_blank
         ld      a,'>'
@@ -1035,7 +1082,7 @@ uipi_go:
         ld      hl,(uip_bi)
         ld      b,3
         call    hud_num
-        ld      b,40-31
+        ld      b,40-34
         call    hud_blank
 uip_row4:
         ld      a,4
@@ -1051,9 +1098,20 @@ uip_row4:
         jr      z,uip_say
         endif
         ld      hl,t_keys
-        call    hud_text7
         ld      b,40-20                 ; το t_keys είναι 20 χαρακτήρες, όχι 24:
-        call    hud_blank               ; οι τέσσερις τελευταίες στήλες έμεναν
+        ld      a,(ui_state)            ; οι τέσσερις τελευταίες στήλες έμεναν
+        cp      UI_MENU
+        jr      nz,uip_ks
+        ld      a,(bd_kind)
+        or      a                       ; σε θόλο, το πάνω-κάτω κάνει κάτι
+        jr      nz,uip_ks
+        ld      hl,t_keysr
+        ld      b,40-22
+uip_ks:
+        push    bc
+        call    hud_text7
+        pop     bc
+        call    hud_blank
         jr      uip_spd
 uip_st:
         ld      a,(ui_bad)
@@ -1164,6 +1222,9 @@ uisg_st:
         xor     a
         endif
         ld      (hl),a
+        inc     hl
+        ld      a,(bd_rsel)             ; το δωμάτιο γράφεται στη σειρά 3
+        ld      (hl),a
         ret
 
 ; ui_dirty — «οι σειρές 3-4 δεν λένε πια αυτό που νομίζω».
@@ -1202,6 +1263,7 @@ uip_bi:     dw 0
 ; και το tests/uitest.asm χτίζεται χωρίς μηνύματα δίσκου. (Το όνομα δεν είναι
 ; UI_HOLD γιατί ο rasm δεν ξεχωρίζει ετικέτα από alias.)
 ui_hold:    db 0
+uip_szc:    db "SML"
 uip_sig:    defs UIP_NSIG, 255
 uip_now:    defs UIP_NSIG
 cur_hx:     db 0

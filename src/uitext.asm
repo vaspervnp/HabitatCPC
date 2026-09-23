@@ -58,6 +58,20 @@ x_t_ln2:      db "NO ROUTE FROM THERE ",0
 x_t_fe:       db "FE",0
 x_t_bi:       db "BI",0
 
+; Τα δωμάτια του καταλόγου (§6.1). Δέκα χαρακτήρες το καθένα, γεμισμένα με
+; κενά: το γράμμα μεγέθους μπαίνει αμέσως μετά, στην ίδια σειρά του HUD.
+x_t_r_oxy:    db "OXYGEN    ",0
+x_t_r_can:    db "CANTEEN   ",0
+x_t_r_qrt:    db "QUARTERS  ",0
+x_t_r_grn:    db "GREENHOUSE",0
+x_t_r_fac:    db "FACTORY   ",0
+x_t_r_lab:    db "LAB       ",0
+x_t_r_med:    db "MEDBAY    ",0
+x_t_r_ctl:    db "CONTROL   ",0
+x_t_r_sto:    db "STORAGE   ",0
+x_t_r_lng:    db "LOUNGE    ",0
+x_t_keysr:    db "FIRE=PLACE  UP/DN=ROOM",0
+
 zz_text_end:
 
 ; --- οι σελιδοποιημένες διευθύνσεις, αυτές που βλέπει ο κώδικας ---
@@ -96,6 +110,17 @@ t_ln1     equ x_t_ln1 - TEXT_IMG + G_text
 t_ln2     equ x_t_ln2 - TEXT_IMG + G_text
 t_fe      equ x_t_fe - TEXT_IMG + G_text
 t_bi      equ x_t_bi - TEXT_IMG + G_text
+t_r_oxy   equ x_t_r_oxy - TEXT_IMG + G_text
+t_r_can   equ x_t_r_can - TEXT_IMG + G_text
+t_r_qrt   equ x_t_r_qrt - TEXT_IMG + G_text
+t_r_grn   equ x_t_r_grn - TEXT_IMG + G_text
+t_r_fac   equ x_t_r_fac - TEXT_IMG + G_text
+t_r_lab   equ x_t_r_lab - TEXT_IMG + G_text
+t_r_med   equ x_t_r_med - TEXT_IMG + G_text
+t_r_ctl   equ x_t_r_ctl - TEXT_IMG + G_text
+t_r_sto   equ x_t_r_sto - TEXT_IMG + G_text
+t_r_lng   equ x_t_r_lng - TEXT_IMG + G_text
+t_keysr   equ x_t_keysr - TEXT_IMG + G_text
 
         ; Το κενό είναι 1.024 bytes και τελειώνει εκεί που αρχίζει το επόμενο
         ; πράγμα της τράπεζας 7. Χωρίς αυτόν τον έλεγχο, ένα κείμενο παραπάνω θα

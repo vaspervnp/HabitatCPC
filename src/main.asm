@@ -200,6 +200,7 @@ ml_hud:
         include "input.asm"
         include "graph.asm"
         include "ui.asm"
+        include "rooms.asm"
         include "entity.asm"
         include "econ.asm"
         include "jobs.asm"
