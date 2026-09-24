@@ -1310,6 +1310,45 @@ health, food, water, sleep. That single rule is what makes a colony feel like pe
 at some point everyone puts down what they are doing and goes to eat, and if the
 canteen is on the far side of the base you will watch production die of walking.
 
+**For twenty-seven milestones they dropped the job and the board handed it straight
+back.** "Drops the job" was written as `NO_TASK` — which is also how the agent tables
+spell *idle*, and the assignment pass gives work to the idle. So the needs pass set
+the destination to the canteen, the assignment pass set it back to the machine, the
+colonist turned round at the next node, and the two passes took turns until it **died
+of hunger while working, with 39 Food in the warehouse**. Neither pass was wrong on
+its own; every field held a legal value at every moment, which is why nothing in
+[§13](#13-build-and-test)'s suite had anything to catch. It took reading one
+colonist's fields every 25 frames (`tools/agents.py`) to see the oscillation:
+
+```
+7100 travelling node=1 dest=2 task=-    water=3 food=3 health=216
+7125 standing   node=3 dest=3 task=#1   water=2 food=2 health=213
+7150 travelling node=3 dest=2 task=-    water=0 food=0 health=207
+7175 starting   node=1 dest=2 task=-    water=0 food=0 health=201
+...   (and so on, every 25 frames, until health reached zero)
+```
+
+**Going to eat is a task, and [§6.7](#67-jobs)'s own table said so** — its last row is
+*Rest / Eat / Drink · the colonist's own needs · anyone, highest priority*. It needs no
+entry on the board: the needs pass writes **`T_NEED` (254)** into the task field. It is
+not a job index — there are 32 — so the reap step reads "changed their mind" and frees
+the work for someone else, and the assignment step reads "busy" and walks past. The
+first needs visit that finds nothing missing writes `NO_TASK` back and the colonist is
+available again. One value, no new column, no new pass.
+
+Measured after, on the same colony (`tests/test_needs.py`, which builds it and watches
+the bars rather than the corpses): work until the bars reach 63, a trip to the canteen
+of about 125 frames, both bars back to 255, then back to work — **one canteen trip per
+sol**, which is exactly the rate [§6.5](#65-economy)'s table always claimed. Nothing
+now goes below 58. The negative control is the same test on the previous binary: bars
+pinned at zero for 1,100 frames and the first colonist dead.
+
+**A famine does not freeze the colony**, which was the thing to check before giving
+needs a veto over work: with the store emptied by hand and every bar walked down to
+zero, the colonists still spend **half their time working** — the colonist standing in
+an empty canteen is the one already there, not everyone. So a colony that runs out of
+food can still build and run the thing that fixes it.
+
 #### Finding the right room
 
 "Nearest canteen" would be a scan of 64 domes with a `DIST` read each — 1,300 µs per
@@ -2536,8 +2575,9 @@ pay for.
 | panel + collector | sol 5 | thirst — but oxygen never drops, day or night |
 | panel + turbine | sol 5 | thirst — the same answer by the other route |
 | panel + extractor | **none in 8 sols** | Water reaches 247, Food is gone by sol 6 |
-| panel + collector + extractor | sol 8 | hunger — Water 419 and climbing, battery full |
+| panel + collector + extractor | **none in 8 sols** | Food gone by sol 7 and still nobody dead — Water 373 and climbing, battery full |
 | panel + extractor + small **Factory** | **none in 8 sols** | Ore 60 → 0 by sol 4, Metal 18 → **48**; Food gone by sol 6 and nobody dead by sol 8 |
+| greenhouse + lab + canteen (with the materials given) | **none in 8 sols** | **The first colony that feeds itself**: Food 40 → 12 by sol 6 → **27** by sol 8, four colonists eating out of it the whole way |
 
 Every line that solves water used to end at the same wall: **Food**, which needs a
 greenhouse and a `mach_food`, which needs a dome that can be given a room. Rooms are
@@ -2546,13 +2586,17 @@ built ([§9.3](#93-build-flow)) and the chain runs — with the slot order fixed
 Vitromeat, and `tools/balance.py` shows Food climbing **34 → 38** in a colony that is
 eating out of it at the same time.
 
-**The wall moved from rates to people.** The same run still loses everyone, starting
-on sol 2 with 37 Food in the warehouse: four colonists cannot staff seven machines and
-also eat. A machine turns only while an operator is standing in its dome
-([§6.5](#65-economy)), so every dome the player adds is a claim on the same four
-people, and the food chain is three domes. That is what the Control room and the
-colonist ship are for ([§6.11](#611-ships-and-arrivals)) — and measuring how many
-people a chain actually needs is the next thing to do, not another rate.
+**The wall looked like people and was a bug.** That same run used to lose everyone
+from sol 2 with 37 Food in the warehouse, and the reading was "four colonists cannot
+staff seven machines and also eat". They could: they were being sent back to work
+every time they set off for the canteen ([§6.6](#66-needs)). With that fixed the
+colony runs the full eight sols with nobody dead and Food climbing again by sol 8.
+
+What is left is a real rate and not a bug: **one chain feeds four, not twelve.** Two
+colonist ships on top of the same three domes ([§6.11](#611-ships-and-arrivals)) empty
+the store by sol 3 and the colony by sol 5. A colony of twelve needs a second
+greenhouse and a second canteen — which the player can build, and which nothing in the
+game tells them ([§15](#15-open-risks)).
 
 That is the shape [§10.1](#101-start-state) always claimed and never had: before the
 economy got a clock ([§6.5](#65-economy)) the answer was "sol 1½, of thirst, whatever
@@ -2807,6 +2851,7 @@ firmware still owns the screen.
 |---|---|---|
 | `rasm` | `~/rasm/rasm.exe` | assembler; handles banking directives and `align 256` |
 | `iDSK` | `~/idsk/iDSK` | builds the `.dsk` image |
+| `tools/agents.py` | — | reads the colonists' own fields out of bank 6 while the game runs: what each one is doing, where, and how full their bars are. [§6.6](#66-needs)'s oscillation is invisible in stocks and in the HUD; it is obvious in one colonist's `dest` sampled every 25 frames. It steals the CPU **only in the vsync wait at the top of the loop**, where the stack is at its base and only `BC` is live — taken anywhere else, the scaffolding leaves a nail on the stack per sample and the colony ends up with 217 living |
 | `cpcemu` | `~/cpcemu/cpc.py` | **headless** CPC 6128 — Z80 + gate array + CRTC + PPI + FDC + PSG, renders to a framebuffer, dumps PNG. **Extended for milestone 20**: `cpcemu_psg_reg` / `cpcemu_psg_addr` in `cpcheadless.c` expose the AY's registers, because sound is otherwise invisible to every check — the emulator ran with `audio.volume = 0` and nothing outside the chip could say whether a write arrived. Additive; the old `.so` is kept beside the new one |
 
 The headless emulator is the most valuable thing in this list, because it makes the
@@ -2988,7 +3033,7 @@ gap.
 | ~~The flow-balance wheel slot re-scans 64 structures every revolution~~ | ~~Medium~~ | **Resolved, and not for speed.** 7,887 µs for numbers that change slowly — but the reason it moved was [§6.5](#65-economy)'s clock: a battery that charges 750 times a sol is not a battery. The scan, the battery and the pumps now run once per 64 revolutions (`FLOW_DIV`), the living are still counted every revolution, and a finished building kicks the balance so the panel the player just paid for shows up at once. |
 | ~~Nothing the player does exists: no build mode, no input, no HUD, nothing drawn since milestone 5~~ | ~~High~~ | **Resolved.** The colony is drawn, the camera scrolls, the dirty list keeps it honest, the HUD reports — and the player now moves a cursor, opens a menu, places a dome and routes a corridor between two of them ([§9.1](#91-controls), [§9.3](#93-build-flow), [§9.4](#94-corridor-routing), [§6.9](#69-construction)). |
 | ~~The two halves have never been assembled into one binary~~ | ~~Medium~~ | **Assembled, and it did not fit: 20,571 bytes wanted 16,128.** Resolved by moving the generator out, cutting `MAX_NODES` to 96 and putting code in bank 2 ([§4.2](#42-the-eight-banks)). It also turned up duplicate constants in three files and, worse, [§7.4](#74-one-convention-per-half-and-they-disagreed)'s paging disagreement. |
-| **Memory is the binding constraint from here on** | High | **311 bytes free in bank 0 and 50 in bank 2's code area** — after milestone 26 moved the loader's endgame and handed back 384 ([§4.2](#42-the-eight-banks)), then spent most of them on rooms, and milestone 27 spent 58 more on the ship button. Bank 7's `text` block is 702 of 1,024 used. The figures below are from milestone 23: **488 bytes free in bank 0 and 69 in bank 2's code area** — milestone 23 moved every string into bank 7's reserved `text` block ([§4.2](#42-the-eight-banks)), which is the last easy 450 bytes there will be, measured by `tools/mkdsk.py` at every build — both ceilings are now checks that stop the build rather than comments. Save/load, four planets and sound have been spent out of the figures below. The reserves left, in order: bank 7's `text` (1,024) and `audio` (2,048) blocks, the 1,600-byte ghost log `GH_LOG` and the 512-byte `DOME_FIG` cache in bank 2, size-optimising `route.asm`/`ui.asm`/`object.asm` (1,000–1,500 by estimate), and the cuts [§4.2](#42-the-eight-banks) already names. Every new feature now costs a decision, and the next one that needs bank 2 has to take it from something. |
+| **Memory is the binding constraint from here on** | High | **187 bytes free in bank 0 and 50 in bank 2's code area** — after milestone 26 moved the loader's endgame and handed back 384 ([§4.2](#42-the-eight-banks)), then spent most of them on rooms, milestone 27 spent 58 more on the ship button and 112 on the slot order, and milestone 28 twelve on the needs task. Bank 7's `text` block is 702 of 1,024 used. The figures below are from milestone 23: **488 bytes free in bank 0 and 69 in bank 2's code area** — milestone 23 moved every string into bank 7's reserved `text` block ([§4.2](#42-the-eight-banks)), which is the last easy 450 bytes there will be, measured by `tools/mkdsk.py` at every build — both ceilings are now checks that stop the build rather than comments. Save/load, four planets and sound have been spent out of the figures below. The reserves left, in order: bank 7's `text` (1,024) and `audio` (2,048) blocks, the 1,600-byte ghost log `GH_LOG` and the 512-byte `DOME_FIG` cache in bank 2, size-optimising `route.asm`/`ui.asm`/`object.asm` (1,000–1,500 by estimate), and the cuts [§4.2](#42-the-eight-banks) already names. Every new feature now costs a decision, and the next one that needs bank 2 has to take it from something. |
 | ~~Nothing finishes what the player starts~~ | ~~High~~ | **Built.** A Build job is picked up, the agent routes to the site, works it 32 points a visit, and at 255 the building turns `DS_ACTIVE` and is drawn ([§6.9](#69-construction)). `tests/test_game.py` walks the whole chain: place a solar panel with 30 Metal, and about six seconds later the HUD says `ALL SYSTEMS OK` with no key pressed in between. |
 | **A completed building stalls the game for 0.8 s** | Medium | The full redraw of [§6.9](#69-construction) step 4, in place of the eight-chunk reveal that is specified and unwritten. Rare — once per building — but it is a visible freeze, and it is the first thing to fix if building ever becomes frequent. |
 | ~~The simulation still pushes nothing into the dirty list~~ | ~~High~~ | **Wired for ring slots**, which is what moves: `ent_claim` and `ent_release` push a `DK_SLOT`, and the figure cache is rebuilt once per burst rather than once per slot ([§8.5](#85-the-dirty-list)). Machines breaking, plants growing and room changes still push nothing. |
@@ -3003,7 +3048,8 @@ gap.
 | Ships, trade and milestones are unbuilt — [§6.11](#611-ships-and-arrivals) and [§10.2](#102-milestones) | Medium | The colony sustains itself but cannot grow: no new colonists arrive and nothing can be traded for. This is what makes it a sandbox rather than a game. |
 | The balance numbers in [§6.5](#65-economy) are first guesses and three of them were unlivable | Medium | Corrected against the first working colony ([§6.6](#66-needs)). Expect the same of the rest: they cannot be checked by reading, only by running the loop and looking at who is where. |
 | ~~A new dome has no room and no machines, and nothing can give it either~~ | ~~High~~ | **Built, and it took three bugs with it.** The room is the menu's second axis ([§9.3](#93-build-flow)), the dome fills its own slots from `room_machines` and `machine_rules` ([§6.5](#65-economy)), and a greenhouse comes up full of plants. On the way: a construction site linked itself to *itself* and no dome the player placed had ever been finished ([§6.9](#69-construction)); an agent that found its destination unreachable kept the job ([§6.3](#63-movement)); and the loader's endgame was holding 512 bytes for forty ([§4.2](#42-the-eight-banks)). |
-| **A colony of four cannot staff the food chain** | Medium | Greenhouse, Lab and Canteen are seven machine slots and four people, and a machine runs only with an operator in its dome ([§6.5](#65-economy)). Measured: Food is being produced and the colony still dies, first death on sol 2 with 37 Food in store — they are out at the far domes when the bars run down. Three levers, none taken: call colonists earlier (the ship is built, [§6.11](#611-ships-and-arrivals)), let a need outrank an `Operate` job at a higher threshold ([§6.6](#66-needs)), or make the first slot of a dome enough to run it. The measurement to make first is how long a colonist spends walking. |
+| ~~A colony of four cannot staff the food chain~~ | ~~Medium~~ | **They could. They were dying on the way to the canteen.** [§6.6](#66-needs)'s "their own needs outrank the board" dropped the job by writing `NO_TASK`, which is how the tables spell *idle*, so the assignment pass handed the work straight back and the colonist oscillated between machine and canteen until it died with Food in store. Going to eat is now a task the board does not touch (`T_NEED`), and the same colony — greenhouse, lab, canteen, four people — runs **eight sols with no deaths**, Food bottoming at 12 on sol 6 and climbing back to 27. `tests/test_needs.py` watches the bars, and its negative control on the old binary is bars pinned at zero for 1,100 frames. |
+| **One food chain feeds four, not twelve** | Medium | The same chain with two colonist ships on top — twelve people — is out of Food by sol 3 and out of people by sol 5. Nothing is broken: twelve people need a second greenhouse and a second canteen, and the player can build them. But nothing in the game says so, and the `C` key ([§6.11](#611-ships-and-arrivals)) makes it one keystroke to invite twelve people to four people's dinner. The measurement to make first is one chain's Meals per sol against `POP`; the levers after that are the recipe's output, a second chain, or a HUD line that says the colony is short. |
 | **A machine cannot be chosen, only its room** | Medium | The slots are dealt round robin from what the room allows — **slot 0 deliberately** ([§6.5](#65-economy)), the rest in order — so a large Factory is one of each rather than eight of what the colony is short of, and there is no way to ask for the eight. The screen that fixes it is the same one that would let machines be costed individually ([§6.5](#65-economy)) — and the same one that would let a built dome change its room. Nothing is blocked by this; the colony is simply less sharp than the player. |
 | ~~The colony can spend its starting metal and never make more~~ | ~~High~~ | **Resolved and measured at milestone 27.** Two changes: the start state carries **60 Ore, 75 Metal, 45 Bioplastic**, and only pressurised structures cost Bioplastic ([§9.3](#93-build-flow)) — the old catalogue priced everything in both, so the colony's 30 Bioplastic ran out four buildings in and the only thing that makes more is behind two domes that cost it. A panel, an extractor and a small Factory now cost 57 Metal of the 75, and `tools/balance.py` measures the chain running: **60 Ore → 30 Metal by sol 4, 18 → 48**, which buys the 30-Metal mine that keeps the Factory fed ([§10.1](#101-start-state)). The opening is no longer the whole game's budget. |
 | Balance | ~~Certain~~ Medium | Every number in [§6.5](#65-economy) was a first guess; the ones on the path a player actually walks are now **measured** rather than guessed, by `tools/balance.py` — which runs the real binary at ×4 for eight sols and prints the curve — and held by `tests/test_balance.py`. What measurement turned up was not mis-tuned numbers but three structural faults: the economy had no clock, power counted consumption instead of demand, and the start colony's quarters were a second oxygen generator ([§10.1](#101-start-state)). The rates past the first two buildings — the whole machine chain — are still guesses, and stay guesses until a dome can be given a room. |

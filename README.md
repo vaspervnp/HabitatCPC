@@ -26,7 +26,10 @@ in a Z80 and 128 KB.
 > opening now carries 60 Ore and enough Metal to buy a Factory beside the panel and
 > the pump, the Factory turns that ore into 30 Metal by sol 4 — which is a mine, and
 > the loop closes — and `C` calls a colonist ship down to the pad, four at a time,
-> once a Control room has raised the population ceiling.
+> once a Control room has raised the population ceiling. **And it feeds itself**:
+> a greenhouse, a lab and a canteen now carry four colonists through eight sols with
+> nobody dead, which they did not before — the colonists were starving *on the way to
+> the canteen*, sent back to work by the job board every time they set off.
 > Build it with `tools/build.sh` — that also runs every test — and read
 > [`DESIGN.md`](DESIGN.md) first.
 
