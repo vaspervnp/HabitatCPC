@@ -193,6 +193,19 @@ def ui_flow(sym, g, col):
     row = hud_row(m, sym, 3)
     check("FE 36" in row and "BI 18" in row,
           f"ο πίνακας δείχνει το κόστος ΟΛΗΣ της διαδρομής: |{row}|")
+    # --- ΠΟΣΟ ΓΕΜΙΖΕΙ ΤΟ ΑΡΧΕΙΟ ΑΝΑΙΡΕΣΗΣ (§9.3) -------------------------
+    # Το GH_LOG είναι 1.600 bytes στην τράπεζα 2 — χώρος που λείπει από αλλού.
+    # Η σχεδίαση αρνείται να γράψει ό,τι δεν μπορεί να πάρει πίσω, οπότε ένα
+    # μικρό αρχείο ΚΟΒΕΙ το φάντασμα αντί να χαλάσει την οθόνη· αυτό εδώ λέει
+    # πόσο χρειάζεται στ' αλήθεια το χειρότερο φάντασμα που ξέρουμε να στήσουμε.
+    ghbuf = None
+    for line in open(os.path.join(ROOT, "build", "layout.asm"), encoding="utf-8"):
+        if line.startswith("PAGE2_TOP"):
+            ghbuf = int(line.split("#")[1].split()[0], 16)
+    ptr = m.peek(sym["GH_PTR"]) | (m.peek(sym["GH_PTR"] + 1) << 8)
+    print(f"   αρχείο αναίρεσης: {ptr - ghbuf} bytes για διαδρομή "
+          f"{m.peek(sym['CR_L0']) + m.peek(sym['CR_L1'])} πλακιδίων")
+
     # --- το κόστος ενός βήματος κέρσορα, μετρημένο ------------------------
     def cost():
         m.poke(sym["DONE_FLAG"], 0)

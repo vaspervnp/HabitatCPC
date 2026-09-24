@@ -325,11 +325,11 @@ must always be reachable is in bank 0 (`&0000–&3FFF`) or bank 2 (`&8000–&BFF
 
 | Block | Bank | Contents | Bytes | Slack |
 |---|---|---|---|---|
-| `&0000–&3FFF` | 0 | engine code, ISR, blit kernels, UI | 16,384 | **2,108** |
+| `&0000–&3FFF` | 0 | engine code, ISR, blit kernels, UI | 16,384 | **642** |
 | window | 1 | **distance matrix** `DIST[96][128]` 12,288 · room icons `m` and `l` 3,936 | 16,384 | 160 |
 | window | 4 | **world plane** 128×128×1 byte | 16,384 | 0 |
 | window | 5 | **next-hop matrix** `NEXTHOP[96][128]` | 16,384 | 4,096 |
-| window | 6 | `flip_mode0` 256 · dome+ring `nw` quadrants 7,424 · slot figures 3,456 · entity tables 4,832 ([§6.1](#61-entities)) | 16,096 | 288 |
+| window | 6 | `flip_mode0` 256 · dome+ring `nw` quadrants 7,424 · slot figures 3,456 · entity tables 4,832 ([§6.1](#61-entities)) · figure cache 512 | 16,228 | 156 |
 | window | 7 | external structures 11,264 · plants 1,584 · `plant_ptr` 24 · text 1,024 · audio 2,048 | 15,944 | 440 |
 | `&8000–&BFFF` | 2 | graphics, flat · node graph + BFS workspace 1,536 · recipes 110 · economy 58 · job board 160 | 14,848 | **1,536** |
 | `&C000–&FFFF` | 3 | play-area screen | 16,384 | 0 |
@@ -359,8 +359,26 @@ wanted 16,128. Three decisions closed it:
   pass, which has bank 6 in.
 - **Bank 2 holds code.** It was always visible and always treated as data; its
   image is now trimmed to the 11,264 bytes it actually uses, and `build.asm`,
-  `route.asm`, the ghost's 1,600-byte undo log and the 512-byte figure table live
-  above it.
+  `route.asm`, `sound.asm`, `save.asm`, `hw.asm` and the ghost's 1,600-byte undo
+  log live above it.
+
+**Milestone 30 measured where bank 0 actually goes, and moved three things.**
+`tools/mapsize.py` assembles a copy of `main.asm` with a label before every
+`include` and reads the sizes out of the symbol table — the first time the question
+"who is eating bank 0?" had an answer instead of an estimate. The answer: `object`
+2,908, `ui` 2,164, `econ` 1,418, `jobs` 1,091, `hud` 992, `needs` 963, and a tail of
+twenty smaller ones. Nothing there is obviously wasteful, so the space came from
+moving rather than shrinking:
+
+| Moved | Bytes | Why it is safe |
+|---|---|---|
+| the 512-byte figure cache, bank 2 → **bank 6** | +512 to bank 2 | only the object pass touches it, and that pass already has bank 6 paged in for the quadrants and figures |
+| `save.asm` + `hw.asm`, bank 0 → **bank 2** | +496 to bank 0 | both are cold — `S`/`L` and one call at boot — and bank 2 is always visible, so code there is simply code |
+| the loader's endgame, `&3F80` → **`&3FC0`** | +64 to bank 0 | the endgame is 40 bytes and was being given 128; `tools/mkdsk.py` now reads the address out of `src/boot.asm` instead of keeping a second copy of it |
+
+**Bank 0 went from 82 bytes free to 642**, bank 2's code area from 50 to 66, bank 6
+from 668 to 156. The figure between banks is not fungible — what is scarce is bank 0
+— so the trade is worth making again the next time it is available.
 
 The result was 2,108 free in bank 0 and 708 in bank 2 — about 2.8 KB for save/load,
 audio, meteors and intruders, with bank 7's reserved 1,024-byte `text` block
@@ -425,6 +443,16 @@ reading `gh_ptr` while each ghost is on screen:
 *skips drawing* it — so a smaller log would not corrupt anything, it would quietly
 drop pieces of the biggest ghost. The plan was wrong and the measurement cost an hour
 instead of a milestone.
+
+**Milestone 30 paid for the same move out of the other pocket.** With `GH_LOG` ruled
+out, the 512-byte figure cache was the only other thing above `PAGE2_TOP` that did not
+have to be there: every read and write of it happens inside the object pass, which
+already has bank 6 paged in for the quadrants and the figures, so it moved into bank 6
+and bank 2's code area grew by exactly its size. `save.asm` and `hw.asm` — 496 bytes
+of code that runs on a keypress and at boot — moved up into the room that made, and
+bank 0 went from **82 to 642 free** ([§4.2](#42-the-eight-banks)). A corridor route's
+own ghost, measured the same way, logs 284 bytes for six tiles, so the log's headroom
+is set by `DOME L` and nothing else.
 
 A first attempt at the same measurement said the log runs to 1,600 with nothing but
 the cursor on screen. That was the *measurement* breaking the thing it measured:
@@ -2884,15 +2912,15 @@ game lives in seven places at once — see [§13.1](#131-three-ways-a-loader-doe
 | File | Goes to | Bytes | |
 |---|---|---|---|
 | `HABITAT.BAS` | — | 3 lines | `MEMORY &8FFF` · `LOAD"LOADER.BIN",&9000` · `CALL &9000` |
-| `LOADER.BIN` | `&9000` | 342 | the loader |
+| `LOADER.BIN` | `&9000` | 533 | the loader, plus the 40-byte endgame it copies to `&3FC0` |
 | `BANK6.BIN` | bank 6 | 16,384 | quadrants, figures, entity tables |
 | `BANK7.BIN` | bank 7 | 16,384 | structures, plants, and the reserved holes |
 | `TEXT.BIN` | bank 7, over the hole | 487 | every string the game prints ([§4.2](#42-the-eight-banks)) |
 | `BANK1.BIN` | `&7000` | 4,096 | room icons above the distance matrix |
 | `PAGE2.BIN` | bank 5, then `&8000` | 11,264 | bank 2's graphics and tables |
-| `GAME2.BIN` | bank 5, then `PAGE2_CODE` | 2,819 | bank 2's code — the address comes from the symbol table, not from a constant in the build script, because it moved once and the script did not |
+| `GAME2.BIN` | bank 5, then `PAGE2_CODE` | 3,334 | bank 2's code — the address comes from the symbol table, not from a constant in the build script, because it moved once and the script did not |
 | `GEN.BIN` | `&8000` | 3,072 | the world generator: runs once, returns |
-| `GAME.BIN` | `&0100` | 14,125 | the game |
+| `GAME.BIN` | `&0100` | 15,422 | the game |
 
 **Measured: 31 s from `ENTER` to the colony** — 13.5 s of that is the generator
 ([§5.9](#59-cost--measured)), the rest is 68 KB off the floppy. The border changes
@@ -2903,6 +2931,7 @@ firmware still owns the screen.
 |---|---|---|
 | `rasm` | `~/rasm/rasm.exe` | assembler; handles banking directives and `align 256` |
 | `iDSK` | `~/idsk/iDSK` | builds the `.dsk` image |
+| `tools/mapsize.py` | — | per-file byte counts for bank 0 and bank 2's code, by assembling a copy of `main.asm` with a label before every `include`. `tools/mkdsk.py` says how many bytes are left; this says who took them, which is the half that tells you what to move |
 | `tools/agents.py` | — | reads the colonists' own fields out of bank 6 while the game runs: what each one is doing, where, and how full their bars are. [§6.6](#66-needs)'s oscillation is invisible in stocks and in the HUD; it is obvious in one colonist's `dest` sampled every 25 frames. It steals the CPU **only in the vsync wait at the top of the loop**, where the stack is at its base and only `BC` is live — taken anywhere else, the scaffolding leaves a nail on the stack per sample and the colony ends up with 217 living |
 | `cpcemu` | `~/cpcemu/cpc.py` | **headless** CPC 6128 — Z80 + gate array + CRTC + PPI + FDC + PSG, renders to a framebuffer, dumps PNG. **Extended for milestone 20**: `cpcemu_psg_reg` / `cpcemu_psg_addr` in `cpcheadless.c` expose the AY's registers, because sound is otherwise invisible to every check — the emulator ran with `audio.volume = 0` and nothing outside the chip could say whether a write arrived. Additive; the old `.so` is kept beside the new one |
 
@@ -3085,7 +3114,7 @@ gap.
 | ~~The flow-balance wheel slot re-scans 64 structures every revolution~~ | ~~Medium~~ | **Resolved, and not for speed.** 7,887 µs for numbers that change slowly — but the reason it moved was [§6.5](#65-economy)'s clock: a battery that charges 750 times a sol is not a battery. The scan, the battery and the pumps now run once per 64 revolutions (`FLOW_DIV`), the living are still counted every revolution, and a finished building kicks the balance so the panel the player just paid for shows up at once. |
 | ~~Nothing the player does exists: no build mode, no input, no HUD, nothing drawn since milestone 5~~ | ~~High~~ | **Resolved.** The colony is drawn, the camera scrolls, the dirty list keeps it honest, the HUD reports — and the player now moves a cursor, opens a menu, places a dome and routes a corridor between two of them ([§9.1](#91-controls), [§9.3](#93-build-flow), [§9.4](#94-corridor-routing), [§6.9](#69-construction)). |
 | ~~The two halves have never been assembled into one binary~~ | ~~Medium~~ | **Assembled, and it did not fit: 20,571 bytes wanted 16,128.** Resolved by moving the generator out, cutting `MAX_NODES` to 96 and putting code in bank 2 ([§4.2](#42-the-eight-banks)). It also turned up duplicate constants in three files and, worse, [§7.4](#74-one-convention-per-half-and-they-disagreed)'s paging disagreement. |
-| **Memory is the binding constraint from here on** | High | **82 bytes free in bank 0 and 50 in bank 2's code area** — and 82 is not enough for the next feature, so the one after this one starts by reclaiming — after milestone 26 moved the loader's endgame and handed back 384 ([§4.2](#42-the-eight-banks)), then spent most of them on rooms, milestone 27 spent 58 more on the ship button and 112 on the slot order, milestone 28 twelve on the needs task, and milestone 29 another 105 on room priorities, the gardener rule and two alert lines. Bank 7's `text` block is 702 of 1,024 used. The figures below are from milestone 23: **488 bytes free in bank 0 and 69 in bank 2's code area** — milestone 23 moved every string into bank 7's reserved `text` block ([§4.2](#42-the-eight-banks)), which is the last easy 450 bytes there will be, measured by `tools/mkdsk.py` at every build — both ceilings are now checks that stop the build rather than comments. Save/load, four planets and sound have been spent out of the figures below. The reserves left, in order: bank 7's `text` (1,024) and `audio` (2,048) blocks, the 1,600-byte ghost log `GH_LOG` and the 512-byte `DOME_FIG` cache in bank 2, size-optimising `route.asm`/`ui.asm`/`object.asm` (1,000–1,500 by estimate), and the cuts [§4.2](#42-the-eight-banks) already names. Every new feature now costs a decision, and the next one that needs bank 2 has to take it from something. |
+| **Memory is the binding constraint from here on** | High | **642 bytes free in bank 0, 66 in bank 2's code area, 156 in bank 6, 440 in bank 7** — the figures after milestone 30, which moved the figure cache into bank 6, `save.asm` and `hw.asm` into bank 2 and the loader's endgame up to `&3FC0` ([§4.2](#42-the-eight-banks)). Both ceilings are checks that stop the build, not comments, and `tools/mapsize.py` now says *who* is spending bank 0 rather than only how much is left. Milestones 26–29 spent 384 on rooms, 170 on the ship button and slot order, 12 on the needs task and 105 on room priorities and the alert lines; 30 handed back 560. The reserves that remain, in order: bank 7's `audio` block (2,048) and the rest of `text` (322 of 1,024 free), `newgame.asm` and `fdc.asm` (957 bytes of cold code that can follow `save.asm` up to bank 2 as soon as bank 2 has room), and size-optimising `object.asm` and `ui.asm` — 5,072 bytes between them, the two biggest things in bank 0 by a factor of two. Every new feature still costs a decision. |
 | ~~Nothing finishes what the player starts~~ | ~~High~~ | **Built.** A Build job is picked up, the agent routes to the site, works it 32 points a visit, and at 255 the building turns `DS_ACTIVE` and is drawn ([§6.9](#69-construction)). `tests/test_game.py` walks the whole chain: place a solar panel with 30 Metal, and about six seconds later the HUD says `ALL SYSTEMS OK` with no key pressed in between. |
 | **A completed building stalls the game for 0.8 s** | Medium | The full redraw of [§6.9](#69-construction) step 4, in place of the eight-chunk reveal that is specified and unwritten. Rare — once per building — but it is a visible freeze, and it is the first thing to fix if building ever becomes frequent. |
 | ~~The simulation still pushes nothing into the dirty list~~ | ~~High~~ | **Wired for ring slots**, which is what moves: `ent_claim` and `ent_release` push a `DK_SLOT`, and the figure cache is rebuilt once per burst rather than once per slot ([§8.5](#85-the-dirty-list)). Machines breaking, plants growing and room changes still push nothing. |

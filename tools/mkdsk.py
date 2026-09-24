@@ -23,7 +23,8 @@
 αγνοείται — το CAS IN DIRECT φορτώνει όπου του πει ο φορτωτής στο HL — αλλά
 γράφεται σωστή ούτως ή άλλως, για να λέει το cat την αλήθεια.
 """
-import os, shutil, subprocess, sys
+import os
+import re, shutil, subprocess, sys
 
 from dsk import Dsk
 
@@ -79,7 +80,16 @@ def assemble():
 # να τρέξει — και θα φαινόταν ως τυχαίο κρέμασμα μετά το φόρτωμα, όχι ως
 # σφάλμα build. Ηταν #3E00 ως το βήμα 26: το επίμετρο είναι σαράντα bytes και
 # κρατούσε πεντακόσια δώδεκα (βλ. src/boot.asm).
-ENDGAME = 0x3F80
+def endgame_addr():
+    """Το ταβάνι της τράπεζας 0, διαβασμένο ΑΠΟ ΤΟ src/boot.asm."""
+    for line in open(os.path.join(ROOT, "src", "boot.asm"), encoding="utf-8"):
+        m = re.match(r"ENDGAME\s+equ\s+#([0-9A-Fa-f]+)", line)
+        if m:
+            return int(m.group(1), 16)
+    sys.exit("δεν βρέθηκε το ENDGAME στο src/boot.asm")
+
+
+ENDGAME = endgame_addr()
 
 # Τα slots του §11 ζουν στα tracks 24-41, ΧΩΡΙΣ αρχείο AMSDOS από πάνω τους: ο
 # δίσκος είναι του παιχνιδιού. Αυτό ισχύει όσο τα αρχεία δεν φτάνουν ως εκεί —

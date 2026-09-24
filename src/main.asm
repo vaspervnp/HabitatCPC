@@ -209,8 +209,6 @@ ml_hud:
         include "ship.asm"
         include "wheel.asm"
         include "fdc.asm"
-        include "save.asm"
-        include "hw.asm"
         include "newgame.asm"
 zz_bank0_end:
 
@@ -223,6 +221,13 @@ zz_page2_code:                          ; για το tools/mkdsk.py: πού φ�
         include "build.asm"
         include "route.asm"
         include "sound.asm"
+        ; ΚΡΥΟΣ ΚΩΔΙΚΑΣ, ΜΕΤΑΚΟΜΙΣΕ ΣΤΟ ΒΗΜΑ 30. Το save.asm τρέχει όταν ο
+        ; παίκτης πατήσει S ή L, το hw.asm στην εκκίνηση και μετά ποτέ: καμία
+        ; κλήση τους δεν είναι σε καρέ που μετράει, και εδώ πάνω ο χώρος
+        ; υπάρχει (η τράπεζα 2 φαίνεται πάντα, άρα ο κώδικας είναι απλώς
+        ; κώδικας). Η τράπεζα 0 κέρδισε 496 bytes.
+        include "save.asm"
+        include "hw.asm"
 zz_page2_end:
 
 ; --- τα δύο κομμάτια του παιχνιδιού, για τον δίσκο ------------------------
