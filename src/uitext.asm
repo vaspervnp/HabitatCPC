@@ -48,7 +48,7 @@ x_t_pause:    db "PAUSE",0
 x_t_x1:       db "  x1 ",0
 x_t_x2:       db "  x2 ",0
 x_t_x4:       db "  x4 ",0
-x_t_look:     db "LOOK  SPACE=BUILD  ",0
+x_t_look:     db "LOOK  SPACE=BUILD  C=SHIP",0
 x_t_keys:     db "FIRE=PLACE ESC=BACK ",0
 x_t_ok:       db "READY  FIRE TO BUILD",0
 x_t_block:    db "BLOCKED             ",0
@@ -71,6 +71,10 @@ x_t_r_ctl:    db "CONTROL   ",0
 x_t_r_sto:    db "STORAGE   ",0
 x_t_r_lng:    db "LOUNGE    ",0
 x_t_keysr:    db "FIRE=PLACE  UP/DN=ROOM",0
+x_t_ship:     db "COLONIST SHIP CALLED",0
+x_t_shipno:   db "A SHIP IS ALREADY DUE",0
+x_t_noctl:    db "NEED A CONTROL ROOM",0
+x_t_nopad:    db "NEED A LANDING PAD",0
 
 zz_text_end:
 
@@ -121,6 +125,10 @@ t_r_ctl   equ x_t_r_ctl - TEXT_IMG + G_text
 t_r_sto   equ x_t_r_sto - TEXT_IMG + G_text
 t_r_lng   equ x_t_r_lng - TEXT_IMG + G_text
 t_keysr   equ x_t_keysr - TEXT_IMG + G_text
+t_ship    equ x_t_ship - TEXT_IMG + G_text
+t_shipno  equ x_t_shipno - TEXT_IMG + G_text
+t_noctl   equ x_t_noctl - TEXT_IMG + G_text
+t_nopad   equ x_t_nopad - TEXT_IMG + G_text
 
         ; Το κενό είναι 1.024 bytes και τελειώνει εκεί που αρχίζει το επόμενο
         ; πράγμα της τράπεζας 7. Χωρίς αυτόν τον έλεγχο, ένα κείμενο παραπάνω θα

@@ -22,6 +22,7 @@
 
 FLIPTAB     equ G_flip_mode0
 HAS_DISC    equ 1                        ; το ui.asm δίνει S/L μόνο εδώ (§11)
+HAS_SIM     equ 1                        ; ...και το C, που θέλει πλοία (§6.11)
 
 start:
         di

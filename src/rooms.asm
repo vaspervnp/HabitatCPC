@@ -86,14 +86,23 @@ rm_build:
         cp      R_GREENHS               ; τα φυτά δεν έχουν κανόνα μεγέθους
         jr      nz,rmb_mach
 rmb_pl:
-        ld      (hl),b                  ; θερμοκήπιο: όλα τα φυτά με τη σειρά
+        ld      de,rm_plants            ; θερμοκήπιο: με σειρά ΚΛΑΣΗΣ (βλ. κάτω)
+        ld      a,b
+        add     a,e
+        ld      e,a
+        ld      a,0
+        adc     a,d
+        ld      d,a
+        ld      a,(de)
+        ld      (hl),a
         inc     hl
         inc     b
         ld      a,b
         cp      RM_MACH
         jr      c,rmb_pl
-        jr      rmb_out                 ; A = RM_MACH, CY καθαρό
+        jp      rmb_out                 ; A = RM_MACH, CY καθαρό
 rmb_mach:
+        ld      (rm_rm),a               ; το δωμάτιο, για το rm_pref
         add     a,a                     ; room_machines: δύο bytes το δωμάτιο
         ld      l,a
         ld      h,0
@@ -118,24 +127,54 @@ rmb_mach:
         ld      (rm_mbit),a             ; 1 << μέγεθος
         pop     hl
         ld      c,0                     ; C = πόσα μπήκαν
+        ; --- Η ΚΥΡΙΑ ΜΗΧΑΝΗ ΤΟΥ ΔΩΜΑΤΙΟΥ ΠΑΙΡΝΕΙ ΤΗΝ ΥΠΟΔΟΧΗ 0 ---
+        ld      a,(rm_rm)
+        push    hl
+        ld      hl,rm_pref
+        add     a,l
+        ld      l,a
+        ld      a,0
+        adc     a,h
+        ld      h,a
+        ld      a,(hl)
+        pop     hl
+        ld      (rm_pf),a
+        cp      RM_MACH
+        jr      nc,rmb_lp               ; 255: το δωμάτιο δεν έχει προτίμηση
+        ld      b,a
+        push    de                      ; την δέχεται το δωμάτιο;
+        inc     b
+rmb_pfs:
+        dec     b
+        jr      z,rmb_pft
+        srl     d
+        rr      e
+        jr      rmb_pfs
+rmb_pft:
+        ld      a,e
+        and     1
+        pop     de
+        jr      z,rmb_lp0               ; όχι — μένει η αριθμητική σειρά
+        ld      a,(rm_pf)
+        call    rmb_fit                 ; χωράει στο μέγεθος;
+        jr      z,rmb_lp0
+        ld      a,(rm_pf)
+        ld      (hl),a
+        inc     hl
+        inc     c
+        jr      rmb_lp
+rmb_lp0:
+        ld      a,255
+        ld      (rm_pf),a
 rmb_lp:
         ld      a,e
         and     1
         jr      z,rmb_nx
-        push    de
+        ld      a,(rm_pf)
+        cp      b
+        jr      z,rmb_nx                ; η κύρια μπήκε ήδη στην υποδοχή 0
         ld      a,b
-        ld      de,G_machine_rules
-        add     a,e
-        ld      e,a
-        ld      a,0
-        adc     a,d
-        ld      d,a
-        ld      a,(de)
-        pop     de
-        push    hl
-        ld      hl,rm_mbit
-        and     (hl)
-        pop     hl
+        call    rmb_fit
         jr      z,rmb_nx                ; δεν χωράει σε αυτό το μέγεθος
         ld      (hl),b
         inc     hl
@@ -162,7 +201,46 @@ rmb_st:
         pop     bc
         ret
 
+; rmb_fit — A = μηχανή. NZ αν χωράει στο τρέχον μέγεθος. Χαλάει το AF μόνο.
+rmb_fit:
+        push    de
+        push    hl
+        ld      de,G_machine_rules
+        add     a,e
+        ld      e,a
+        ld      a,0
+        adc     a,d
+        ld      d,a
+        ld      a,(de)
+        ld      hl,rm_mbit
+        and     (hl)
+        pop     hl
+        pop     de
+        ret
+
 rm_sbit:    db 1,2,4
+
+; ΠΟΙΑ ΜΗΧΑΝΗ ΠΑΙΡΝΕΙ ΤΗΝ ΥΠΟΔΟΧΗ 0, ανά δωμάτιο. Οχι διακόσμηση: μια μηχανή
+; τρέχει μόνο αν η υποδοχή της είναι μικρότερη από το πλήθος των χειριστών
+; (§6.5), άρα σε δωμάτιο με έναν άνθρωπο μέσα τρέχει ΜΟΝΟ η υποδοχή 0. Με την
+; αριθμητική σειρά της room_machines το εργαστήριο έβγαζε επεξεργαστές — που
+; τους φτιάχνει και το control — και ΠΟΤΕ vitromeat, οπότε η αλυσίδα της
+; τροφής ήταν άφτιαχτη σε κάθε μέτρηση του tools/balance.py. Κανόνας: πρώτη η
+; μηχανή που δεν τη φτιάχνει κανένα άλλο δωμάτιο.
+rm_pref:
+        db 255, 255, 255, 255, 255, 255      ; empty..greenhouse
+        db 255, 255                          ; storage, airlock
+        db 1                                 ; factory   -> iron
+        db 9                                 ; lab       -> vitromeat
+        db 10                                ; medbay    -> beds
+        db 255                               ; lounge
+
+; ΚΑΙ ΤΑ ΦΥΤΑ ΜΕ ΤΗΝ ΙΔΙΑ ΛΟΓΙΚΗ. Το plant_class δίνει 0-4 άμυλο, 5-9
+; λαχανικά, 10 φάρμακα, 11 δέντρο· με τη σειρά της αρίθμησης ένα μεσαίο
+; θερμοκήπιο φύτευε τέσσερα αμυλούχα και κανένα λαχανικό, και το mach_food
+; θέλει άμυλο ΚΑΙ λαχανικά ΚΑΙ vitromeat. Εναλλαγή κλάσεων, με άλλη ποικιλία
+; σε κάθε γύρο ώστε να μη φυτρώνει τέσσερις φορές το ίδιο sprite.
+rm_plants:  db 0, 5, 10, 11, 1, 6, 2, 7, 3, 8, 4, 9
 
 ; ---------------------------------------------------------------------------
 ; rm_fits — A = θέση καταλόγου δωματίων. Z αν χωράει στο τρέχον μέγεθος.
@@ -284,5 +362,7 @@ rmo_none:
         ret
 
 rm_mbit:    db 1
+rm_rm:      db 0
+rm_pf:      db 255
 rm_nbuf:    db 0
 rm_buf:     defs RM_MACH

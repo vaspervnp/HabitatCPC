@@ -200,7 +200,7 @@ def main():
     # Η σύγκριση είναι με ΟΛΟΚΛΗΡΕΣ τις σαράντα στήλες, γιατί το ίδιο
     # screenshot έδειξε και το δεύτερο: το uip_row4 καθάριζε 40-24 στήλες για
     # κείμενο 20 χαρακτήρων, κι έμεναν τέσσερις με ό,τι βρισκόταν από κάτω.
-    want = {3: "LOOK  SPACE=BUILD  " + " " * 16 + "  x1 ",
+    want = {3: "LOOK  SPACE=BUILD  C=SHIP" + " " * 10 + "  x1 ",
             4: "FIRE=PLACE ESC=BACK " + " " * 20}
     for row, w in want.items():
         got = hud(m, row)
@@ -413,6 +413,51 @@ def main():
         fails += 1
     else:
         print(f"OK πληρώθηκε: μέταλλο {fe0} -> {fe1}")
+
+    # --- 5. ΠΟΙΑ μηχανήματα, και με ποια ΣΕΙΡΑ (§6.5) --------------------
+    # Η σειρά δεν είναι καλλωπισμός: μια μηχανή τρέχει μόνο αν η υποδοχή της
+    # είναι μικρότερη από το πλήθος των χειριστών του θόλου, άρα σε θόλο με
+    # έναν άνθρωπο μέσα τρέχει ΜΟΝΟ η υποδοχή 0. Με την αριθμητική σειρά της
+    # room_machines το εργαστήριο έβγαζε επεξεργαστές και ποτέ vitromeat, και
+    # το θερμοκήπιο φύτευε μόνο αμυλούχα: το mach_food θέλει και τα τρία, οπότε
+    # η αλυσίδα της τροφής ήταν άφτιαχτη σε κάθε μέτρηση του tools/balance.py.
+    def fitout(room, size):
+        m4.poke(sym["BD_PARAM"], size)
+        m4.run_code(0x3F00, bytes([0x3E, room,
+                                   0xCD, sym["RM_BUILD"] & 0xFF,
+                                   sym["RM_BUILD"] >> 8, 0x18, 0xFE]), frames=2)
+        n = m4.peek(sym["RM_NBUF"])
+        return [m4.peek(sym["RM_BUF"] + i) for i in range(n)]
+
+    # plant_class: 0-4 άμυλο, 5-9 λαχανικά, 10 φάρμακα, 11 δέντρο
+    green = fitout(5, 1)                 # R_GREENHOUSE
+    if green != [0, 5, 10, 11, 1, 6, 2, 7, 3, 8, 4, 9]:
+        print(f"ΑΠΟΤΥΧΙΑ θερμοκήπιο: {green}")
+        fails += 1
+    elif green[:4] == [0, 1, 2, 3]:
+        print("ΑΠΟΤΥΧΙΑ: το θερμοκήπιο φυτεύει με την αρίθμηση")
+        fails += 1
+    else:
+        print(f"OK το θερμοκήπιο εναλλάσσει κλάσεις: {green[:4]} = άμυλο, "
+              f"λαχανικά, φάρμακα, δέντρο")
+    lab = fitout(9, 1)                   # R_LAB
+    if not lab or lab[0] != 9:
+        print(f"ΑΠΟΤΥΧΙΑ εργαστήριο: {lab}, περίμενα το vitromeat (9) πρώτο")
+        fails += 1
+    else:
+        print(f"OK το εργαστήριο βάζει πρώτο το vitromeat: {lab}")
+    fac = fitout(8, 1)                   # R_FACTORY
+    if not fac or fac[0] != 1:
+        print(f"ΑΠΟΤΥΧΙΑ εργοστάσιο: {fac}, περίμενα το mach_iron (1) πρώτο")
+        fails += 1
+    else:
+        print(f"OK το εργοστάσιο βάζει πρώτο το σίδερο: {fac}")
+    # ΚΑΙ ΤΟ ΟΡΙΟ ΜΕΓΕΘΟΥΣ ΜΕΝΕΙ: το mach_oxygen μπαίνει μόνο σε μικρό θόλο.
+    if fitout(4, 0) != [0] or fitout(4, 1) != []:
+        print(f"ΑΠΟΤΥΧΙΑ οξυγόνο: μικρό {fitout(4, 0)}, μεσαίο {fitout(4, 1)}")
+        fails += 1
+    else:
+        print("OK το οξυγόνο μόνο σε μικρό θόλο, όπως λέει το machine_rules")
 
     bad2 = m4.peek(sym["UI_BAD"])
     if bad2 == 0:

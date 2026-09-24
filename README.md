@@ -22,7 +22,11 @@ in a Z80 and 128 KB.
 > panel, the collector and the pump and they live until the Food runs out. **And now
 > a dome can be given a room**: the build menu's second axis picks Oxygen, Canteen,
 > Greenhouse, Factory, Lab, Medbay and the rest, and the dome fills its own slots
-> with the machines — or the plants — that belong there.
+> with the machines — or the plants — that belong there. **And it can grow**: the
+> opening now carries 60 Ore and enough Metal to buy a Factory beside the panel and
+> the pump, the Factory turns that ore into 30 Metal by sol 4 — which is a mine, and
+> the loop closes — and `C` calls a colonist ship down to the pad, four at a time,
+> once a Control room has raised the population ceiling.
 > Build it with `tools/build.sh` — that also runs every test — and read
 > [`DESIGN.md`](DESIGN.md) first.
 

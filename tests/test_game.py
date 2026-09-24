@@ -63,9 +63,12 @@ def build():
     return sym, g
 
 
+SK_COLONIST = 0                          # src/ship.asm
+
+
 def main():
     sym, g = build()
-    from cpc import CPC, KEY_SPACE, KEY_RIGHT, KEY_LEFT, KEY_UP
+    from cpc import CPC, KEY_SPACE, KEY_RIGHT, KEY_LEFT, KEY_UP, KEY_DOWN
     smap, blob = load_map(), load_bin()
     f = smap["font_gfx"]
     font = blob[f.off:f.off + f.size]
@@ -101,10 +104,12 @@ def main():
     # --- 1. η κατάσταση εκκίνησης ----------------------------------------
     stock = [w16(g + i * 2) for i in range(7)]
     # Το νερό έχει ήδη πέσει λίγο: ο βρόχος τρέχει από το πρώτο frame.
-    check(55 <= stock[0] <= 60 and stock[1] == 40 and stock[3] == 55
-          and stock[4] == 30 and stock[6] == 4 and m.peek(g + 58) == 4,
-          f"§10.1: 60 νερό / 40 τροφή / 55 μέταλλο / 30 βιοπλαστικό / "
-          f"4 ανταλλακτικά, 4 άποικοι — {stock} {m.peek(g + 58)}")
+    check(55 <= stock[0] <= 60 and stock[1] == 40 and stock[2] == 60
+          and stock[3] == 75 and stock[4] == 45 and stock[6] == 4
+          and m.peek(g + 58) == 4,
+          f"§10.1: 60 νερό / 40 τροφή / 60 μετάλλευμα / 75 μέταλλο / "
+          f"45 βιοπλαστικό / 4 ανταλλακτικά, 4 άποικοι — {stock} "
+          f"{m.peek(g + 58)}")
     row2 = hud(2)
     check(row2.startswith("POP  4/"), f"το HUD ξέρει τον πληθυσμό: |{row2}|")
 
@@ -131,6 +136,12 @@ def main():
             m.run_frames(3)
             m.key_up(key)
             m.run_frames(4)
+
+    def press_c():
+        m.key_down("C")
+        m.run_frames(6)
+        m.key_up("C")
+        m.run_frames(40)
 
     def fire():
         m.joystick(0x10)
@@ -186,15 +197,21 @@ def main():
     import world as W
     plane = open(os.path.join(ROOT, "build", "world_new.bin"), "rb").read()
     ok = {W.GROUND, W.DUST, W.FOUNDATION}
-    at = None
+    # ΔΥΟ θέσεις, σε απόσταση: ο δεύτερος θόλος του §6 δεν πρέπει να πέσει
+    # πάνω στον πρώτο ούτε στον διάδρομό του.
+    spots = []
     for r in range(6, 16):
         for ty in range(-r, r + 1):
             for tx in range(-r, r + 1):
-                if at or max(abs(tx), abs(ty)) != r:
+                if len(spots) >= 2 or max(abs(tx), abs(ty)) != r:
+                    continue
+                if any(max(abs(tx - sx), abs(ty - sy)) < 6 for sx, sy in spots):
                     continue
                 if all(W.cls_of(plane[W.index(tx + i, ty + j)]) in ok
                        for i in range(4) for j in range(4)):
-                    at = (2 * tx + 4, 2 * ty + 4)
+                    spots.append((tx, ty))
+    at = (2 * spots[0][0] + 4, 2 * spots[0][1] + 4)
+    at2 = (2 * spots[1][0] + 4, 2 * spots[1][1] + 4)
     m.set_joystick_type(1)
     for _ in range(2):                   # πίσω στην ήρεμη κατάσταση
         m.joystick(0x20)
@@ -265,6 +282,85 @@ def main():
             break
     check(w16(g + 38) >= 2 * o2p0,
           f"και η γεννήτρια μέσα του παράγει: οξυγόνο {o2p0} -> {w16(g + 38)}")
+
+    # --- 6. μια αίθουσα ελέγχου, και το πλοίο των αποίκων (§6.11) ---------
+    # Το «κουμπί που καλεί το πλοίο» ήταν το τελευταίο κομμάτι των πλοίων που
+    # έλειπε: ο μηχανισμός υπήρχε από το βήμα 9 και δεν τον καλούσε κανείς.
+    #
+    # ΤΑ ΑΠΟΘΕΜΑΤΑ ΞΑΝΑΓΕΜΙΖΟΥΝ ΕΔΩ, και επίτηδες: ως εδώ η δοκιμή έχει κάψει
+    # μισό sol σε αναμονές, η αποικία του §10.1 δεν παράγει ούτε νερό ούτε
+    # τροφή, και μια πεινασμένη αποικία θα μετρούσε θανάτους αντί για πλοίο.
+    # Η πείνα μετριέται στο tools/balance.py· εδώ μετριέται το κουμπί.
+    for k, v in ((0, 400), (1, 400)):
+        m.poke(g + k * 2, v & 255)
+        m.poke(g + k * 2 + 1, v >> 8)
+    check(m.peek(g + 74) == 4 and m.peek(g + 58) == 4,
+          f"ταβάνι πληθυσμού πριν: {m.peek(g + 74)}, ζωντανοί "
+          f"{m.peek(g + 58)}")
+
+    def calm():
+        """Πίσω στο LOOK: το C το διαβάζει μόνο η ήρεμη κατάσταση."""
+        m.set_joystick_type(1)
+        for _ in range(2):
+            m.joystick(0x20)
+            m.run_frames(4)
+            m.joystick(0)
+            m.run_frames(10)
+        m.set_joystick_type(0)
+
+    calm()
+    press_c()
+    check(m.peek(g + 72) == 0,
+          f"χωρίς αίθουσα ελέγχου δεν φεύγει πλοίο (κατάσταση "
+          f"{m.peek(g + 72)})")
+    # ΚΑΙ ΤΟ ΛΕΕΙ ΣΤΗΝ ΟΘΟΝΗ. Αυτό ακριβώς έπιασε το ui_hide να χαλάει το HL:
+    # η κατάσταση ήταν σωστή (κανένα πλοίο), το μήνυμα τυπωνόταν από σκουπίδια
+    # και η γραμμή 3 έβγαινε κενή.
+    check("CONTROL" in hud(3), f"και το λέει: |{hud(3).strip()}|")
+
+    tap(KEY_SPACE)                       # -> MENU· θυμάται το DOME S
+    for _ in range(12):                  # -> CONTROL (θέση 7 στο rm_list)
+        if m.peek(sym["BD_RSEL"]) == 7:
+            break
+        tap(KEY_DOWN)
+    check(m.peek(sym["BD_KIND"]) == 0 and m.peek(sym["BD_RSEL"]) == 7,
+          f"ο κατάλογος στο DOME S / CONTROL (είδος "
+          f"{m.peek(sym['BD_KIND'])}, δωμάτιο {m.peek(sym['BD_RSEL'])})")
+    m.poke(sym["CUR_HX"], at2[0] & 0xFF)
+    m.poke(sym["CUR_HY"], at2[1] & 0xFF)
+    m.key_up("\x01")
+    m.set_joystick_type(1)
+    metal0 = w16(g + 3 * 2)
+    fire()                               # -> PLACE
+    fire()                               # -> τοποθέτηση
+    m.set_joystick_type(0)
+    m.run_frames(30)
+    check(w16(g + 3 * 2) == metal0 - 20,
+          f"πληρώθηκε η αίθουσα ελέγχου στο {at2}: μέταλλο {metal0} -> "
+          f"{w16(g + 3 * 2)} (ui_bad={m.peek(sym['UI_BAD'])})")
+    got = 0
+    for _ in range(80):
+        m.run_frames(50)
+        if m.peek(g + 74) > 4:
+            got = 1
+            break
+    check(got, f"ο θόλος τελείωσε και το ταβάνι πληθυσμού ανέβηκε: "
+               f"{m.peek(g + 74)} (ζωντανοί {m.peek(g + 58)})")
+
+    calm()
+    alive0 = m.peek(g + 58)
+    press_c()
+    check(m.peek(g + 72) == 1 and m.peek(g + 73) == SK_COLONIST,
+          f"το C κάλεσε πλοίο αποίκων (κατάσταση {m.peek(g + 72)}, "
+          f"είδος {m.peek(g + 73)})")
+    check("CALLED" in hud(3), f"και το λέει: |{hud(3).strip()}|")
+    got = 0
+    for _ in range(60):
+        m.run_frames(50)
+        if m.peek(g + 58) > alive0:
+            got = 1
+            break
+    check(got, f"και ήρθαν: {alive0} -> {m.peek(g + 58)} άποικοι")
 
     live(sym, g)
     return 1 if FAIL else 0
