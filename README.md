@@ -29,7 +29,10 @@ in a Z80 and 128 KB.
 > once a Control room has raised the population ceiling. **And it feeds itself**:
 > a greenhouse, a lab and a canteen now carry four colonists through eight sols with
 > nobody dead, which they did not before — the colonists were starving *on the way to
-> the canteen*, sent back to work by the job board every time they set off.
+> the canteen*, sent back to work by the job board every time they set off. **And
+> twelve of them, too**: one biologist now tends a whole greenhouse instead of one pot,
+> the job board staffs the canteen before the fourth tomato plant, and the HUD says
+> `LOW ON FOOD` while there is still time to do something about it.
 > Build it with `tools/build.sh` — that also runs every test — and read
 > [`DESIGN.md`](DESIGN.md) first.
 

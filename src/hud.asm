@@ -550,6 +550,20 @@ hud_alert:
         ld      a,(EC_O2OK)
         or      a
         jr      z,hd_say
+        ; ΤΟ ΦΑΓΗΤΟ ΚΑΙ ΤΟ ΝΕΡΟ ΤΟ ΛΕΝΕ ΠΡΙΝ ΤΕΛΕΙΩΣΟΥΝ. Η πείνα σκοτώνει πιο
+        ; αργά από την ασφυξία, και ακριβώς γι' αυτό ο παίκτης δεν την
+        ; προσέχει: μετρημένο στο tools/balance.py, μια αποικία δώδεκα ατόμων
+        ; αδειάζει την αποθήκη στο sol 4 και πεθαίνει στο 6, χωρίς η οθόνη να
+        ; πει τίποτε άλλο από «ALL SYSTEMS OK». Κατώφλι: λιγότερο από ένα
+        ; γεύμα ανά ζωντανό.
+        ld      a,S_FOOD
+        call    hd_short
+        ld      hl,txt_nofood
+        jr      c,hd_say
+        ld      a,S_WATER
+        call    hd_short
+        ld      hl,txt_nowater
+        jr      c,hd_say
         ld      hl,txt_storm
         ld      a,(EC_STORM)
         or      a
@@ -557,6 +571,29 @@ hud_alert:
         ld      hl,txt_ok
 hd_say:
         jp      hud_text7
+
+; hd_short — A = απόθεμα. CY αν έχει λιγότερο από έναν ζωντανό, δηλαδή
+;            λιγότερο από μία μερίδα για τον καθένα. Χαλάει AF, BC, DE, HL.
+;
+; Η αριθμητική είναι γραμμένη εδώ και δεν καλεί το ec_stock_ptr επίτηδες: το
+; hud.asm μπαίνει και στις σκαλωσιές των δοκιμών (tests/objtest.asm) που δεν
+; συμπεριλαμβάνουν οικονομία, και μια κλήση εκεί δεν συνδέεται.
+hd_short:
+        ld      l,a
+        ld      h,0
+        add     hl,hl
+        ld      de,EC_STOCK
+        add     hl,de
+        ld      a,(hl)
+        inc     hl
+        ld      c,a
+        ld      a,(hl)
+        or      a
+        ret     nz                      ; πάνω από 255: άφθονο, χωρίς CY
+        ld      a,c
+        ld      hl,EC_ALIVE
+        cp      (hl)
+        ret
 
 ; --- κείμενα ---------------------------------------------------------------
 

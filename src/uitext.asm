@@ -34,6 +34,8 @@ x_txt_ok:     db "ALL SYSTEMS OK     ",0
 x_txt_nopwr:  db "NO POWER           ",0
 x_txt_noo2:   db "NO OXYGEN          ",0
 x_txt_storm:  db "SANDSTORM          ",0
+x_txt_nofood: db "LOW ON FOOD        ",0
+x_txt_nowater:db "LOW ON WATER       ",0
 x_txt_lost:   db "COLONY LOST        ",0
 x_t_saving:   db "SAVING TO DISC...   ",0
 x_t_saved:    db "SAVED TO SLOT 1     ",0
@@ -108,6 +110,8 @@ t_x4      equ x_t_x4 - TEXT_IMG + G_text
 t_look    equ x_t_look - TEXT_IMG + G_text
 t_keys    equ x_t_keys - TEXT_IMG + G_text
 t_ok      equ x_t_ok - TEXT_IMG + G_text
+txt_nofood  equ x_txt_nofood - TEXT_IMG + G_text
+txt_nowater equ x_txt_nowater - TEXT_IMG + G_text
 t_block   equ x_t_block - TEXT_IMG + G_text
 t_poor    equ x_t_poor - TEXT_IMG + G_text
 t_ln1     equ x_t_ln1 - TEXT_IMG + G_text

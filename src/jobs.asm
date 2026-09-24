@@ -351,9 +351,27 @@ jp_write:
         inc     hl
         ld      (hl),255                ; αδιάθετη
         inc     hl
+        ; Η ΠΡΟΤΕΡΑΙΟΤΗΤΑ ΤΟΥ OPERATE ΒΓΑΙΝΕΙ ΑΠΟ ΤΟ ΔΩΜΑΤΙΟ. Με μία κοινή
+        ; τιμή για όλα τα μηχανήματα η ισοπαλία έσπαγε στην ΑΠΟΣΤΑΣΗ, και η
+        ; απόσταση δεν αλλάζει: ο κοντινότερος θόλος έπαιρνε κάθε φορά όλο τον
+        ; κόσμο και το κυλικείο του παίκτη έμενε αστελέχωτο για πάντα —
+        ; μετρημένο, 147 δείγματα στη σειρά με την εργασία του αδιάθετη, ενώ
+        ; το θερμοκήπιο δίπλα του στοίβαζε 250 άμυλο που κανείς δεν μαγείρευε.
         ld      a,(jb_kind2)
+        cp      J_OPERATE
+        jr      nz,jpw_flat
+        push    hl
+        ld      a,(jb_d)
+        call    jb_dome_ptr
+        ld      de,D_ROOM
+        add     hl,de
+        ld      a,(hl)
+        ld      hl,room_prio
+        jr      jpw_look
+jpw_flat:
         push    hl
         ld      hl,job_prio
+jpw_look:
         add     a,l
         ld      l,a
         ld      a,0
@@ -427,7 +445,7 @@ jb_need:
         xor     a
         ret
 jn_go:
-        push    hl                      ; θερμοκήπιο; τότε κάθε φυτό μετράει
+        push    hl                      ; θερμοκήπιο; τότε ΕΝΑΣ φτάνει
         ld      de,D_ROOM
         add     hl,de
         ld      a,(hl)
@@ -436,6 +454,11 @@ jn_go:
         ld      a,0
         jr      nz,jn_ng
         inc     a
+        ld      (jb_green),a
+        ; Ζητάει έναν, όχι έναν ανά γλάστρα: το ec_run_plant ποτίζει όλο τον
+        ; θόλο με τον πρώτο. Οσο ζητούσε τέσσερις, ο πίνακας εργασιών έστελνε
+        ; τέσσερις — και το κυλικείο περίμενε μαγείρα.
+        jp      jn_one
 jn_ng:
         ld      (jb_green),a
         push    hl
@@ -486,6 +509,30 @@ jn_next:
         ld      a,c
         ret
 
+; Το θερμοκήπιο: ένας χειριστής αν έχει έστω ένα ζωντανό φυτό.
+jn_one:
+        ld      de,D_MACH
+        add     hl,de
+        ld      b,D_HEALTH - D_MACH     ; οκτώ· πέρα από το μέγεθος είναι NO_MACH
+jn_o1:
+        ld      a,(hl)
+        cp      NO_MACH
+        jr      z,jn_o2
+        push    hl
+        ld      de,D_HEALTH - D_MACH
+        add     hl,de
+        ld      a,(hl)
+        pop     hl
+        or      a
+        jr      z,jn_o2
+        ld      a,1
+        ret
+jn_o2:
+        inc     hl
+        djnz    jn_o1
+        xor     a
+        ret
+
 ; jb_dome_ptr — A = θόλος -> HL = εγγραφή
 jb_dome_ptr:
         ld      h,0
@@ -508,6 +555,12 @@ jb_kind2:   db 0
 jb_green:   db 0
 jb_slot:    db 0
 job_prio:   db 5,3,2,4,6,8,9
+
+; Προτεραιότητα OPERATE ανά δωμάτιο (§6.7). Πρώτα ό,τι κρατά ανθρώπους στη
+; ζωή, μετά ό,τι το ταΐζει, μετά η βιομηχανία:
+;   empty control quarters canteen oxygen greenhouse storage airlock
+;   factory lab medbay lounge
+room_prio:  db 3,3,3,5,5,4,3,3,3,4,4,3
 
 ; ---------------------------------------------------------------------------
 ; 4. ανάθεση: ως JOB_ASSIGN, κοιτάζοντας ως JOB_LOOK πράκτορες

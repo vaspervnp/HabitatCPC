@@ -19,6 +19,10 @@ CODE = 0x3F10                           # η σκαλωσιά, μέσα στα 1
 NAG = 8                                 # πόσοι άποικοι ανά δείγμα
 
 AG_BASE = 0x6C00                        # G_agent_fields, τράπεζα 6
+DOME_BASE = 0x7500                      # G_dome_tbl, τράπεζα 6
+DOME_REC = 24
+DOME_HEAD = ("cx", "cy", "size", "room", "state", "integ", "power", "ops")
+NDOME = 8                               # 8 x 8 bytes = ακριβώς το BUF
 # (όνομα, σελίδα, δεύτερο μισό;) — §6.1, δύο πεδία ανά σελίδα
 FIELDS = (("flags", 0, 0), ("node", 1, 0), ("dest", 2, 0), ("edge", 2, 1),
           ("task", 3, 1), ("water", 4, 1), ("food", 5, 0), ("health", 6, 0))
@@ -114,3 +118,41 @@ def plant(m, sym, field, values):
     m.run_code(CODE, _plant_code(page, half, len(values)), frames=2)
     m.set_pc(top)
     m.run_frames(1)
+
+
+def _domes_code(n):
+    # ΤΟ -13 ΕΙΝΑΙ ΜΕΤΡΗΜΕΝΟ, ΟΧΙ ΕΙΚΑΣΜΕΝΟ: με -12 το djnz προσγειωνόταν στο
+    # `ld bc,8` αντί για το `push bc`, κάθε γύρος έκανε ένα pop χωρίς push, και
+    # η στοίβα του παιχνιδιού ανέβαινε 16 bytes ανά δείγμα. Το σύμπτωμα ήταν
+    # «η αποικία πάγωσε στο sol 1», που μοιάζει με σφάλμα του παιχνιδιού.
+    return bytes([0xF3,                                 # di
+                  0x01, 0xC6, 0x7F, 0xED, 0x49,         # τράπεζα 6
+                  0x21, DOME_BASE & 255, DOME_BASE >> 8,
+                  0x11, BUF & 255, BUF >> 8,
+                  0x06, n,                              # ld b,n
+                  0xC5,                                 # push bc
+                  0x01, 0x08, 0x00, 0xED, 0xB0,         # ld bc,8 / ldir
+                  0x01, DOME_REC - 8, 0x00, 0x09,       # ld bc,16 / add hl,bc
+                  0xC1, 0x10, 0xF3,                     # pop bc / djnz -13
+                  0x01, 0xC0, 0x7F, 0xED, 0x49,         # πίσω στην τράπεζα 1
+                  0x18, 0xFE])
+
+
+def domes(m, sym, n=NDOME):
+    """Η κεφαλή κάθε εγγραφής θόλου: μέγεθος, δωμάτιο, κατάσταση, ΧΕΙΡΙΣΤΕΣ.
+
+    Το `ops` είναι το κλειδί για την τροφή: μια μηχανή γυρίζει μόνο αν η
+    υποδοχή της είναι μικρότερη από αυτό (§6.5).
+    """
+    top = sym["MAIN_LOOP"]
+    for _ in range(24000):
+        if top <= m.pc <= top + 12:
+            break
+        m.run_us(50)
+    else:
+        raise RuntimeError("ο βρόχος δεν πέρασε από την αναμονή του vsync")
+    m.run_code(CODE, _domes_code(n), frames=2)
+    raw = [m.peek(BUF + i) for i in range(8 * n)]
+    m.set_pc(top)
+    m.run_frames(1)
+    return [dict(zip(DOME_HEAD, raw[d * 8:d * 8 + 8])) for d in range(n)]

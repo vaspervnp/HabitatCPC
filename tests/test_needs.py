@@ -34,6 +34,7 @@ import agents as A                                           # noqa: E402
 FAIL = []
 T_NEED = 254                                                 # src/needs.asm
 NEED_CRIT = 16                                               # src/needs.asm
+R_CANTEEN = 3                                                # src/const.asm
 
 
 def check(ok, msg):
@@ -98,6 +99,24 @@ def main():
           f"(κατώφλι {NEED_CRIT})")
     check(m.peek(g + 58) == 4,
           f"κανένας θάνατος: {m.peek(g + 58)} ζωντανοί από 4")
+
+    # --- ΚΑΙ Ο ΠΙΝΑΚΑΣ ΕΡΓΑΣΙΩΝ ΣΤΕΛΕΧΩΝΕΙ ΤΟ ΣΩΣΤΟ (§6.7) ---------------
+    # Το κυλικείο του παίκτη είναι ο τελευταίος κρίκος της τροφής και ήταν ο
+    # μόνος που δεν έπιανε ποτέ άνθρωπο: όλα τα OPERATE είχαν την ίδια
+    # προτεραιότητα, η ισοπαλία έσπαγε στην απόσταση, και η απόσταση δεν
+    # αλλάζει ποτέ. Μετρημένο πριν: 147 δείγματα στη σειρά με την εργασία του
+    # αδιάθετη, ενώ το θερμοκήπιο δίπλα στοίβαζε 250 άμυλο.
+    d = A.domes(m, sym)
+    cans = [i for i, x in enumerate(d) if x["state"] == 2 and x["room"] == R_CANTEEN]
+    check(len(cans) == 2, f"δύο κυλικεία: της αποικίας και του παίκτη ({cans})")
+    staffed = 0
+    for _ in range(60):
+        m.run_frames(100)
+        if any(A.domes(m, sym)[c]["ops"] for c in cans[1:]):
+            staffed = 1
+            break
+    check(staffed, "το κυλικείο του παίκτη πιάνει χειριστή — αλλιώς το άμυλο "
+                   "στοιβάζεται και κανείς δεν μαγειρεύει")
     return 1 if FAIL else 0
 
 

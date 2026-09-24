@@ -61,7 +61,13 @@ RECIPE = [
     (S_STARCH, 1, S_VEG, 1, S_MEAT, 1, S_FOOD, 1, 4, MF_OPERATOR),      # food
     (S_METAL, 1, S_BIOPL, 1, NO_STOCK, 0, S_SPARE, 1, 3, MF_OPERATOR),
     (S_MEDPLANT, 2, NO_STOCK, 0, NO_STOCK, 0, S_MEDI, 1, 3, MF_OPERATOR),
-    (S_WATER, 2, NO_STOCK, 0, NO_STOCK, 0, S_MEAT, 1, 4, MF_OPERATOR),  # vitromeat
+    # ΔΥΟ ΚΡΕΑΤΑ ΑΝΑ ΓΥΡΟ, όχι ένα: το mach_food θέλει άμυλο ΚΑΙ λαχανικά ΚΑΙ
+    # κρέας, τα φυτά δίνουν 3 και 2 ανά γύρο, και το κρέας έδινε 1 — δηλαδή η
+    # αλυσίδα ήταν 1:1 πάνω στο πιο εύθραυστο σκέλος της. Μετρημένο: ένα
+    # στελεχωμένο εργαστήριο βγάζει 6-7 το sol (ο χειριστής τρώει και κοιμάται
+    # κι αυτός), άρα με 1 ανά γύρο το κυλικείο μαγείρευε μόνο όταν συνέπιπταν
+    # οι δύο μηχανές — και η τροφή έπεφτε με τέσσερις αποίκους.
+    (S_WATER, 2, NO_STOCK, 0, NO_STOCK, 0, S_MEAT, 2, 4, MF_OPERATOR),  # vitromeat
     # Τα δύο του ιατρείου δεν ΠΑΡΑΓΟΥΝ: είναι έπιπλα που κάνουν το δωμάτιο να
     # δουλεύει. Τα κρεβάτια θέλουν γιατρό από πάνω τους, η φαρμακαποθήκη όχι.
     # Παραμένουν εγγραφές συνταγής ώστε το πέρασμα παραγωγής να μην ξέρει από
@@ -245,8 +251,8 @@ def run_dome(e, d, plant_class=None):
             p = e.dome[base + D_MACH + s]
             if p == NO_MACH or e.dome[base + D_HEALTH + s] == 0:
                 continue
-            if s >= ops:                        # τα φυτά θέλουν φροντίδα
-                continue
+            if not ops:                         # ΕΝΑΣ βιολόγος ποτίζει όλο
+                continue                        # τον κήπο (βλ. src/econ.asm)
             run_plant(e, base, s, p, plant_class)
             continue
         m = e.dome[base + D_MACH + s]
@@ -580,6 +586,10 @@ J_BUILD, J_OPERATE, J_HAUL, J_DRILL, J_REPAIR, J_HEAL, J_DEFEND = range(7)
 # ποιοι ρόλοι δέχονται ποια εργασία — bitmask ανά είδος (§6.7)
 JOB_ROLES = [0x22, 0x05, 0x41, 0x81, 0x02, 0x08, 0x10]
 JOB_PRIO = [5, 3, 2, 4, 6, 8, 9]
+# Το OPERATE δεν έχει μία προτεραιότητα αλλά μία ανά ΔΩΜΑΤΙΟ (§6.7): με κοινή
+# τιμή η ισοπαλία έσπαγε πάντα στην απόσταση, που δεν αλλάζει ποτέ, και ο
+# κοντινότερος θόλος κρατούσε όλο τον κόσμο.
+ROOM_PRIO = [3, 3, 3, 5, 5, 4, 3, 3, 3, 4, 4, 3]
 
 JOB_SCAN = 4                # θόλοι ανά επίσκεψη
 JOB_ASSIGN = 4              # αναθέσεις ανά επίσκεψη (§6.7)
@@ -590,8 +600,9 @@ NO_TASK = 255
 def needs_operators(e, d):
     """Πόσες υποδοχές αυτού του θόλου θέλουν κάποιον από πάνω τους.
 
-    Το θερμοκήπιο μετράει ΚΑΘΕ φυτό: τα φυτά θέλουν φροντίδα, όχι χειρισμό,
-    αλλά από τη σκοπιά του πίνακα εργασιών είναι το ίδιο πράγμα.
+    Το θερμοκήπιο ζητάει ΕΝΑΝ όσα φυτά κι αν έχει: ένας βιολόγος ποτίζει όλο
+    τον κήπο (run_dome). Οσο ζητούσε έναν ανά γλάστρα, ένα μεσαίο θερμοκήπιο
+    ρουφούσε τέσσερις ανθρώπους και το κυλικείο δίπλα του δεν έβρισκε μαγείρα.
     """
     base = d * DOME_REC
     if e.dome[base + D_STATE] != DS_ACTIVE:
@@ -602,7 +613,9 @@ def needs_operators(e, d):
         m = e.dome[base + D_MACH + s]
         if m == NO_MACH or e.dome[base + D_HEALTH + s] == 0:
             continue
-        if green or (RECIPE[m][9] & MF_OPERATOR):
+        if green:
+            return 1
+        if RECIPE[m][9] & MF_OPERATOR:
             n += 1
     return n
 
@@ -684,7 +697,9 @@ def jobs_tick(e, a, F_ALIVE, F_WORKING):
                 jb[k * JOB_REC + J_KIND] = kind
                 jb[k * JOB_REC + J_NODE] = d
                 jb[k * JOB_REC + J_AGENT] = 255
-                jb[k * JOB_REC + J_PRIO] = JOB_PRIO[kind]
+                jb[k * JOB_REC + J_PRIO] = (
+                    ROOM_PRIO[e.dome[d * DOME_REC + D_ROOM]]
+                    if kind == J_OPERATE else JOB_PRIO[kind])
                 jb[k * JOB_REC + J_AGE] = 0
                 break
 
