@@ -48,6 +48,88 @@ def boot(sym, snapshot):
     return m
 
 
+# Ποιο αντικείμενο του καταλόγου ζητά ΥΛΙΚΟ ΔΙΠΛΑ ΤΟΥ, και πόσο πλατύ είναι
+# (src/build.asm, bd_res). Η αντλία θέλει όχθη, το ορυχείο πρόποδες φλέβας.
+NEED = {7: ("water", 3), 8: ("ore", 4)}
+
+
+def plane():
+    """Το επίπεδο κόσμου που θα δει ΤΟ ΠΑΙΧΝΙΔΙ — όχι ένα δικό μας."""
+    return open(os.path.join(ROOT, "build", "world_new.bin"), "rb").read()
+
+
+RES_NEAR = 2                            # src/build.asm
+
+
+def has_near(pl, tx, ty, size, kind):
+    """Ο κανόνας του bd_res, σε Python: το υλικό μέσα στο αποτύπωμα ΜΕ ΔΥΟ
+    tiles περιθώριο. Ο,τι αλλάξει εκεί, αλλάζει κι εδώ — αλλιώς τα σενάρια
+    χτίζουν εκεί που το παιχνίδι λέει όχι, και η μέτρηση μετράει το τίποτα."""
+    import world as W
+    for j in range(-RES_NEAR, size + RES_NEAR):
+        for i in range(-RES_NEAR, size + RES_NEAR):
+            b = pl[W.index(tx + i, ty + j)]
+            c = W.cls_of(b)
+            if kind == "water" and c in (W.WATER, W.DEEPWATER):
+                return True
+            if kind == "ore" and c == W.MOUNTAIN and (b >> 3) & 1:
+                return True
+    return False
+
+
+def colony_tiles():
+    """Τα tiles που στρώνει το game_new — ng_rects και ng_corrs του
+    src/newgame.asm. Το build/world_new.bin ΔΕΝ τα ξέρει: το επίπεδο γράφεται
+    από τη γεννήτρια και η αποικία στρώνεται πάνω του στο τρέξιμο, οπότε ένας
+    έλεγχος που κοιτά μόνο το επίπεδο λέει «καθαρό» πάνω στην πλατφόρμα."""
+    occ = set()
+    for tx, ty, sz in ((-2, -2, 4), (6, -2, 4), (-2, 6, 4), (-10, 6, 4)):
+        occ.update((tx + i, ty + j) for i in range(sz) for j in range(sz))
+    for i in range(1, 7):                    # ο διάδρομος προς την ανατολή
+        occ.update({(i, -1), (i, 0), (i, 1)})
+    for j in range(1, 7):                    # και προς τον νότο
+        occ.update({(-1, j), (0, j), (1, j)})
+    return occ
+
+
+def res_spots(kind, size=3, n=2, avoid=()):
+    """Θέσεις για αντλία ή ορυχείο: έδαφος που χτίζεται ΚΑΙ υλικό δίπλα.
+
+    Ψάχνει από το δαχτυλίδι 4 και έξω, όχι από το 12 σαν το clear_spots: η
+    λίμνη και η φλέβα κάθονται όπου τις έβαλε η γεννήτρια (§5.6 — νερό και
+    φλέβα μέσα σε 30 tiles, 512 seeds στα 512), και στο seed του παιχνιδιού
+    το κοντινότερο νερό είναι 7 tiles από το κέντρο και η κοντινότερη φλέβα 9.
+    Οι θέσεις που βγαίνουν είναι στα δαχτυλίδια 4 και 7 — το περιθώριο των δύο
+    tiles φτάνει ως εκεί.
+    """
+    import world as W
+    pl = plane()
+    ok = {W.GROUND, W.DUST, W.FOUNDATION}
+    occ = colony_tiles()
+    out = []
+    for r in range(4, 34):
+        for ty in range(-r, r + 1):
+            for tx in range(-r, r + 1):
+                if max(abs(tx), abs(ty)) != r:
+                    continue
+                if any((tx + i, ty + j) in occ
+                       for i in range(-1, size + 1)
+                       for j in range(-1, size + 1)):
+                    continue                 # πάνω στην αποικία, ή κολλητά
+                if not all(W.cls_of(pl[W.index(tx + i, ty + j)]) in ok
+                           for i in range(size) for j in range(size)):
+                    continue
+                if not has_near(pl, tx, ty, size, kind):
+                    continue
+                if any(abs(tx - x) < size + 2 and abs(ty - y) < size + 2
+                       for x, y in list(avoid) + out):
+                    continue
+                out.append((tx, ty))
+                if len(out) >= n:
+                    return out
+    return out
+
+
 def clear_spots(size=3, n=4):
     """Θέσεις κέρσορα όπου το bd_ok του src/build.asm λέει ναι, από το ΙΔΙΟ
     επίπεδο κόσμου που θα δει το παιχνίδι (build/world_new.bin).
@@ -63,7 +145,7 @@ def clear_spots(size=3, n=4):
     αυτό: εκεί δεν υπάρχει τίποτα κατειλημμένο που να μην το ξέρουμε.
     """
     import world as W
-    plane = open(os.path.join(ROOT, "build", "world_new.bin"), "rb").read()
+    pl = plane()
     ok = {W.GROUND, W.DUST, W.FOUNDATION}
 
     def good(tx, ty):
@@ -74,7 +156,7 @@ def clear_spots(size=3, n=4):
         if any(max(abs(tx + i), abs(ty + j)) < 12
                for i in range(size) for j in range(size)):
             return False
-        return all(W.cls_of(plane[W.index(tx + i, ty + j)]) in ok
+        return all(W.cls_of(pl[W.index(tx + i, ty + j)]) in ok
                    for i in range(size) for j in range(size))
 
     out = []
@@ -92,7 +174,19 @@ def clear_spots(size=3, n=4):
     return out
 
 
-def build(m, sym, item, g_metal, at=None, room=None):
+def pick_spot(item, spots, k, res):
+    """Πού πάει αυτό το αντικείμενο: στο υλικό του, αν ζητά υλικό (§6.5).
+
+    Out: ((tx, ty) ή None, ο επόμενος δείκτης στη γενική λίστα).
+    """
+    if item in NEED:
+        kind, sz = NEED[item]
+        lst = res.setdefault(kind, res_spots(kind, sz, 4, avoid=spots))
+        return (lst.pop(0) if lst else None), k
+    return spots[k], k + 1
+
+
+def build(m, sym, item, g_metal, at=None, room=None, place=True):
     """Ο,τι κάνει το tests/test_game.py: κατάλογος, θέση, FIRE.
 
     `item` = σειρά στον κατάλογο του src/build.asm (0-2 θόλοι, 4 = SOLAR,
@@ -166,6 +260,12 @@ def build(m, sym, item, g_metal, at=None, room=None):
         if m.peek(sym["UI_STATE"]) == 2:
             break
         stick(JOY_FIRE)
+    if not place:
+        # Ο καλών θέλει το ΦΑΝΤΑΣΜΑ, όχι το κτίσμα: η κατάσταση μένει PLACE,
+        # το ui_bad και ο πίνακας λένε αν και γιατί δεν επιτρέπεται.
+        m.set_joystick_type(0)
+        m.run_frames(2)
+        return None
     metal0 = m.peek(g_metal) | (m.peek(g_metal + 1) << 8)
     stick(JOY_FIRE)                      # -> τοποθέτηση
     m.set_joystick_type(0)
@@ -193,6 +293,11 @@ def run(name, sym, g, snapshot, sols=8, items=(), speed=4):
     # ΜΙΑ λίστα θέσεων για όλα: αλλιώς ένα 3x3 και ένα 4x4 διαλέγουν το ίδιο
     # σημείο του κόσμου και το δεύτερο βρίσκει κατειλημμένο έδαφος.
     spots = clear_spots(6, 10)           # 6 = ο μεσαίος θόλος, το φαρδύτερο
+    # ΚΑΙ ΧΩΡΙΣΤΕΣ ΛΙΣΤΕΣ ΓΙΑ ΟΣΑ ΘΕΛΟΥΝ ΥΛΙΚΟ. Από το βήμα 31 η αντλία
+    # χτίζεται μόνο στην όχθη και το ορυχείο μόνο στη φλέβα (§6.5): με τις
+    # θέσεις του clear_spots το σενάριο απλώς δεν έχτιζε αντλία, και η μέτρηση
+    # έδειχνε μια αποικία που στερεύει «από μόνη της».
+    res = {}
     k = 0
     for it in items:                      # που χτίζει κανένα σενάριο
         if it == "C":                     # κάλεσε πλοίο αποίκων (§6.11)
@@ -219,8 +324,11 @@ def run(name, sym, g, snapshot, sols=8, items=(), speed=4):
             continue
         item, room = it if isinstance(it, tuple) else (it, None)
         w = (4, 6, 8)[item] if item <= 2 else (4 if item == 8 else 3)
-        tx, ty = spots[k]
-        k += 1
+        spot, k = pick_spot(item, spots, k, res)
+        if spot is None:
+            print(f"  ΠΡΟΣΟΧΗ: δεν βρέθηκε θέση με υλικό για το {item}")
+            continue
+        tx, ty = spot
         at = (2 * tx + w, 2 * ty + w)
         build(m, sym, item, g + EC["STOCK"] + 3 * 2, at=at, room=room)
     m.poke(sym["UI_SPD"], speed)
@@ -300,6 +408,11 @@ def main():
             # για κρέας, κυλικείο για γεύματα.
             ("τροφή: θερμοκήπιο + εργαστήριο + κυλικείο",
              (4, 4, 7, 6, (1, 3), (0, 5), (0, 1))),
+            # Η ΙΔΙΑ ΑΠΟΙΚΙΑ ΜΕ ΔΕΥΤΕΡΗ ΑΝΤΛΙΑ. Το §15 ζητά ρητά αυτή τη
+            # μέτρηση πριν αλλάξει ΟΠΟΙΟΣΔΗΠΟΤΕ ρυθμός: με μία αντλία το νερό
+            # πάει 83 -> 0 ως το sol 4 και μετά η μηχανή οξυγόνου στεγνώνει.
+            ("τροφή με δεύτερη αντλία",
+             (4, 4, 7, 7, 6, (1, 3), (0, 5), (0, 1))),
             # Και με ΚΟΣΜΟ: η αλυσίδα της τροφής θέλει επτά χειριστές και η
             # αποικία του §10.1 έχει τέσσερις κατοίκους συνολικά.
             # ΚΑΙ ΟΞΥΓΟΝΟ ΓΙΑ ΟΛΟΥΣ: μια γεννήτρια βγάζει 20 και κάθε άποικος

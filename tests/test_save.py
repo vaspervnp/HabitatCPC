@@ -91,7 +91,7 @@ def main():
     def snap():
         """Οικονομία, δείγματα επιπέδου, και η ΕΙΚΟΝΑ του κάδρου."""
         econ = bytes(m.read_ram(0xA400, 0x800))
-        m.run_code(0x3E00, blob)
+        m.run_code(0x3EC0, blob)
         m.run_frames(2)
         plane = bytes(m.read_ram(0x3F00, 256))
         m.set_pc(sym["MAIN_LOOP"])
@@ -237,7 +237,7 @@ def main():
 
     # --- 4. άδειο slot -----------------------------------------------------
     lo, hi = sym["SV_LOAD"] & 0xFF, sym["SV_LOAD"] >> 8
-    m.run_code(0x3E00, bytes([0x3E, 0x02, 0xCD, lo, hi, 0x32, 0x00, 0x3F,
+    m.run_code(0x3EC0, bytes([0x3E, 0x02, 0xCD, lo, hi, 0x32, 0x00, 0x3F,
                               0x18, 0xFE]))
     m.run_frames(120)
     rc = m.peek(0x3F00)

@@ -286,6 +286,12 @@ One byte per tile holds everything about that tile that is not in an object list
 | 4–5 | occupancy | 0 free · 1 structure · 2 corridor · 3 blocked / reserved |
 | 6–7 | decor | 4 art variants; doubles as the water animation phase |
 
+**Bit 3 is read by two things now**, and until milestone 31 it was read by one: the
+tile pass draws `ore_overlay` on a mountain that has it, and `bd_res` refuses to put a
+mine anywhere else ([§6.5](#65-economy)). The *fertile* meaning on ground and the
+*drillable depth* meaning on water are still unused — the generator never sets the
+water one, so a pump asks for water tiles rather than for deep ones.
+
 **The autotile variant is deliberately not stored.** Which classes autotile is not
 stored either: a class with 16 variants in `tile_variants` is autotiled, anything
 else takes its variant from the decor bits. The rule falls out of the data, so
@@ -325,11 +331,11 @@ must always be reachable is in bank 0 (`&0000–&3FFF`) or bank 2 (`&8000–&BFF
 
 | Block | Bank | Contents | Bytes | Slack |
 |---|---|---|---|---|
-| `&0000–&3FFF` | 0 | engine code, ISR, blit kernels, UI | 16,384 | **642** |
+| `&0000–&3FFF` | 0 | engine code, ISR, blit kernels, UI | 16,384 | **256** |
 | window | 1 | **distance matrix** `DIST[96][128]` 12,288 · room icons `m` and `l` 3,936 | 16,384 | 160 |
 | window | 4 | **world plane** 128×128×1 byte | 16,384 | 0 |
 | window | 5 | **next-hop matrix** `NEXTHOP[96][128]` | 16,384 | 4,096 |
-| window | 6 | `flip_mode0` 256 · dome+ring `nw` quadrants 7,424 · slot figures 3,456 · entity tables 4,832 ([§6.1](#61-entities)) · figure cache 512 | 16,228 | 156 |
+| window | 6 | `flip_mode0` 256 · dome+ring `nw` quadrants 7,424 · slot figures 3,456 · entity tables 4,832 ([§6.1](#61-entities)) · figure cache 512 | 16,356 | 28 |
 | window | 7 | external structures 11,264 · plants 1,584 · `plant_ptr` 24 · text 1,024 · audio 2,048 | 15,944 | 440 |
 | `&8000–&BFFF` | 2 | graphics, flat · node graph + BFS workspace 1,536 · recipes 110 · economy 58 · job board 160 | 14,848 | **1,536** |
 | `&C000–&FFFF` | 3 | play-area screen | 16,384 | 0 |
@@ -379,6 +385,38 @@ moving rather than shrinking:
 **Bank 0 went from 82 bytes free to 642**, bank 2's code area from 50 to 66, bank 6
 from 668 to 156. The figure between banks is not fungible — what is scarce is bank 0
 — so the trade is worth making again the next time it is available.
+
+#### Milestone 31 found the floor under bank 0, and it is not `&3FC0`
+
+The terrain rule of [§6.5](#65-economy) is 110 bytes and belongs in `build.asm`, which
+runs from bank 2's code area — where 66 bytes were left. The obvious move was to send
+`save.asm` (350) back to bank 0, which had 642: both areas are always visible, so
+which one a routine lives in is pure allocation. It assembled, it fitted, and
+**`tests/test_save.py` then reported that the disc no longer saves.**
+
+It saved fine. `tests/plane.asm` — the probe that samples the world plane out of the
+paged bank, because the emulator's `read_ram` cannot see it — ran at **`&3E00`**, and
+so did two probes in `test_disc`. With 350 bytes more in bank 0 the game's code
+reached `&3EA3`, so the test overwrote the code it was about to exercise and then
+blamed the disc. The reserve had never been written down anywhere, which is how it
+cost an hour.
+
+Two things came out of that, and the 110 bytes went into `src/terrain.asm` in bank 0
+instead, with a `jp` from bank 2:
+
+- **The floor is a check now.** `tools/mkdsk.py` refuses to build if bank 0's code
+  passes `TEST_FLOOR`, naming the three tests that live above it. The negative
+  control is the same one every ceiling here gets: lower the constant, watch the
+  build stop.
+- **And it is 192 bytes higher than it was.** The scaffolding is 33 bytes of code and
+  a 256-byte buffer, not 512, so it moved from `&3E00` to `&3EC0`. `mkdsk` also
+  prints the distance to *that* floor rather than to the loader's endgame: the old
+  line said 512 free where 320 were free, which is the kind of number that is worse
+  than none.
+
+So bank 0's usable ceiling is **`&3EC0`**, and the next thing that needs those last
+320 bytes should take the probes' addresses from `ZZ_BANK0_END` and move their buffer
+into bank 2's ghost log — rather than lower the floor and rediscover this.
 
 The result was 2,108 free in bank 0 and 708 in bank 2 — about 2.8 KB for save/load,
 audio, meteors and intruders, with bank 7's reserved 1,024-byte `text` block
@@ -737,6 +775,13 @@ of the centre.**
 Because the anchors are a pure function of the seed, the map stays pure. A seed is
 still one number, and the guarantee — *water and ore within 30 tiles, always* — holds
 for all 65,536 of them.
+
+**Since milestone 31 that guarantee is load-bearing rather than decorative.** A water
+extractor can only be built at a lake and a mine only at a vein
+([§6.5](#65-economy)), so a seed with no reachable water really is a seed that cannot
+be played — which is what the first paragraph of this section claimed before anything
+depended on it. In the game's own start seed the nearest shore that takes a 3×3 is 4
+tiles from the colony and the nearest ground that takes a 4×4 next to a vein is 7.
 
 ### 5.7 Classification and planet types
 
@@ -1165,6 +1210,53 @@ mach_food      Starch+Veg+Vitromeat -> Meals
 mach_oxygen    Water+Power -> Oxygen flow
 greenhouse plants          -> Starch / Vegetables / Medicinal / morale
 ```
+
+#### `(on water)` and `(on ore)` are rules now, not captions
+
+The first two lines of that chain carried their terrain in brackets from the first
+draft, and for thirty milestones nothing read them: a water extractor could be built
+in the middle of the desert, inside the base, anywhere a 3×3 of ground was free, and
+it produced the same 5 Water a cycle. So could a mine. The lake was scenery, the ore
+vein was scenery, and the thirteen seconds of world generation ([§5](#5-procedural-world-generation))
+bought a picture that no decision ever consulted.
+
+The rule, in `bd_res`: **the footprint stays on buildable ground — ground, dust or
+foundation, exactly as before — and the material must lie within two tiles of it.**
+Water is a shallow or deep tile; ore is a mountain tile with bit 3 of the world byte
+set ([§3.5](#35-the-world-byte)), which is the same bit `tile_ore_overlay` has been
+drawing on the mountains all along. Neither structure can stand *on* its material,
+because neither water nor mountain is buildable — so "on water" in the table above
+means *at the water*, and the pump sits on the shore.
+
+**Two tiles, and that number is measured.** With one, the pump was fine — a shore
+is buildable ground touching water — and the mine was impossible *everywhere*:
+elevation climbs mountain → rock → ground, rock is not buildable, so between a vein
+and the nearest ground there is always at least one ring of rock. In the game's own
+world the nearest buildable 4×4 to a vein is **exactly 2** tiles away, seven tiles
+from the colony.
+
+The check runs only when the footprint has already passed, which is both cheaper and
+the reason the two-tile margin cannot read outside the plane: from `R_RIM` = 57
+outward the generator adds 40 to the elevation per ring ([§5.5](#55-centre-plateau-and-world-rim)),
+so at r ≥ 62 every tile clears the highest of the four planets' mountain thresholds
+(205) and nothing there is buildable. A valid footprint therefore lives inside
+±61 and the scan inside ±63.
+
+**What it costs, measured** (2,000 calls of `bd_check` with the wheel stopped): a
+3×3 footprint with no material to look for is **1,208 µs**; the pump at a shore, where
+the water turns up early in the scan, is **1,817**; the pump on dry ground, which is
+the full 7×7 with nothing in it, is **3,375**; and the mine's 8×8 worst case is
+**3,994**. A cursor step in `PLACE` already costs 16,224 µs
+([§9.1](#91-controls)), so the worst case adds about 15% to it — and only for the two
+items that ask for anything. Nothing else in the catalogue pays a byte or a
+microsecond.
+
+**This is what makes [§5.6](#56-feature-anchors)'s guarantee load-bearing.** *Water
+and an ore vein within 30 tiles of the centre, 512 seeds out of 512* used to be a
+promise about scenery; it is now the promise that the map you were given can be
+played. And the refusal says which material is missing — `NEEDS WATER NEARBY`,
+`NEEDS AN ORE VEIN` — because with no bad tile to tint red, a bare `BLOCKED` on clean
+ground reads as a bug in the game ([§9.3](#93-build-flow)).
 
 Each machine type has one **recipe record** — `in1, qty1, in2, qty2, in3, qty3, out,
 qty, power, flags` — **ten** bytes, 100 bytes for the lot. Eight was specified, with
@@ -2366,6 +2458,13 @@ own ghost and its own notion of "which dome are you pointing at"; the second axi
 a menu that exists costs none of those. What it gives up is changing a room later,
 which nothing else in the game needs yet.
 
+**Two structures also ask something of the ground under them.** The water extractor
+wants a lake and the mine wants an ore vein, within two tiles of the footprint
+([§6.5](#65-economy)); the panel says `NEEDS WATER NEARBY` or `NEEDS AN ORE VEIN`
+rather than `BLOCKED`, because in this refusal there is no bad tile to tint red and a
+bare "blocked" on clean ground reads as a bug. Everything else in the catalogue is
+refused only by the tiles it covers.
+
 **A room that cannot work in that size is not offered.** `machine_rules` says
 `mach_oxygen` fits only small domes ([§6.5](#65-economy)), so the Oxygen room
 disappears from a medium or large dome and the selection moves to the next one that
@@ -2631,6 +2730,14 @@ and from there the loop is closed: mine → Ore → `mach_iron` → Metal → mi
 The 60 Ore is there for exactly that reason. Without it the Factory has nothing to
 eat until a mine is standing, and the mine is the thing the Factory is supposed to
 pay for.
+
+**And since milestone 31 the opening has a place in it, not just a shopping list.**
+The extractor goes where the water is and the mine where the vein is
+([§6.5](#65-economy)), so the first thing the player does with the cursor is look at
+the map they were given. The start colony itself needs nothing of the sort — pad,
+Oxygen, Quarters, Storage — and [§5.6](#56-feature-anchors) guarantees both materials
+within 30 tiles of the centre; in this seed they are 4 and 7 tiles out, which is one
+screen of scrolling.
 
 **Measured, at ×4, eight sols, with nobody touching the controls afterwards**
 (`tools/balance.py`, which builds through the real menu and then watches):
@@ -2954,12 +3061,14 @@ tests in this document runnable rather than aspirational:
 | Build mode | cursor, ghost-leaves-no-trace, the panel rows after a camera step (marked with `#AA` first, so a cell nobody rewrote is visible), validation, placement, payment (`test_build.py`) |
 | Corridor routing | independent Python router compared on every pair of domes, then the *picture* compared at both kinds of bend (`test_route.py`) |
 | The whole game | `src/main.asm` booted: start state, the economy moving inside the loop, a building placed and **finished**, and the HUD following it with no input (`test_game.py`) |
+| Needs beat the board | the food colony of [§6.6](#66-needs) run for 9,000 frames, watching the *bars* rather than the corpses, plus the player's canteen getting an operator (`test_needs.py`) |
+| The map is a constraint | the pump refused on dry ground **with the reason on screen**, accepted at the shore and actually built; the mine likewise at a vein; and a dome and a solar panel accepted on the same dry ground, which is what separates "this rule" from "this patch of dirt" (`test_map.py`) |
 | The disc | `RUN"HABITAT` from a cold BASIC prompt: the game arrives, the start state is there, the HUD is drawn, and the world is **generated** rather than loaded (`test_disc.py`) |
 | Disc driver | the μPD765 without AMSDOS: reads the disc's own **catalogue** and compares it with the host's `.dsk` byte for byte, then writes three sectors, reads them back, and checks the neighbouring sector is untouched (`test_fdc.py`) |
 | Save and load | freeze the wheel, photograph the state, `S`, run 12,000 frames until it has moved, `L`, and assert the economy, the world plane and the **picture** are back — plus a load from an empty slot that must be refused (`test_save.py`) |
 | Palette | the only test that looks at **colour** rather than pen number: a share-per-pen pattern on screen, weighed against `palette_fw` and against each planet's four pens (`test_palette.py`) |
 | Game speed | the four speed keys against the simulation's own frame counter, and the HUD indicator read back off the screen (`test_speed.py`) |
-| Playability of every seed | headless run of N seeds, assert water and ore within 30 tiles of centre |
+| Playability of every seed | headless run of N seeds, assert water and ore within 30 tiles of centre — **which is now a playability claim and not a cosmetic one** ([§6.5](#65-economy)) |
 
 That last one is the kind of test that is impossible on real hardware and trivial here.
 It should be run over a few thousand seeds before release.
@@ -3114,7 +3223,7 @@ gap.
 | ~~The flow-balance wheel slot re-scans 64 structures every revolution~~ | ~~Medium~~ | **Resolved, and not for speed.** 7,887 µs for numbers that change slowly — but the reason it moved was [§6.5](#65-economy)'s clock: a battery that charges 750 times a sol is not a battery. The scan, the battery and the pumps now run once per 64 revolutions (`FLOW_DIV`), the living are still counted every revolution, and a finished building kicks the balance so the panel the player just paid for shows up at once. |
 | ~~Nothing the player does exists: no build mode, no input, no HUD, nothing drawn since milestone 5~~ | ~~High~~ | **Resolved.** The colony is drawn, the camera scrolls, the dirty list keeps it honest, the HUD reports — and the player now moves a cursor, opens a menu, places a dome and routes a corridor between two of them ([§9.1](#91-controls), [§9.3](#93-build-flow), [§9.4](#94-corridor-routing), [§6.9](#69-construction)). |
 | ~~The two halves have never been assembled into one binary~~ | ~~Medium~~ | **Assembled, and it did not fit: 20,571 bytes wanted 16,128.** Resolved by moving the generator out, cutting `MAX_NODES` to 96 and putting code in bank 2 ([§4.2](#42-the-eight-banks)). It also turned up duplicate constants in three files and, worse, [§7.4](#74-one-convention-per-half-and-they-disagreed)'s paging disagreement. |
-| **Memory is the binding constraint from here on** | High | **642 bytes free in bank 0, 66 in bank 2's code area, 156 in bank 6, 440 in bank 7** — the figures after milestone 30, which moved the figure cache into bank 6, `save.asm` and `hw.asm` into bank 2 and the loader's endgame up to `&3FC0` ([§4.2](#42-the-eight-banks)). Both ceilings are checks that stop the build, not comments, and `tools/mapsize.py` now says *who* is spending bank 0 rather than only how much is left. Milestones 26–29 spent 384 on rooms, 170 on the ship button and slot order, 12 on the needs task and 105 on room priorities and the alert lines; 30 handed back 560. The reserves that remain, in order: bank 7's `audio` block (2,048) and the rest of `text` (322 of 1,024 free), `newgame.asm` and `fdc.asm` (957 bytes of cold code that can follow `save.asm` up to bank 2 as soon as bank 2 has room), and size-optimising `object.asm` and `ui.asm` — 5,072 bytes between them, the two biggest things in bank 0 by a factor of two. Every new feature still costs a decision. |
+| **Memory is the binding constraint from here on** | High | **256 bytes free in bank 0, 62 in bank 2's code area, 28 in bank 6, 440 in bank 7 (234 of the `text` block)** — the figures after milestone 31, and two of them are corrections rather than changes. Bank 0's ceiling is **not** the loader's endgame at `&3FC0` but `&3EC0`, where the tests' own scaffolding runs; milestone 31 found that the hard way, made it a build check and moved it up 192 bytes ([§4.2](#42-the-eight-banks)). Bank 6's *156* was wrong by 128 — `tools/pack.py` has been printing **28** all along, which is what happens to a figure that is copied into a document instead of read out of the build. Milestones 26–29 spent 384 on rooms, 170 on the ship button and slot order, 12 on the needs task and 105 on room priorities and the alert lines; 30 handed back 560; 31 spent 110 on the terrain rule and 42 on two messages, and took 192 back from the test floor. `tools/mapsize.py` says *who* is spending bank 0. The reserves that remain, in order: bank 7's `audio` block (2,048) and the rest of `text` (234), the tests' 320-byte floor once the probes take their address from `ZZ_BANK0_END`, `newgame.asm` and `fdc.asm` (957 bytes of cold code that can follow `save.asm` into bank 2 as soon as bank 2 has room), and size-optimising `object.asm` and `ui.asm` — 5,072 bytes between them, the two biggest things in bank 0 by a factor of two. Every new feature still costs a decision. |
 | ~~Nothing finishes what the player starts~~ | ~~High~~ | **Built.** A Build job is picked up, the agent routes to the site, works it 32 points a visit, and at 255 the building turns `DS_ACTIVE` and is drawn ([§6.9](#69-construction)). `tests/test_game.py` walks the whole chain: place a solar panel with 30 Metal, and about six seconds later the HUD says `ALL SYSTEMS OK` with no key pressed in between. |
 | **A completed building stalls the game for 0.8 s** | Medium | The full redraw of [§6.9](#69-construction) step 4, in place of the eight-chunk reveal that is specified and unwritten. Rare — once per building — but it is a visible freeze, and it is the first thing to fix if building ever becomes frequent. |
 | ~~The simulation still pushes nothing into the dirty list~~ | ~~High~~ | **Wired for ring slots**, which is what moves: `ent_claim` and `ent_release` push a `DK_SLOT`, and the figure cache is rebuilt once per burst rather than once per slot ([§8.5](#85-the-dirty-list)). Machines breaking, plants growing and room changes still push nothing. |
@@ -3131,7 +3240,9 @@ gap.
 | ~~A new dome has no room and no machines, and nothing can give it either~~ | ~~High~~ | **Built, and it took three bugs with it.** The room is the menu's second axis ([§9.3](#93-build-flow)), the dome fills its own slots from `room_machines` and `machine_rules` ([§6.5](#65-economy)), and a greenhouse comes up full of plants. On the way: a construction site linked itself to *itself* and no dome the player placed had ever been finished ([§6.9](#69-construction)); an agent that found its destination unreachable kept the job ([§6.3](#63-movement)); and the loader's endgame was holding 512 bytes for forty ([§4.2](#42-the-eight-banks)). |
 | ~~A colony of four cannot staff the food chain~~ | ~~Medium~~ | **They could. They were dying on the way to the canteen.** [§6.6](#66-needs)'s "their own needs outrank the board" dropped the job by writing `NO_TASK`, which is how the tables spell *idle*, so the assignment pass handed the work straight back and the colonist oscillated between machine and canteen until it died with Food in store. Going to eat is now a task the board does not touch (`T_NEED`), and the same colony — greenhouse, lab, canteen, four people — runs **eight sols with no deaths**, Food bottoming at 12 on sol 6 and climbing back to 27. `tests/test_needs.py` watches the bars, and its negative control on the old binary is bars pinned at zero for 1,100 frames. |
 | ~~One food chain feeds four, not twelve~~ | ~~Medium~~ | **It feeds twelve, once three things stopped fighting it** ([§6.5](#65-economy), [§6.7](#67-jobs)): one biologist per greenhouse instead of one per pot, `mach_vitromeat` at 2 per run instead of matching the canteen exactly, and `Operate` priorities per room instead of a tie broken by a distance that never changes. Measured: the twelve-person colony that used to die on sol 5 now runs eight sols with nobody dead. It has **no margin** — the store still touches zero — so the remaining work is a second chain, and the HUD now says `LOW ON FOOD` while there is still time to build one. |
-| **Water is the next thing to run out** | Medium | Every pot drinks 1 Water per run and `mach_vitromeat` 2, so a working food chain turns the water surplus into the new constraint: measured, 71 → **5** over eight sols with one extractor, holding just above zero. The colony lives, and one bad sol kills it. Levers, in order of honesty: a second extractor is already buildable and the HUD now says `LOW ON WATER`; the greenhouse's water per plant; the pump's output. Measure a two-extractor colony before touching any rate. |
+| ~~Water is the next thing to run out~~ | ~~Medium~~ | **Measured, and no rate needed touching.** This row asked for one thing — *measure a two-extractor colony before changing any number* — and the answer is flat: with one pump the same food colony goes **83 → 0 by sol 4** and then hovers between 0 and 6, with the oxygen generator running dry alongside it; with a second pump it goes **85 → 288 and keeps climbing**. Demand is 4 pots + `mach_vitromeat` 2 + `mach_oxygen` 1 = 7 a cycle against one large pump's 5, and the second pump turns a 2-a-cycle deficit into a 3-a-cycle surplus. The lever was already in the player's hands; the HUD's `LOW ON WATER` is how they learn to reach for it. What the second pump *costs* is the next row. |
+| **A second pump buys water with oxygen, after dark** | Medium | The same measurement, the other column: two pumps take the colony's draw from 22 to 28 against two panels' 36, so the day banks only ~50 of the ~130 the night wants, and **every night ends in a blackout** — `NO POWER` on sols 1 through 8, and each one takes life support with it, because `power_ok` is one flag for the whole colony. [§6.5](#65-economy)'s own failure column says *machines stop, **then** oxygen stops*; the code has no *then*. The fix is a priority tier — accumulate the `MF_FLOW` machines' demand separately, and when production plus a reserved slice of the battery cannot cover everything, shed the pumps, the mine and the factories and keep the oxygen running. Nobody died in eight sols, so this is a quality-of-play fault rather than a lethal one, but it is the shape of every "why did my base die at night" complaint. |
+| ~~The map is scenery: the lake and the ore vein mean nothing~~ | ~~Medium~~ | **Resolved at milestone 31.** `extractor (on water)` and `mine (on ore)` had been in [§6.5](#65-economy)'s chain table from the first draft and nothing read them: a pump built in the middle of the desert pumped. Now the footprint must sit within two tiles of the material — measured, not chosen: the mine is impossible at one tile, because rock always rings a mountain — and the panel names what is missing. `tests/test_map.py` holds it, negative control included: with the rule stubbed out, the two "says no" checks fail and everything else still passes. |
 | **A machine cannot be chosen, only its room** | Medium | The slots are dealt round robin from what the room allows — **slot 0 deliberately** ([§6.5](#65-economy)), the rest in order — so a large Factory is one of each rather than eight of what the colony is short of, and there is no way to ask for the eight. The screen that fixes it is the same one that would let machines be costed individually ([§6.5](#65-economy)) — and the same one that would let a built dome change its room. Nothing is blocked by this; the colony is simply less sharp than the player. |
 | ~~The colony can spend its starting metal and never make more~~ | ~~High~~ | **Resolved and measured at milestone 27.** Two changes: the start state carries **60 Ore, 75 Metal, 45 Bioplastic**, and only pressurised structures cost Bioplastic ([§9.3](#93-build-flow)) — the old catalogue priced everything in both, so the colony's 30 Bioplastic ran out four buildings in and the only thing that makes more is behind two domes that cost it. A panel, an extractor and a small Factory now cost 57 Metal of the 75, and `tools/balance.py` measures the chain running: **60 Ore → 30 Metal by sol 4, 18 → 48**, which buys the 30-Metal mine that keeps the Factory fed ([§10.1](#101-start-state)). The opening is no longer the whole game's budget. |
 | Balance | ~~Certain~~ Medium | Every number in [§6.5](#65-economy) was a first guess; the ones on the path a player actually walks are now **measured** rather than guessed, by `tools/balance.py` — which runs the real binary at ×4 for eight sols and prints the curve — and held by `tests/test_balance.py`. What measurement turned up was not mis-tuned numbers but three structural faults: the economy had no clock, power counted consumption instead of demand, and the start colony's quarters were a second oxygen generator ([§10.1](#101-start-state)). The rates past the first two buildings — the whole machine chain — are still guesses, and stay guesses until a dome can be given a room. |

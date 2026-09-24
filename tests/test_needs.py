@@ -55,9 +55,17 @@ def main():
     spots = B.clear_spots(6, 10)
     plan = ((4, None), (4, None), (7, None), (6, None),
             (1, 3), (0, 5), (0, 1))          # θερμοκήπιο M, εργαστήριο, κυλικείο
-    for k, (item, room) in enumerate(plan):
+    # Η ΑΝΤΛΙΑ ΠΑΕΙ ΣΤΗΝ ΟΧΘΗ, όχι στη σειρά. Από το βήμα 31 το bd_res τη
+    # δέχεται μόνο δίπλα σε νερό (§6.5), και μια αντλία που δεν μπήκε είναι
+    # μια αλυσίδα τροφής που στερεύει — με τη δοκιμή να λέει «πεθαίνουν».
+    res, k = {}, 0
+    for item, room in plan:
         w = (4, 6, 8)[item] if item <= 2 else 3
-        tx, ty = spots[k]
+        spot, k = B.pick_spot(item, spots, k, res)
+        if spot is None:
+            print(f"ΛΑΘΟΣ δεν βρέθηκε θέση με υλικό για το {item}")
+            return 1
+        tx, ty = spot
         if not B.build(m, sym, item, g + 6, at=(2 * tx + w, 2 * ty + w),
                        room=room):
             print(f"ΛΑΘΟΣ δεν μπήκε το κτίσμα {item} — η δοκιμή δεν στήθηκε")

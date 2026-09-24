@@ -197,7 +197,7 @@ def main():
     check(row2.startswith("POP  4/"), f"το HUD σχεδιάστηκε: |{row2}|")
 
     # --- 4. ο κόσμος είναι παραγμένος ------------------------------------
-    m.run_code(0x3E00, open(os.path.join(ROOT, "build", "plane.bin"), "rb").read())
+    m.run_code(0x3EC0, open(os.path.join(ROOT, "build", "plane.bin"), "rb").read())
     m.run_frames(2)
     sample = bytes(m.read_ram(0x3F00, 256))
     classes = {W.cls_of(b) for b in sample}
@@ -216,7 +216,7 @@ def main():
     # το βήμα 21 το «run"habitat» φαινόταν γραμμένο μέσα στην αποικία μέχρι την
     # πρώτη πλήρη σχεδίαση. Εδώ ελέγχεται η ίδια η ρουτίνα, με σημάδι.
     m.write_ram(0xC000, bytes([0xAA]) * 0x4000)
-    m.run_code(0x3E00, bytes([0xCD, sym["HW_CLEAR"] & 0xFF,
+    m.run_code(0x3EC0, bytes([0xCD, sym["HW_CLEAR"] & 0xFF,
                               sym["HW_CLEAR"] >> 8, 0x18, 0xFE]))
     m.run_frames(10)                     # 16 KB ldir = 86 ms, δηλαδή 4,3 frames
     left = sum(1 for b in m.read_ram(0xC000, 0x4000) if b)

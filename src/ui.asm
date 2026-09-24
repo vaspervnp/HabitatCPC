@@ -1165,7 +1165,18 @@ uip_st:
         ld      hl,t_ok
         jr      uip_say
 uip_blocked:
+        ; ΓΙΑΤΙ ΟΧΙ, ΟΧΙ ΜΟΝΟ ΟΧΙ. Οταν φταίνε τα tiles, το φάντασμα τα δείχνει
+        ; ένα προς ένα με κόκκινο· όταν λείπει το υλικό της δομής (§6.5) δεν
+        ; υπάρχει κακό tile να δειχτεί, και ένα σκέτο BLOCKED πάνω σε καθαρό
+        ; έδαφος διαβάζεται ως σφάλμα του παιχνιδιού.
+        ld      a,(bd_nres)
         ld      hl,t_block
+        or      a
+        jr      z,uip_say
+        dec     a
+        ld      hl,t_nowat
+        jr      z,uip_say
+        ld      hl,t_noore
         jr      uip_say
 uip_poor:
         ld      hl,t_poor
