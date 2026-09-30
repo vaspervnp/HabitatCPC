@@ -331,13 +331,13 @@ must always be reachable is in bank 0 (`&0000–&3FFF`) or bank 2 (`&8000–&BFF
 
 | Block | Bank | Contents | Bytes | Slack |
 |---|---|---|---|---|
-| `&0000–&3FFF` | 0 | engine code, ISR, blit kernels, UI | 16,384 | **1,037** |
+| `&0000–&3FFF` | 0 | engine code, ISR, blit kernels, UI | 16,384 | **758** |
 | window | 1 | **distance matrix** `DIST[96][128]` 12,288 · room icons `m` and `l` 3,936 | 16,384 | 160 |
 | window | 4 | **world plane** 128×128×1 byte | 16,384 | 0 |
 | window | 5 | **next-hop matrix** `NEXTHOP[96][128]` | 16,384 | 4,096 |
 | window | 6 | `flip_mode0` 256 · dome+ring `nw` quadrants 7,424 · slot figures 3,456 · entity tables 4,832 ([§6.1](#61-entities)) · figure cache 512 | 16,356 | 28 |
 | window | 7 | external structures 11,264 · plants 1,584 · `plant_ptr` 24 · text 1,024 · **font 1,536** (was the `audio` reservation, milestone 33) | 15,432 | 952 |
-| `&8000–&BFFF` | 2 | graphics, flat 9,592 (font gone to bank 7) · ghost undo log 1,600 · code 4,295 ([§4.3](#43-bank-2-flat-again)) | 15,487 | **897** |
+| `&8000–&BFFF` | 2 | graphics, flat 9,592 (font gone to bank 7) · ghost undo log 1,600 · code 4,413 ([§4.3](#43-bank-2-flat-again)) | 15,605 | **779** |
 | `&C000–&FFFF` | 3 | play-area screen | 16,384 | 0 |
 
 Every bank is spoken for. The two matrices in banks 1 and 5 are the clearest answer
@@ -572,8 +572,8 @@ the HUD moved into the play area's page and bank 2 became **flat 16 KB**:
 | Job board 160 · room index 108 | 268 |
 | **Sub-total, the data arena** | **9,592** — what `tools/pack.py` lays out |
 | The ghost's undo log (`GH_BUF`, [§9.3](#93-build-flow)) | 1,600 |
-| Code that runs from here: `build`, `route`, `sound`, `save`, `hw`, `fdc`, `newgame` | 4,295 |
-| **Total** | **15,487** of 16,384 — **897 free** |
+| Code that runs from here: `build`, `route`, `sound`, `save`, `hw`, `fdc`, `newgame` | 4,413 |
+| **Total** | **15,605** of 16,384 — **779 free** |
 
 #### Milestone 33: two reservations nobody read, and what they bought
 
@@ -1817,11 +1817,36 @@ describes belongs to build mode ([§9.3](#93-build-flow)), which is not written.
    room icon, machines, slots. The dome appears over about a sixth of a second, which
    reads as materialising rather than as a stall.
 
-   **As built it is a full redraw: 41 frames, 0.8 s, once per building.** The
-   eight-chunk reveal is not written. The dirty list is *not* cheaper here — a
-   single tile under a dome costs 99,840 µs and a small dome has sixteen — so the
-   choice was between one stall and a worse one. It is the right place for the
-   chunked reveal when someone writes it.
+   **As built, completion is not the expensive moment — placement is, and completion
+   is one dirty-list item.** The site is drawn when it is placed (rings, dome,
+   connectors, the empty-room icon — step 2's first bullet), so when it finishes only
+   two things on screen are wrong: the room icon and the machines. The Build job
+   pushes `DK_BUILT` with the node id through the simulation's own hook
+   ([§8.5](#85-the-dirty-list)), and the handler draws exactly those — the icon, then
+   every machine slot, all opaque, in the full pass's order. A structure pushes the
+   same record and the handler draws **nothing**, because `ob_struct` draws a site and
+   a finished structure alike; it only plays the sound.
+
+   Until milestone 34 this was a full redraw, and it was not "0.8 s" but **360–920 ms,
+   depending on what was on screen** — measured with a clock that keeps running across
+   the seams between measurement calls, because the first measurement lost exactly the
+   long frame at one. After: the frame in which a large Factory completes is
+   **100 ms**, 40 of them the ghost being lifted and dropped because the player left
+   it on the site ([§9.3](#93-build-flow)); a solar panel's completion frame is the
+   40 ms of an ordinary HUD tick. `tests/test_reveal.py` holds it three ways: a canary
+   byte far from the building survives (a full redraw would repaint it), the icon and
+   machines match a full redraw byte for byte, and the worst frame is under 200 ms.
+
+   **Placement was the same full redraw.** It now redraws the footprint only
+   (`view_rect` — every dome and structure fills exactly its own tiles, dome S 16×64
+   bytes on a 4×4 footprint, a large solar panel 12×48 on 3×3) and a corridor's tile
+   bounding box plus one tile, for the doors on the two rings and the diagonal piece
+   that is drawn on four tiles and occupies two. That took a solar panel 439 → 220 ms
+   and a small dome 559 → 379 ms, but a large one only 998 → 859: its two shells are
+   **~290 ms of mirrored masked blits** (`FL_PAIR` 153, `BML_RUN` 141) — not the 5.7
+   frames above — the red ghost `uip_after` puts straight back over the new site is
+   ~200, and the HUD ~90. The eight-chunk reveal is still unwritten, and it belongs at
+   **placement** now, not at completion ([§15](#15-open-risks)).
 
 ### 6.10 Events and hazards
 
@@ -2329,7 +2354,7 @@ straight out of `assets/SPRITES.md` §8:
 | Corridor added | one connector | ≈ 450 µs | **2,995 µs** |
 | Terrain tile changes, open ground | 3×3 tiles | ≈ 1,600 µs | **9,984 µs** |
 | Terrain tile changes, under a dome | 3×3 tiles + every object over them | — | **109,824 µs** |
-| Dome built | everything, sliced over 8 frames | 1.4 – 5.7 frames | not built — [§6.9](#69-construction) |
+| Building finished (`DK_BUILT`) | the room icon and every machine slot; a structure, nothing | 1.4 – 5.7 frames (the whole dome) | **17,971 µs** for a medium dome; a large one ≈ 42,000 by the rows above ([§6.9](#69-construction)) |
 
 **The figure cache is rebuilt from the agents, once per burst of pushes.**
 `dome_fig` is what tells the slot redraw which figure belongs where, and when the
@@ -2357,7 +2382,17 @@ overruns its frame alone, deliberately, rather than never being drawn.
 
 If the 32-entry ring fills, nothing is discarded: an **overflow flag** is raised
 and the caller owes a full redraw. A dropped change leaves a lie on the screen
-for ever; a full redraw only costs.
+for ever; a full redraw only costs. **Nobody paid it until milestone 34.**
+`dirty_push` raised the flag and nothing read it, which went unnoticed because every
+finished building repainted the whole view anyway and covered whatever had been
+lost. Once a finished building became a record in this ring, a lost one would have
+left a dome looking unfinished until the camera passed over it — so the main loop
+now checks the flag after the wheel and pays for the full redraw (`ml_over`).
+
+**Anything the list paints under the ghost, it paints with the ghost lifted**
+([§9.3](#93-build-flow)). `dt_prep`, which every dome-shaped item goes through,
+compares the dome's frame with the bounding box of the ghost's undo log and lifts
+the ghost only on overlap, so the cursor over open ground costs nothing.
 
 `tests/test_dirty.py` checks the list by **equivalence** — the same mutation
 applied once through the list and once by redrawing everything must leave
@@ -2608,6 +2643,28 @@ truncates rather than corrupting.
 addresses are positions in the 2 KB ring ([§8.2](#82-camera)); once the ring has
 rotated under them they name different pixels. Hiding after the scroll leaves a
 trail that never goes away.
+
+**The dirty list lifts the ghost when it paints under it, and puts it back the same
+way.** A colonist stepping into a ring slot under the cursor, or a building finishing
+under the red ghost the player left on it, would otherwise leave the undo log holding
+bytes that are no longer on screen, and cancelling the ghost would write them back — a
+patch of unfinished site inside a finished dome. Two pieces, milestone 34:
+
+- `gh_hline` keeps the **bounding box** of everything the log holds. Not the cursor
+  box: in `LINK` the corridor marks lie outside it.
+- A dome-shaped dirty item that intersects it **swaps** screen and log (`gh_swap`)
+  before drawing, and the tick swaps once more at the end. The swap is its own
+  inverse: the first puts back what was under the ghost and parks the ghost in the
+  log; the second drops the ghost in the same places and keeps the *new* bytes
+  underneath.
+
+`ui_hide` / `ui_show` would do the same and recompute everything the ghost shows —
+validation, the invalid-tile marks, the corridor plan — which for a large dome on bad
+ground is ~300 ms. Two swaps of a full log are ~40. **Once per tick, not per item:** a
+second swap would drop the ghost before the second item drew and leave it lifted at the
+end. `tests/test_save.py` found exactly that — the cursor frame vanished after a load,
+which repaints many ring slots under it — and `tests/test_reveal.py` now stages it on
+purpose, two items under the ghost in one tick.
 
 Three states, not four: `LOOK`, `MENU`, `PLACE` — and `LINK`, which the corridor
 needs because a corridor has two ends rather than a footprint
@@ -3188,6 +3245,7 @@ tests in this document runnable rather than aspirational:
 | Build mode | cursor, ghost-leaves-no-trace, the panel rows after a camera step (marked with `#AA` first, so a cell nobody rewrote is visible), validation, placement, payment (`test_build.py`) |
 | Corridor routing | independent Python router compared on every pair of domes, then the *picture* compared at both kinds of bend (`test_route.py`) |
 | The whole game | `src/main.asm` booted: start state, the economy moving inside the loop, a building placed and **finished**, and the HUD following it with no input (`test_game.py`) |
+| Building without a freeze | a large Factory, a solar panel and a corridor placed and finished in the real binary: a **canary** byte far from the building must survive (a full redraw repaints it), the screen must match a full redraw of the same state, and the worst frame is measured on a clock that does not lose it at a seam. The ghost is left over the finishing dome and then moved, once with the lift cut out as a negative control (`test_reveal.py`) |
 | Needs beat the board | the food colony of [§6.6](#66-needs) run for 9,000 frames, watching the *bars* rather than the corpses, plus the player's canteen getting an operator (`test_needs.py`) |
 | Who stops first | the reserve rule on the reference implementation — one unit either side of the threshold, and a storm-length night with the reserve knocked out beside it — then the two-pump colony in the real binary: load shed, oxygen never zero, pumps really stopped, `LOW POWER` on the screen (`test_power.py`) |
 | The map is a constraint | the pump refused on dry ground **with the reason on screen**, accepted at the shore and actually built; the mine likewise at a vein; and a dome and a solar panel accepted on the same dry ground, which is what separates "this rule" from "this patch of dirt" (`test_map.py`) |
@@ -3351,13 +3409,15 @@ gap.
 | ~~The flow-balance wheel slot re-scans 64 structures every revolution~~ | ~~Medium~~ | **Resolved, and not for speed.** 7,887 µs for numbers that change slowly — but the reason it moved was [§6.5](#65-economy)'s clock: a battery that charges 750 times a sol is not a battery. The scan, the battery and the pumps now run once per 64 revolutions (`FLOW_DIV`), the living are still counted every revolution, and a finished building kicks the balance so the panel the player just paid for shows up at once. |
 | ~~Nothing the player does exists: no build mode, no input, no HUD, nothing drawn since milestone 5~~ | ~~High~~ | **Resolved.** The colony is drawn, the camera scrolls, the dirty list keeps it honest, the HUD reports — and the player now moves a cursor, opens a menu, places a dome and routes a corridor between two of them ([§9.1](#91-controls), [§9.3](#93-build-flow), [§9.4](#94-corridor-routing), [§6.9](#69-construction)). |
 | ~~The two halves have never been assembled into one binary~~ | ~~Medium~~ | **Assembled, and it did not fit: 20,571 bytes wanted 16,128.** Resolved by moving the generator out, cutting `MAX_NODES` to 96 and putting code in bank 2 ([§4.2](#42-the-eight-banks)). It also turned up duplicate constants in three files and, worse, [§7.4](#74-one-convention-per-half-and-they-disagreed)'s paging disagreement. |
-| **Memory is the binding constraint from here on** | High | **1,037 bytes free in bank 0, 897 in bank 2's code area, 28 in bank 6, 952 in bank 7 (214 of the `text` block)** — after milestone 33, which found two reservations nobody had ever read (`ui_cursor` 256 in bank 2, `audio` 2,048 in bank 7), moved the font into the second, and let `newgame.asm` and `fdc.asm` follow `save.asm` into bank 2 ([§4.3](#43-bank-2-flat-again)). Bank 0's ceiling is `&3EC0`, where the tests' own scaffolding runs, and the loader's two scratch areas are checks now too. Bank 6's *156* was wrong by 128 — `tools/pack.py` has been printing **28** all along, which is what happens to a figure copied into a document instead of read out of the build. The ledger: 26–29 spent 671; 30 handed back 560; 31 spent 152 and took 192 back from the test floor; 32 spent 144; 33 handed back 957 and cost 29 in paging. `tools/mapsize.py` says *who* is spending bank 0. The reserves that remain, in order: the rest of bank 7 (952, data only), the tests' 320-byte floor once the probes take their address from `ZZ_BANK0_END`, the 864-byte `s` room-icon set, and size-optimising `object.asm` and `ui.asm` — 5,072 bytes between them, the two biggest things in bank 0 by a factor of two. Bank 6, at 28, is now the tight one. |
+| **Memory is the binding constraint from here on** | High | **758 bytes free in bank 0, 779 in bank 2's code area, 28 in bank 6, 952 in bank 7 (214 of the `text` block)** — after milestone 34 spent 279 and 118 of them on building without a freeze, and after milestone 33, which found two reservations nobody had ever read (`ui_cursor` 256 in bank 2, `audio` 2,048 in bank 7), moved the font into the second, and let `newgame.asm` and `fdc.asm` follow `save.asm` into bank 2 ([§4.3](#43-bank-2-flat-again)). Bank 0's ceiling is `&3EC0`, where the tests' own scaffolding runs, and the loader's two scratch areas are checks now too. Bank 6's *156* was wrong by 128 — `tools/pack.py` has been printing **28** all along, which is what happens to a figure copied into a document instead of read out of the build. The ledger: 26–29 spent 671; 30 handed back 560; 31 spent 152 and took 192 back from the test floor; 32 spent 144; 33 handed back 957 and cost 29 in paging; 34 spent 279 in bank 0 (the ghost's swap and bounding box, `view_rect`, the `DK_BUILT` handler) and put its cold half — the two post-placement redraws — in bank 2 for 118. `tools/mapsize.py` says *who* is spending bank 0. The reserves that remain, in order: the rest of bank 7 (952, data only), the tests' 320-byte floor once the probes take their address from `ZZ_BANK0_END`, the 864-byte `s` room-icon set, and size-optimising `object.asm` and `ui.asm` — 5,072 bytes between them, the two biggest things in bank 0 by a factor of two. Bank 6, at 28, is now the tight one. |
 | ~~Nothing finishes what the player starts~~ | ~~High~~ | **Built.** A Build job is picked up, the agent routes to the site, works it 32 points a visit, and at 255 the building turns `DS_ACTIVE` and is drawn ([§6.9](#69-construction)). `tests/test_game.py` walks the whole chain: place a solar panel with 30 Metal, and about six seconds later the HUD says `ALL SYSTEMS OK` with no key pressed in between. |
-| **A completed building stalls the game for 0.8 s** | Medium | The full redraw of [§6.9](#69-construction) step 4, in place of the eight-chunk reveal that is specified and unwritten. Rare — once per building — but it is a visible freeze, and it is the first thing to fix if building ever becomes frequent. |
+| ~~A completed building stalls the game for 0.8 s~~ | ~~Medium~~ | **Resolved at milestone 34 — and it was 360–920 ms, not 0.8 s.** The site is already on screen from placement; what completion changes is the room icon and the machines, so the Build job pushes one dirty record (`DK_BUILT`) and the handler draws those two things — a structure, nothing at all ([§6.9](#69-construction)). The completion frame of a large Factory is **100 ms**, 40 of them lifting the ghost the player left on it; a solar panel's is an ordinary 40 ms HUD tick. The freeze did not go away entirely, though — it was always at **placement** too, and that is the next row. |
+| **Placing a large dome still freezes the game for 0.86 s** | Medium | Placement redrew the whole view as well (439–998 ms measured); since milestone 34 it redraws only the footprint (`view_rect`), which halves a solar panel (439 → 220) and a small dome (559 → 379) but leaves a large one at **859 ms**, because what is left is not waste: the dome's two shells are ~290 ms of mirrored masked blits, the red ghost `uip_after` puts back over the new site ~200, the HUD ~90. Three levers: the eight-chunk reveal of [§6.9](#69-construction), now aimed at placement; a faster mirror — `FL_PAIR` alone is 153 ms here, about 100 T-states a byte, and it is the same cost that makes scrolling through a base slow; and marks that do not cost two clips and a screen-address computation per two-byte line. |
+| The ghost of a large dome on bad ground overflows its undo log | Low | Found photographing milestone 34: a large dome's red ghost needs ~2,400 bytes of log (256 mark lines and 248 one-byte edge lines, each with a 3-byte header) and the log is 1,600, so only the top three rows of invalid-tile marks are drawn. The drawing refuses what it cannot take back, so nothing is corrupted — the player just sees three rows of marks instead of eight. A mark is four lines at a fixed stride and could be one log entry. |
 | ~~The simulation still pushes nothing into the dirty list~~ | ~~High~~ | **Wired for ring slots**, which is what moves: `ent_claim` and `ent_release` push a `DK_SLOT`, and the figure cache is rebuilt once per burst rather than once per slot ([§8.5](#85-the-dirty-list)). Machines breaking, plants growing and room changes still push nothing. |
 | **A near-diagonal pair of domes cannot be connected** | Low | The turn in [§9.4](#94-corridor-routing) spends `\|S − T\|` tiles, so when the two axes differ by less than the destination's radius there is no route and the panel says so. The band is 2–4 tiles wide and the player can step out of it by moving the dome. Closing it needs a corner sprite the art does not have. |
 | **The rest of the dirty-list call sites** | Low | A machine breaking, a machine repaired and a plant growing push nothing — **and would change no pixels if they did**: there is no damaged-machine variant ([ASSET-8](#12-asset-gaps)) and a plant's sprite is chosen by class, not by stage. Ring slots were the only change the picture can show, and they are wired. A colonist who dies releases a slot, so that path is covered; one who arrives by ship gets no ring slot until they move. Wire the rest when the art gives them something to draw. |
-| **The dirty redraw does not hide the ghost** | Low | `ml_built` brackets its full redraw with `ui_hide` / `ui_show` ([§9.3](#93-build-flow)'s binding order); `dirty_tick` does not, so anything it repaints under a *displayed* ghost — a colonist stepping into a ring slot beneath the build cursor — leaves the ghost's undo log holding bytes that are no longer on screen. Cancelling the ghost then writes them back: a tile-sized patch of red box inside a finished dome, found by photographing a dome the moment it completed. Cosmetic, bounded by the ghost's own rectangle, and gone on the next scroll or full redraw. The fix is the same bracket, and it costs a hide and a show on every frame the dirty list is not empty — which is why it wants measuring ([§9.1](#91-controls) prices a cursor step at 16,224 µs) rather than just applying. |
+| ~~The dirty redraw does not hide the ghost~~ | ~~Low~~ | **Resolved at milestone 34, without the bracket and without its cost.** Every dome-shaped dirty item compares the dome's frame with the bounding box of the ghost's undo log (kept by `gh_hline`) and, only on overlap, **swaps** screen and log before drawing — and once more at the end of the tick ([§9.3](#93-build-flow)). The cursor over open ground costs nothing; over a busy dome, two swaps of its log. The old binary fails `tests/test_reveal.py` on exactly this: 222 wrong bytes in 25 tiles after the ghost leaves a dome whose ring slots changed under it. |
 | **A vacated ring slot leaves 2–7 wrong bytes** | Medium | Redrawing an *empty* ring slot over a freshly drawn dome does not reproduce the full pass, for five of the eight slots. It is **not** the empty-slot art: replacing the redraw with "draw the whole dome clipped to the slot's 2×8 rectangle" — which by construction must match — gives the same wrong pixels, so the fault is in how the object pass clips to a window about two bytes wide at a sprite's left edge. `tests/test_object.py` passes at four bytes, which is why scrolling never showed it. Bounded and idempotent: `tests/test_game.py` asserts the *shape* of the divergence — at most four affected tiles, at most 8 wrong bytes in any one, inside two byte columns. It used to assert a flat ≤ 8 bytes and that broke at step 19 without the drawing changing: a cheaper HUD let the same 14,000 frames run ~1,200 more simulation ticks, so a second ring slot had emptied. A byte total was measuring how far the world had got. |
 | **The base is invisible on its own foundation** | Medium | The foundation tile, the dome rings and the corridors are all the same grey. Outside the base everything reads; inside it, the colony disappears into the slab. Found by looking at the first running build, not by any check. It is a palette question for [§8.6](#86-palette) — one pen, differently chosen. |
 | **Scrolling is 4 to 8 tiles per second through a built-up base** | Medium | 3.0–3.2 frames per tile in open ground, up to 8.8 in the base, plus 2.30 for the HUD. Playable, not smooth. Three levers, all untaken: move the HUD block instead of redrawing it ([§8.1](#81-screen-layout)), index which objects overlap which strip instead of testing all 224 records, and blit tile pairs ([§8.3](#83-the-tile-pass)). |

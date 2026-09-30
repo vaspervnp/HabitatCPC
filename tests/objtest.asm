@@ -245,6 +245,12 @@ done_flag:  db 0
         include "../src/hud.asm"
         include "../src/view.asm"
         include "../src/hw.asm"
+        ; Η λίστα αλλαγών ξέρει από το βήμα 34 το φάντασμα (dt_ghost: δεν
+        ; ζωγραφίζει κάτω του χωρίς να το σηκώσει) και τον ήχο του κτιρίου που
+        ; τελείωσε (dh_built). Εδώ δεν υπάρχει κέρσορας, οπότε το αρχείο μένει
+        ; άδειο και το dt_ghost γυρίζει αμέσως — αλλά ο κώδικας είναι ο ίδιος.
+        include "../src/ghost.asm"
+        include "../src/sound.asm"
 
         org     #8000
         incbin  "../build/page2.bin"

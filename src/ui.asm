@@ -463,7 +463,7 @@ uip_fire:
         jr      z,uip_nospace
         ld      a,SFX_BUILD
         call    snd_play
-        call    view_draw               ; το νέο αντικείμενο μπαίνει στη σκηνή
+        call    bd_redraw               ; το νέο αντικείμενο μπαίνει στη σκηνή
         jr      uip_after
 uip_nospace:
         ld      a,SFX_DENY
@@ -529,7 +529,7 @@ uil_second:
         ld      (ln_a),a                ; μια διαδρομή τη φορά
         ld      a,SFX_BUILD
         call    snd_play
-        call    view_draw
+        call    cr_redraw
         jr      uil_after
 uil_full:
         ld      a,SFX_DENY

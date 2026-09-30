@@ -242,4 +242,5 @@ DK_MACH     equ 1                   ; a = θόλος, b = υποδοχή
 DK_ICON     equ 2                   ; a = θόλος
 DK_CONN     equ 3                   ; a = θόλος, b = κατεύθυνση
 DK_TILE     equ 4                   ; a = tx, b = ty (προσημασμένα)
-DK_KINDS    equ 5
+DK_BUILT    equ 5                   ; a = κόμβος που μόλις τελείωσε (§6.9)
+DK_KINDS    equ 6
