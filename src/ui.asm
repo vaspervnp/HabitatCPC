@@ -333,6 +333,7 @@ ui_msg:
         ; Η τράπεζα 7 ανοίγει ΜΙΑ φορά και για τα δύο: και το τύπωμα και το
         ; μέτρημα του μήκους διαβάζουν από εκεί (§4.2).
         ld      bc,GA_PORT + PAGE_B7
+        ld      (hud_pg),bc             ; ο γλύφος (τράπεζα 7) γυρίζει ΕΔΩ
         out     (c),c
         push    hl
         ld      a,3
@@ -352,6 +353,7 @@ um_len:
 um_blank:
         push    bc
         ld      bc,GA_PORT + PAGE_B1
+        ld      (hud_pg),bc
         out     (c),c
         pop     bc
         ld      a,MSG_TICKS

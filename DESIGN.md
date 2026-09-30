@@ -331,13 +331,13 @@ must always be reachable is in bank 0 (`&0000–&3FFF`) or bank 2 (`&8000–&BFF
 
 | Block | Bank | Contents | Bytes | Slack |
 |---|---|---|---|---|
-| `&0000–&3FFF` | 0 | engine code, ISR, blit kernels, UI | 16,384 | **256** |
+| `&0000–&3FFF` | 0 | engine code, ISR, blit kernels, UI | 16,384 | **1,037** |
 | window | 1 | **distance matrix** `DIST[96][128]` 12,288 · room icons `m` and `l` 3,936 | 16,384 | 160 |
 | window | 4 | **world plane** 128×128×1 byte | 16,384 | 0 |
 | window | 5 | **next-hop matrix** `NEXTHOP[96][128]` | 16,384 | 4,096 |
 | window | 6 | `flip_mode0` 256 · dome+ring `nw` quadrants 7,424 · slot figures 3,456 · entity tables 4,832 ([§6.1](#61-entities)) · figure cache 512 | 16,356 | 28 |
-| window | 7 | external structures 11,264 · plants 1,584 · `plant_ptr` 24 · text 1,024 · audio 2,048 | 15,944 | 440 |
-| `&8000–&BFFF` | 2 | graphics, flat · node graph + BFS workspace 1,536 · recipes 110 · economy 58 · job board 160 | 14,848 | **1,536** |
+| window | 7 | external structures 11,264 · plants 1,584 · `plant_ptr` 24 · text 1,024 · **font 1,536** (was the `audio` reservation, milestone 33) | 15,432 | 952 |
+| `&8000–&BFFF` | 2 | graphics, flat 9,592 (font gone to bank 7) · ghost undo log 1,600 · code 4,295 ([§4.3](#43-bank-2-flat-again)) | 15,487 | **897** |
 | `&C000–&FFFF` | 3 | play-area screen | 16,384 | 0 |
 
 Every bank is spoken for. The two matrices in banks 1 and 5 are the clearest answer
@@ -562,18 +562,62 @@ the HUD moved into the play area's page and bank 2 became **flat 16 KB**:
 | Room icons, 12 types × 3 sizes | 4,800 |
 | Machines, **all 12**, `beds` and `medstore` included | 1,584 |
 | Corridors + connectors | 896 |
-| 4×8 font, 96 glyphs | 1,536 |
+| ~~4×8 font, 96 glyphs~~ — **bank 7 since milestone 33** | ~~1,536~~ |
 | Asset tables, `room_machines` included | 313 |
 | Generated pointer tables (`tile_ptr`, `icon_{s,m,l}_ptr`, `mach_ptr`, `struct_ptr`) | 176 |
-| Cursor and UI chrome (reserve) | 256 |
+| ~~Cursor and UI chrome (reserve)~~ — **dropped at milestone 33** | ~~256~~ |
 | Node graph (`node_deg`, `node_adj`) and BFS workspace | 1,536 |
 | Machine recipes (12 × 10) + the "needs an operator" lookup | 132 |
 | Economy state — stocks, flows, clock, weather, ships, milestones | 86 |
 | Job board 160 · room index 108 | 268 |
-| **Sub-total, the data arena** | **11,384** — what `tools/pack.py` lays out |
+| **Sub-total, the data arena** | **9,592** — what `tools/pack.py` lays out |
 | The ghost's undo log (`GH_BUF`, [§9.3](#93-build-flow)) | 1,600 |
-| Code that runs from here: `build`, `route`, `sound`, `save`, `hw` | 3,338 |
-| **Total** | **16,322** of 16,384 — **62 free** |
+| Code that runs from here: `build`, `route`, `sound`, `save`, `hw`, `fdc`, `newgame` | 4,295 |
+| **Total** | **15,487** of 16,384 — **897 free** |
+
+#### Milestone 33: two reservations nobody read, and what they bought
+
+Two blocks in the map had been waiting since the first layout for something that never
+came, and a search for readers found **none** for either:
+
+- **`ui_cursor`, 256 bytes of bank 2.** The cursor turned out to be the ghost's own
+  frame (`gh_box`, milestone 6b); nothing ever drew from here. It sat in front of three
+  page-aligned routing tables, so it cost exactly 256 bytes of code space.
+- **`audio`, 2,048 bytes of bank 7.** Reserved for in-game music, which
+  [§9.5](#95-sound) decided *against*. The effects live in bank 2's code and the
+  loading tune in the generator.
+
+The font went into the second. It has exactly **one** reader — `hc_draw` in
+`src/hud.asm` — and that reader writes to the screen at `&C000`, outside the window, so
+it can have bank 7 paged in for the sixteen bytes of a glyph and see both. It pages back
+to *whatever the caller had*, not to bank 1: `hud_text7` and `ui_msg` read the next
+character of their string out of bank 7 straight afterwards, and "back to bank 1" there
+would hand them `DIST`. The price, measured by `tests/test_hud.py`: a **cold** HUD
+redraw 43,930 → 45,926 µs (+4.5%, two `out`s per glyph), a **warm** one unchanged at
+22,963 µs, because cells the cache already holds never reach `hc_draw`.
+
+Together that is 1,792 bytes out of bank 2's data arena, and everything after the arena
+— the undo log, then the code — moved down by the same amount. The code area went from
+62 bytes free to 1,854, which is the room [§15](#15-open-risks) had been waiting for
+since milestone 30: **`newgame.asm` and `fdc.asm` (957 bytes) followed `save.asm` into
+bank 2**, and bank 0 went from **80 bytes free to 1,037**.
+
+Moving the arena turned up two things that had been true only because it never moved:
+
+- **The save file named its block by number.** `sv_blocks` said `dw #A400`, and after
+  the move the economy started at `&9D7D` — *below* the block. The disc would have saved
+  graph and job board and no stocks at all, and the load would have reported success.
+  The block is `G_hud_shadow − 2,048` now, with an `assert` that the economy is inside
+  it, and `SV_VER` is 2 so a save from the old layout is refused rather than misread.
+  `tests/test_save.py` had the same `0xA400` written a second time; it reads the layout
+  now.
+- **The loader had been clipping bank 2's data for some time.** `page2.bin` is loaded
+  into bank 5 at `&4000` and `game2.bin` into the same bank at `&6C00`, and at 11,384
+  bytes the first reached `&6C78`. The last 120 bytes — exactly the HUD's cell cache —
+  arrived in the game full of bank-2 code. Harmless only because that cache is
+  invalidated before it is read, and invisible from every test that boots a snapshot.
+  `tools/mkdsk.py` checks both scratch ceilings now; the negative control, the old size,
+  reports those same 120 bytes.
 
 That total used to read *15,163, 1,024 free, contiguous*, which stopped being true
 when the undo log and the bank-2 code block moved in and was never corrected. The
@@ -2069,7 +2113,7 @@ ignores a mid-frame start address.
   — glyph 32 of the font *is* sixteen zeros, so the result is byte-identical and
   ten times cheaper.
 
-  **Now 2.20 after a camera step and 1.15 otherwise**, since the cell cache of
+  **Now 2.30 after a camera step and 1.15 otherwise** (2.20 until milestone 33 moved the font into bank 7), since the cell cache of
   [§9.2](#92-hud). The camera step is the expensive case by construction: the ring
   has moved every cell, so nothing in the cache is where it was.
 
@@ -2152,7 +2196,7 @@ deleting the split makes three of its five cameras fail.
 | Terrain strip alone (one row) | 0.96 |
 | **Whole step, open ground** | **3.0 – 3.2** |
 | **Whole step, through the middle of the base** | **4.2 – 8.8** |
-| HUD re-render, on top of any of the above | **2.20** |
+| HUD re-render, on top of any of the above | **2.30** |
 
 The 0.9 figure this section used to quote counted **only the terrain**. The rest
 is the objects that overlap the strip, and they have to be redrawn because the
@@ -2467,7 +2511,7 @@ the point where the player can still do something about it, and it clears itself
 moment the store recovers. They sit below `NO OXYGEN` in the order, because a colony
 suffocates faster than it starves.
 
-**A HUD redraw costs 1.15 frames warm, 2.20 cold, and it has its own clock: every 16
+**A HUD redraw costs 1.15 frames warm, 2.30 cold, and it has its own clock: every 16
 frames of real time.** It used to run once per wheel rotation, which broke twice over when the speed
 control arrived ([§9.1](#91-controls)): the gate was `wh_slot == 0`, and at double
 speed the slot counter steps by two — if the speed changed on an odd slot, zero never
@@ -2511,7 +2555,7 @@ And checked at the **boundary**: the play area is filled with a marker, the worl
 is drawn without the HUD, and the marker must survive — opening the clip to line
 200 puts 1,886 bytes of dome into the numbers.
 
-Cost: **2.20 frames** after a camera step, **1.15** on an ordinary tick ([§8.1](#81-screen-layout)).
+Cost: **2.30 frames** after a camera step, **1.15** on an ordinary tick ([§8.1](#81-screen-layout)) — the cold figure was 2.20 until milestone 33 paged the font in from bank 7 for every glyph drawn.
 
 ### 9.3 Build flow
 
@@ -2731,9 +2775,10 @@ tone counter at clock/16 instead of clock/8, and everything came out an octave l
 
 **In-game music is not planned.** Three channels are three channels: a tune would have
 to fight the effects for them, and a colony sim is listened to, not danced to. The
-2,048-byte audio reservation in bank 7 ([§4.2](#42-the-eight-banks)) is still
-untouched; the effects cost ~450 bytes in bank 2 and the loading music below lives in
-the generator.
+2,048-byte audio reservation in bank 7 ([§4.2](#42-the-eight-banks)) was never
+touched, and at milestone 33 the font moved into it ([§4.3](#43-bank-2-flat-again));
+the effects cost ~450 bytes in bank 2 and the loading music below lives in the
+generator.
 #### Music, and why the generator has a second player
 
 **The thirteen and a half seconds of world generation now have a tune**, and it is
@@ -3289,7 +3334,7 @@ gap.
 | Risk | Severity | Mitigation |
 |---|---|---|
 | ~~CRTC offset scrolling with a two-page raster split~~ | ~~High~~ | **Resolved at milestone 5, and split in two.** Offset scrolling works to the pixel ([§8.2](#82-camera)). The mid-frame page change does **not** — the CRTC latches the start address once per frame — so the HUD moved into the play page and bank 2 went flat ([§8.1](#81-screen-layout), [§4.3](#43-bank-2-flat-again)). |
-| ~~HUD re-render on every scroll step, ≈ 0.4 frames, estimated not measured~~ | ~~Medium~~ | **Measured at 2.55 frames**, six times the estimate, and then cut ([§8.1](#81-screen-layout)). The cell cache of [§9.2](#92-hud) took an ordinary tick to **1.15**; a camera step, which moves every cell, still pays **2.20**. The escape hatch for that one — *move* the HUD block inside the ring with `lddr`, ≈ 0.85 frames, instead of re-rendering it — is still untaken. |
+| ~~HUD re-render on every scroll step, ≈ 0.4 frames, estimated not measured~~ | ~~Medium~~ | **Measured at 2.55 frames**, six times the estimate, and then cut ([§8.1](#81-screen-layout)). The cell cache of [§9.2](#92-hud) took an ordinary tick to **1.15**; a camera step, which moves every cell, still pays **2.30** (2.20 before the font moved to bank 7 at milestone 33). The escape hatch for that one — *move* the HUD block inside the ring with `lddr`, ≈ 0.85 frames, instead of re-rendering it — is still untaken. |
 | Mid-frame writes land where aimed, but only on the emulator's CRTC | Low | The border control in `tests/test_camera.py` hits line 160 exactly. Real hardware still wants a check, but nothing now depends on a mid-frame *address* write. |
 | Memory map slack: 1,536 contiguous in bank 2, **288 in bank 6**, 440 in bank 7 | Medium | Bank 6 is the tight one now and the entity tables grew into it. The next thing that needs space there moves `plants` out of bank 7 first, or takes the `s` room-icon set (864 B) as [§4.2](#42-the-eight-banks) names. |
 | Routing rebuild latency of ≈ 5 s after a network change | Low | Stale routes are inefficient, never invalid ([§6.4](#64-routing)). If it grates: cache paths for the 16 busiest pairs and rebuild those first. |
@@ -3302,11 +3347,11 @@ gap.
 | ~~Needs, health and death are not written~~ | ~~High~~ | **Written.** Colonists eat, drink, sleep, get treated, die, and grieve; the only loss condition is live ([§6.6](#66-needs)). |
 | ~~Nothing produces food~~ | ~~High~~ | **Greenhouses grow.** Plants sit in the machine slots, `plant_class` decides the crop, and one biologist tends the whole dome ([§6.5](#65-economy)). |
 | ~~Ships, trade and milestones are unbuilt~~ | ~~Medium~~ | **Built**, except Automation, which waits on bot-eligible jobs ([§10.2](#102-milestones)). |
-| ~~A heavy sim frame plus a scroll column comes to 19.9 ms of 20~~ | High | **Worse than that, and now measured.** A scroll step is 3.0–8.8 frames of world plus 2.20 of HUD ([§8.2](#82-camera)), so it was never going to fit in one frame and does not need to: the dirty list is a budget and the strip fills over several frames. What this costs is **latency, not frame rate** — about a quarter of a second per tile through a dense base. The flow-balance slot still wants the fix described below. |
+| ~~A heavy sim frame plus a scroll column comes to 19.9 ms of 20~~ | High | **Worse than that, and now measured.** A scroll step is 3.0–8.8 frames of world plus 2.30 of HUD ([§8.2](#82-camera)), so it was never going to fit in one frame and does not need to: the dirty list is a budget and the strip fills over several frames. What this costs is **latency, not frame rate** — about a quarter of a second per tile through a dense base. The flow-balance slot still wants the fix described below. |
 | ~~The flow-balance wheel slot re-scans 64 structures every revolution~~ | ~~Medium~~ | **Resolved, and not for speed.** 7,887 µs for numbers that change slowly — but the reason it moved was [§6.5](#65-economy)'s clock: a battery that charges 750 times a sol is not a battery. The scan, the battery and the pumps now run once per 64 revolutions (`FLOW_DIV`), the living are still counted every revolution, and a finished building kicks the balance so the panel the player just paid for shows up at once. |
 | ~~Nothing the player does exists: no build mode, no input, no HUD, nothing drawn since milestone 5~~ | ~~High~~ | **Resolved.** The colony is drawn, the camera scrolls, the dirty list keeps it honest, the HUD reports — and the player now moves a cursor, opens a menu, places a dome and routes a corridor between two of them ([§9.1](#91-controls), [§9.3](#93-build-flow), [§9.4](#94-corridor-routing), [§6.9](#69-construction)). |
 | ~~The two halves have never been assembled into one binary~~ | ~~Medium~~ | **Assembled, and it did not fit: 20,571 bytes wanted 16,128.** Resolved by moving the generator out, cutting `MAX_NODES` to 96 and putting code in bank 2 ([§4.2](#42-the-eight-banks)). It also turned up duplicate constants in three files and, worse, [§7.4](#74-one-convention-per-half-and-they-disagreed)'s paging disagreement. |
-| **Memory is the binding constraint from here on** | High | **112 bytes free in bank 0, 62 in bank 2's code area, 28 in bank 6, 440 in bank 7 (213 of the `text` block)** — after milestone 32, which spent 144 of bank 0 on the three power levels and the `LOW POWER` line. Bank 0's ceiling is **not** the loader's endgame at `&3FC0` but `&3EC0`, where the tests' own scaffolding runs; milestone 31 found that the hard way and made it a build check ([§4.2](#42-the-eight-banks)). Bank 6's *156* was wrong by 128 — `tools/pack.py` has been printing **28** all along, which is what happens to a figure copied into a document instead of read out of the build. Milestones 26–29 spent 384 on rooms, 170 on the ship button and slot order, 12 on the needs task and 105 on room priorities and the alert lines; 30 handed back 560; 31 spent 152 and took 192 back from the test floor; 32 spent 144. `tools/mapsize.py` says *who* is spending bank 0. The reserves that remain, in order: bank 7's `audio` block (2,048) and the rest of `text` (213), the tests' 320-byte floor once the probes take their address from `ZZ_BANK0_END`, `newgame.asm` and `fdc.asm` (957 bytes of cold code that can follow `save.asm` into bank 2 as soon as bank 2 has room), and size-optimising `object.asm` and `ui.asm` — 5,072 bytes between them, the two biggest things in bank 0 by a factor of two. **The next feature of any size has to pay for its own space first.** |
+| **Memory is the binding constraint from here on** | High | **1,037 bytes free in bank 0, 897 in bank 2's code area, 28 in bank 6, 952 in bank 7 (214 of the `text` block)** — after milestone 33, which found two reservations nobody had ever read (`ui_cursor` 256 in bank 2, `audio` 2,048 in bank 7), moved the font into the second, and let `newgame.asm` and `fdc.asm` follow `save.asm` into bank 2 ([§4.3](#43-bank-2-flat-again)). Bank 0's ceiling is `&3EC0`, where the tests' own scaffolding runs, and the loader's two scratch areas are checks now too. Bank 6's *156* was wrong by 128 — `tools/pack.py` has been printing **28** all along, which is what happens to a figure copied into a document instead of read out of the build. The ledger: 26–29 spent 671; 30 handed back 560; 31 spent 152 and took 192 back from the test floor; 32 spent 144; 33 handed back 957 and cost 29 in paging. `tools/mapsize.py` says *who* is spending bank 0. The reserves that remain, in order: the rest of bank 7 (952, data only), the tests' 320-byte floor once the probes take their address from `ZZ_BANK0_END`, the 864-byte `s` room-icon set, and size-optimising `object.asm` and `ui.asm` — 5,072 bytes between them, the two biggest things in bank 0 by a factor of two. Bank 6, at 28, is now the tight one. |
 | ~~Nothing finishes what the player starts~~ | ~~High~~ | **Built.** A Build job is picked up, the agent routes to the site, works it 32 points a visit, and at 255 the building turns `DS_ACTIVE` and is drawn ([§6.9](#69-construction)). `tests/test_game.py` walks the whole chain: place a solar panel with 30 Metal, and about six seconds later the HUD says `ALL SYSTEMS OK` with no key pressed in between. |
 | **A completed building stalls the game for 0.8 s** | Medium | The full redraw of [§6.9](#69-construction) step 4, in place of the eight-chunk reveal that is specified and unwritten. Rare — once per building — but it is a visible freeze, and it is the first thing to fix if building ever becomes frequent. |
 | ~~The simulation still pushes nothing into the dirty list~~ | ~~High~~ | **Wired for ring slots**, which is what moves: `ent_claim` and `ent_release` push a `DK_SLOT`, and the figure cache is rebuilt once per burst rather than once per slot ([§8.5](#85-the-dirty-list)). Machines breaking, plants growing and room changes still push nothing. |
@@ -3315,7 +3360,7 @@ gap.
 | **The dirty redraw does not hide the ghost** | Low | `ml_built` brackets its full redraw with `ui_hide` / `ui_show` ([§9.3](#93-build-flow)'s binding order); `dirty_tick` does not, so anything it repaints under a *displayed* ghost — a colonist stepping into a ring slot beneath the build cursor — leaves the ghost's undo log holding bytes that are no longer on screen. Cancelling the ghost then writes them back: a tile-sized patch of red box inside a finished dome, found by photographing a dome the moment it completed. Cosmetic, bounded by the ghost's own rectangle, and gone on the next scroll or full redraw. The fix is the same bracket, and it costs a hide and a show on every frame the dirty list is not empty — which is why it wants measuring ([§9.1](#91-controls) prices a cursor step at 16,224 µs) rather than just applying. |
 | **A vacated ring slot leaves 2–7 wrong bytes** | Medium | Redrawing an *empty* ring slot over a freshly drawn dome does not reproduce the full pass, for five of the eight slots. It is **not** the empty-slot art: replacing the redraw with "draw the whole dome clipped to the slot's 2×8 rectangle" — which by construction must match — gives the same wrong pixels, so the fault is in how the object pass clips to a window about two bytes wide at a sprite's left edge. `tests/test_object.py` passes at four bytes, which is why scrolling never showed it. Bounded and idempotent: `tests/test_game.py` asserts the *shape* of the divergence — at most four affected tiles, at most 8 wrong bytes in any one, inside two byte columns. It used to assert a flat ≤ 8 bytes and that broke at step 19 without the drawing changing: a cheaper HUD let the same 14,000 frames run ~1,200 more simulation ticks, so a second ring slot had emptied. A byte total was measuring how far the world had got. |
 | **The base is invisible on its own foundation** | Medium | The foundation tile, the dome rings and the corridors are all the same grey. Outside the base everything reads; inside it, the colony disappears into the slab. Found by looking at the first running build, not by any check. It is a palette question for [§8.6](#86-palette) — one pen, differently chosen. |
-| **Scrolling is 4 to 8 tiles per second through a built-up base** | Medium | 3.0–3.2 frames per tile in open ground, up to 8.8 in the base, plus 2.20 for the HUD. Playable, not smooth. Three levers, all untaken: move the HUD block instead of redrawing it ([§8.1](#81-screen-layout)), index which objects overlap which strip instead of testing all 224 records, and blit tile pairs ([§8.3](#83-the-tile-pass)). |
+| **Scrolling is 4 to 8 tiles per second through a built-up base** | Medium | 3.0–3.2 frames per tile in open ground, up to 8.8 in the base, plus 2.30 for the HUD. Playable, not smooth. Three levers, all untaken: move the HUD block instead of redrawing it ([§8.1](#81-screen-layout)), index which objects overlap which strip instead of testing all 224 records, and blit tile pairs ([§8.3](#83-the-tile-pass)). |
 | **A broken machine is invisible on screen** ([ASSET-8](#12-asset-gaps)) | Medium | One sprite per machine, no damaged variant. The economy knows, the alert line knows, the picture does not — wrong way round for a game about watching a colony. 132 bytes per machine would fix it. |
 | Meteors and intruders are unbuilt, and both need the renderer first | Medium | Meteors write terrain, so they need the world plane and the dirty list; intruders need edge spawning and combat. Neither is a simulation problem, which is why neither is in [§6.10](#610-events-and-hazards) yet. |
 | Ships, trade and milestones are unbuilt — [§6.11](#611-ships-and-arrivals) and [§10.2](#102-milestones) | Medium | The colony sustains itself but cannot grow: no new colonists arrive and nothing can be traded for. This is what makes it a sandbox rather than a game. |

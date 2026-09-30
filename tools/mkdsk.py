@@ -91,6 +91,30 @@ def endgame_addr():
 
 ENDGAME = endgame_addr()
 
+
+def boot_equ(name):
+    """Μια σταθερά του φορτωτή, διαβασμένη από το src/boot.asm — όπως το
+    ENDGAME, για να μην υπάρχει δεύτερο αντίγραφο που θα διαφωνήσει."""
+    for line in open(os.path.join(ROOT, "src", "boot.asm"), encoding="utf-8"):
+        m = re.match(rf"{name}\s+equ\s+#([0-9A-Fa-f]+)", line)
+        if m:
+            return int(m.group(1), 16)
+    sys.exit(f"δεν βρέθηκε το {name} στο src/boot.asm")
+
+
+# ΤΟ ΠΡΟΧΕΙΡΟ ΤΟΥ ΦΟΡΤΩΤΗ. Τα δύο αρχεία που πατάνε πάνω στο AMSDOS — τα
+# δεδομένα της τράπεζας 2 και ο κώδικάς της — φορτώνονται ΣΤΗΝ ΙΔΙΑ ΤΡΑΠΕΖΑ 5,
+# το ένα στο SCRATCH και το άλλο στο SCRATCH_G2, και τα αντιγράφει το επίμετρο.
+# Αν το πρώτο φτάνει ως το δεύτερο, το δεύτερο το σβήνει χωρίς κανένα λάθος.
+#
+# ΑΥΤΟ ΣΥΝΕΒΑΙΝΕ ΩΣ ΤΟ ΒΗΜΑ 33: το page2.bin ήταν 11.384 bytes απέναντι σε
+# 11.264, και τα τελευταία 120 — ακριβώς η κρυφή μνήμη του HUD — έφταναν στο
+# παιχνίδι γεμάτα κώδικα της τράπεζας 2. Αβλαβές ΜΟΝΟ επειδή εκείνη η κρυφή
+# μνήμη ακυρώνεται πριν διαβαστεί· ένα byte πραγματικών δεδομένων από κάτω της
+# θα ήταν σφάλμα που φαίνεται μόνο από τον δίσκο και ποτέ από το snapshot.
+SCRATCH = boot_equ("SCRATCH")
+SCRATCH_G2 = boot_equ("SCRATCH_G2")
+
 # Τα slots του §11 ζουν στα tracks 24-41, ΧΩΡΙΣ αρχείο AMSDOS από πάνω τους: ο
 # δίσκος είναι του παιχνιδιού. Αυτό ισχύει όσο τα αρχεία δεν φτάνουν ως εκεί —
 # και αυτό ελέγχεται, γιατί ένα αρχείο που θα έμπαινε στο track 24 θα σβηνόταν
@@ -192,9 +216,23 @@ def check_saves():
     return track
 
 
+def check_scratch():
+    n2 = os.path.getsize(os.path.join(BUILD, "page2.bin"))
+    ng = os.path.getsize(os.path.join(BUILD, "game2.bin"))
+    if SCRATCH + n2 > SCRATCH_G2:
+        sys.exit(f"το page2.bin ({n2} bytes) φτάνει από το #{SCRATCH:04X} ως το "
+                 f"#{SCRATCH + n2:04X} και σβήνεται από το game2.bin στο "
+                 f"#{SCRATCH_G2:04X} ({SCRATCH + n2 - SCRATCH_G2} bytes)")
+    if SCRATCH_G2 + ng > 0x8000:
+        sys.exit(f"το game2.bin ({ng} bytes) βγαίνει από το πρόχειρο της "
+                 f"τράπεζας 5 ({SCRATCH_G2 + ng - 0x8000} bytes πάνω από το #8000)")
+    return SCRATCH_G2 - SCRATCH - n2
+
+
 def build():
     assemble()
     slack = check_fit()
+    check_scratch()
     sym = symbols()
     lo, slack2 = check_page2(sym)
     gen_top = 0x8000 + os.path.getsize(os.path.join(BUILD, "gen.bin"))

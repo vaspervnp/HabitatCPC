@@ -58,7 +58,17 @@ def build():
     for line in open(os.path.join(ROOT, "build", "layout.asm"), encoding="utf-8"):
         if line.startswith("G_econ_state"):
             g = int(line.split("#")[1].strip(), 16)
+        if line.startswith("G_hud_shadow"):
+            # ΤΟ ΜΠΛΟΚ ΚΑΤΑΣΤΑΣΗΣ ΤΟΥ src/save.asm: τα 2 KB κάτω από την κρυφή
+            # μνήμη του HUD. Ως το βήμα 33 εδώ στεκόταν ένα 0xA400 — το ίδιο
+            # νούμερο με το save.asm, γραμμένο δεύτερη φορά, και θα διαφωνούσαν
+            # την πρώτη φορά που θα κουνιόταν η αρένα. Κουνήθηκε.
+            global STATE
+            STATE = int(line.split("#")[1].strip(), 16) - 0x800
     return sym, g
+
+
+STATE = None
 
 
 def main():
@@ -90,7 +100,7 @@ def main():
 
     def snap():
         """Οικονομία, δείγματα επιπέδου, και η ΕΙΚΟΝΑ του κάδρου."""
-        econ = bytes(m.read_ram(0xA400, 0x800))
+        econ = bytes(m.read_ram(STATE, 0x800))
         m.run_code(0x3EC0, blob)
         m.run_frames(2)
         plane = bytes(m.read_ram(0x3F00, 256))
@@ -213,7 +223,7 @@ def main():
     freeze(True)
     m.run_frames(4)
     b_econ, b_plane, b_play = snap()
-    o = g - 0xA400
+    o = g - STATE
     dwater = (b_econ[o] | (b_econ[o + 1] << 8)) - (a_econ[o] | (a_econ[o + 1] << 8))
     check(b_econ != a_econ,
           f"η κατάσταση άλλαξε στα 18.000 frames (νερό {dwater:+d}, "
