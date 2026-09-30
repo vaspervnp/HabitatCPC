@@ -59,6 +59,9 @@ ui_center:
 ; ui_tick — ένα καρέ εισόδου.
 ; ---------------------------------------------------------------------------
 ui_tick:
+        ld      a,(ui_owed)
+        or      a
+        call    nz,ui_late
         call    in_read
         call    ui_speed
         ld      a,A_HOME
@@ -165,6 +168,7 @@ uis_next:
         call    ui_dirty                ; στην παύση ο τροχός δεν ξαναφτάνει
         jp      ui_panel                ; στη θέση 0: δείξ' το τώρα ή ποτέ
 
+ui_owed:    db 0                    ; το φάντασμα δεν ξαναμπήκε μετά την τοποθέτηση
 ui_spd_tab: db 0, 1, 2, 4
 ui_spd:     db 1                    ; 0 παύση · 1 κανονικά · 2 γρήγορα · 4 πολύ
 uis_was:    db 1
@@ -464,12 +468,23 @@ uip_fire:
         ld      a,SFX_BUILD
         call    snd_play
         call    bd_redraw               ; το νέο αντικείμενο μπαίνει στη σκηνή
-        jr      uip_after
+        jr      z,uip_after
+        ; ΤΟ ΦΑΝΤΑΣΜΑ ΠΕΡΙΜΕΝΕΙ ΤΟ ΕΡΓΟΤΑΞΙΟ. Θα ξανάπεφτε κόκκινο πάνω στον θόλο
+        ; που μόλις μπήκε, και κάθε σειρά που εμφανίζεται από κάτω του θα το
+        ; σήκωνε και θα το ξανάριχνε. Το ui_late το δείχνει μόλις βγει η
+        ; τελευταία σειρά — ή νωρίτερα, αν ο παίκτης κουνήσει τον κέρσορα.
+        ld      a,1
+        ld      (ui_owed),a
+        jp      hud_draw
 uip_nospace:
         ld      a,SFX_DENY
         call    snd_play
 uip_after:
-        call    ui_hudall
+        ; hud_draw, ΟΧΙ ui_hudall: το δεύτερο αναγκάζει και τον πίνακα (σειρές
+        ; 3-4) να ξαναγραφτεί, ~20 ms, ενώ ό,τι αλλάζει σε αυτόν με την
+        ; τοποθέτηση — εγκυρότητα, κόστος — είναι στην υπογραφή του, και το
+        ; ui_show τον ξαναγράφει μόνο αν άλλαξε.
+        call    hud_draw
         jp      ui_show
 uip_deny:
         ld      a,SFX_DENY
@@ -535,7 +550,7 @@ uil_full:
         ld      a,SFX_DENY
         call    snd_play
 uil_after:
-        call    ui_hudall
+        call    hud_draw                ; όπως στο uip_after
         jp      ui_show
 uil_deny:
         ld      a,SFX_DENY
@@ -648,13 +663,13 @@ lnp_no:
 cr_cb_gh:
         push    bc
         ld      a,b
-        call    ui_sxt
-        ld      (gh_x),hl
-        pop     bc
-        push    bc
+        ld      hl,cam_tx
+        sub     (hl)
+        ld      b,a
         ld      a,c
-        call    ui_syt
-        ld      (gh_y),hl
+        ld      hl,cam_ty
+        sub     (hl)
+        ld      c,a
         call    gh_mark
         pop     bc
         ret
@@ -825,7 +840,23 @@ ui_validate:
 ui_hide:
         jp      gh_undo
 
+; ui_late — το φάντασμα που χρωστά η τοποθέτηση θόλου, ΕΝΑΝ γύρο αφού βγει η
+; τελευταία σειρά του (rv_pend = 0). Στον ίδιο γύρο θα πλήρωνε και τη σειρά
+; και το φάντασμα: 200 ms, το μακρύτερο καρέ όλης της εμφάνισης.
+ui_late:
+        ld      a,(rv_pend)
+        or      a
+        ret     nz
+        ld      hl,ui_owed
+        ld      a,(hl)
+        inc     (hl)                    ; 1 -> 2: ο επόμενος γύρος
+        dec     a
+        ret     z
+        jp      ui_show
+
 ui_show:
+        xor     a
+        ld      (ui_owed),a             ; κάθε εμφάνιση ξοφλά το χρέος
         call    ui_rect
         ld      a,(ui_state)
         cp      UI_LINK
@@ -902,13 +933,15 @@ uis_cl:
         ld      a,(ui_tx)
         ld      hl,uis_col
         add     a,(hl)
-        call    ui_sxt
-        ld      (gh_x),hl
+        ld      hl,cam_tx
+        sub     (hl)
+        ld      b,a                     ; στήλη μέσα στο κάδρο
         ld      a,(ui_ty)
         ld      hl,uis_row
         add     a,(hl)
-        call    ui_syt
-        ld      (gh_y),hl
+        ld      hl,cam_ty
+        sub     (hl)
+        ld      c,a                     ; σειρά
         call    gh_mark
         pop     bc
 uis_cn:

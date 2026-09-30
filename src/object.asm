@@ -30,7 +30,7 @@ OB_ALIVE    equ 1                       ; F_ALIVE του entity.asm
 ; Παράμετροι στο μπλοκ ob_* παρακάτω. Το ob_fl κουβαλά τον προσανατολισμό στα
 ; bits 0-1 (ίδια κωδικοποίηση με το blit_quad) και το «αδιαφανές» στο bit 2.
 ;
-; Το καθρεφτισμένο sprite γυρίζει ΟΛΟΚΛΗΡΗ τη γραμμή στο flipbuf και μετά
+; Το καθρεφτισμένο sprite διαβάζεται ΑΝΑΠΟΔΑ από το τέλος της γραμμής (blt_mask_flip):
 ; κόβεται μέσα στο buffer: το clip από αριστερά αντιστοιχεί σε ζεύγη από το
 ; ΤΕΛΟΣ της πηγής, και κανένας δείκτης δεν το εκφράζει αυτό πιο απλά.
 ; ---------------------------------------------------------------------------
@@ -99,7 +99,7 @@ ob_fromtop:
         ; --- μετατόπιση μέσα στη γραμμή, για το clip από αριστερά ---
         ; Στο καθρεφτισμένο η μετατόπιση δείχνει στο ΠΡΩΤΟ ζεύγος που θα
         ; χρειαστεί — δηλαδή στο (w-1-skip) μετρώντας από την αρχή — και το
-        ; flip_span γυρίζει μόνο όσα ζεύγη γράφονται.
+        ; blt_mask_flip διαβάζει μόνο όσα ζεύγη γράφονται.
         ld      a,(ob_fl)
         and     1
         jr      z,ob_noflip
@@ -141,8 +141,8 @@ ob_line:
         jr      z,ob_direct
         ld      a,(ob_nb)
         ld      b,a
-        call    flip_span               ; μόνο τα ζεύγη που γράφονται
-        ld      hl,flipbuf
+        call    blt_mask_flip           ; μόνο τα ζεύγη που γράφονται, κατευθείαν
+        jr      ob_next
 ob_direct:
         ld      a,(ob_nb)
         ld      b,a
@@ -1525,14 +1525,7 @@ ofs_next:
 ob_draw_all:
         ld      bc,GA_PORT + PAGE_B6
         out     (c),c
-        ld      a,(ob_idx)
-        or      a
-        jr      z,oda_idxok
-        xor     a
-        ld      (ob_idx),a
-        call    ob_conn_scan
-        call    ob_fig_scan
-oda_idxok:
+        call    ob_index
         ld      b,MAX_DOME
         ld      c,0
 oda_sh:
@@ -1564,6 +1557,17 @@ oda_fi:
         ld      bc,GA_PORT + PAGE_B1
         out     (c),c
         ret
+
+; ob_index — τα δύο ευρετήρια (πόρτες, φιγούρες), αν τα ακύρωσε το ob_touch.
+; Απαιτεί τράπεζα 6. Και για όποιον ζωγραφίζει ΕΝΑΝ θόλο χωρίς το ob_draw_all.
+ob_index:
+        ld      a,(ob_idx)
+        or      a
+        ret     z
+        xor     a
+        ld      (ob_idx),a
+        call    ob_conn_scan
+        jp      ob_fig_scan
 
 ; ---------------------------------------------------------------------------
 ; ob_struct_all — οι δομές ταξινομημένες κατά cy, ώστε οι νότιες να σκεπάζουν

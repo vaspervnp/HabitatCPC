@@ -189,6 +189,15 @@ view_draw:
 ; ορθογώνιο, και το πέρασμα αντικειμένων ξέρει να κόβει σε ορθογώνιο.
 ; ---------------------------------------------------------------------------
 view_rect:
+        call    vr_tiles
+        ret     z                       ; ολόκληρο έξω από το κάδρο
+        call    ob_draw_all
+        jp      ob_clip_full
+
+; vr_tiles — το έδαφος του ορθογωνίου (vr_*), με το clip στημένο πάνω του για
+; ό,τι ζωγραφιστεί μετά. Z = εκτός κάδρου: δεν έγινε τίποτα, το clip μένει.
+; Ο καλών κάνει ob_clip_full όταν τελειώσει.
+vr_tiles:
         ld      a,(vr_tx)
         ld      hl,cam_tx
         sub     (hl)
@@ -204,7 +213,7 @@ view_rect:
         call    dk_clamp
         ld      a,b
         or      a
-        ret     z                       ; ολόκληρο έξω από το κάδρο
+        ret     z
         ld      (td_nc),a
         ld      a,c
         ld      (td_c0),a
@@ -225,8 +234,8 @@ view_rect:
         call    tile_draw_rect
         ld      bc,GA_PORT + PAGE_B1
         out     (c),c
-        call    ob_draw_all
-        jp      ob_clip_full
+        or      1                       ; NZ: ζωγραφίστηκε, το clip στέκει
+        ret
 
 vr_tx:      db 0
 vr_ty:      db 0

@@ -48,6 +48,9 @@ vs_high:
         in      a,(c)
         rra
         jr      nc,vs_high
+        ; Η λίστα αλλαγών τρέχει όπως στο main.asm: από το βήμα 35 ένας θόλος
+        ; που τοποθετείται εμφανίζεται μέσα από αυτήν, σειρά προς σειρά.
+        call    dirty_tick
         call    ui_tick
         ld      hl,tick_n
         inc     (hl)

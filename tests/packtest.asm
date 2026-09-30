@@ -198,6 +198,7 @@ dt_col:
         ret
 
         include "../src/screen.asm"
+HAS_QUADS   equ 1                   ; οι πυρήνες του ορόσημου 2 (src/blit.asm)
         include "../src/blit.asm"
         include "../src/hw.asm"
 

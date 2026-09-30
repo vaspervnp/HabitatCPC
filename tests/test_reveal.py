@@ -68,6 +68,11 @@ class Game:
             self.m.poke(g + 2 * k, 0xE7)
             self.m.poke(g + 2 * k + 1, 0x03)
         self.iters, self.t, self.inw, self.last = [], 0, False, None
+        self.pend = []                       # rv_pend σε κάθε αρχή γύρου
+        for line in open(os.path.join(ROOT, "build", "layout.asm"),
+                         encoding="utf-8"):
+            if line.startswith("PAGE2_TOP"):
+                self.ghbuf = int(line.split("#")[1].split()[0], 16)
 
     def bank(self, n):
         return cpc._lib.cpcemu_ram_ptr(self.m._h, n)
@@ -88,6 +93,7 @@ class Game:
                 if self.last is not None:
                     self.iters.append(self.t - self.last)
                 self.last = self.t
+                self.pend.append(m.peek(self.sym["RV_PEND"]))
             self.inw = w
             if until and until():
                 until, after = None, len(self.iters)
@@ -253,17 +259,38 @@ def dome(sym, g, cut_ghost=False):
     c = G.canary()
     metal = G.m.peek(g + 6)
     G.run(40_000)
+    G.iters, G.pend = [], []
     G.m.set_joystick_type(1)
-    G.stick(JOY_FIRE)
+    G.m.joystick(JOY_FIRE)
+    G.run(80_000)
+    G.m.joystick(0)
     G.m.set_joystick_type(0)
-    G.settle()
+    # ΩΣ ΝΑ ΞΑΝΑΜΠΕΙ ΤΟ ΦΑΝΤΑΣΜΑ: η εμφάνιση είναι οκτώ γύροι, και ο
+    # μακρύτερος είναι ο τελευταίος, όπου το ui_late ξαναζωγραφίζει το
+    # κόκκινο φάντασμα.
+    G.run(4_000_000, until=lambda: G.m.peek(sym["RV_PEND"]) == 0
+          and G.m.peek(sym["UI_OWED"]) == 0)
     node = G.m.peek(sym["BD_NODE"])
+    bands = sum(1 for a, b in zip(G.pend, G.pend[1:]) if b < a)
+    most = max((a - b for a, b in zip(G.pend, G.pend[1:])), default=0)
     placed = G.worst()
     if not cut_ghost:
         check(G.m.peek(g + 6) != metal and G.state(node)[0] == 1,
               f"ο θόλος L μπήκε στο {(tx, ty)}: κόμβος {node}, εργοτάξιο")
-        check(G.alive(c), f"η τοποθέτηση ΔΕΝ ξαναζωγράφισε το κάδρο: το "
-                          f"κανάρινι ζει ({placed:.0f} ms ο χειρότερος γύρος)")
+        check(G.alive(c), "η τοποθέτηση ΔΕΝ ξαναζωγράφισε το κάδρο: το "
+                          "κανάρινι ζει")
+        # ΜΕΤΡΗΜΕΝΟ: 80 ms το FIRE, 60-80 κάθε σειρά, 140 ο γύρος όπου
+        # ξαναμπαίνει το φάντασμα. Ηταν ΕΝΑΣ γύρος 998 ms (βήμα 34: 859 με
+        # το ξανασχέδιο μόνο του αποτυπώματος).
+        check(placed < 200, f"ο χειρότερος γύρος της τοποθέτησης ήταν "
+                            f"{placed:.0f} ms (όριο 200· ήταν 998)")
+        check(bands == 8 and most == 1,
+              f"ο θόλος εμφανίστηκε σε {bands} γύρους, το πολύ {most} σειρά "
+              f"ανά γύρο (§6.9: μία σειρά tiles ανά γύρο, οκτώ για τον L)")
+        gp = G.m.peek(sym["GH_PTR"]) | (G.m.peek(sym["GH_PTR"] + 1) << 8)
+        check(gp != G.ghbuf and G.m.peek(sym["UI_STATE"]) == 2,
+              f"και μετά το φάντασμα ξαναμπήκε ({gp - G.ghbuf} bytes στο "
+              f"αρχείο, κατάσταση PLACE)")
         pic, ref = G.truth()
         ok, how = shape(pic, ref, skip={0})
         check(ok, f"και η οθόνη είναι η αλήθεια: το αποτύπωμα ζωγραφίστηκε "
@@ -276,10 +303,11 @@ def dome(sym, g, cut_ghost=False):
         return G, node
     check(done, f"ο θόλος τελείωσε (κατάσταση {G.state(node)[0]})")
     check(G.alive(c), "η ολοκλήρωση ΔΕΝ ξαναζωγράφισε το κάδρο: το κανάρινι ζει")
-    # ΜΕΤΡΗΜΕΝΟ: 100 ms, από τα οποία τα 40 είναι οι δύο ανταλλαγές του
-    # φαντάσματος (gh_swap) — το φάντασμα του L πάνω σε άκυρο έδαφος γεμίζει
-    # όλο το αρχείο. Ηταν 919 ms. Το όριο αφήνει χώρο για ένα HUD που πέφτει
-    # στον ίδιο γύρο (46 ms κρύο, §9.2).
+    # ΜΕΤΡΗΜΕΝΟ: 120 ms, από τα οποία τα 60 είναι οι δύο ανταλλαγές του
+    # φαντάσματος (gh_swap) — το κόκκινο φάντασμα του L είναι 1.160 bytes
+    # αρχείου (βήμα 35· στο 34 ήταν κομμένο στα 1.600 και έβγαινε 100). Ηταν
+    # 919 ms. Το όριο αφήνει χώρο για ένα HUD που πέφτει στον ίδιο γύρο (46 ms
+    # κρύο, §9.2).
     check(built < 200, f"και ο χειρότερος γύρος ήταν {built:.0f} ms "
                        f"(όριο 200· ήταν 919 με την πλήρη σχεδίαση)")
     # Η ΣΥΓΚΡΙΣΗ ΠΕΡΙΜΕΝΕΙ ΤΟ ghost_moves: η πλήρης σχεδίαση ξαναχτίζει και
@@ -331,6 +359,7 @@ def solar(sym, g):
     B.build(G.m, sym, I_SOLAR, g + 6, at=(2 * tx + 3, 2 * ty + 3), place=False)
     c = G.canary()
     G.run(40_000)
+    G.iters = []
     G.m.set_joystick_type(1)
     G.stick(JOY_FIRE)
     G.m.set_joystick_type(0)
@@ -370,27 +399,33 @@ def solar(sym, g):
           f"{'ζει' if G.alive(c) else 'σβήστηκε'}")
 
 
-def corridor(sym, g):
-    """Δύο θόλοι S στην ίδια σειρά και ένας διάδρομος ανάμεσά τους."""
+def corridor(sym, g, dx=8, dy=0):
+    """Δύο θόλοι S και ένας διάδρομος ανάμεσά τους: ο B στο (+dx, +dy) tiles.
+
+    Το cr_redraw ξαναζωγραφίζει ΜΟΝΟ το περίγραμμα των tiles που πατά η
+    διαδρομή, και οι πόρτες έρχονται από τη λίστα αλλαγών.
+    """
     pl = B.plane()
     ok = {W.GROUND, W.DUST, W.FOUNDATION}
     spot = None
+    wide, high = dx + 4, dy + 4
     for r in range(12, 30):
         for ty in range(-r, r + 1):
             for tx in range(-r, r + 1):
                 if spot or max(abs(tx), abs(ty)) != r:
                     continue
                 if any(max(abs(tx + i), abs(ty + j)) < 12
-                       for i in range(12) for j in range(4)):
+                       for i in range(wide) for j in range(high)):
                     continue
                 if all(W.cls_of(pl[W.index(tx + i, ty + j)]) in ok
-                       for i in range(-1, 13) for j in range(-1, 5)):
+                       for i in range(-1, wide + 1) for j in range(-1, high + 1)):
                     spot = (tx, ty)
     tx, ty = spot
     G = Game(sym, g)
-    G.camera(tx - 4, ty - 3)
+    G.camera(tx + wide // 2 - 10, ty + high // 2 - 5)
     B.build(G.m, sym, I_DOME_S, g + 6, at=(2 * tx + 4, 2 * ty + 4), room=R_FACTORY)
-    B.build(G.m, sym, I_DOME_S, g + 6, at=(2 * tx + 20, 2 * ty + 4), room=R_FACTORY)
+    B.build(G.m, sym, I_DOME_S, g + 6, at=(2 * (tx + dx) + 4, 2 * (ty + dy) + 4),
+            room=R_FACTORY)
 
     def tap(key):
         G.m.key_down(key)
@@ -413,21 +448,26 @@ def corridor(sym, g):
     G.m.poke(sym["CUR_HX"], (2 * tx + 4) & 0xFF)
     G.m.poke(sym["CUR_HY"], (2 * ty + 4) & 0xFF)
     G.stick(JOY_FIRE)                        # η αφετηρία
-    G.m.poke(sym["CUR_HX"], (2 * tx + 20) & 0xFF)
+    G.m.poke(sym["CUR_HX"], (2 * (tx + dx) + 4) & 0xFF)
+    G.m.poke(sym["CUR_HY"], (2 * (ty + dy) + 4) & 0xFF)
     c = G.canary()
     metal = G.m.peek(g + 6) | (G.m.peek(g + 7) << 8)
     G.run(40_000)
+    G.iters = []                             # μόνο το FIRE που χτίζει
     G.stick(JOY_FIRE)                        # ο προορισμός: χτίζει
     G.m.set_joystick_type(0)
     G.settle()
     paid = metal - (G.m.peek(g + 6) | (G.m.peek(g + 7) << 8))
     laid = G.worst()
+    kind = "με στροφή" if dy else "ευθύς"
     check(paid > 0 and G.alive(c),
-          f"ο διάδρομος μπήκε (μέταλλο -{paid}) και το κανάρινι ζει "
+          f"ο διάδρομος {kind} μπήκε (μέταλλο -{paid}) και το κανάρινι ζει "
           f"({laid:.0f} ms ο χειρότερος γύρος)")
     pic, ref = G.truth()
     ok, how = shape(pic, ref, skip={0})
-    check(ok, f"και η οθόνη είναι η αλήθεια — διάδρομος ΚΑΙ οι δύο πόρτες: {how}")
+    bad = sum(1 for i, (a, b) in enumerate(zip(pic, ref)) if a != b and i)
+    check(bad == 0, f"και η οθόνη είναι η αλήθεια — διάδρομος ΚΑΙ οι δύο "
+                    f"πόρτες, byte προς byte: {how}")
     return G
 
 
@@ -446,6 +486,10 @@ def main():
                    f"γράφει το εργοτάξιο πάνω στις μηχανές — {bad} λάθος bytes "
                    f"στο εσωτερικό")
     solar(sym, g)
+    # ΜΟΝΟ ΕΥΘΥΣ. Ενας διάδρομος με διαγώνιο δεν χτίζεται ανάμεσα σε θόλους
+    # που έβαλε ο παίκτης (η διαγώνιος ξεκινά στη γωνία του αποτυπώματος του
+    # ίδιου του θόλου, που είναι κατειλημμένη — DESIGN §15)· τη στροφή την
+    # ελέγχει το tests/test_route.py, όπου οι θόλοι φυτεύονται χωρίς κατοχή.
     corridor(sym, g)
     return 1 if FAIL else 0
 
