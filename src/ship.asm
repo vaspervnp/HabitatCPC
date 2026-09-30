@@ -221,8 +221,8 @@ sol_rollover:
         or      a
         jr      z,sr_notgreen
         ld      a,(EC_POK)
-        or      a
-        jr      z,sr_notgreen
+        cp      P_ALL                   ; P_ESS δεν είναι πράσινο sol: οι
+        jr      nz,sr_notgreen          ; μηχανές της αποικίας σταμάτησαν
         ld      hl,(EC_STOCK + 2*S_WATER)
         ld      a,h
         or      l

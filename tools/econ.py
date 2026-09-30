@@ -129,10 +129,15 @@ class Econ:
         self.mach_power = 0         # ό,τι τράβηξαν οι μηχανές στο τελευταίο σάρωμα
         self.o2_prod = 0
         self.o2_use = 0
-        self.power_ok = 1                   # το buffer που διαβάζει η παραγωγή
+        self.power_ok = POWER_ALL           # το buffer που διαβάζει η παραγωγή
         self.o2_ok = 1
         # συσσωρευτές του τρέχοντος σαρώματος παραγωγής
         self.acc_power = 0
+        # Η ΖΗΤΗΣΗ ΤΗΣ ΥΠΟΣΤΗΡΙΞΗΣ ΖΩΗΣ ΞΕΧΩΡΙΣΤΑ (§6.5). Μόνο οι μηχανές
+        # MF_FLOW — δηλαδή το οξυγόνο — μπαίνουν εδώ, και μόνο αυτές συνεχίζουν
+        # να τρέχουν όταν το ρεύμα δεν φτάνει για όλους.
+        self.ess_power = 0
+        self.acc_ess = 0
         self.acc_o2 = 0
         self.prod_dome = 0                  # πού έφτασε το σάρωμα
         # ρολόι και καιρός (§6.10)
@@ -205,6 +210,18 @@ ECON_DIV = 16
 # οι αντλίες πατάνε στον ίδιο κύκλο — βλ. src/econ.asm.
 FLOW_DIV = ECON_DIV * 4
 
+# ΤΡΕΙΣ ΣΤΑΘΜΕΣ ΡΕΥΜΑΤΟΣ, ΟΧΙ ΔΥΟ (§6.5: «machines stop, THEN oxygen stops»).
+# Ως το βήμα 32 το power_ok ήταν μία σημαία για ολόκληρη την αποικία: στο
+# μπλακάουτ σταματούσε ΚΑΙ η γεννήτρια οξυγόνου, οπότε μια δεύτερη αντλία —
+# που είναι η σωστή απάντηση στο νερό — αγόραζε το νερό με το οξυγόνο κάθε
+# νύχτα. Μετρημένο: 13 στα 80 δείγματα χωρίς ρεύμα, O2 παραγωγή 20 -> 0.
+POWER_NONE, POWER_ALL, POWER_ESS = 0, 1, 2
+# Πόσους κύκλους ροής κρατά η ρεζέρβα της μπαταρίας για την υποστήριξη ζωής.
+# Οκτώ, επειδή η νύχτα είναι το 40% ενός sol και ένας κύκλος είναι 1/11,7 του
+# sol: 4,7 κύκλοι νύχτα, και οκτώ αφήνουν περιθώριο για αμμοθύελλα.
+RESERVE_SH = 3                          # src/econ.asm: ρεζέρβα = ζήτηση << 3
+RESERVE_CYCLES = 1 << RESERVE_SH
+
 
 def lfsr(x):
     """Ο ίδιος Galois με τη γεννήτρια κόσμου, ΞΕΧΩΡΙΣΤΗ κατάσταση: ο κόσμος
@@ -229,7 +246,7 @@ def run_plant(e, base, s, plant, plant_class):
     if e.stock[S_WATER] < PLANT_WATER:
         return
     e.acc_power += PLANT_POWER          # ζητάει, είτε το πάρει είτε όχι
-    if not e.power_ok:
+    if e.power_ok != POWER_ALL:         # ο κήπος δεν είναι υποστήριξη ζωής
         return
     e.stock[S_WATER] -= PLANT_WATER
     out, qty = PLANT_OUT[plant_class[plant] & 3]
@@ -269,8 +286,13 @@ def run_dome(e, d, plant_class=None):
         # Το ρεύμα μετράει ως ΖΗΤΗΣΗ: όσα θα έτρεχαν αν υπήρχε. Με «όσα κάηκαν»
         # το μπλακάουτ μηδένιζε τη ζήτηση και το ρεύμα ξαναγύριζε μόνο του.
         e.acc_power += r[8]
-        if not e.power_ok:                          # μπλακάουτ
-            continue
+        if r[9] & MF_FLOW:
+            e.acc_ess += r[8]                       # υποστήριξη ζωής
+        if e.power_ok != POWER_ALL:
+            # POWER_NONE: τίποτα. POWER_ESS: μόνο η υποστήριξη ζωής (§6.5 —
+            # «machines stop, THEN oxygen stops»).
+            if e.power_ok == POWER_NONE or not (r[9] & MF_FLOW):
+                continue
         for st, q in ins:
             if st != NO_STOCK:
                 e.stock[st] -= q
@@ -294,8 +316,10 @@ def production_slice(e, count=PROD_DOMES, plant_class=None):
         if e.prod_dome >= MAX_DOME:
             e.prod_dome = 0
             e.mach_power = e.acc_power      # ό,τι τράβηξαν οι μηχανές
+            e.ess_power = e.acc_ess
             e.o2_prod = e.acc_o2
             e.acc_power = 0
+            e.acc_ess = 0
             e.acc_o2 = 0
 
 
@@ -338,17 +362,29 @@ def flow_cycle(e):
     e.power_prod, e.power_cap, e.power_use = prod, cap, use
     if prod >= use:
         e.power_store = min(e.power_store + prod - use, cap)
-        e.power_ok = 1
+        e.power_ok = POWER_ALL
+    elif e.power_store >= (use - prod) + e.ess_power * RESERVE_CYCLES:
+        # ΜΕ ΡΕΖΕΡΒΑ, ΟΧΙ ΩΣ ΤΗΝ ΤΕΛΕΥΤΑΙΑ ΜΟΝΑΔΑ. Η μπαταρία δανείζεται στις
+        # μηχανές μόνο όσο μένει πίσω ό,τι χρειάζεται η υποστήριξη ζωής για
+        # οκτώ κύκλους — δηλαδή για μια νύχτα. Χωρίς αυτό η σειρά «πρώτα οι
+        # μηχανές, μετά το οξυγόνο» δεν σημαίνει τίποτα: οι μηχανές αδειάζουν
+        # τη μπαταρία στους δύο πρώτους κύκλους της νύχτας και το οξυγόνο
+        # σβήνει ούτως ή άλλως.
+        e.power_store -= use - prod
+        e.power_ok = POWER_ALL
+    elif prod >= e.ess_power:
+        # Ρίχνει φορτίο: αντλίες, ορυχεία, εργοστάσια, κήποι σταματούν και το
+        # περίσσευμα φορτίζει.
+        e.power_store = min(e.power_store + prod - e.ess_power, cap)
+        e.power_ok = POWER_ESS
+    elif e.power_store >= e.ess_power - prod:
+        e.power_store -= e.ess_power - prod
+        e.power_ok = POWER_ESS
     else:
-        short = use - prod
-        if e.power_store >= short:
-            e.power_store -= short
-            e.power_ok = 1
-        else:
-            e.power_store = 0
-            e.power_ok = 0
+        e.power_store = 0
+        e.power_ok = POWER_NONE
 
-    if e.power_ok:                          # οι αντλίες θέλουν ρεύμα
+    if e.power_ok == POWER_ALL:             # οι αντλίες θέλουν ρεύμα
         add_stock(e, S_WATER, water)
         add_stock(e, S_ORE, ore)
         # Το νερό και το μετάλλευμα βγαίνουν από ΔΟΜΕΣ, όχι από μηχανές
@@ -462,10 +498,15 @@ def to_bytes(e):
     out += bytes([e.ship_state, e.ship_kind, e.pop_cap, e.milestones,
                   e.deaths_sol, e.no_death_sols, e.green_sols,
                   e.no_trade_sols, e.traded, e.pad_node])
+    # ΣΤΟ ΤΕΛΟΣ, ΚΑΙ ΕΠΙΤΗΔΕΣ: δεκάδες δοκιμές και εργαλεία ξέρουν απ' έξω ότι
+    # το power_ok είναι στο +46 και οι ζωντανοί στο +58. Δύο πεδία στη μέση θα
+    # τα μετακινούσαν όλα.
+    out += int(e.ess_power).to_bytes(2, "little")
+    out += int(e.acc_ess).to_bytes(2, "little")
     return bytes(out)
 
 
-ECON_BYTES = 64 + 8 + 10                            # + sol/ship/ορόσημα = 82
+ECON_BYTES = 64 + 8 + 10 + 4                        # + ess_power/acc_ess = 86
 
 
 def populate(e, n_dome=24, n_struct=30, seed=11):
@@ -912,7 +953,9 @@ def sol_rollover(e, a, F_ALIVE, F_WORKING, NEED_LOW):
     # «Ολες οι ανάγκες πράσινες» είναι η ένδειξη της ΑΠΟΙΚΙΑΣ, όχι η μπάρα
     # κάθε ατόμου: με ενενήντα αποίκους κάποιος είναι πάντα καθ' οδόν προς
     # την καντίνα, και ένα ορόσημο που δεν πιάνεται ποτέ δεν είναι ορόσημο.
-    green = bool(e.o2_ok and e.power_ok
+    # ΚΑΙ «ρεύμα» ΣΗΜΑΙΝΕΙ ΓΙΑ ΟΛΟΥΣ: ένα sol που η αποικία πέρασε ρίχνοντας
+    # φορτίο (POWER_ESS) δεν είναι πράσινο sol — οι μηχανές της σταμάτησαν.
+    green = bool(e.o2_ok and e.power_ok == POWER_ALL
                  and e.stock[S_WATER] and e.stock[S_FOOD])
     bots = 0
     for i in range(MAXAGENT_J):

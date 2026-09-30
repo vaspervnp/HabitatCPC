@@ -16,8 +16,8 @@ bytes του παιχνιδιού: ο θόλος έλειπε από την οθ
 έγινε έλεγχος αντί για σχόλιο.
 """
 
-BUF = 0x3EC0                            # 64 bytes: 8 πεδία x 8 άποικοι
-CODE = 0x3F10                           # η σκαλωσιά, μέσα στα 199 ελεύθερα
+BUF = 0x3EC0                            # 72 bytes: 9 πεδία x 8 άποικοι
+CODE = 0x3F10                           # η σκαλωσιά, πάνω από το TEST_FLOOR
 NAG = 8                                 # πόσοι άποικοι ανά δείγμα
 
 AG_BASE = 0x6C00                        # G_agent_fields, τράπεζα 6
@@ -27,7 +27,8 @@ DOME_HEAD = ("cx", "cy", "size", "room", "state", "integ", "power", "ops")
 NDOME = 8                               # 8 x 8 bytes = ακριβώς το BUF
 # (όνομα, σελίδα, δεύτερο μισό;) — §6.1, δύο πεδία ανά σελίδα
 FIELDS = (("flags", 0, 0), ("node", 1, 0), ("dest", 2, 0), ("edge", 2, 1),
-          ("task", 3, 1), ("water", 4, 1), ("food", 5, 0), ("health", 6, 0))
+          ("task", 3, 1), ("oxygen", 4, 0), ("water", 4, 1), ("food", 5, 0),
+          ("health", 6, 0))
 
 F_ALIVE, F_INDOORS, F_ASLEEP, F_SICK, F_IDLE, F_WORKING = 1, 2, 4, 8, 16, 32
 NO_TASK = 255

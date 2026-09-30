@@ -15,6 +15,35 @@ MF_OPERATOR equ 1
 MF_FLOW     equ 2
 PROD_DOMES  equ 16
 
+; ΤΡΕΙΣ ΣΤΑΘΜΕΣ ΡΕΥΜΑΤΟΣ, ΟΧΙ ΔΥΟ. Ο πίνακας του §6.5 γράφει για την αστοχία
+; ρεύματος «machines stop, THEN oxygen stops» — και ο κώδικας δεν είχε «then»:
+; το EC_POK ήταν μία σημαία για ολόκληρη την αποικία, οπότε το ίδιο μπλακάουτ
+; που σταματούσε τις αντλίες σταματούσε και τη γεννήτρια οξυγόνου.
+;
+; Αυτό δεν ήταν θεωρητικό. Το βήμα 31 μέτρησε ότι η σωστή απάντηση στο νερό —
+; δεύτερη αντλία — ανεβάζει τη ζήτηση από 22 σε 28 απέναντι σε 36 παραγωγής,
+; και τότε η μέρα αποταμιεύει ~50 ενώ η νύχτα θέλει ~130: μπλακάουτ κάθε νύχτα,
+; 13 στα 80 δείγματα, με την παραγωγή οξυγόνου να πέφτει 20 -> 0 και τη μπάρα
+; του αποίκου στο 208. Δηλαδή το παιχνίδι τιμωρούσε τη σωστή κίνηση.
+;
+; Οι ΤΡΕΙΣ ΣΤΑΘΜΕΣ — P_NONE, P_ALL, P_ESS — ζουν στο src/const.asm: τις
+; διαβάζουν και το hud.asm, το main.asm και το ship.asm, και δεν συμπεριλαμβάνουν
+; όλα τα δοκιμαστικά harness το econ.asm (το objtest δεν το κάνει, και το είπε
+; με σφάλμα μεταγλώττισης).
+
+; Η ΡΕΖΕΡΒΑ: πόσους κύκλους ροής κρατά η μπαταρία ΣΤΗΝ ΑΚΡΗ για την
+; υποστήριξη ζωής. Η
+; νύχτα είναι το 40% του sol και ένας κύκλος το 1/11,7 του sol — 4,7 κύκλοι —
+; οπότε το οκτώ καλύπτει τη νύχτα και μια αμμοθύελλα από πάνω.
+;
+; ΓΡΑΜΜΕΝΟ ΩΣ ΟΛΙΣΘΗΣΕΙΣ, ΚΑΙ ΤΟ `repeat` ΔΕΝ ΕΙΝΑΙ ΚΑΛΛΩΠΙΣΜΟΣ: η πρώτη μορφή
+; είχε τρία καρφωμένα `add hl,hl` με ένα σχόλιο «x RESERVE_CYC» από δίπλα. Η
+; σταθερά δεν σήμαινε τίποτα — το αρνητικό δείγμα την έβαλε 0, το binary δεν
+; άλλαξε ούτε ένα byte, και η δοκιμή «πέρασε» χωρίς ρεζέρβα. Μια σταθερά που
+; δεν οδηγεί τον κώδικα είναι χειρότερη από καθόλου σταθερά.
+RESERVE_SH  equ 3                       ; ρεζέρβα = ζήτηση ζωής << RESERVE_SH
+RESERVE_CYC equ 1 << RESERVE_SH         ; = 8 κύκλοι, όσο λέει η αναφορά
+
 ; ΤΟ ΡΟΛΟΙ ΤΗΣ ΟΙΚΟΝΟΜΙΑΣ (§6.5). Οι συνταγές και οι αντλίες έτρεχαν κάθε
 ; περιστροφή τροχού — 750 φορές το sol — ενώ ο πίνακας του §6.5 τις έγραφε ΑΝΑ
 ; SOL. Μετρημένο στο tools/balance.py: η μηχανή οξυγόνου έπινε τα 60 νερά της
@@ -54,10 +83,13 @@ epr_lp:
         ; το σάρωμα έκλεισε: ό,τι μαζεύτηκε γίνεται η επίσημη τιμή
         ld      hl,(EC_ACCP)
         ld      (EC_MPOWER),hl
+        ld      hl,(EC_ACCE)
+        ld      (EC_EPOWER),hl
         ld      hl,(EC_ACCO2)
         ld      (EC_O2PROD),hl
         ld      hl,0
         ld      (EC_ACCP),hl
+        ld      (EC_ACCE),hl
         ld      (EC_ACCO2),hl
         xor     a
 epr_store:
@@ -180,8 +212,8 @@ ec_run_plant:
         call    ec_add16
         pop     de
         ld      a,(EC_POK)
-        or      a
-        ret     z                       ; μπλακάουτ: ούτε πίνει ούτε βγάζει
+        cp      P_ALL
+        ret     nz                      ; ο κήπος δεν είναι υποστήριξη ζωής
 
         ld      a,(de)
         sub     1
@@ -312,10 +344,26 @@ erm_run:
         ld      d,0
         ld      hl,EC_ACCP
         call    ec_add16
+        ; Η ΥΠΟΣΤΗΡΙΞΗ ΖΩΗΣ ΜΕΤΡΙΕΤΑΙ ΚΑΙ ΧΩΡΙΣΤΑ: το ισοζύγιο πρέπει να ξέρει
+        ; πόσο ρεύμα κρατά την αποικία ζωντανή, για να μπορεί να αφήσει τα
+        ; υπόλοιπα να σταματήσουν.
+        ld      a,(ed_flags)
+        and     MF_FLOW
+        jr      z,erm_pok
+        ld      e,(ix+8)
+        ld      d,0
+        ld      hl,EC_ACCE
+        call    ec_add16
+erm_pok:
         ld      a,(EC_POK)
+        cp      P_ALL
+        jr      z,erm_take
         or      a
         ret     z                       ; μπλακάουτ: ζήτησε, δεν πήρε
-
+        ld      a,(ed_flags)            ; P_ESS: μόνο η υποστήριξη ζωής
+        and     MF_FLOW
+        ret     z
+erm_take:
         ; --- αφαίρεση, με τους δείκτες που ήδη έχουμε ---
         ld      de,(ed_p1)
         ld      a,(ed_q1)
@@ -634,28 +682,81 @@ ef_battery:
         ld      hl,(ef_cap)
 ef_ch_st:
         ld      (EC_PSTORE),hl
-        ld      a,1
+        ld      a,P_ALL
         ld      (EC_POK),a
-        jr      ef_pumps
+        jp      ef_pumps
 
+; --- η παραγωγή δεν φτάνει: ποιος σταματά πρώτος (§6.5) --------------------
+; Η μπαταρία δανείζεται στις μηχανές ΜΟΝΟ όσο μένει πίσω ό,τι θέλει η
+; υποστήριξη ζωής για RESERVE_CYC κύκλους. Χωρίς αυτή τη ρεζέρβα η σειρά
+; «πρώτα οι μηχανές, μετά το οξυγόνο» δεν σημαίνει τίποτα: οι μηχανές
+; αδειάζουν τη μπαταρία στους δύο πρώτους κύκλους της νύχτας και το οξυγόνο
+; σβήνει ούτως ή άλλως — που είναι ακριβώς αυτό που μετρήθηκε στο βήμα 31.
 ef_deficit:
         ld      hl,(ef_use)
         ld      de,(ef_prod)
         or      a
         sbc     hl,de                   ; HL = έλλειμμα
+        ld      (ef_short),hl
+        ld      hl,(EC_EPOWER)
+        repeat  RESERVE_SH
+        add     hl,hl                   ; x RESERVE_CYC
+        rend
+        ld      de,(ef_short)
+        add     hl,de
+        ex      de,hl                   ; DE = έλλειμμα + ρεζέρβα
+        ld      hl,(EC_PSTORE)
+        or      a
+        sbc     hl,de
+        jr      c,ef_shed
+        ld      hl,(EC_PSTORE)          ; η μπαταρία σηκώνει και τα δύο
+        ld      de,(ef_short)
+        or      a
+        sbc     hl,de
+        ld      (EC_PSTORE),hl
+        ld      a,P_ALL
+        ld      (EC_POK),a
+        jp      ef_pumps
+
+; --- ρίχνει φορτίο: αντλίες, ορυχεία, εργοστάσια και κήποι σταματούν -------
+ef_shed:
+        ld      hl,(ef_prod)
+        ld      de,(EC_EPOWER)
+        or      a
+        sbc     hl,de
+        jr      c,ef_shed_dr
+        ld      de,(EC_PSTORE)          ; ό,τι περισσεύει, φορτίζει
+        add     hl,de
+        ld      de,(ef_cap)
+        push    hl
+        or      a
+        sbc     hl,de
+        pop     hl
+        jr      c,ef_shed_st
+        ld      hl,(ef_cap)
+ef_shed_st:
+        ld      (EC_PSTORE),hl
+        jr      ef_shed_ok
+ef_shed_dr:
+        ld      hl,(EC_EPOWER)          ; από τη μπαταρία, αν φτάνει
+        ld      de,(ef_prod)
+        or      a
+        sbc     hl,de
         ex      de,hl
         ld      hl,(EC_PSTORE)
         or      a
         sbc     hl,de
         jr      c,ef_blackout
         ld      (EC_PSTORE),hl
-        ld      a,1
+ef_shed_ok:
+        ld      a,P_ESS
         ld      (EC_POK),a
-        jr      ef_pumps
+        jr      ef_o2                   ; οι αντλίες είναι από τα φορτία που
+                                        ; έπεσαν: αντλούν την επόμενη μέρα
 ef_blackout:
         ld      hl,0
         ld      (EC_PSTORE),hl
-        xor     a
+        xor     a                       ; P_NONE
         ld      (EC_POK),a
         jr      ef_o2                   ; χωρίς ρεύμα δεν αντλεί κανείς
 
@@ -990,6 +1091,7 @@ ef_prod:    dw 0
 ef_cap:     dw 0
 ef_use:     dw 0
 ef_wat:     dw 0
+ef_short:   dw 0
 ef_ore:     dw 0
 ec_pdiv:    db 1
 ec_fdiv:    db 1

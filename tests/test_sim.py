@@ -417,7 +417,7 @@ def main():
           f"({', '.join(produced[:6])}...)")
     print(f"              ρεύμα {e.power_prod} παραγωγή / {e.power_use} χρήση, "
           f"μπαταρία {e.power_store}/{e.power_cap}, "
-          f"{'ΟΚ' if e.power_ok else 'ΜΠΛΑΚΑΟΥΤ'}")
+          f"{('ΜΠΛΑΚΑΟΥΤ', 'ΟΚ', 'ΠΕΣΜΕΝΟ ΦΟΡΤΙΟ')[e.power_ok]}")
     print(f"              οξυγόνο {e.o2_prod}/{e.o2_use} "
           f"{'ΟΚ' if e.o2_ok else 'ΕΛΛΕΙΜΜΑ'}, sol {e.sol} "
           f"{'μέρα' if e.day else 'νύχτα'}, άνεμος {e.wind}")

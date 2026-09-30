@@ -568,9 +568,18 @@ the HUD moved into the play area's page and bank 2 became **flat 16 KB**:
 | Cursor and UI chrome (reserve) | 256 |
 | Node graph (`node_deg`, `node_adj`) and BFS workspace | 1,536 |
 | Machine recipes (12 × 10) + the "needs an operator" lookup | 132 |
-| Economy state — stocks, flows, clock, weather, ships, milestones | 82 |
+| Economy state — stocks, flows, clock, weather, ships, milestones | 86 |
 | Job board 160 · room index 108 | 268 |
-| **Total** | **15,163** of 16,384 — **1,024 free, contiguous** |
+| **Sub-total, the data arena** | **11,384** — what `tools/pack.py` lays out |
+| The ghost's undo log (`GH_BUF`, [§9.3](#93-build-flow)) | 1,600 |
+| Code that runs from here: `build`, `route`, `sound`, `save`, `hw` | 3,338 |
+| **Total** | **16,322** of 16,384 — **62 free** |
+
+That total used to read *15,163, 1,024 free, contiguous*, which stopped being true
+when the undo log and the bank-2 code block moved in and was never corrected. The
+authority is `build/layout.txt`, which is regenerated on every build; a figure copied
+into prose drifts, and this document has now been caught doing it twice — here and in
+bank 6's slack ([§15](#15-open-risks)).
 
 `struct_ptr` is new: the renderer indexes external structures as
 `kind*4 + size` and four of the eight kinds exist in one size only, so the table
@@ -1180,7 +1189,7 @@ Two **flows**, buffered and balanced every wheel revolution:
 
 | Flow | Produced by | Consumed by | Failure |
 |---|---|---|---|
-| Power | `solar` (day only), `turbine` (wind), stored in `collector` | every machine, lighting at night | machines stop, then oxygen stops |
+| Power | `solar` (day only), `turbine` (wind), stored in `collector` | every machine, lighting at night | machines stop, **then** oxygen stops — three levels, [below](#machines-stop-then-oxygen-stops--and-that-then-was-missing) |
 | Oxygen | `mach_oxygen` (small domes only) | every colonist, leaks | health drains, fast |
 
 **Fourteen stocks**, 16-bit, capped by storage-dome capacity:
@@ -1312,6 +1321,71 @@ The accumulator now counts what each machine *would* draw — operator present, 
 in stock, only the power missing — so a blackout stays a blackout until something
 changes it, and [§10.1](#101-start-state)'s "you need power before anything else"
 became true for the first time.
+
+#### Machines stop, *then* oxygen stops — and that `then` was missing
+
+The failure column of the flow table above has said *machines stop, then oxygen stops*
+since the first draft. The code had no *then*: `power_ok` was one flag for the whole
+colony, so the blackout that stopped the pumps stopped the oxygen generator in the
+same revolution.
+
+That is not a detail, because it punished the right move. Milestone 31 measured that
+the answer to water is a second extractor; a second extractor takes demand from 22 to
+28 against two panels' 36, the day banks about 50 and the night wants about 130. So
+the colony blacked out **every** night — measured over 8,000 frames with two pumps:
+**13 of 80 samples with no power, oxygen production 20 → 0, the worst colonist's
+oxygen bar down to 208.**
+
+There are three levels now, and the flow balance picks one per cycle:
+
+| `EC_POK` | What runs | When |
+|---|---|---|
+| `P_ALL` = 1 | everything | production covers demand, or the battery covers the shortfall **and still keeps the reserve** |
+| `P_ESS` = 2 | only `MF_FLOW` machines — life support | production or battery covers those, but not the rest |
+| `P_NONE` = 0 | nothing | not even life support can be paid for |
+
+**The battery keeps a reserve, and the negative control says exactly what that buys.**
+The battery lends to the machines only while `essential × RESERVE_CYCLES` stays behind
+it — eight cycles, because a night is 40% of a sol and a cycle is 1/11.7 of one (4.7
+cycles), leaving room for a sandstorm. Setting that constant to zero and re-running the
+colony **still passes**: on a four-person base the night is short enough that the
+machines never quite empty the battery, so what saves the oxygen there is the *level*,
+not the reserve. Where the reserve pays is a long night — a storm, or a bigger base.
+Eight cycles of darkness at demand 16 against 4 of life support, measured on the
+reference implementation:
+
+```
+with the reserve     P_ALL P_ESS P_ESS P_ESS P_ESS P_ESS P_ESS P_ESS   battery 12 at dawn
+without it           P_ALL P_ALL P_ALL P_ESS P_ESS P_NONE P_NONE P_NONE   battery 0
+```
+
+Three cycles of machines, and then nobody breathes for three. That contrast is a check
+of its own in `tests/test_power.py`, because a constant nobody can knock over is a
+constant nobody has tested.
+
+It also makes the collector a ladder rather than a switch: at 60 units the machines
+run one more cycle into the night, at 200 they run all night, and the player can see
+which by watching the battery. The essential demand is accumulated separately by the
+production pass (`EC_ACCE` → `EC_EPOWER`) exactly as `EC_ACCP` → `EC_MPOWER` is, so it
+costs one more accumulator and no scan.
+
+Measured on the same colony after the change: **0 of 80 samples without power, oxygen
+production never leaves 20, the worst oxygen bar 251 instead of 208** — and the price,
+which is real and visible, is that the pumps are among the loads that fall, so water
+climbs 63 → 147 over the window instead of 63 → 153. `tests/test_power.py` holds both
+halves: the rule on the reference implementation, one unit either side of the
+threshold, and the colony in the real binary.
+
+**And the constant has to drive the code.** The first version of the reserve was three
+hard-coded `add hl,hl` with `; × RESERVE_CYC` written beside them. Setting the constant
+to zero changed **not one byte** of the binary, so the first negative control "passed"
+with no reserve at all and proved nothing. It is `repeat RESERVE_SH` now, and the
+control moves the binary — which is the only reason its result can be believed.
+
+The alert line says `LOW POWER` while load is shed, and keeps `NO POWER` for a real
+blackout ([§9.2](#92-hud)). The klaxon stays on the blackout only — a siren every
+dusk would be noise — and a sol spent shedding does **not** count as an all-green sol
+for [§10.2](#102-milestones).
 
 #### The slot order is the room's order, not the table's
 
@@ -2372,9 +2446,17 @@ which is the only place in the HUD where a colour carries meaning on its own.
 
 The alert line is the game's voice and it should be specific: `NO POWER — OXYGEN
 GEN 2` beats `WARNING`. Today it names the condition but not yet the machine —
-`NO POWER`, `NO OXYGEN`, `LOW ON FOOD`, `LOW ON WATER`, `SANDSTORM`, `COLONY LOST`,
-`ALL SYSTEMS OK` — because naming the machine needs the selection the build mode has
-not built yet.
+`NO POWER`, `LOW POWER`, `NO OXYGEN`, `LOW ON FOOD`, `LOW ON WATER`, `SANDSTORM`,
+`COLONY LOST`, `ALL SYSTEMS OK` — because naming the machine needs the selection the
+build mode has not built yet. The order is *how long the player has*: `NO POWER`,
+`NO OXYGEN`, `LOW POWER`, then the two supply lines.
+
+**`LOW POWER` is milestone 32's, and it is not a smaller `NO POWER`.** It means the
+colony shed its load and is running life support only ([§6.5](#65-economy)): the
+oxygen is fine and the factories, pumps and greenhouses are stopped. That state is
+otherwise **invisible** — the only symptom is that the stores stop climbing, in the
+middle of the night, which nobody watches — so the line is the whole of the player's
+notice. The klaxon does not sound for it; a siren every dusk would be noise.
 
 **The two supply lines were added at milestone 29, and the reason is that hunger is
 quiet.** Asphyxiation announces itself in seconds; a store that is running out takes
@@ -3062,6 +3144,7 @@ tests in this document runnable rather than aspirational:
 | Corridor routing | independent Python router compared on every pair of domes, then the *picture* compared at both kinds of bend (`test_route.py`) |
 | The whole game | `src/main.asm` booted: start state, the economy moving inside the loop, a building placed and **finished**, and the HUD following it with no input (`test_game.py`) |
 | Needs beat the board | the food colony of [§6.6](#66-needs) run for 9,000 frames, watching the *bars* rather than the corpses, plus the player's canteen getting an operator (`test_needs.py`) |
+| Who stops first | the reserve rule on the reference implementation — one unit either side of the threshold, and a storm-length night with the reserve knocked out beside it — then the two-pump colony in the real binary: load shed, oxygen never zero, pumps really stopped, `LOW POWER` on the screen (`test_power.py`) |
 | The map is a constraint | the pump refused on dry ground **with the reason on screen**, accepted at the shore and actually built; the mine likewise at a vein; and a dome and a solar panel accepted on the same dry ground, which is what separates "this rule" from "this patch of dirt" (`test_map.py`) |
 | The disc | `RUN"HABITAT` from a cold BASIC prompt: the game arrives, the start state is there, the HUD is drawn, and the world is **generated** rather than loaded (`test_disc.py`) |
 | Disc driver | the μPD765 without AMSDOS: reads the disc's own **catalogue** and compares it with the host's `.dsk` byte for byte, then writes three sectors, reads them back, and checks the neighbouring sector is untouched (`test_fdc.py`) |
@@ -3223,7 +3306,7 @@ gap.
 | ~~The flow-balance wheel slot re-scans 64 structures every revolution~~ | ~~Medium~~ | **Resolved, and not for speed.** 7,887 µs for numbers that change slowly — but the reason it moved was [§6.5](#65-economy)'s clock: a battery that charges 750 times a sol is not a battery. The scan, the battery and the pumps now run once per 64 revolutions (`FLOW_DIV`), the living are still counted every revolution, and a finished building kicks the balance so the panel the player just paid for shows up at once. |
 | ~~Nothing the player does exists: no build mode, no input, no HUD, nothing drawn since milestone 5~~ | ~~High~~ | **Resolved.** The colony is drawn, the camera scrolls, the dirty list keeps it honest, the HUD reports — and the player now moves a cursor, opens a menu, places a dome and routes a corridor between two of them ([§9.1](#91-controls), [§9.3](#93-build-flow), [§9.4](#94-corridor-routing), [§6.9](#69-construction)). |
 | ~~The two halves have never been assembled into one binary~~ | ~~Medium~~ | **Assembled, and it did not fit: 20,571 bytes wanted 16,128.** Resolved by moving the generator out, cutting `MAX_NODES` to 96 and putting code in bank 2 ([§4.2](#42-the-eight-banks)). It also turned up duplicate constants in three files and, worse, [§7.4](#74-one-convention-per-half-and-they-disagreed)'s paging disagreement. |
-| **Memory is the binding constraint from here on** | High | **256 bytes free in bank 0, 62 in bank 2's code area, 28 in bank 6, 440 in bank 7 (234 of the `text` block)** — the figures after milestone 31, and two of them are corrections rather than changes. Bank 0's ceiling is **not** the loader's endgame at `&3FC0` but `&3EC0`, where the tests' own scaffolding runs; milestone 31 found that the hard way, made it a build check and moved it up 192 bytes ([§4.2](#42-the-eight-banks)). Bank 6's *156* was wrong by 128 — `tools/pack.py` has been printing **28** all along, which is what happens to a figure that is copied into a document instead of read out of the build. Milestones 26–29 spent 384 on rooms, 170 on the ship button and slot order, 12 on the needs task and 105 on room priorities and the alert lines; 30 handed back 560; 31 spent 110 on the terrain rule and 42 on two messages, and took 192 back from the test floor. `tools/mapsize.py` says *who* is spending bank 0. The reserves that remain, in order: bank 7's `audio` block (2,048) and the rest of `text` (234), the tests' 320-byte floor once the probes take their address from `ZZ_BANK0_END`, `newgame.asm` and `fdc.asm` (957 bytes of cold code that can follow `save.asm` into bank 2 as soon as bank 2 has room), and size-optimising `object.asm` and `ui.asm` — 5,072 bytes between them, the two biggest things in bank 0 by a factor of two. Every new feature still costs a decision. |
+| **Memory is the binding constraint from here on** | High | **112 bytes free in bank 0, 62 in bank 2's code area, 28 in bank 6, 440 in bank 7 (213 of the `text` block)** — after milestone 32, which spent 144 of bank 0 on the three power levels and the `LOW POWER` line. Bank 0's ceiling is **not** the loader's endgame at `&3FC0` but `&3EC0`, where the tests' own scaffolding runs; milestone 31 found that the hard way and made it a build check ([§4.2](#42-the-eight-banks)). Bank 6's *156* was wrong by 128 — `tools/pack.py` has been printing **28** all along, which is what happens to a figure copied into a document instead of read out of the build. Milestones 26–29 spent 384 on rooms, 170 on the ship button and slot order, 12 on the needs task and 105 on room priorities and the alert lines; 30 handed back 560; 31 spent 152 and took 192 back from the test floor; 32 spent 144. `tools/mapsize.py` says *who* is spending bank 0. The reserves that remain, in order: bank 7's `audio` block (2,048) and the rest of `text` (213), the tests' 320-byte floor once the probes take their address from `ZZ_BANK0_END`, `newgame.asm` and `fdc.asm` (957 bytes of cold code that can follow `save.asm` into bank 2 as soon as bank 2 has room), and size-optimising `object.asm` and `ui.asm` — 5,072 bytes between them, the two biggest things in bank 0 by a factor of two. **The next feature of any size has to pay for its own space first.** |
 | ~~Nothing finishes what the player starts~~ | ~~High~~ | **Built.** A Build job is picked up, the agent routes to the site, works it 32 points a visit, and at 255 the building turns `DS_ACTIVE` and is drawn ([§6.9](#69-construction)). `tests/test_game.py` walks the whole chain: place a solar panel with 30 Metal, and about six seconds later the HUD says `ALL SYSTEMS OK` with no key pressed in between. |
 | **A completed building stalls the game for 0.8 s** | Medium | The full redraw of [§6.9](#69-construction) step 4, in place of the eight-chunk reveal that is specified and unwritten. Rare — once per building — but it is a visible freeze, and it is the first thing to fix if building ever becomes frequent. |
 | ~~The simulation still pushes nothing into the dirty list~~ | ~~High~~ | **Wired for ring slots**, which is what moves: `ent_claim` and `ent_release` push a `DK_SLOT`, and the figure cache is rebuilt once per burst rather than once per slot ([§8.5](#85-the-dirty-list)). Machines breaking, plants growing and room changes still push nothing. |
@@ -3241,7 +3324,7 @@ gap.
 | ~~A colony of four cannot staff the food chain~~ | ~~Medium~~ | **They could. They were dying on the way to the canteen.** [§6.6](#66-needs)'s "their own needs outrank the board" dropped the job by writing `NO_TASK`, which is how the tables spell *idle*, so the assignment pass handed the work straight back and the colonist oscillated between machine and canteen until it died with Food in store. Going to eat is now a task the board does not touch (`T_NEED`), and the same colony — greenhouse, lab, canteen, four people — runs **eight sols with no deaths**, Food bottoming at 12 on sol 6 and climbing back to 27. `tests/test_needs.py` watches the bars, and its negative control on the old binary is bars pinned at zero for 1,100 frames. |
 | ~~One food chain feeds four, not twelve~~ | ~~Medium~~ | **It feeds twelve, once three things stopped fighting it** ([§6.5](#65-economy), [§6.7](#67-jobs)): one biologist per greenhouse instead of one per pot, `mach_vitromeat` at 2 per run instead of matching the canteen exactly, and `Operate` priorities per room instead of a tie broken by a distance that never changes. Measured: the twelve-person colony that used to die on sol 5 now runs eight sols with nobody dead. It has **no margin** — the store still touches zero — so the remaining work is a second chain, and the HUD now says `LOW ON FOOD` while there is still time to build one. |
 | ~~Water is the next thing to run out~~ | ~~Medium~~ | **Measured, and no rate needed touching.** This row asked for one thing — *measure a two-extractor colony before changing any number* — and the answer is flat: with one pump the same food colony goes **83 → 0 by sol 4** and then hovers between 0 and 6, with the oxygen generator running dry alongside it; with a second pump it goes **85 → 288 and keeps climbing**. Demand is 4 pots + `mach_vitromeat` 2 + `mach_oxygen` 1 = 7 a cycle against one large pump's 5, and the second pump turns a 2-a-cycle deficit into a 3-a-cycle surplus. The lever was already in the player's hands; the HUD's `LOW ON WATER` is how they learn to reach for it. What the second pump *costs* is the next row. |
-| **A second pump buys water with oxygen, after dark** | Medium | The same measurement, the other column: two pumps take the colony's draw from 22 to 28 against two panels' 36, so the day banks only ~50 of the ~130 the night wants, and **every night ends in a blackout** — `NO POWER` on sols 1 through 8, and each one takes life support with it, because `power_ok` is one flag for the whole colony. [§6.5](#65-economy)'s own failure column says *machines stop, **then** oxygen stops*; the code has no *then*. The fix is a priority tier — accumulate the `MF_FLOW` machines' demand separately, and when production plus a reserved slice of the battery cannot cover everything, shed the pumps, the mine and the factories and keep the oxygen running. Nobody died in eight sols, so this is a quality-of-play fault rather than a lethal one, but it is the shape of every "why did my base die at night" complaint. |
+| ~~A second pump buys water with oxygen, after dark~~ | ~~Medium~~ | **Resolved at milestone 32, and the ordering was already written down.** [§6.5](#65-economy)'s failure column said *machines stop, then oxygen stops* and `power_ok` was one flag, so the blackout that stopped the pumps stopped life support in the same revolution — 13 of 80 samples dark, oxygen production 20 → 0, the worst bar at 208. There are three levels now (`P_ALL` / `P_ESS` / `P_NONE`) and the battery lends to the machines only while eight cycles of life support stay behind it. Same colony after: **0 of 80 dark, oxygen never leaves 20, the worst bar 251**, at the honest price of pumps that stop at dusk — water climbs 63 → 147 over the window instead of 63 → 153. The HUD says `LOW POWER` while the load is shed, and a shed sol is not an all-green sol. |
 | ~~The map is scenery: the lake and the ore vein mean nothing~~ | ~~Medium~~ | **Resolved at milestone 31.** `extractor (on water)` and `mine (on ore)` had been in [§6.5](#65-economy)'s chain table from the first draft and nothing read them: a pump built in the middle of the desert pumped. Now the footprint must sit within two tiles of the material — measured, not chosen: the mine is impossible at one tile, because rock always rings a mountain — and the panel names what is missing. `tests/test_map.py` holds it, negative control included: with the rule stubbed out, the two "says no" checks fail and everything else still passes. |
 | **A machine cannot be chosen, only its room** | Medium | The slots are dealt round robin from what the room allows — **slot 0 deliberately** ([§6.5](#65-economy)), the rest in order — so a large Factory is one of each rather than eight of what the colony is short of, and there is no way to ask for the eight. The screen that fixes it is the same one that would let machines be costed individually ([§6.5](#65-economy)) — and the same one that would let a built dome change its room. Nothing is blocked by this; the colony is simply less sharp than the player. |
 | ~~The colony can spend its starting metal and never make more~~ | ~~High~~ | **Resolved and measured at milestone 27.** Two changes: the start state carries **60 Ore, 75 Metal, 45 Bioplastic**, and only pressurised structures cost Bioplastic ([§9.3](#93-build-flow)) — the old catalogue priced everything in both, so the colony's 30 Bioplastic ran out four buildings in and the only thing that makes more is behind two domes that cost it. A panel, an extractor and a small Factory now cost 57 Metal of the 75, and `tools/balance.py` measures the chain running: **60 Ore → 30 Metal by sol 4, 18 → 48**, which buys the 30-Metal mine that keeps the Factory fed ([§10.1](#101-start-state)). The opening is no longer the whole game's budget. |

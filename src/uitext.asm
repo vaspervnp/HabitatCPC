@@ -32,6 +32,7 @@ x_txt_day:    db "DAY",0
 x_txt_night:  db "NGT",0
 x_txt_ok:     db "ALL SYSTEMS OK     ",0
 x_txt_nopwr:  db "NO POWER           ",0
+x_txt_shed:   db "LOW POWER          ",0
 x_txt_noo2:   db "NO OXYGEN          ",0
 x_txt_storm:  db "SANDSTORM          ",0
 x_txt_nofood: db "LOW ON FOOD        ",0
@@ -93,6 +94,7 @@ txt_day   equ x_txt_day - TEXT_IMG + G_text
 txt_night equ x_txt_night - TEXT_IMG + G_text
 txt_ok    equ x_txt_ok - TEXT_IMG + G_text
 txt_nopwr equ x_txt_nopwr - TEXT_IMG + G_text
+txt_shed  equ x_txt_shed - TEXT_IMG + G_text
 txt_noo2  equ x_txt_noo2 - TEXT_IMG + G_text
 txt_storm equ x_txt_storm - TEXT_IMG + G_text
 txt_lost  equ x_txt_lost - TEXT_IMG + G_text

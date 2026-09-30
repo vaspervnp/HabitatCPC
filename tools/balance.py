@@ -371,12 +371,14 @@ def report(name, rows, dead_at):
         note = []
         if not r["pok"]:
             note.append("χωρίς ρεύμα")
+        elif r["pok"] == 2:                  # P_ESS: μόνο η υποστήριξη ζωής
+            note.append("πεσμένο φορτίο")
         if not r["o2ok"]:
             note.append("χωρίς οξυγόνο")
         if r["over"]:
             note.append("ΤΕΛΟΣ")
         key = (r["sol"], r["alive"], r["stock"][0] // 5,
-               r["stock"][3] // 5, tuple(note))
+               r["stock"][3] // 5, r["pok"], tuple(note))
         if key != last:
             print(f"{r['sol']:4d} {r['alive']:5d} {r['stock'][0]:6d} "
                   f"{r['stock'][1]:6d} {r['pp']:4d}/{r['pu']:<5d} "
