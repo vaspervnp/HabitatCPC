@@ -26,7 +26,13 @@
             (DK_CROW), όσες σειρές της φαίνονται, και ο κέρσορας την περιμένει.
             Σε κάθε καρέ ό,τι ήδη φαινόταν πρέπει να μένει· ένας κέρσορας πάνω
             σε σειρές που δεν βγήκαν ακόμη δεν πρέπει να αφήνει ίχνος· και μια
-            προεπισκόπηση που κρύβεται δεν πρέπει να αφήνει σημάδια.
+            προεπισκόπηση που κρύβεται δεν πρέπει να αφήνει σημάδια — και στις
+            ΒΟΡΕΙΕΣ στροφές σε οριζόντιο, που ως το βήμα 40 άφηναν ένα.
+  ΑΡΧΕΙΟ    Η προεπισκόπηση γράφει στο αρχείο του φαντάσματος ΑΚΡΙΒΩΣ το
+            πλαίσιο του κέρσορα (56) και ένα σημάδι (12) ανά ορατό tile της
+            διαδρομής. Η χειρότερη, από εξαντλητική αναζήτηση στο tools/route.py
+            (21.836 γεωμετρίες, κάθε κάμερα που δείχνει τον προορισμό), είναι
+            21 ορατά tiles: 308 bytes από τα 1.600 (βήμα 40).
 
 Το έδαφος καθαρίζεται με το χέρι στην τράπεζα 4 πριν μπουν οι θόλοι: το
 μεγαλύτερο καθαρό τετράγωνο του χάρτη είναι 14 tiles, πάνω στην αποικία, και
@@ -94,17 +100,19 @@ def tiles(f, fs, t, runs):
         if len(runs) > 1:
             d1, n1 = runs[1]
             vx, vy = route.DIR_U[d1]
-            last = out[-1]                   # η στροφή δεν το ξαναπερνά
+            # Η στροφή δεν ξαναπερνά tile της διαγωνίου: κατεβαίνοντας είναι το
+            # τελευταίο μπροστινό, ανεβαίνοντας προς οριζόντιο το τελευταίο
+            # «πίσω» (βήμα 40 — ως τότε η αναφορά κοίταζε μόνο το πρώτο).
             if vx:
                 c, r = ux * Td - (1 if ux > 0 else 0), uy * Td
                 for _ in range(n1):
-                    if (c, r) != last:
+                    if (c, r) not in out:
                         out.append((c, r))
                     c += vx
             else:
                 r, c = uy * (Sd - 1) - (1 if uy < 0 else 0), ux * Sd
                 for _ in range(n1):
-                    if (c, r) != last:
+                    if (c, r) not in out:
                         out.append((c, r))
                     r += vy
     elif d0 in (2, 6):
@@ -393,20 +401,69 @@ def build(sym, g, sa, sb, dx, dy, what, patch=None):
     return laid
 
 
-def trail(sym, g, sa, sb, dx, dy):
+def trail(sym, g, sa, sb, dx, dy, patch=None):
     """Η προεπισκόπηση μιας διαγωνίου και μετά απόκρυψη: η οθόνη πρέπει να
     είναι η πλήρης σχεδίαση. Ως το βήμα 37 το cr_walk περνούσε ΔΥΟ φορές από
     το tile που μοιράζονται δύο διαδοχικά πλακίδια, το φάντασμα ζωγράφιζε το
     σημάδι του δύο φορές, η δεύτερη εγγραφή κρατούσε για «φόντο» το πρώτο
     σημάδι — και η αναίρεση, που πάει μπροστά, το έγραφε τελευταίο. Ο κέρσορας
     άφηνε πίσω του ένα σημάδι ανά βήμα διαγωνίου. Επιστρέφει τα λάθος bytes."""
-    P = Pair(sym, g, sa, sb, dx, dy)
+    P = Pair(sym, g, sa, sb, dx, dy, patch=patch)
     G = P.G
     G.still()
     G.probe(["UI_HIDE"])
     hid = G.play()
     G.probe(["OB_CLIP_FULL", "VIEW_DRAW"])
     return sum(1 for a, b in zip(hid, G.play()) if a != b), P.runs
+
+
+def north_patch(sym):
+    """Το LD (crw_ly),BC του crw_h1 σε τέσσερα NOP: η βόρεια στροφή ξεχνά ότι
+    το πρώτο tile του οριζόντιου το πέρασε ήδη η διαγώνιος."""
+    at, ly = sym["CRW_H1"], sym["CRW_LY"]
+    from cpc import CPC
+    m = CPC()
+    m.run_frames(60)
+    assert m.quickload(R.T.SNA, start=False)
+    for k in range(40):
+        if (m.peek(at + k) == 0xED and m.peek(at + k + 1) == 0x43
+                and m.peek(at + k + 2) == ly & 0xFF and m.peek(at + k + 3) == ly >> 8):
+            return {at + k + i: 0 for i in range(4)}
+    raise SystemExit("δεν βρέθηκε το LD (crw_ly),BC στο crw_h1")
+
+
+VW, VH = 20, 10                          # το κάδρο σε tiles
+GH_FRAME, GH_MARK = 56, 12               # πλαίσιο κέρσορα 1x1, ένα σημάδι 2x4
+
+
+def ghost_log(sym, g, sa, sb, dx, dy, cam=None):
+    """(μετρημένο gh_ptr - GH_BUF, 56 + 12 x ορατά tiles, ορατά, κάμερα).
+
+    Ο κέρσορας σε tile του προορισμού μέσα στο κάδρο — εκεί τον κρατά πάντα το
+    παιχνίδι. Χωρίς κάμερα: εκείνη που δείχνει τα περισσότερα tiles."""
+    P = Pair(sym, g, sa, sb, dx, dy)
+    ts = P.ref()[2]
+    wb = WID[sb]
+    bx0, by0 = (P.cb[0] - wb) >> 1, (P.cb[1] - wb) >> 1
+    foot = [(bx0 + i, by0 + j) for j in range(wb) for i in range(wb)]
+
+    def seen(c):
+        return [t for t in ts if 0 <= t[0] - c[0] < VW and 0 <= t[1] - c[1] < VH]
+    if cam is None:
+        cams = [(x, y) for y in range(by0 - VH + 1, by0 + wb)
+                for x in range(bx0 - VW + 1, bx0 + wb)]
+        cam = max(cams, key=lambda c: len(seen(c)))
+    else:
+        cam = (bx0 + cam[0], by0 + cam[1])
+    cur = next(t for t in foot if 0 <= t[0] - cam[0] < VW and 0 <= t[1] - cam[1] < VH)
+    G, m = P.G, P.G.m
+    G.camera(*cam)
+    m.poke(sym["CUR_HX"], (2 * cur[0] + 1) & 0xFF)
+    m.poke(sym["CUR_HY"], (2 * cur[1] + 1) & 0xFF)
+    G.probe(["UI_HIDE", "UI_SHOW"])
+    got = (m.peek(sym["GH_PTR"]) | (m.peek(sym["GH_PTR"] + 1) << 8)) - G.ghbuf
+    n = len(seen(cam))
+    return got, GH_FRAME + GH_MARK * n, n, P.runs
 
 
 def flicker(sym, g, terrain=False):
@@ -540,10 +597,26 @@ def main():
     build(sym, g, 0, 2, 12, 6, "S -> L με στροφή σε οριζόντιο")
     build(sym, g, 2, 1, 6, 12, "L -> M με στροφή σε κάθετο")
     build(sym, g, 2, 0, 8, 0, "L δίπλα σε S, στροφή στην πόρτα")
-    for c in [(0, 0, 10, 10), (0, 0, -10, 10), (1, 1, 12, -12), (0, 2, 12, 6)]:
+    for c in [(0, 0, 10, 10), (0, 0, -10, 10), (1, 1, 12, -12), (0, 2, 12, 6),
+              (0, 0, 12, -6), (0, 0, -12, -6)]:
         bad, runs = trail(sym, g, *c)
         check(bad == 0, f"{c}: η προεπισκόπηση {runs} κρύβεται χωρίς ίχνος — "
                         f"{bad} λάθος bytes")
+    bad, runs = trail(sym, g, 0, 0, 12, -6, patch=north_patch(sym))
+    check(bad > 0, f"ΑΡΝΗΤΙΚΟ: χωρίς το crw_h1 να θυμάται το πρώτο tile, η "
+                   f"βόρεια στροφή {runs} αφήνει σημάδι — {bad} λάθος bytes")
+
+    # --- το αρχείο του φαντάσματος: η χειρότερη προεπισκόπηση, και το μοντέλο
+    # «πλαίσιο + ένα σημάδι ανά ορατό tile» σε κάθε είδος διαδρομής ---
+    for c, cam in [((0, 0, 23, -2), None),         # η χειρότερη: 21 ορατά
+                   ((0, 0, 12, -6), (-14, -4)),    # ΒΑ -> Α
+                   ((0, 0, -12, -6), (-2, -4)),    # ΒΔ -> Δ
+                   ((1, 0, 9, -11), (-12, 0)),     # ΒΑ -> Β
+                   ((2, 1, 10, 10), (-14, -8)),    # καθαρή διαγώνιος, L -> M
+                   ((2, 2, 24, 0), (-18, -4))]:    # αξονικός, L -> L
+        got, want, n, runs = ghost_log(sym, g, *c, cam=cam)
+        check(got == want, f"{c} {runs}: {n} ορατά tiles, αρχείο φαντάσματος "
+                           f"{got} bytes (56 + 12 x {n} = {want})")
     worst = flicker(sym, g)
     check(worst <= FLICKER_MAX,
           f"ό,τι ήδη φαινόταν δεν σβήνει όσο βγαίνουν οι σειρές: το χειρότερο "

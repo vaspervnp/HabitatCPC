@@ -293,19 +293,21 @@ def tiles_of(col, frm, runs, to):
         if len(runs) > 1:
             d1, n1 = runs[1]
             vx, vy = route.DIR_U[d1]
-            last = out[-1]                   # η στροφή δεν το ξαναπερνά
+            # Η στροφή δεν ξαναπερνά tile της διαγωνίου: κατεβαίνοντας είναι το
+            # τελευταίο μπροστινό, ανεβαίνοντας προς οριζόντιο το τελευταίο
+            # «πίσω» (βήμα 40 — ως τότε η αναφορά κοίταζε μόνο το πρώτο).
             if vx:
                 c = ux * Td - (1 if ux > 0 else 0)
                 r = uy * Td
                 for _ in range(n1):
-                    if (c, r) != last:
+                    if (c, r) not in out:
                         out.append((c, r))
                     c += vx
             else:
                 r = uy * (Sd - 1) - (1 if uy < 0 else 0)
                 c = ux * Sd
                 for _ in range(n1):
-                    if (c, r) != last:
+                    if (c, r) not in out:
                         out.append((c, r))
                     r += vy
     elif d0 in (2, 6):
