@@ -545,7 +545,12 @@ uil_second:
         ld      a,SFX_BUILD
         call    snd_play
         call    cr_redraw
-        jr      uil_after
+        jr      z,uil_after
+        ; Η διαγώνιος βγαίνει σειρά-σειρά από τη λίστα αλλαγών (cr_redraw):
+        ; το φάντασμα περιμένει την τελευταία, όπως μετά από θόλο (uip_fire).
+        ld      a,1
+        ld      (ui_owed),a
+        jp      hud_draw
 uil_full:
         ld      a,SFX_DENY
         call    snd_play

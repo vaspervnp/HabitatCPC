@@ -331,13 +331,13 @@ must always be reachable is in bank 0 (`&0000–&3FFF`) or bank 2 (`&8000–&BFF
 
 | Block | Bank | Contents | Bytes | Slack |
 |---|---|---|---|---|
-| `&0000–&3FFF` | 0 | engine code, ISR, blit kernels, UI | 16,384 | **803** |
+| `&0000–&3FFF` | 0 | engine code, ISR, blit kernels, UI | 16,384 | **690** |
 | window | 1 | **distance matrix** `DIST[96][128]` 12,288 · room icons `m` and `l` 3,936 | 16,384 | 160 |
 | window | 4 | **world plane** 128×128×1 byte | 16,384 | 0 |
 | window | 5 | **next-hop matrix** `NEXTHOP[96][128]` | 16,384 | 4,096 |
 | window | 6 | `flip_mode0` 256 · dome+ring `nw` quadrants 7,424 · slot figures 3,456 · entity tables 4,832 ([§6.1](#61-entities)) · figure cache 512 | 16,356 | 28 |
 | window | 7 | external structures 11,264 · plants 1,584 · `plant_ptr` 24 · text 1,024 · **font 1,536** (was the `audio` reservation, milestone 33) | 15,432 | 952 |
-| `&8000–&BFFF` | 2 | graphics, flat 9,592 (font gone to bank 7) · ghost undo log 1,600 · code 4,554 ([§4.3](#43-bank-2-flat-again)) | 15,746 | **638** |
+| `&8000–&BFFF` | 2 | graphics, flat 9,592 (font gone to bank 7) · ghost undo log 1,600 · code 4,737 ([§4.3](#43-bank-2-flat-again)) | 15,929 | **455** |
 | `&C000–&FFFF` | 3 | play-area screen | 16,384 | 0 |
 
 Every bank is spoken for. The two matrices in banks 1 and 5 are the clearest answer
@@ -572,8 +572,8 @@ the HUD moved into the play area's page and bank 2 became **flat 16 KB**:
 | Job board 160 · room index 108 | 268 |
 | **Sub-total, the data arena** | **9,592** — what `tools/pack.py` lays out |
 | The ghost's undo log (`GH_BUF`, [§9.3](#93-build-flow)) | 1,600 |
-| Code that runs from here: `build`, `route`, `sound`, `save`, `hw`, `fdc`, `newgame` | 4,554 |
-| **Total** | **15,746** of 16,384 — **638 free** |
+| Code that runs from here: `build`, `route`, `sound`, `save`, `hw`, `fdc`, `newgame` | 4,737 |
+| **Total** | **15,929** of 16,384 — **455 free** |
 
 #### Milestone 33: two reservations nobody read, and what they bought
 
@@ -1860,14 +1860,35 @@ describes belongs to build mode ([§9.3](#93-build-flow)), which is not written.
    | Large Factory | 998 ms | 859 | **140** (80 for the press, 60–80 per row, 140 when the ghost comes back) |
    | Solar panel | 439 | 220 | **120** |
    | Straight corridor | — | 260 | **120** |
-   | Diagonal or bent corridor (milestone 36) | — | — | **160–220** |
+   | Diagonal or bent corridor | — | — | 160–220 at 36 → **80–100** at 37 |
 
    The diagonal row is new because until milestone 36 no such corridor could be
-   built ([§9.4](#94-corridor-routing)). It costs more for a plain reason: the
-   bounding box of a diagonal of `n` steps is an `n × n` square, so a long one
-   redraws a square of terrain to change a line across it. Drawing it row by row —
-   three tiles per row, the strip the sprites actually touch — is the lever if it
-   ever matters; it has not been taken.
+   built ([§9.4](#94-corridor-routing)), and at first it cost more for a plain
+   reason: the bounding box of a diagonal of `n` steps is an `n × n` square, and a
+   seven-step one redrew 64 tiles in one frame — 130 ms of `cr_redraw`, 45 of them
+   terrain and 85 the object pass — to change a line across it. **Since milestone
+   37 the diagonal appears a row per frame, like a dome.** Each tile row it crosses
+   is one `DK_CROW` record: the three tiles the two diagonal pieces sharing that row
+   touch ([§8.5](#85-the-dirty-list)). Only rows inside the view are pushed — a long
+   diagonal would otherwise fill the 32-entry ring — and whatever scrolls in later
+   is drawn whole by the scroll strip. The axial run of a bend is already a thin
+   rectangle and is drawn at once. The ghost waits for the last row (`ui_owed`),
+   as after a dome. The press now costs 60 ms (100 with a bend's axial run), each
+   row 60–80, the worst frame 80–100.
+
+   **Corridor rows draw no terrain.** Each object is written as
+   `(screen AND mask) OR sprite`, so redrawing every object in order over a correct
+   picture of a subset of them, with the same tiles underneath, gives the correct
+   picture of all of them: whatever the terrain or an old object put there and no
+   new object covers, the old object writes again. A corridor only adds — it lays
+   no foundation — so its rectangles skip the tiles (`view_add`). With the tiles
+   first, what was already on screen in the strip vanished until the object pass
+   reached it, 30–85 ms, two to four frames: the bend drawn at the press, the
+   corner of the dome. `tests/test_link.py` samples every frame of the reveal and
+   counts bytes that had their final value and lose it: **13** in the worst frame
+   (a door re-covered for a moment by the corridor under it), **96** with the
+   terrain put back. A dome *does* change the tiles — its foundation — and keeps
+   `view_rect`.
 
    Two more things had to change for the large dome. The ghost that `uip_after`
    put back over the new site — red, 64 invalid-tile marks — cost 263 ms, and with
@@ -2389,6 +2410,7 @@ straight out of `assets/SPRITES.md` §8:
 | Terrain tile changes, under a dome | 3×3 tiles + every object over them | — | **109,824 µs** |
 | Building finished (`DK_BUILT`) | the room icon and every machine slot; a structure, nothing | 1.4 – 5.7 frames (the whole dome) | **17,971 µs** for a medium dome; a large one ≈ 42,000 by the rows above ([§6.9](#69-construction)) |
 | Site placed (`DK_SITE`, one per tile row) | the terrain of one footprint row, then that dome's shell and fittings clipped to it | — | **54,912 µs** for a medium dome's row; always alone in its frame ([§6.9](#69-construction)) |
+| Corridor row placed (`DK_CROW`, one per tile row of a diagonal) | the whole object pass clipped to three tiles, **no terrain** — the tiles a diagonal only touches are not the corridor's, so another dome, structure or crossing corridor can stand there | — | **59,904 µs** on open ground, 69,888 over a dome, in the test colony; always alone in its frame ([§6.9](#69-construction)) |
 
 **The figure cache is rebuilt from the agents, once per burst of pushes.**
 `dome_fig` is what tells the slot redraw which figure belongs where, and when the
@@ -2413,6 +2435,12 @@ The list is processed under a **20,000 µs per-frame cap** with the remainder ca
 over, and **one item always comes out** — otherwise an item costing more than the
 budget would block the list for ever. That is exactly the "under a dome" row: it
 overruns its frame alone, deliberately, rather than never being drawn.
+
+**The running total is 16 bits, and until milestone 37 it could wrap.** Two corridor
+rows came to 40,000 + 40,000 = 80,000, which is 14,464 after the wrap — under the
+cap, so both went out in one frame. Two site rows (55,000 each) wrap to 44,464 and
+had been stopping by luck. A carry out of the addition now ends the tick: it can
+only mean "over".
 
 If the 32-entry ring fills, nothing is discarded: an **overflow flag** is raised
 and the caller owes a full redraw. A dropped change leaves a lie on the screen
@@ -2532,8 +2560,10 @@ said the same thing, and guarding it with a signature (state, selection, validit
 link anchor, run count, affordability) took the step from 29,952 µs to 16,224. The
 rest was the ghost, drawn one line at a time until milestone 35 made its log a list of
 rectangles ([§9.3](#93-build-flow)): 17,472 → **6,240 µs** in `LOOK`, 43,680 →
-**18,720** with a six-tile corridor ghost on screen, and a large dome's ghost 131 →
-**18 ms** on open ground. Asserted by `tests/test_route.py`.
+18,720 with a six-tile corridor ghost on screen (**16,224** since milestone 37
+stopped marking the shared diagonal tiles twice, [§9.3](#93-build-flow)), and a
+large dome's ghost 131 → **18 ms** on open ground. Asserted by
+`tests/test_route.py`.
 
 ### 9.2 HUD
 
@@ -2712,7 +2742,22 @@ patch of unfinished site inside a finished dome. Two pieces, milestone 34:
   before drawing, and the tick swaps once more at the end. The swap is its own
   inverse: the first puts back what was under the ghost and parks the ghost in the
   log; the second drops the ghost in the same places and keeps the *new* bytes
-  underneath.
+  underneath. Since milestone 37 a corridor row does the same from its rectangle
+  (`dt_ghost_rect`): the player can step the cursor onto a diagonal whose rows are
+  still to come, and `ui_show` pays the debt at once.
+
+**Entries must not overlap.** The undo and the swap both walk the log forwards; if
+two entries cover the same byte, the later one saved the earlier one's ghost as its
+"background", the undo writes that last, and the ghost stays on the ground. Neither
+operation is then its own inverse. Nothing overlapped by design — a mark sits inside
+its tile, the frame on the tile edges — but **`cr_walk` visited the tile shared by
+two consecutive diagonal pieces twice**, and a bend's horizontal run starts on the
+diagonal's last tile, so every diagonal preview marked six or seven tiles twice and
+left a trail of marks behind the cursor (48–56 bytes per preview, measured). The
+corridor that was then built repainted its whole bounding box and hid them; drawn row
+by row, they showed. Since milestone 37 the walk visits each tile once — a diagonal
+of `n` steps is `n + 1` tiles — which also makes the preview cheaper (a six-tile
+route's log 152 → 128 bytes).
 
 `ui_hide` / `ui_show` would do the same and recompute everything the ghost shows —
 validation, the invalid-tile marks, the corridor plan — which for a large dome on bad
@@ -2801,6 +2846,10 @@ corridor lands on the ring is the geometry's call (`DIAG_K`, the turn table abov
 and the geometry was already right. `tests/test_route.py` never saw it because it
 plants its domes in the table without occupancy; `tests/test_link.py` places them
 through the interface.
+
+**The walk visits each tile once** (milestone 37): two consecutive diagonal pieces
+share a tile, and the bend's horizontal run starts on the diagonal's last one. The
+check, the stamp and the redraw box did not care; the ghost did ([§9.3](#93-build-flow)).
 
 **Both directions are tried.** The diagonal is anchored on the lattice of whichever
 dome the route *starts* from, so A→B and B→A are different questions; the router asks
@@ -3340,7 +3389,7 @@ tests in this document runnable rather than aspirational:
 | Corridor routing | independent Python router compared on every pair of domes, then the *picture* compared at both kinds of bend (`test_route.py`) |
 | The whole game | `src/main.asm` booted: start state, the economy moving inside the loop, a building placed and **finished**, and the HUD following it with no input (`test_game.py`) |
 | Building without a freeze | a large Factory, a solar panel and a corridor placed and finished in the real binary: a **canary** byte far from the building must survive (a full redraw repaints it), the screen must match a full redraw of the same state, and the worst frame is measured on a clock that does not lose it at a seam. The large dome must appear in exactly eight frames, one row each, and the ghost must be back after it. The ghost is left over the finishing dome and then moved, once with the lift cut out as a negative control (`test_reveal.py`); a corridor **with a bend** is compared against a full redraw in `test_route.py` |
-| Corridors between placed domes | diagonal and bent routes between domes placed through the interface, every size: 0 bad tiles where the route crosses its own ends' footprints, a stone and a third dome still block, the old check patched back in fails; four of them built, byte-exact against a full redraw, with B's door opposite the **last** run (`test_link.py`, [§9.4](#94-corridor-routing)) |
+| Corridors between placed domes | diagonal and bent routes between domes placed through the interface, every size: 0 bad tiles where the route crosses its own ends' footprints, a stone and a third dome still block, the old check patched back in fails. Seven built in all four diagonal directions, byte-exact against a full redraw, with B's door opposite the **last** run; the diagonal comes out **one row per frame**, as many rows as are in view, worst frame under 160 ms, and the ghost comes back after. Every frame of a reveal is sampled: what was already on screen must not vanish (13 bytes, against 96 with the terrain repainted). The cursor stepped onto rows still to come must leave no trace (22 bytes with `dt_ghost_rect` cut), a diagonal preview hidden again must leave no marks, and a strip one tile off for `/` must show (`test_link.py`, [§9.4](#94-corridor-routing)) |
 | Needs beat the board | the food colony of [§6.6](#66-needs) run for 9,000 frames, watching the *bars* rather than the corpses, plus the player's canteen getting an operator (`test_needs.py`) |
 | Who stops first | the reserve rule on the reference implementation — one unit either side of the threshold, and a storm-length night with the reserve knocked out beside it — then the two-pump colony in the real binary: load shed, oxygen never zero, pumps really stopped, `LOW POWER` on the screen (`test_power.py`) |
 | The map is a constraint | the pump refused on dry ground **with the reason on screen**, accepted at the shore and actually built; the mine likewise at a vein; and a dome and a solar panel accepted on the same dry ground, which is what separates "this rule" from "this patch of dirt" (`test_map.py`) |
@@ -3504,12 +3553,13 @@ gap.
 | ~~The flow-balance wheel slot re-scans 64 structures every revolution~~ | ~~Medium~~ | **Resolved, and not for speed.** 7,887 µs for numbers that change slowly — but the reason it moved was [§6.5](#65-economy)'s clock: a battery that charges 750 times a sol is not a battery. The scan, the battery and the pumps now run once per 64 revolutions (`FLOW_DIV`), the living are still counted every revolution, and a finished building kicks the balance so the panel the player just paid for shows up at once. |
 | ~~Nothing the player does exists: no build mode, no input, no HUD, nothing drawn since milestone 5~~ | ~~High~~ | **Resolved.** The colony is drawn, the camera scrolls, the dirty list keeps it honest, the HUD reports — and the player now moves a cursor, opens a menu, places a dome and routes a corridor between two of them ([§9.1](#91-controls), [§9.3](#93-build-flow), [§9.4](#94-corridor-routing), [§6.9](#69-construction)). |
 | ~~The two halves have never been assembled into one binary~~ | ~~Medium~~ | **Assembled, and it did not fit: 20,571 bytes wanted 16,128.** Resolved by moving the generator out, cutting `MAX_NODES` to 96 and putting code in bank 2 ([§4.2](#42-the-eight-banks)). It also turned up duplicate constants in three files and, worse, [§7.4](#74-one-convention-per-half-and-they-disagreed)'s paging disagreement. |
-| **Memory is the binding constraint from here on** | High | **803 bytes free in bank 0, 638 in bank 2's code area, 28 in bank 6, 952 in bank 7 (214 of the `text` block)** — after milestone 36 joined diagonal corridors to the colony, after milestone 35 put the milestone-2 blit kernels, which only their own tests still call, behind `HAS_QUADS`, after milestone 34 spent 279 and 118 on building without a freeze, and after milestone 33, which found two reservations nobody had ever read (`ui_cursor` 256 in bank 2, `audio` 2,048 in bank 7), moved the font into the second, and let `newgame.asm` and `fdc.asm` follow `save.asm` into bank 2 ([§4.3](#43-bank-2-flat-again)). Bank 0's ceiling is `&3EC0`, where the tests' own scaffolding runs, and the loader's two scratch areas are checks now too. Bank 6's *156* was wrong by 128 — `tools/pack.py` has been printing **28** all along, which is what happens to a figure copied into a document instead of read out of the build. The ledger: 26–29 spent 671; 30 handed back 560; 31 spent 152 and took 192 back from the test floor; 32 spent 144; 33 handed back 957 and cost 29 in paging; 34 spent 279 in bank 0 (the ghost's swap and bounding box, `view_rect`, the `DK_BUILT` handler) and put its cold half — the two post-placement redraws — in bank 2 for 118; 35 spent 200 in bank 0 (the row-by-row reveal, the one-pass mirror, the ghost's rectangles) and 82 in bank 2, and took 268 back from `blit_quads` and `flip_span`, whose only callers left are `tests/blittest.asm` and `tests/packtest.asm`; 36 spent 23 in bank 0 (the door scan looking one record ahead) and 59 in bank 2 (`crk_in`, and B's door in `cr_redraw`). `tools/mapsize.py` says *who* is spending bank 0. The reserves that remain, in order: the rest of bank 7 (952, data only), the tests' 320-byte floor once the probes take their address from `ZZ_BANK0_END`, the 864-byte `s` room-icon set, and size-optimising `object.asm` and `ui.asm` — 5,148 bytes between them, the two biggest things in bank 0 by a factor of two. Bank 6, at 28, is now the tight one. |
+| **Memory is the binding constraint from here on** | High | **690 bytes free in bank 0, 455 in bank 2's code area, 28 in bank 6, 952 in bank 7 (214 of the `text` block)** — after milestone 37 drew diagonal corridors a row at a time, after milestone 36 joined them to the colony, after milestone 35 put the milestone-2 blit kernels, which only their own tests still call, behind `HAS_QUADS`, after milestone 34 spent 279 and 118 on building without a freeze, and after milestone 33, which found two reservations nobody had ever read (`ui_cursor` 256 in bank 2, `audio` 2,048 in bank 7), moved the font into the second, and let `newgame.asm` and `fdc.asm` follow `save.asm` into bank 2 ([§4.3](#43-bank-2-flat-again)). Bank 0's ceiling is `&3EC0`, where the tests' own scaffolding runs, and the loader's two scratch areas are checks now too. Bank 6's *156* was wrong by 128 — `tools/pack.py` has been printing **28** all along, which is what happens to a figure copied into a document instead of read out of the build. The ledger: 26–29 spent 671; 30 handed back 560; 31 spent 152 and took 192 back from the test floor; 32 spent 144; 33 handed back 957 and cost 29 in paging; 34 spent 279 in bank 0 (the ghost's swap and bounding box, `view_rect`, the `DK_BUILT` handler) and put its cold half — the two post-placement redraws — in bank 2 for 118; 35 spent 200 in bank 0 (the row-by-row reveal, the one-pass mirror, the ghost's rectangles) and 82 in bank 2, and took 268 back from `blit_quads` and `flip_span`, whose only callers left are `tests/blittest.asm` and `tests/packtest.asm`; 36 spent 23 in bank 0 (the door scan looking one record ahead) and 59 in bank 2 (`crk_in`, and B's door in `cr_redraw`); 37 spent 113 in bank 0 (the `DK_CROW` handler, `dt_ghost_rect`, `view_add`, the budget's carry) and 183 in bank 2 (pushing the rows, a walk that visits each tile once). `tools/mapsize.py` says *who* is spending bank 0. The reserves that remain, in order: the rest of bank 7 (952, data only), the tests' 320-byte floor once the probes take their address from `ZZ_BANK0_END`, the 864-byte `s` room-icon set, and size-optimising `object.asm` and `ui.asm` — 5,156 bytes between them, the two biggest things in bank 0 by a factor of two. Bank 6, at 28, is now the tight one. |
 | ~~Nothing finishes what the player starts~~ | ~~High~~ | **Built.** A Build job is picked up, the agent routes to the site, works it 32 points a visit, and at 255 the building turns `DS_ACTIVE` and is drawn ([§6.9](#69-construction)). `tests/test_game.py` walks the whole chain: place a solar panel with 30 Metal, and about six seconds later the HUD says `ALL SYSTEMS OK` with no key pressed in between. |
 | ~~A completed building stalls the game for 0.8 s~~ | ~~Medium~~ | **Resolved at milestone 34 — and it was 360–920 ms, not 0.8 s.** The site is already on screen from placement; what completion changes is the room icon and the machines, so the Build job pushes one dirty record (`DK_BUILT`) and the handler draws those two things — a structure, nothing at all ([§6.9](#69-construction)). The completion frame of a large Factory is **120 ms** (100 at milestone 34), 60 of them lifting the ghost the player left on it; a solar panel's is an ordinary 40 ms HUD tick. The freeze did not go away entirely, though — it was always at **placement** too, and that is the next row. |
 | ~~Placing a large dome still freezes the game for 0.86 s~~ | ~~Medium~~ | **Resolved at milestone 35 with the eight-chunk reveal of [§6.9](#69-construction), at placement.** A dome goes into the dirty list one tile row at a time and each row draws only that dome; the ghost waits for the last row. Worst frame of a large Factory's placement: 998 → 859 → **140 ms**; solar panel 439 → 220 → **120**; straight corridor 260 → **120**. The levers this row named were all taken: the reveal, a one-pass mirror (`blt_mask_flip`: the whole large site 450 → 351 ms, a full redraw of the view 839 → 679), and marks without clips on a log of rectangles (red ghost 263 → 57 ms). |
 | ~~The ghost of a large dome on bad ground overflows its undo log~~ | ~~Low~~ | **Resolved at milestone 35.** The log holds rectangles now, not lines ([§9.3](#93-build-flow)): the same ghost is 1,160 bytes instead of 2,412, and all eight rows of marks are drawn. |
-| ~~No corridor with a diagonal run can be built between placed domes~~ | ~~High~~ | **Resolved at milestone 36, and it was both ends, not one.** Measured over 72 geometries: every route with a diagonal had bad tiles and **every** bad tile was in the footprint of one of its two domes — the start's corner (two tiles for a large dome), and for a pure diagonal the destination's corner too, up to 6 of 10. `cr_cb_chk` now lets the corridor cross the footprints of its own two ends and nothing else ([§9.4](#94-corridor-routing)); all 56 routes the planner finds among those geometries pass. Building them showed a second fault the check had been hiding: a bent corridor's destination got its door opposite the **diagonal**, at a ring point nothing reaches, in the Z80 and in the Python reference alike — it is visible in the old `tests/golden/route_*.png`. Fixed in both. A diagonal corridor's placement costs 160–220 ms against a straight one's 120, because its redraw box is a square ([§6.9](#69-construction)). |
+| ~~No corridor with a diagonal run can be built between placed domes~~ | ~~High~~ | **Resolved at milestone 36, and it was both ends, not one.** Measured over 72 geometries: every route with a diagonal had bad tiles and **every** bad tile was in the footprint of one of its two domes — the start's corner (two tiles for a large dome), and for a pure diagonal the destination's corner too, up to 6 of 10. `cr_cb_chk` now lets the corridor cross the footprints of its own two ends and nothing else ([§9.4](#94-corridor-routing)); all 56 routes the planner finds among those geometries pass. Building them showed a second fault the check had been hiding: a bent corridor's destination got its door opposite the **diagonal**, at a ring point nothing reaches, in the Z80 and in the Python reference alike — it is visible in the old `tests/golden/route_*.png`. Fixed in both. A diagonal corridor's placement cost 160–220 ms against a straight one's 120, because its redraw box was a square; since milestone 37 it appears a row per frame and the worst frame is 80–100 ([§6.9](#69-construction)). |
+| ~~A diagonal corridor preview leaves marks behind the cursor~~ | ~~Medium~~ | **Found and resolved at milestone 37, by looking at the row-by-row reveal.** The marks of the route still under the press stayed on the ground until a row painted over them. `cr_walk` visited the tile two consecutive diagonal pieces share twice, the ghost marked it twice, and the forward undo wrote the second entry's "background" — the first mark — last ([§9.3](#93-build-flow)). Every diagonal preview did it, built or not: 48–56 bytes left behind each time the cursor moved, hidden only when a corridor was built and its whole bounding box repainted. The walk now visits each tile once; `tests/test_link.py` hides four previews and compares with a full redraw. |
 | ~~The simulation still pushes nothing into the dirty list~~ | ~~High~~ | **Wired for ring slots**, which is what moves: `ent_claim` and `ent_release` push a `DK_SLOT`, and the figure cache is rebuilt once per burst rather than once per slot ([§8.5](#85-the-dirty-list)). Machines breaking, plants growing and room changes still push nothing. |
 | **A near-diagonal pair of domes cannot be connected** | Low | The turn in [§9.4](#94-corridor-routing) spends `\|S − T\|` tiles, so when the two axes differ by less than the destination's radius there is no route and the panel says so. The band is 2–4 tiles wide and the player can step out of it by moving the dome. Closing it needs a corner sprite the art does not have. |
 | **The rest of the dirty-list call sites** | Low | A machine breaking, a machine repaired and a plant growing push nothing — **and would change no pixels if they did**: there is no damaged-machine variant ([ASSET-8](#12-asset-gaps)) and a plant's sprite is chosen by class, not by stage. Ring slots were the only change the picture can show, and they are wired. A colonist who dies releases a slot, so that path is covered; one who arrives by ship gets no ring slot until they move. Wire the rest when the art gives them something to draw. |

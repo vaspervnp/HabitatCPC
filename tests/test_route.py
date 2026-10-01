@@ -243,7 +243,16 @@ def ui_flow(sym, g, col):
     # πόρτες. Το διαγώνιο sprite ζωγραφίζεται σε τέσσερα tiles ενώ πατά δύο:
     # αν έβγαινε έξω από το περίγραμμα, εδώ θα φαινόταν. Το ίδιο με θόλους που
     # έβαλε ο παίκτης, σε όλα τα μεγέθη, ελέγχει το tests/test_link.py.
-    m.run_frames(10)                     # οι πόρτες βγαίνουν από τη λίστα
+    # Οι πόρτες βγαίνουν από τη λίστα, και από το βήμα 37 η διαγώνιος βγαίνει
+    # κι αυτή σειρά-σειρά, μία ανά γύρο, με τον κέρσορα να την περιμένει. ΠΙΣΩ
+    # ΣΤΟΝ ΒΡΟΧΟ πρώτα: το snoop άφησε τον Z80 να κρέμεται στη δική του είσοδο.
+    m.set_pc(sym["LOOP"])
+    for _ in range(200):
+        if m.peek(sym["RV_PEND"]) == 0 and m.peek(sym["UI_OWED"]) == 0 \
+                and m.peek(sym["DIRTY_NUM"]) == 0:
+            break
+        m.run_frames(1)
+    m.run_frames(4)
     def play():
         off = m.peek(sym["CAM_OFF"]) | (m.peek(sym["CAM_OFF"] + 1) << 8)
         ram = m.read_ram(0xC000, 0x4000)
@@ -275,24 +284,29 @@ def tiles_of(col, frm, runs, to):
         for i in range(n0):
             j = ka + i
             lx, ly = ux * j, uy * j
-            if ux == uy:
-                out += [(lx - 1, ly - 1), (lx, ly)]
-            else:
-                out += [(lx - 1, ly), (lx, ly - 1)]
+            t1, t2 = (((lx - 1, ly - 1), (lx, ly)) if ux == uy
+                      else ((lx - 1, ly), (lx, ly - 1)))
+            # Δύο διαδοχικά πλακίδια μοιράζονται ένα tile: το «πίσω» μόνο στο
+            # πρώτο βήμα, μετά μόνο το «μπροστινό» (T2 αν ux > 0, T1 αλλιώς).
+            back, front = (t1, t2) if ux > 0 else (t2, t1)
+            out += ([back] if i == 0 else []) + [front]
         if len(runs) > 1:
             d1, n1 = runs[1]
             vx, vy = route.DIR_U[d1]
+            last = out[-1]                   # η στροφή δεν το ξαναπερνά
             if vx:
                 c = ux * Td - (1 if ux > 0 else 0)
                 r = uy * Td
                 for _ in range(n1):
-                    out.append((c, r))
+                    if (c, r) != last:
+                        out.append((c, r))
                     c += vx
             else:
                 r = uy * (Sd - 1) - (1 if uy < 0 else 0)
                 c = ux * Sd
                 for _ in range(n1):
-                    out.append((c, r))
+                    if (c, r) != last:
+                        out.append((c, r))
                     r += vy
     elif d0 in (2, 6):
         c = ra if ux > 0 else -ra - 1

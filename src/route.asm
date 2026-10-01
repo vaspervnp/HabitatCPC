@@ -360,6 +360,15 @@ crg_pos:
 ; ---------------------------------------------------------------------------
 ; cr_redraw — ο διάδρομος που μόλις μπήκε: τα tiles του, και οι δύο πόρτες.
 ; Απαιτεί έγκυρη διαδρομή (cr_n): καλείται αμέσως μετά το cr_commit.
+; Out: NZ αν έμειναν σειρές στη λίστα αλλαγών (rv_pend) — τότε ο καλών χρωστά
+; το φάντασμα, όπως μετά από θόλο (§6.9).
+;
+; Η ΔΙΑΓΩΝΙΟΣ ΣΕΙΡΑ-ΣΕΙΡΑ (βήμα 37). Το περίγραμμα μιας διαγωνίου n βημάτων
+; είναι τετράγωνο n x n, και μια διαγώνιος 7 βημάτων ξαναζωγράφιζε 64 tiles
+; σε έναν γύρο — 130 ms, 220 ο γύρος όλος — για να αλλάξει μια γραμμή. Τώρα
+; κάθε σειρά της είναι μία DK_CROW: τα τρία tiles που αγγίζουν τα δύο
+; πλακίδια της σειράς, μία σειρά ανά γύρο. Ο αξονικός κομμάτι είναι ήδη
+; λεπτό ορθογώνιο και ζωγραφίζεται αμέσως, όπως πριν.
 ;
 ; ΤΟ ΠΕΡΙΓΡΑΜΜΑ ΤΗΣ ΔΙΑΔΡΟΜΗΣ ΧΩΡΙΣ ΠΕΡΙΘΩΡΙΟ, και οι πόρτες από τη λίστα
 ; αλλαγών (DK_CONN). Στο βήμα 34 το περίγραμμα είχε ένα tile περιθώριο για τις
@@ -373,31 +382,6 @@ crg_pos:
 ; αντίθετη του ΤΕΛΕΥΤΑΙΟΥ.
 ; ---------------------------------------------------------------------------
 cr_redraw:
-        ld      hl,#00FF                ; min = +127, max = -128 (μετατοπισμένα)
-        ld      (crr_x0),hl
-        ld      (crr_y0),hl
-        ld      hl,cr_cb_bb
-        ld      (cr_cb),hl
-        call    cr_walk
-        ld      a,(crr_x0)
-        xor     #80
-        ld      (vr_tx),a
-        ld      b,a
-        ld      a,(crr_x1)
-        xor     #80
-        inc     a
-        sub     b
-        ld      (vr_w),a
-        ld      a,(crr_y0)
-        xor     #80
-        ld      (vr_ty),a
-        ld      b,a
-        ld      a,(crr_y1)
-        xor     #80
-        inc     a
-        sub     b
-        ld      (vr_h),a
-        call    view_rect
         ld      a,(cr_from)
         ld      b,a
         ld      a,(cr_d0)
@@ -417,7 +401,129 @@ crr_last:
         ld      a,(cr_to)
         ld      b,a
         ld      a,DK_CONN
-        jp      dirty_push
+        call    dirty_push
+        ld      a,(cr_d0)
+        rrca
+        jr      c,crr_diag
+        ; --- αξονικός: όλη η διαδρομή σε ένα ορθογώνιο ---
+        ld      hl,cr_walk
+        call    crr_box
+        xor     a                       ; Z: τίποτα δεν περιμένει
+        ret
+crr_diag:
+        call    crr_rows
+        ld      a,(cr_n)
+        cp      2
+        jr      c,crr_pend
+        ; --- η στροφή: το αξονικό τρέξιμο, μόνο του ---
+        call    crw_base
+        ld      hl,cr_walk1
+        call    crr_box
+crr_pend:
+        ld      a,(rv_pend)
+        or      a
+        ret
+
+; crr_rows — μία DK_CROW για κάθε σειρά της διαγωνίου που φαίνεται στο κάδρο.
+;
+; Το πλακίδιο j έχει το σημείο πλέγματος (ux*j, uy*j) στη μέση του, πιάνει
+; τις στήλες ux*j - 1 και ux*j, και μισό tile πάνω και κάτω από τη γραμμή
+; uy*j. Αρα μια σειρά R = uy*v τη μοιράζονται τα πλακίδια v και v + uy, και
+; οι στήλες τους είναι ΤΡΕΙΣ: από ux*v - 1 για «\» (ux = uy), από ux*v - 2
+; για «/». Οι σειρές είναι l0 + 1, και η πρώτη έχει v = ka - 1 όταν η
+; διαγώνιος κατεβαίνει (uy > 0), v = ka όταν ανεβαίνει.
+crr_rows:
+        call    crw_base
+        ld      a,(cr_uy)
+        rlca
+        and     1
+        xor     1                       ; 1 αν uy > 0
+        ld      b,a
+        ld      a,(cr_ka)
+        sub     b
+        ld      (cr_j),a                ; v
+        ld      a,(cr_l0)
+        inc     a
+        ld      (cr_i),a
+crrw_lp:
+        ld      a,(cr_j)
+        ld      hl,cr_uy
+        call    cr_mulsg
+        ld      hl,cr_bty
+        add     a,(hl)
+        ld      c,a                     ; η σειρά, στον κόσμο
+        ld      a,(cr_j)
+        ld      hl,cr_ux
+        call    cr_mulsg
+        dec     a
+        ld      hl,cr_btx
+        add     a,(hl)
+        ld      b,a                     ; η πρώτη στήλη, στον κόσμο
+        ld      a,(cr_ux)
+        ld      hl,cr_uy
+        cp      (hl)
+        jr      z,crrw_bs
+        dec     b                       ; «/»: ένα tile αριστερότερα
+crrw_bs:
+        ; ΜΟΝΟ Ο,ΤΙ ΦΑΙΝΕΤΑΙ. Μια σειρά έξω από το κάδρο θα την έκοβε ούτως ή
+        ; άλλως το vr_clip, και μια μακριά διαγώνιος θα γέμιζε το δαχτυλίδι
+        ; των 32. Αν η κάμερα κουνηθεί στο μεταξύ, ό,τι μπαίνει στο κάδρο το
+        ; ζωγραφίζει ολόκληρο η λωρίδα του σκρολαρίσματος.
+        ld      a,(cam_ty)
+        neg
+        add     a,c
+        cp      VIEW_TH
+        jr      nc,crrw_nx
+        ld      a,(cam_tx)
+        neg
+        add     a,b
+        add     a,2                     ; τρεις στήλες: φαίνεται από το -2
+        cp      VIEW_TW + 2
+        jr      nc,crrw_nx
+        ld      a,DK_CROW
+        call    dirty_push
+        ld      hl,rv_pend
+        inc     (hl)
+crrw_nx:
+        ld      hl,cr_j
+        inc     (hl)
+        ld      hl,cr_i
+        dec     (hl)
+        jr      nz,crrw_lp
+        ret
+
+; crr_box — το περίγραμμα των tiles που περπατά η ρουτίνα (HL), χωρίς
+; περιθώριο, και view_rect πάνω του.
+crr_box:
+        push    hl
+        ld      hl,#00FF                ; min = +127, max = -128 (μετατοπισμένα)
+        ld      (crr_x0),hl
+        ld      (crr_y0),hl
+        ld      hl,cr_cb_bb
+        ld      (cr_cb),hl
+        pop     hl
+        call    crr_go
+        ld      a,(crr_x0)
+        xor     #80
+        ld      (vr_tx),a
+        ld      b,a
+        ld      a,(crr_x1)
+        xor     #80
+        inc     a
+        sub     b
+        ld      (vr_w),a
+        ld      a,(crr_y0)
+        xor     #80
+        ld      (vr_ty),a
+        ld      b,a
+        ld      a,(crr_y1)
+        xor     #80
+        inc     a
+        sub     b
+        ld      (vr_h),a
+        jp      view_add                ; ο διάδρομος μόνο προσθέτει
+crr_go:
+        jp      (hl)
 
 ; cr_cb_bb — ένα tile της διαδρομής μεγαλώνει το περίγραμμα. B, C μένουν.
 cr_cb_bb:
@@ -453,15 +559,11 @@ crr_y1:     db 0
 ;
 ; Το διαγώνιο πλακίδιο πατά ΔΥΟ tiles, όχι τέσσερα: η γραμμή του περνά από τις
 ; δύο απέναντι γωνίες του τετραγώνου 2x2 που καλύπτει, και τα άλλα δύο μόνο τα
-; ακουμπά. Το ποια δύο εξαρτάται από το αν είναι «\» ή «/».
+; ακουμπά. Το ποια δύο εξαρτάται από το αν είναι «\» ή «/». Δύο διαδοχικά
+; μοιράζονται το ένα, οπότε μια διαγώνιος n βημάτων είναι n + 1 tiles.
 ; ---------------------------------------------------------------------------
 cr_walk:
-        ld      a,(cr_fx)
-        sra     a
-        ld      (cr_btx),a
-        ld      a,(cr_fy)
-        sra     a
-        ld      (cr_bty),a
+        call    crw_base
         ld      a,(cr_d0)
         rrca
         jp      nc,crw_ax0              ; ζυγή κατεύθυνση = αξονικός
@@ -479,37 +581,55 @@ crw_dl:
         ld      hl,cr_uy
         call    cr_mulsg
         ld      (cr_ly),a
-        ; «\» όταν ux = uy, «/» αλλιώς
+        ; Τα δύο tiles: T1 = (lx - 1, y1), T2 = (lx, 2*ly - 1 - y1), με
+        ; y1 = ly - 1 για «\» (ux = uy) και ly για «/».
         ld      a,(cr_ux)
         ld      hl,cr_uy
         cp      (hl)
+        ld      a,(cr_ly)
         jr      nz,crw_slash
-        ld      a,(cr_lx)
         dec     a
-        ld      b,a
-        ld      a,(cr_ly)
-        dec     a
-        ld      c,a
-        call    cr_emit
-        ld      a,(cr_lx)
-        ld      b,a
-        ld      a,(cr_ly)
-        ld      c,a
-        call    cr_emit
-        jr      crw_dn
 crw_slash:
-        ld      a,(cr_lx)
-        dec     a
-        ld      b,a
+        ld      c,a                     ; y1
         ld      a,(cr_ly)
-        ld      c,a
-        call    cr_emit
-        ld      a,(cr_lx)
-        ld      b,a
-        ld      a,(cr_ly)
+        add     a,a
         dec     a
-        ld      c,a
+        sub     c
+        ld      e,a                     ; y2
+        ld      a,(cr_lx)
+        ld      d,a                     ; x2
+        ld      b,a
+        dec     b                       ; x1
+        ; ΚΑΘΕ TILE ΜΙΑ ΦΟΡΑ. Δύο διαδοχικά πλακίδια μοιράζονται ένα tile:
+        ; το «μπροστινό» του j είναι το «πίσω» του j + 1. Ως το βήμα 37 το
+        ; περνούσαμε δύο φορές, και το φάντασμα ζωγράφιζε το σημάδι του δύο
+        ; φορές — η αναίρεση, που πάει μπροστά, έγραφε τελευταίο το «φόντο»
+        ; της δεύτερης εγγραφής, δηλαδή το πρώτο σημάδι, και ο κέρσορας άφηνε
+        ; ίχνος. Μπροστινό είναι το T2 όταν ux > 0, το T1 όταν ux < 0.
+        ld      a,(cr_ux)
+        or      a
+        jp      p,crw_fw
+        ld      a,b
+        ld      b,d
+        ld      d,a
+        ld      a,c
+        ld      c,e
+        ld      e,a
+crw_fw:
+        ld      (crw_dy),de             ; E = y, D = x
+        ld      a,(cr_j)                ; (B, C) πίσω, (D, E) μπροστά
+        ld      hl,cr_ka
+        cp      (hl)
+        jr      nz,crw_front            ; το πίσω το πέρασε το προηγούμενο βήμα
+        push    de
         call    cr_emit
+        pop     de
+crw_front:
+        ld      b,d
+        ld      c,e
+        call    cr_emit
+        ld      hl,(crw_dy)             ; το τελευταίο μπροστινό, για τη στροφή
+        ld      (crw_ly),hl
 crw_dn:
         ld      hl,cr_j
         inc     (hl)
@@ -519,7 +639,8 @@ crw_dn:
         ld      a,(cr_n)
         cp      2
         ret     c
-        ; --- τρέξιμο 1: η στροφή ---
+; cr_walk1 — μόνο το τρέξιμο 1, η στροφή. Απαιτεί το crw_base.
+cr_walk1:
         ld      a,(cr_d1)
         and     3                       ; e και w είναι 2 και 6· n και s 0 και 4
         cp      2
@@ -586,6 +707,19 @@ crw_axh1:
         ld      a,(cr_l0)
         jp      cr_line
 
+; crw_base — η βάση των σχετικών συντεταγμένων: το tile του κέντρου του a.
+; Και ξεχνά το τελευταίο tile της διαγωνίου (-128: δεν υπάρχει στον κόσμο).
+crw_base:
+        ld      hl,#8080
+        ld      (crw_ly),hl
+        ld      a,(cr_fx)
+        sra     a
+        ld      (cr_btx),a
+        ld      a,(cr_fy)
+        sra     a
+        ld      (cr_bty),a
+        ret
+
 ; cr_line — A πλακίδια από το (B, C) με βήμα (D, E).
 cr_line:
         ld      (cr_i),a
@@ -607,7 +741,18 @@ crl_lp:
         ret
 
 ; cr_emit — ένα tile: προσθέτει τη βάση και καλεί την (cr_cb).
+;
+; Ο ΟΡΙΖΟΝΤΙΟΣ ΤΗΣ ΣΤΡΟΦΗΣ ξεκινά ένα tile πίσω, πάνω στο τελευταίο διαγώνιο
+; πλακίδιο, και όταν η διαγώνιος κατεβαίνει το δεύτερο tile του είναι το
+; τελευταίο της διαγωνίου. Δεύτερη φορά δεν περνιέται (crw_lx).
 cr_emit:
+        ld      a,(crw_lx)
+        cp      b
+        jr      nz,cre_go
+        ld      a,(crw_ly)
+        cp      c
+        ret     z
+cre_go:
         ld      a,(cr_btx)
         add     a,b
         ld      b,a
@@ -663,6 +808,10 @@ cr_ly:      db 0
 cr_i:       db 0
 cr_j:       db 0
 cr_cb:      dw 0
+crw_ly:     db 0                        ; το τελευταίο μπροστινό διαγώνιο tile,
+crw_lx:     db 0                        ; σχετικό (y, x) — #80 = κανένα
+crw_dy:     db 0                        ; το μπροστινό του τρέχοντος βήματος
+crw_dx:     db 0
 
 ; ---------------------------------------------------------------------------
 ; cr_check — περπατά τη διαδρομή και μετρά τα tiles που δεν επιτρέπονται.
