@@ -331,13 +331,13 @@ must always be reachable is in bank 0 (`&0000–&3FFF`) or bank 2 (`&8000–&BFF
 
 | Block | Bank | Contents | Bytes | Slack |
 |---|---|---|---|---|
-| `&0000–&3FFF` | 0 | engine code, ISR, blit kernels, UI | 16,384 | **690** |
+| `&0000–&3FFF` | 0 | engine code, ISR, blit kernels, UI | 16,384 | **626** |
 | window | 1 | **distance matrix** `DIST[96][128]` 12,288 · room icons `m` and `l` 3,936 | 16,384 | 160 |
 | window | 4 | **world plane** 128×128×1 byte | 16,384 | 0 |
 | window | 5 | **next-hop matrix** `NEXTHOP[96][128]` | 16,384 | 4,096 |
 | window | 6 | `flip_mode0` 256 · dome+ring `nw` quadrants 7,424 · slot figures 3,456 · entity tables 4,832 ([§6.1](#61-entities)) · figure cache 512 | 16,356 | 28 |
 | window | 7 | external structures 11,264 · plants 1,584 · `plant_ptr` 24 · text 1,024 · **font 1,536** (was the `audio` reservation, milestone 33) | 15,432 | 952 |
-| `&8000–&BFFF` | 2 | graphics, flat 9,592 (font gone to bank 7) · ghost undo log 1,600 · code 4,737 ([§4.3](#43-bank-2-flat-again)) | 15,929 | **455** |
+| `&8000–&BFFF` | 2 | graphics, flat 9,592 (font gone to bank 7) · ghost undo log 1,600 · code 5,168 ([§4.3](#43-bank-2-flat-again)) | 16,360 | **24** |
 | `&C000–&FFFF` | 3 | play-area screen | 16,384 | 0 |
 
 Every bank is spoken for. The two matrices in banks 1 and 5 are the clearest answer
@@ -568,12 +568,12 @@ the HUD moved into the play area's page and bank 2 became **flat 16 KB**:
 | ~~Cursor and UI chrome (reserve)~~ — **dropped at milestone 33** | ~~256~~ |
 | Node graph (`node_deg`, `node_adj`) and BFS workspace | 1,536 |
 | Machine recipes (12 × 10) + the "needs an operator" lookup | 132 |
-| Economy state — stocks, flows, clock, weather, ships, milestones | 86 |
+| Economy state — stocks, flows, clock, weather, ships, milestones, meteors | 91 |
 | Job board 160 · room index 108 | 268 |
-| **Sub-total, the data arena** | **9,592** — what `tools/pack.py` lays out |
+| **Sub-total, the data arena** | **9,592** — what `tools/pack.py` lays out; the meteors' 5 bytes came out of the padding before the page-aligned routing tables |
 | The ghost's undo log (`GH_BUF`, [§9.3](#93-build-flow)) | 1,600 |
-| Code that runs from here: `build`, `route`, `sound`, `save`, `hw`, `fdc`, `newgame` | 4,737 |
-| **Total** | **15,929** of 16,384 — **455 free** |
+| Code that runs from here: `build`, `route`, `sound`, `meteor`, `save`, `hw`, `fdc`, `newgame` | 5,168 |
+| **Total** | **16,360** of 16,384 — **24 free** |
 
 #### Milestone 33: two reservations nobody read, and what they bought
 
@@ -618,6 +618,11 @@ Moving the arena turned up two things that had been true only because it never m
   invalidated before it is read, and invisible from every test that boots a snapshot.
   `tools/mkdsk.py` checks both scratch ceilings now; the negative control, the old size,
   reports those same 120 bytes.
+- **And at milestone 38 the code outgrew its own scratch.** `game2.bin` loads at
+  `&6C00`, which left 5,120 bytes below `&8000`; the meteors took it to 5,186 and
+  `tools/mkdsk.py` refused the disc. The data below ends at `&6578`, so the scratch
+  moved down to **`&6800`**: 6,144 bytes, more than bank 2 itself can hold above
+  `PAGE2_CODE`. The binding limit is bank 2 again, where it belongs.
 
 That total used to read *15,163, 1,024 free, contiguous*, which stopped being true
 when the undo log and the bank-2 code block moved in and was never corrected. The
@@ -1914,13 +1919,12 @@ produces.
 | Sandstorm | solar output = 0; anyone outdoors loses health | turbines, collectors, indoor work | ✅ |
 | Malfunction | one machine stops dead | engineer + 1 Spare | ✅ |
 | Solar flare | three machines stop at once | spares, engineers | ✅ |
-| Meteor shower | random structures destroyed, **crater tiles written to the world plane** | spread-out building, spares | ✗ |
+| Meteor shower | eight impacts round one building: **structures knocked back to sites**, one machine stopped per dome hit, **crater tiles written to the world plane** | spread-out building, spares, builders | ✅ |
 | Intruders | arrive at the map edge, walk in, attack | guards, guns, airlock placement | ✗ |
 
-Meteors and intruders are **not built**, and for the same reason: both need something
-outside the simulation. Meteors write terrain, which means the world plane and the
-dirty list that redraws it; intruders need agents that spawn at the map edge and a
-notion of combat. Both belong after the renderer, not before it.
+Intruders are **not built**: they need agents that spawn at the map edge and a notion
+of combat. Meteors waited for the same reason — they write terrain, so they needed the
+world plane and the dirty list that redraws it — and came at milestone 38, below.
 
 **A malfunction is not "damaged a bit": the machine's health goes to zero and stays
 there** until an engineer arrives with a Spare. That is what closes the loop — the job
@@ -1971,6 +1975,74 @@ with a full battery and 300 Water in the tanks. Something breaks every four sols
 which is what a Spare is for, and the rate still scales with the base: `break_one`
 picks a dome out of 64 and gives up if nothing is there, so a colony with forty domes
 sees the same roll land fifteen times as often.
+
+#### Meteor showers (milestone 38)
+
+**The roll is the twelve high bits of `r1` all ones** — 1 in 4,096 revolutions, one
+shower every ~5 sols (measured: 41 in 200 sols). Every other test reads *zeros*, so
+the meteor is the only one that can use ones, and that alone keeps it apart from the
+rest. "Apart" is checked rather than argued: only 16 values of `r1` start a shower
+(`&FFF0–&FFFF`), the `r2` and `r3` that follow each are fixed by the polynomial, and
+`tests/test_meteor.py` walks all 16 — **none** brings a storm, a malfunction, a flare
+or a visitor in the same revolution.
+
+A shower is **eight impacts, one a revolution** (2.6 s), within ±8 tiles of a centre.
+The centre is a building — the first live node from a random start among the 96 — so
+the shower falls on the colony and not on empty desert 60 tiles away. Positions come
+from **the shower's own generator** (`EC_MRND`, seeded from `r1` and the clock, eight
+Galois steps per byte): drawing them from the event generator would shift every
+storm and malfunction after the shower, and the sequence would depend on whether
+anything was built.
+
+| An impact lands on | What happens |
+|---|---|
+| an active dome | one machine stops (`ec_break_d`, the slot from the draw) — an engineer and a Spare, as for a malfunction |
+| an active structure | **back to a building site**: integrity 0, state `DS_BUILDING`, a Build job posted, the balance re-measured at once |
+| a site of either kind | integrity 0 — the progress is lost |
+| open ground — ground, dust, rock, foundation, unoccupied | **a crater** (`W_CRATER`, the decor bits kept), pushed onto the dirty list as `DK_TILE` |
+| corridor, water, mountain, an existing crater | nothing |
+
+**This diverges from the table's first version, which said "destroyed".** The game
+has no demolition — no code that frees a dome record, unlinks its node, rewrites its
+foundation and re-routes the graph — and a building's progress *is* its integrity
+(`src/jobs.asm`), so "destroyed" would have meant writing all of that for one event.
+Knocked back to a site costs the player the same thing that matters — the building
+stops producing until builders spend another round on it — and reuses the build path
+the player already knows: the struck structure gets the same Build job a new one gets
+(`jb_post_build`, now shared by `build.asm` and the meteor).
+
+A structure under construction is drawn exactly like a finished one (the renderer only
+distinguishes a dome's site, which it draws empty), so a struck landing pad *looks*
+untouched until it is rebuilt. The HUD says `METEOR SHOWER` for the length of the
+shower — below power and oxygen, above food and water — and each impact plays a falling
+noise (`SFX_METEOR`) from the main loop, not the wheel, because the wheel also runs in
+the simulation harness, which has no sound.
+
+The crater goes through the dirty list and never through a full redraw: measured in
+the game binary, the worst frame during a shower is **60 ms** and the canary survives.
+The reference (`tools/econ.py`) knows which buildings are hit and agrees with the Z80
+byte for byte; the world plane it does not have, so `tests/test_meteor.py` predicts the
+craters from the plane the game holds and checks that **exactly** those tiles change.
+
+**Which building an impact hit was the expensive part.** The first version asked
+every live node for its footprint — ~165 µs a node, **9.5 ms an impact** on a colony
+of 54 buildings, in the wheel slot budgeted at 500 µs. No footprint reaches more than
+four tiles from its record's centre (an L dome is 8×8; structures are at most 4×4),
+so `mt_scan` walks the two tables with a pointer, rejects a centre more than
+`MT_REACH` = 4 tiles away in x in six instructions, and pays for the footprint only
+near the impact: **3.0 ms** on the same colony, 5.4 ms with all 54 piled on one spot.
+That still exceeds slot 15's 500 µs, eight revolutions in a shower, but stays under
+slot 14's 6.9 ms that runs *every* revolution, so a shower never sets the worst frame
+of the wheel. The bound is tested from the side that can fail: a 120-impact shower
+round an L dome lands eleven impacts in its left column, exactly four tiles from the
+centre, and with `MT_REACH` patched to 3 the Z80 stops agreeing with the reference.
+
+That same pinned-slot run turned up an old bug in `ship_crew`: a full crew of four,
+or a population cap filled exactly, left by `ret` and skipped the line that adds the
+newcomers to `EC_ALIVE`. Slot 12 recounts the living every revolution, so in the game
+the count was short for at most 16 frames and no test that runs the whole wheel could
+see it; with only slot 15 running, the reference said 4 and the Z80 said 0. Every exit
+goes through `sk_full` now.
 
 ### 6.11 Ships and arrivals
 
@@ -2054,8 +2126,13 @@ slot is still bounded; there are simply more of them.
 | 12 | Flow balance | the living every revolution, 64 structures **one in 64** | 2,000 µs | **5,990 µs on the cycle, 1,797 µs a visit** |
 | 13 | Job board — reap, arrive, post, assign | 4 domes, 32 agents | 3,000 µs | **4,692 µs** ❌ 1.6× |
 | 14 | Room index, amenity, pad, population cap | 64 domes | *(was empty)* | **7,188 µs** |
-| 15 | Events, ships, and the milestone check once a sol | three rolls | 500 µs | **499 µs** ✅ |
+| 15 | Events, ships, meteors, and the milestone check once a sol | three rolls | 500 µs | **564 µs** ❌ 1.1× — **3.0 ms** on a meteor impact ([§6.10](#610-events-and-hazards)) |
 | — | wheel dispatch itself | every frame | — | **94 µs** |
+
+Slot 15's old **499 µs ✅** was the step of the measurement, not the slot: 200 calls
+measured in whole frames resolve to 100 µs. Over 4,000 calls it is **524 µs** without the
+meteor roll and **564 µs** with it (milestone 38) — over budget before the meteors came,
+and by 40 µs more now.
 
 **A whole revolution costs 61,400 µs spread over 16 frames — under a fifth of the
 machine — and the worst single frame is 6,889 µs, 34 % of one.** That is the number the
@@ -2940,6 +3017,7 @@ held — would cut the alarm to pieces.
 | `BUILD` | 1 | 3 | a dome or a corridor is committed |
 | `DONE` | 1 | 5 | a building finishes and turns `DS_ACTIVE` |
 | `SHIP` | 0 | 6 | a ship touches the pad |
+| `METEOR` | 0 | 7 | a meteor lands — noise, 15 → 4 over 20 frames, once per impact ([§6.10](#610-events-and-hazards)) |
 | `ALERT` | 0 | 8 | power or oxygen **just** failed |
 | `DEATH` | 0 | 9 | a colonist dies |
 
@@ -3390,6 +3468,7 @@ tests in this document runnable rather than aspirational:
 | The whole game | `src/main.asm` booted: start state, the economy moving inside the loop, a building placed and **finished**, and the HUD following it with no input (`test_game.py`) |
 | Building without a freeze | a large Factory, a solar panel and a corridor placed and finished in the real binary: a **canary** byte far from the building must survive (a full redraw repaints it), the screen must match a full redraw of the same state, and the worst frame is measured on a clock that does not lose it at a seam. The large dome must appear in exactly eight frames, one row each, and the ghost must be back after it. The ghost is left over the finishing dome and then moved, once with the lift cut out as a negative control (`test_reveal.py`); a corridor **with a bend** is compared against a full redraw in `test_route.py` |
 | Corridors between placed domes | diagonal and bent routes between domes placed through the interface, every size: 0 bad tiles where the route crosses its own ends' footprints, a stone and a third dome still block, the old check patched back in fails. Seven built in all four diagonal directions, byte-exact against a full redraw, with B's door opposite the **last** run; the diagonal comes out **one row per frame**, as many rows as are in view, worst frame under 160 ms, and the ghost comes back after. Every frame of a reveal is sampled: what was already on screen must not vanish (13 bytes, against 96 with the terrain repainted). The cursor stepped onto rows still to come must leave no trace (22 bytes with `dt_ghost_rect` cut), a diagonal preview hidden again must leave no marks, and a strip one tile off for `/` must show (`test_link.py`, [§9.4](#94-corridor-routing)) |
+| Meteor showers | in the simulation harness, the roll, a shower and the rebuild byte for byte against the reference, and a 120-impact shower with the wheel pinned to slot 15 round an L dome — eleven impacts in its edge column, and `MT_REACH` patched to 3 must disagree (`test_sim.py`). In the game binary: a shower on the landing pad — **exactly** the craters the reference predicts from the game's own world plane and no other tile; drawn through the dirty list with the canary alive and the picture equal to a full redraw; worst frame 60 ms; the pad a site with a Build job, the oxygen machine stopped, `METEOR SHOWER` on the HUD and the impact on the AY; then the pad rebuilt and the machine repaired. Negative: `wh_push` cut, the same craters are in the world and 155 bytes of screen are wrong. The roll's 16 trigger values checked exhaustively against every other event, and its rate over 200 sols (`test_meteor.py`, [§6.10](#610-events-and-hazards)) |
 | Needs beat the board | the food colony of [§6.6](#66-needs) run for 9,000 frames, watching the *bars* rather than the corpses, plus the player's canteen getting an operator (`test_needs.py`) |
 | Who stops first | the reserve rule on the reference implementation — one unit either side of the threshold, and a storm-length night with the reserve knocked out beside it — then the two-pump colony in the real binary: load shed, oxygen never zero, pumps really stopped, `LOW POWER` on the screen (`test_power.py`) |
 | The map is a constraint | the pump refused on dry ground **with the reason on screen**, accepted at the shore and actually built; the mine likewise at a vein; and a dome and a solar panel accepted on the same dry ground, which is what separates "this rule" from "this patch of dirt" (`test_map.py`) |
@@ -3553,7 +3632,7 @@ gap.
 | ~~The flow-balance wheel slot re-scans 64 structures every revolution~~ | ~~Medium~~ | **Resolved, and not for speed.** 7,887 µs for numbers that change slowly — but the reason it moved was [§6.5](#65-economy)'s clock: a battery that charges 750 times a sol is not a battery. The scan, the battery and the pumps now run once per 64 revolutions (`FLOW_DIV`), the living are still counted every revolution, and a finished building kicks the balance so the panel the player just paid for shows up at once. |
 | ~~Nothing the player does exists: no build mode, no input, no HUD, nothing drawn since milestone 5~~ | ~~High~~ | **Resolved.** The colony is drawn, the camera scrolls, the dirty list keeps it honest, the HUD reports — and the player now moves a cursor, opens a menu, places a dome and routes a corridor between two of them ([§9.1](#91-controls), [§9.3](#93-build-flow), [§9.4](#94-corridor-routing), [§6.9](#69-construction)). |
 | ~~The two halves have never been assembled into one binary~~ | ~~Medium~~ | **Assembled, and it did not fit: 20,571 bytes wanted 16,128.** Resolved by moving the generator out, cutting `MAX_NODES` to 96 and putting code in bank 2 ([§4.2](#42-the-eight-banks)). It also turned up duplicate constants in three files and, worse, [§7.4](#74-one-convention-per-half-and-they-disagreed)'s paging disagreement. |
-| **Memory is the binding constraint from here on** | High | **690 bytes free in bank 0, 455 in bank 2's code area, 28 in bank 6, 952 in bank 7 (214 of the `text` block)** — after milestone 37 drew diagonal corridors a row at a time, after milestone 36 joined them to the colony, after milestone 35 put the milestone-2 blit kernels, which only their own tests still call, behind `HAS_QUADS`, after milestone 34 spent 279 and 118 on building without a freeze, and after milestone 33, which found two reservations nobody had ever read (`ui_cursor` 256 in bank 2, `audio` 2,048 in bank 7), moved the font into the second, and let `newgame.asm` and `fdc.asm` follow `save.asm` into bank 2 ([§4.3](#43-bank-2-flat-again)). Bank 0's ceiling is `&3EC0`, where the tests' own scaffolding runs, and the loader's two scratch areas are checks now too. Bank 6's *156* was wrong by 128 — `tools/pack.py` has been printing **28** all along, which is what happens to a figure copied into a document instead of read out of the build. The ledger: 26–29 spent 671; 30 handed back 560; 31 spent 152 and took 192 back from the test floor; 32 spent 144; 33 handed back 957 and cost 29 in paging; 34 spent 279 in bank 0 (the ghost's swap and bounding box, `view_rect`, the `DK_BUILT` handler) and put its cold half — the two post-placement redraws — in bank 2 for 118; 35 spent 200 in bank 0 (the row-by-row reveal, the one-pass mirror, the ghost's rectangles) and 82 in bank 2, and took 268 back from `blit_quads` and `flip_span`, whose only callers left are `tests/blittest.asm` and `tests/packtest.asm`; 36 spent 23 in bank 0 (the door scan looking one record ahead) and 59 in bank 2 (`crk_in`, and B's door in `cr_redraw`); 37 spent 113 in bank 0 (the `DK_CROW` handler, `dt_ghost_rect`, `view_add`, the budget's carry) and 183 in bank 2 (pushing the rows, a walk that visits each tile once). `tools/mapsize.py` says *who* is spending bank 0. The reserves that remain, in order: the rest of bank 7 (952, data only), the tests' 320-byte floor once the probes take their address from `ZZ_BANK0_END`, the 864-byte `s` room-icon set, and size-optimising `object.asm` and `ui.asm` — 5,156 bytes between them, the two biggest things in bank 0 by a factor of two. Bank 6, at 28, is now the tight one. |
+| **Memory is the binding constraint from here on** | High | **626 bytes free in bank 0, 24 in bank 2's code area, 28 in bank 6, 952 in bank 7 (194 of the `text` block)** — after milestone 38 brought the meteors, after milestone 37 drew diagonal corridors a row at a time, after milestone 36 joined them to the colony, after milestone 35 put the milestone-2 blit kernels, which only their own tests still call, behind `HAS_QUADS`, after milestone 34 spent 279 and 118 on building without a freeze, and after milestone 33, which found two reservations nobody had ever read (`ui_cursor` 256 in bank 2, `audio` 2,048 in bank 7), moved the font into the second, and let `newgame.asm` and `fdc.asm` follow `save.asm` into bank 2 ([§4.3](#43-bank-2-flat-again)). Bank 0's ceiling is `&3EC0`, where the tests' own scaffolding runs, and the loader's two scratch areas are checks now too. Bank 6's *156* was wrong by 128 — `tools/pack.py` has been printing **28** all along, which is what happens to a figure copied into a document instead of read out of the build. The ledger: 26–29 spent 671; 30 handed back 560; 31 spent 152 and took 192 back from the test floor; 32 spent 144; 33 handed back 957 and cost 29 in paging; 34 spent 279 in bank 0 (the ghost's swap and bounding box, `view_rect`, the `DK_BUILT` handler) and put its cold half — the two post-placement redraws — in bank 2 for 118; 35 spent 200 in bank 0 (the row-by-row reveal, the one-pass mirror, the ghost's rectangles) and 82 in bank 2, and took 268 back from `blit_quads` and `flip_span`, whose only callers left are `tests/blittest.asm` and `tests/packtest.asm`; 36 spent 23 in bank 0 (the door scan looking one record ahead) and 59 in bank 2 (`crk_in`, and B's door in `cr_redraw`); 37 spent 113 in bank 0 (the `DK_CROW` handler, `dt_ghost_rect`, `view_add`, the budget's carry) and 183 in bank 2 (pushing the rows, a walk that visits each tile once); 38 spent 64 in bank 0 (the shared Galois step, `ec_break_d`, the Build-job poster moved out of `build.asm`, the boom and the HUD line, two bytes for `ship_crew`'s exits) and 431 in bank 2 (`meteor.asm`, 48 of it the scan that keeps an impact at 3 ms, less the poster `build.asm` gave up), and moved the loader's code scratch to `&6800` ([§4.3](#43-bank-2-flat-again)). **Bank 2's code area is full**: the next thing it takes comes out of the ghost's undo log, sized at 1,600 for a worst case measured at 1,160 ([§9.3](#93-build-flow)), or sends cold code — `newgame`, `fdc` — to bank 0's 626. `tools/mapsize.py` says *who* is spending bank 0. The reserves that remain, in order: the rest of bank 7 (952, data only), the tests' 320-byte floor once the probes take their address from `ZZ_BANK0_END`, the 864-byte `s` room-icon set, and size-optimising `object.asm` and `ui.asm` — 5,156 bytes between them, the two biggest things in bank 0 by a factor of two. Bank 2's code area, at 24, and bank 6, at 28, are the tight ones. |
 | ~~Nothing finishes what the player starts~~ | ~~High~~ | **Built.** A Build job is picked up, the agent routes to the site, works it 32 points a visit, and at 255 the building turns `DS_ACTIVE` and is drawn ([§6.9](#69-construction)). `tests/test_game.py` walks the whole chain: place a solar panel with 30 Metal, and about six seconds later the HUD says `ALL SYSTEMS OK` with no key pressed in between. |
 | ~~A completed building stalls the game for 0.8 s~~ | ~~Medium~~ | **Resolved at milestone 34 — and it was 360–920 ms, not 0.8 s.** The site is already on screen from placement; what completion changes is the room icon and the machines, so the Build job pushes one dirty record (`DK_BUILT`) and the handler draws those two things — a structure, nothing at all ([§6.9](#69-construction)). The completion frame of a large Factory is **120 ms** (100 at milestone 34), 60 of them lifting the ghost the player left on it; a solar panel's is an ordinary 40 ms HUD tick. The freeze did not go away entirely, though — it was always at **placement** too, and that is the next row. |
 | ~~Placing a large dome still freezes the game for 0.86 s~~ | ~~Medium~~ | **Resolved at milestone 35 with the eight-chunk reveal of [§6.9](#69-construction), at placement.** A dome goes into the dirty list one tile row at a time and each row draws only that dome; the ghost waits for the last row. Worst frame of a large Factory's placement: 998 → 859 → **140 ms**; solar panel 439 → 220 → **120**; straight corridor 260 → **120**. The levers this row named were all taken: the reveal, a one-pass mirror (`blt_mask_flip`: the whole large site 450 → 351 ms, a full redraw of the view 839 → 679), and marks without clips on a log of rectangles (red ghost 263 → 57 ms). |
@@ -3568,7 +3647,9 @@ gap.
 | **The base is invisible on its own foundation** | Medium | The foundation tile, the dome rings and the corridors are all the same grey. Outside the base everything reads; inside it, the colony disappears into the slab. Found by looking at the first running build, not by any check. It is a palette question for [§8.6](#86-palette) — one pen, differently chosen. |
 | **Scrolling is 4 to 8 tiles per second through a built-up base** | Medium | 3.0–3.2 frames per tile in open ground, up to 7.8 in the base (8.8 before milestone 35 mirrored dome quadrants in one pass instead of through a buffer), plus 2.30 for the HUD. Playable, not smooth. Three levers, all untaken: move the HUD block instead of redrawing it ([§8.1](#81-screen-layout)), index which objects overlap which strip instead of testing all 224 records, and blit tile pairs ([§8.3](#83-the-tile-pass)). |
 | **A broken machine is invisible on screen** ([ASSET-8](#12-asset-gaps)) | Medium | One sprite per machine, no damaged variant. The economy knows, the alert line knows, the picture does not — wrong way round for a game about watching a colony. 132 bytes per machine would fix it. |
-| Meteors and intruders are unbuilt, and both need the renderer first | Medium | Meteors write terrain, so they need the world plane and the dirty list; intruders need edge spawning and combat. Neither is a simulation problem, which is why neither is in [§6.10](#610-events-and-hazards) yet. |
+| Intruders are unbuilt ~~— and meteors~~ | Medium | **Meteors came at milestone 38** ([§6.10](#610-events-and-hazards)): they waited for the world plane and the dirty list, and use both. Intruders still need edge spawning and combat, which is not a simulation problem either. |
+| A new game says `NO OXYGEN` for its first 10–20 seconds | Low | Found while testing the meteor alert, not fixed: `ng_stock` sets `EC_O2OK` to 1, but slot 12 recomputes it every revolution as production ≥ use, and production is only published by the flow cycle, once in 64 revolutions. Until then it is 0 and the HUD's second-highest alert stands over a colony that is fine. The klaxon is spared by `ml_warm`; the line is not. `tests/test_meteor.py` waits for the first publication before it starts. |
+| A struck structure looks untouched | Low | A meteor knocks a structure back to a site, but the renderer only draws a *dome's* site differently ([§6.9](#69-construction)) — a structure under construction looks finished, the pad included. Consistent with how a new structure looks while it is being built; the player learns of the hit from the HUD, the noise and the builders walking out. |
 | Ships, trade and milestones are unbuilt — [§6.11](#611-ships-and-arrivals) and [§10.2](#102-milestones) | Medium | The colony sustains itself but cannot grow: no new colonists arrive and nothing can be traded for. This is what makes it a sandbox rather than a game. |
 | The balance numbers in [§6.5](#65-economy) are first guesses and three of them were unlivable | Medium | Corrected against the first working colony ([§6.6](#66-needs)). Expect the same of the rest: they cannot be checked by reading, only by running the loop and looking at who is where. |
 | ~~A new dome has no room and no machines, and nothing can give it either~~ | ~~High~~ | **Built, and it took three bugs with it.** The room is the menu's second axis ([§9.3](#93-build-flow)), the dome fills its own slots from `room_machines` and `machine_rules` ([§6.5](#65-economy)), and a greenhouse comes up full of plants. On the way: a construction site linked itself to *itself* and no dome the player placed had ever been finished ([§6.9](#69-construction)); an agent that found its destination unreachable kept the job ([§6.3](#63-movement)); and the loader's endgame was holding 512 bytes for forty ([§4.2](#42-the-eight-banks)). |

@@ -596,28 +596,8 @@ bd_stock_pay:
 ; §10.2 ήταν απρόσιτο εξ ορισμού.
 ; ---------------------------------------------------------------------------
 bd_postjob:
-        ld      hl,G_job_tbl
-        ld      b,MAX_JOB
-bpj_lp:
-        ld      a,(hl)
-        cp      NO_JOB
-        jr      z,bpj_got
-        ld      de,JOB_REC
-        add     hl,de
-        djnz    bpj_lp
-        ret
-bpj_got:
-        ld      (hl),J_BUILD
-        inc     hl
         ld      a,(bd_node)
-        ld      (hl),a
-        inc     hl
-        ld      (hl),255                ; αδιάθετη
-        inc     hl
-        ld      (hl),5                  ; προτεραιότητα, από το job_prio
-        inc     hl
-        ld      (hl),0
-        ret
+        jp      jb_post_build           ; src/jobs.asm — και για τον μετεωρίτη
 
 ; --- ο κατάλογος -----------------------------------------------------------
 ; είδος, παράμετρος, W tiles, H tiles, μέταλλο, βιοπλαστικό, όνομα

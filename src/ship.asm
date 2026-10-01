@@ -137,15 +137,19 @@ ship_crew:
         ld      c,0                     ; πόσοι μπήκαν
         ld      hl,G_agent_fields
 sk_lp:
+        ; ΚΑΘΕ ΕΞΟΔΟΣ ΑΠΟ ΤΟ sk_full. Ως το βήμα 38 το πλήρες πλήρωμα και το
+        ; ταβάνι ακριβώς γεμάτο έβγαιναν με RET, και οι τέσσερις καινούργιοι
+        ; δεν μετρούσαν στο EC_ALIVE ως την επόμενη μέτρηση της θέσης 12. Το
+        ; έδειξε ο τροχός καρφωμένος στη θέση 15 (tests/test_sim.py, άκρες).
         ld      a,c
         cp      SHIP_NCREW
-        ret     nc
+        jr      nc,sk_full
         ld      a,(EC_ALIVE)
         add     a,c
         ld      e,a
         ld      a,(EC_POPCAP)
         cp      e
-        ret     z
+        jr      z,sk_full
         jr      c,sk_full
         ld      a,(hl)
         and     F_ALIVE

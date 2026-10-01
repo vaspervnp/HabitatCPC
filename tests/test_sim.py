@@ -57,7 +57,8 @@ def enter(m, sym, label, limit=600):
     return n
 
 
-def run_z80(sym, g, sim, ticks, move_n=None, decay_n=None, off=(), pin=None):
+def run_z80(sym, g, sim, ticks, move_n=None, decay_n=None, off=(), pin=None,
+            rt_n=None, patch=()):
     from cpc import CPC
     m = CPC()
     m.run_frames(60)
@@ -65,7 +66,11 @@ def run_z80(sym, g, sim, ticks, move_n=None, decay_n=None, off=(), pin=None):
 
     m.write_ram(sym["G_NODE_ADJ"], bytes(g.adj))
     m.write_ram(sym["G_RT_NODES"], bytes(g.deg))
-    m.poke(sym["RT_N"], g.hw)
+    # Ο γράφος της δοκιμής έχει μόνο θόλους (g.hw = 48), και αρκεί να
+    # χτιστούν αυτές οι γραμμές. Οταν κάποιος πρέπει να πάει σε ΔΟΜΗ (κόμβος
+    # 64 και πάνω), χτίζονται όλες: αλλιώς ο Z80 διαβάζει σκουπίδια εκεί που
+    # η αναφορά ξέρει «απρόσιτο» (βήμα 38).
+    m.poke(sym["RT_N"], g.hw if rt_n is None else rt_n)
     enter(m, sym, "BUILD_ROUTES")
 
     m.write_ram(STAGE_AG, sim.a.to_bytes())
@@ -78,6 +83,8 @@ def run_z80(sym, g, sim, ticks, move_n=None, decay_n=None, off=(), pin=None):
     m.write_ram(sym["G_ROOM_LIST"], bytes(sim.e.room_list))
     enter(m, sym, "LOAD_STATE")
 
+    for at, v in patch:                     # τα αρνητικά: κώδικας αλλαγμένος
+        m.poke(at, v)
     for slot in off:
         m.poke(sym["WH_ON"] + slot, 0)
     if pin is not None:
@@ -149,7 +156,8 @@ def fresh(g, nexthop, src):
               "alive", "gameover", "gloom", "storm", "amenity",
               "sollen", "daylen", "prod_mask", "ship_state", "ship_kind",
               "ship_eta", "pop_cap", "pad_node", "milestones", "deaths_sol",
-              "no_death_sols", "green_sols", "no_trade_sols", "traded"):
+              "no_death_sols", "green_sols", "no_trade_sols", "traded",
+              "meteor", "mcx", "mcy", "mrnd"):
         setattr(s.e, f, getattr(src.e, f))
     return s
 
@@ -422,6 +430,10 @@ def main():
           f"{'ΟΚ' if e.o2_ok else 'ΕΛΛΕΙΜΜΑ'}, sol {e.sol} "
           f"{'μέρα' if e.day else 'νύχτα'}, άνεμος {e.wind}")
 
+    # --- η βροχή μετεωριτών (§6.10, src/meteor.asm) ---
+    if meteors(sym, g, nexthop, sim0):
+        return 1
+
     # --- κόστος ανά θέση, μετρημένο ΚΑΤΕΥΘΕΙΑΝ ---
     # Ο τροχός καρφώνεται σε μία θέση και τρέχει PIN_TICKS φορές. Η παλιότερη
     # μέθοδος — τρέξε τα πάντα, μετά σβήσε ένα, κράτα τη διαφορά — έπαψε να
@@ -465,6 +477,243 @@ def main():
         print("ΑΠΟΤΥΧΙΑ: η πιο ακριβή θέση δεν χωράει σε ένα frame")
         return 1
     return 0
+
+
+def spread(e):
+    """Τα κτίρια σε πλέγμα. Η αποικία της αναφοράς τα έχει ΟΛΑ στο (0,0) —
+    η οικονομία δεν ρωτά πού είναι — και ο μετεωρίτης θα έβρισκε πάντα τον
+    θόλο 0. Θόλοι ανά 10 tiles, δομές ανάμεσά τους, και τίποτε άλλο αλλάζει."""
+    for d in range(EC.MAX_DOME):
+        b = d * EC.DOME_REC
+        if e.dome[b + EC.D_STATE]:
+            e.dome[b + EC.D_CX] = (2 * (-30 + (d % 6) * 10)) & 0xFF
+            e.dome[b + EC.D_CY] = (2 * (-20 + (d // 6) * 10)) & 0xFF
+    for k in range(EC.MAX_STRUCT):
+        b = k * EC.STRUCT_REC
+        if e.struct[b + EC.ST_STATE]:
+            e.struct[b + EC.ST_CX] = (2 * (-25 + (k % 6) * 10) + 1) & 0xFF
+            e.struct[b + EC.ST_CY] = (2 * (-15 + (k // 6) * 10) + 1) & 0xFF
+
+
+def same(sym, g, nexthop, start, ticks, what):
+    """Z80 και αναφορά από την ίδια κατάσταση: ΟΛΑ τα bytes ίδια. Επιστρέφει
+    την αναφορά στο τέλος, ή None αν διαφέρουν."""
+    got = run_z80(sym, g, fresh(g, nexthop, start), ticks, rt_n=EC.MAX_DOME + EC.MAX_STRUCT)
+    sim = fresh(g, nexthop, start)
+    for _ in range(ticks):
+        sim.tick()
+    want = (sim.a.to_bytes(), bytes(sim.occ), None, bytes(sim.e.dome),
+            bytes(sim.e.struct), EC.to_bytes(sim.e), bytes(sim.e.job))
+    for name, i in (("πεδία", 0), ("μάσκες", 1), ("θόλοι", 3), ("δομές", 4),
+                    ("οικονομία", 5), ("εργασίες", 6)):
+        if got[i] != want[i]:
+            bad = [k for k in range(len(want[i])) if got[i][k] != want[i][k]]
+            print(f"ΑΠΟΤΥΧΙΑ {what}: {name} — {len(bad)} bytes, πρώτα "
+                  f"{[(k, got[i][k], want[i][k]) for k in bad[:4]]}")
+            return None
+    return sim
+
+
+LONG_N = 120                # κρούσεις της μακριάς βροχής
+
+
+def slot15(sim, n):
+    """Η θέση 15 της αναφοράς, n φορές — ό,τι κάνει ο καρφωμένος τροχός."""
+    for _ in range(n):
+        if EC.events(sim.e):
+            EC.sol_rollover(sim.e, sim.a, E.F_ALIVE, E.F_WORKING, E.NEED_LOW)
+        EC.ship_tick(sim.e, sim.a, sim.e.pad_node, E.F_ALIVE)
+
+
+def edge_tiles(e):
+    """Τα tiles θόλων L ακριβώς MT_REACH = 4 tiles από το κέντρο τους στο x —
+    όσα ένα όριο 3 θα έχανε."""
+    out = set()
+    for d in range(EC.MAX_DOME):
+        r = d * EC.DOME_REC
+        if e.dome[r + EC.D_STATE] and e.dome[r + EC.D_SIZE] == 2:
+            x0, y0, w, h = EC._footprint(e, d)
+            c = EC._s8(e.dome[r]) >> 1
+            out |= {(x, y) for x in range(x0, x0 + w) for y in range(y0, y0 + h)
+                    if abs(x - c) == 4}
+    return out
+
+
+def edge_hits(e, seed, n, tiles):
+    """Πόσες από τις n κρούσεις του σπόρου πέφτουν σε αυτά τα tiles."""
+    f = EC.Econ()
+    f.mrnd = seed
+    hits = 0
+    for _ in range(n):
+        b = EC._mbyte(f)
+        hits += (EC._s8(e.mcx + (b & 15) - 8),
+                 EC._s8(e.mcy + (b >> 4) - 8)) in tiles
+    return hits
+
+
+def edges(sym, g, nexthop, base):
+    large = [d for d in range(EC.MAX_DOME)
+             if base.e.dome[d * EC.DOME_REC + EC.D_STATE]
+             and base.e.dome[d * EC.DOME_REC + EC.D_SIZE] == 2]
+    if not large:
+        print("ΑΠΟΤΥΧΙΑ άκρες: η αποικία της δοκιμής δεν έχει θόλο L")
+        return 1
+    st = fresh(g, nexthop, base)
+    r = large[0] * EC.DOME_REC
+    st.e.meteor = LONG_N
+    st.e.mcx, st.e.mcy = EC._s8(st.e.dome[r]) >> 1, EC._s8(st.e.dome[r + 1]) >> 1
+    tiles = edge_tiles(st.e)
+    st.e.mrnd = max(range(1, 400), key=lambda v: edge_hits(st.e, v, LONG_N, tiles))
+    edge = edge_hits(st.e, st.e.mrnd, LONG_N, tiles)
+    want = fresh(g, nexthop, st)
+    slot15(want, LONG_N)
+    keys = lambda z: (bytes(z.e.dome), bytes(z.e.struct), EC.to_bytes(z.e),
+                      bytes(z.e.job))
+
+    def z80(patch=()):
+        got = run_z80(sym, g, fresh(g, nexthop, st), LONG_N, pin=15,
+                      rt_n=EC.MAX_DOME + EC.MAX_STRUCT, patch=patch)
+        return (got[3], got[4], got[5], got[6]), got[2]
+
+    got, frames = z80()
+    hit = sum(1 for a, b in zip(bytes(st.e.dome) + bytes(st.e.struct),
+                                want.e.dome + want.e.struct) if a != b)
+    if got != keys(want) or not edge or want.e.meteor:
+        bad = [(k, [(i, x, y) for i, (x, y) in enumerate(zip(a, b)) if x != y][:6])
+               for k, (a, b) in enumerate(zip(got, keys(want))) if a != b]
+        print(f"ΑΠΟΤΥΧΙΑ άκρες: {LONG_N} κρούσεις ({edge} στην άκρη θόλου L), "
+              f"διαφέρουν τα {bad}")
+        return 1
+    # ΑΡΝΗΤΙΚΟ: ADD A,4 / CP 9 μετά το SUB B του msc_lp -> ADD A,3 / CP 7
+    at = sym["MSC_LP"]
+    code = [0x7E, 0xCB, 0x2F, 0x90, 0xC6, 0x04, 0xFE, 0x09]
+    m_code = list(base_code(sym, at, len(code)))
+    if m_code != code:
+        print(f"ΑΠΟΤΥΧΙΑ άκρες: το msc_lp δεν είναι αυτό που περιμένει η δοκιμή "
+              f"{[hex(v) for v in m_code]}")
+        return 1
+    neg, _ = z80([(at + 5, 3), (at + 7, 7)])
+    if neg == keys(want):
+        print(f"ΑΠΟΤΥΧΙΑ άκρες: με MT_REACH 3 ο Z80 συμφωνεί ακόμη — η δοκιμή "
+              f"δεν βλέπει τις άκρες")
+        return 1
+    print(f"OK μετεωρίτες: {LONG_N} κρούσεις γύρω από θόλο L, {edge} στην "
+          f"αριστερή του στήλη, {hit} bytes κτιρίων άλλαξαν — ίδια στον Z80 και "
+          f"στην αναφορά. ΑΡΝΗΤΙΚΟ: με MT_REACH 3 διαφέρουν")
+    print(f"              {frames * FRAME_US / LONG_N:.0f} us ανά κρούση "
+          f"(θέση 15 καρφωμένη, {sum(1 for n in range(96) if EC._node_rec(st.e, n)[0][EC._node_rec(st.e, n)[1] + EC.D_STATE])} κτίρια)")
+    return 0
+
+
+def base_code(sym, at, n):
+    """Τα bytes του κώδικα όπως τα συναρμολόγησε ο rasm, από το στιγμιότυπο."""
+    from cpc import CPC
+    m = CPC()
+    m.run_frames(60)
+    assert m.quickload(SNA, start=False), "quickload απέτυχε"
+    return m.read_ram(at, n)
+
+
+def meteors(sym, g, nexthop, sim0):
+    """Η βροχή στον Z80 και στην αναφορά, byte προς byte (§6.10)."""
+    base = fresh(g, nexthop, sim0)
+    spread(base.e)
+    EC.rooms_rebuild(base.e, base.pc)
+
+    # 1. Η ζαριά: μια κατάσταση της γεννήτριας που δίνει «δώδεκα ψηλά bits
+    # ένα» στο ΕΠΟΜΕΝΟ τράβηγμα, και η διπλανή της που δεν δίνει.
+    for want_on in (True, False):
+        x = next(v for v in range(1, 65536)
+                 if (EC.lfsr(v) >> 4 == 0xFFF) == want_on
+                 and (want_on or EC.lfsr(v) >> 4 == 0xFFE))
+        st = fresh(g, nexthop, base)
+        st.e.rnd = x
+        sim = same(sym, g, nexthop, st, 20, "ζαριά μετεωριτών")
+        if sim is None:
+            return 1
+        on = sim.e.meteor > 0
+        live = any(sim.e.dome[d * EC.DOME_REC + EC.D_STATE]
+                   and (EC._s8(sim.e.dome[d * EC.DOME_REC]) >> 1) == sim.e.mcx
+                   and (EC._s8(sim.e.dome[d * EC.DOME_REC + 1]) >> 1) == sim.e.mcy
+                   for d in range(EC.MAX_DOME)) or any(
+                   sim.e.struct[k * 8 + EC.ST_STATE]
+                   and (EC._s8(sim.e.struct[k * 8]) >> 1) == sim.e.mcx
+                   and (EC._s8(sim.e.struct[k * 8 + 1]) >> 1) == sim.e.mcy
+                   for k in range(EC.MAX_STRUCT))
+        if on != want_on or (on and not live):
+            print(f"ΑΠΟΤΥΧΙΑ ζαριά: r1 = #{EC.lfsr(x):04X}, βροχή {sim.e.meteor}, "
+                  f"κέντρο {(sim.e.mcx, sim.e.mcy)} {'σε κτίριο' if live else 'ΣΤΟ ΚΕΝΟ'}")
+            return 1
+        print(f"OK μετεωρίτες: r1 = #{EC.lfsr(x):04X} -> "
+              + (f"βροχή {sim.e.meteor} κρούσεων γύρω από το {(sim.e.mcx, sim.e.mcy)}, "
+                 f"ίδια στον Z80" if on else "καμία βροχή, ίδια στον Z80"))
+
+    # 2. Η βροχή: κέντρο η δομή 0, σπόρος 1 — δύο κρούσεις σε θόλο, μία σε
+    # δομή, πέντε στο έδαφος (βρέθηκε με την αναφορά).
+    st = fresh(g, nexthop, base)
+    st.e.meteor, st.e.mrnd = EC.METEOR_N, 1
+    st.e.mcx = EC._s8(st.e.struct[EC.ST_CX]) >> 1
+    st.e.mcy = EC._s8(st.e.struct[EC.ST_CY]) >> 1
+    sim = same(sym, g, nexthop, st, METEOR_TICKS, "βροχή μετεωριτών")
+    if sim is None:
+        return 1
+    # ΤΙ ΕΓΙΝΕ ΣΤΗ ΔΙΑΔΡΟΜΗ, στην αναφορά — που μόλις βγήκε ίδια με τον Z80:
+    # οι μηχανές που σταμάτησαν έχουν επισκευαστεί ως το τέλος.
+    walk = fresh(g, nexthop, st)
+    broke = fixed = 0
+    prev = bytes(walk.e.dome)
+    for _ in range(METEOR_TICKS):
+        walk.tick()
+        now = bytes(walk.e.dome)
+        for d in range(EC.MAX_DOME):
+            for k in range(8):
+                i = d * EC.DOME_REC + EC.D_HEALTH + k
+                broke += bool(prev[i] and not now[i])
+                fixed += bool(not prev[i] and now[i])
+        prev = now
+    # Η δομή που χτυπήθηκε έγινε εργοτάξιο και πήρε εργασία Build. Ξαναχτίζεται
+    # μόνο στο κανονικό παιχνίδι (tests/test_meteor.py): ο γράφος αυτής της
+    # δοκιμής έχει μόνο θόλους, και καμία δομή δεν φτάνεται.
+    sites = sum(1 for k in range(EC.MAX_STRUCT)
+                if sim.e.struct[k * 8 + EC.ST_STATE] == EC.DS_BUILDING)
+    jobs = sum(1 for k in range(EC.MAX_JOB)
+               if sim.e.job[k * EC.JOB_REC + EC.J_KIND] == EC.J_BUILD)
+    if sim.e.meteor or not broke or not sites or not jobs:
+        print(f"ΑΠΟΤΥΧΙΑ βροχή: έμειναν {sim.e.meteor} κρούσεις, {broke} μηχανές "
+              f"σταμάτησαν, {sites} δομές εργοτάξια, {jobs} εργασίες Build")
+        return 1
+    print(f"OK μετεωρίτες: οκτώ κρούσεις, {broke} μηχανές σταμάτησαν ({fixed} "
+          f"επισκευάστηκαν), {sites} δομή ξανά εργοτάξιο με εργασία Build — "
+          f"{METEOR_TICKS} frames, ίδια bytes στον Z80 και στην αναφορά")
+
+    # 4. ΟΙ ΑΚΡΕΣ ΤΩΝ ΑΠΟΤΥΠΩΜΑΤΩΝ (mt_scan). Ο Z80 ρωτά το αποτύπωμα μόνο
+    # για κτίρια με κέντρο ως MT_REACH tiles μακριά στο x· η αναφορά τα ρωτά
+    # όλα. Μια μακριά βροχή με τον τροχό καρφωμένο στη θέση 15 — μία κρούση
+    # ανά frame — και ένας σπόρος που ρίχνει κρούσεις στην αριστερή στήλη
+    # θόλων L, τέσσερα tiles από το κέντρο: εκεί θα έχανε ένα μικρότερο όριο.
+    # ΑΡΝΗΤΙΚΟ: με MT_REACH 3 ο Z80 ΠΡΕΠΕΙ να διαφωνήσει.
+    if edges(sym, g, nexthop, base):
+        return 1
+
+    # 3. Και η κατασκευή η ίδια (ja_build), που η αναφορά δεν ήξερε ως το
+    # βήμα 38: ένας θόλος γίνεται εργοτάξιο και κάποιος έρχεται να τον χτίσει.
+    st = fresh(g, nexthop, base)
+    b = 0 * EC.DOME_REC
+    st.e.dome[b + EC.D_STATE], st.e.dome[b + EC.D_INTEG] = EC.DS_BUILDING, 0
+    EC.post_build(st.e, 0)
+    sim = same(sym, g, nexthop, st, METEOR_TICKS, "κατασκευή")
+    if sim is None:
+        return 1
+    if sim.e.dome[b + EC.D_STATE] != EC.DS_ACTIVE:
+        print(f"ΑΠΟΤΥΧΙΑ κατασκευή: ο θόλος 0 έμεινε εργοτάξιο, ακεραιότητα "
+              f"{sim.e.dome[b + EC.D_INTEG]}")
+        return 1
+    print(f"OK κατασκευή:  ένα εργοτάξιο ξαναχτίστηκε, ίδια bytes στον Z80 και "
+          f"στην αναφορά")
+    return 0
+
+
+METEOR_TICKS = 1600             # 100 περιστροφές: οκτώ κρούσεις, δρόμος, χτίσιμο
 
 
 if __name__ == "__main__":

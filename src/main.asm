@@ -63,6 +63,10 @@ ml_high:
         rra
         jr      nc,ml_high
         call    ml_wheel
+        ld      hl,mt_boom              ; έπεσε μετεωρίτης (src/meteor.asm)
+        ld      a,(hl)
+        or      a
+        call    nz,ml_boom
         ld      a,(dirty_over)
         or      a
         call    nz,ml_over
@@ -95,6 +99,14 @@ ml_nohud:
         jp      main_loop
 
 ml_hudw:    db 1                    ; αντίστροφη μέτρηση για το ρολόι του HUD
+
+; ml_boom — HL = mt_boom. Ο ήχος της κρούσης παίζει από εδώ και όχι από τον
+; τροχό, όπως κάθε ήχος της αποικίας (ml_alert): η προσομοίωση τρέχει και στο
+; harness, που δεν έχει ήχο να του πει.
+ml_boom:
+        ld      (hl),0
+        ld      a,SFX_METEOR
+        jp      snd_play
 
 ; ---------------------------------------------------------------------------
 ; ml_wheel — όσες θέσεις τροχού ζητά η ταχύτητα του παίκτη (§9.1). 0 = παύση.
@@ -212,6 +224,7 @@ ml_hud:
         include "entity.asm"
         include "econ.asm"
         include "jobs.asm"
+        include "jobpost.asm"            ; κοινό με το build.asm (βήμα 38)
         include "needs.asm"
         include "ship.asm"
         include "wheel.asm"
@@ -233,6 +246,7 @@ zz_page2_code:                          ; για το tools/mkdsk.py: πού φ�
         include "build.asm"
         include "route.asm"
         include "sound.asm"
+        include "meteor.asm"            ; βήμα 38: ζει στον τροχό, σπάνια τρέχει
         ; ΚΡΥΟΣ ΚΩΔΙΚΑΣ, ΜΕΤΑΚΟΜΙΣΕ ΣΤΟ ΒΗΜΑ 30. Το save.asm τρέχει όταν ο
         ; παίκτης πατήσει S ή L, το hw.asm στην εκκίνηση και μετά ποτέ: καμία
         ; κλήση τους δεν είναι σε καρέ που μετράει, και εδώ πάνω ο χώρος

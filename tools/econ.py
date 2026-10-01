@@ -138,6 +138,12 @@ class Econ:
         # να τρέχουν όταν το ρεύμα δεν φτάνει για όλους.
         self.ess_power = 0
         self.acc_ess = 0
+        # Η βροχή μετεωριτών (§6.10, src/meteor.asm): κρούσεις που μένουν,
+        # κέντρο σε tiles, και η δική της γεννήτρια.
+        self.meteor = 0
+        self.mcx = 0
+        self.mcy = 0
+        self.mrnd = 0
         self.acc_o2 = 0
         self.prod_dome = 0                  # πού έφτασε το σάρωμα
         # ρολόι και καιρός (§6.10)
@@ -474,7 +480,116 @@ def events(e):
         break_one(e, (r3 >> 3) + 101)
         break_one(e, (r3 >> 1) + 173)
 
+    meteor_tick(e, r1)
     return new_sol
+
+
+# --- η βροχή μετεωριτών (§6.10) — το src/meteor.asm, γραμμή προς γραμμή -----
+#
+# Τα δώδεκα ψηλά bits του r1 ΟΛΑ ΕΝΑ: 1 στις 4.096 περιστροφές. Οι άλλες ζαριές
+# ζητούν μηδενικά στα ίδια bits της ροής, οπότε η βροχή δεν συμπίπτει ποτέ με
+# θύελλα, βλάβη, έκλαμψη ή επισκέπτη. Οι θέσεις έρχονται από ΔΙΚΗ της
+# γεννήτρια (mrnd), οκτώ βήματα ανά byte. Τον κρατήρα — τον κόσμο — δεν τον
+# ξέρει η αναφορά· τον ελέγχει το tests/test_meteor.py στο κανονικό binary.
+METEOR_N = 8
+_DIMS = None
+
+
+def struct_dims():
+    """(πλάτος bytes, ύψος γραμμών) ανά kind*4 + size: το struct_dims των
+    assets, ίδιο με το G_struct_dims που διαβάζει ο Z80."""
+    global _DIMS
+    if _DIMS is None:
+        from sprites import load_map, load_bin
+        t = load_map()["struct_dims"]
+        _DIMS = load_bin()[t.off:t.off + t.size]
+    return _DIMS
+
+
+def _s8(v):
+    v &= 0xFF
+    return v - 256 if v > 127 else v
+
+
+def _mbyte(e):
+    for _ in range(8):
+        e.mrnd = lfsr(e.mrnd)
+    return e.mrnd & 0xFF
+
+
+def _node_rec(e, n):
+    if n < MAX_DOME:
+        return e.dome, n * DOME_REC
+    return e.struct, (n - MAX_DOME) * STRUCT_REC
+
+
+def _footprint(e, n):
+    rec, b = _node_rec(e, n)
+    if n < MAX_DOME:
+        w = h = 4 + 2 * rec[b + D_SIZE]
+    else:
+        dims = struct_dims()
+        k = (rec[b + ST_KIND] * 8 + rec[b + ST_SIZE] * 2) & 0xFF
+        w, h = dims[k] // 4, dims[k + 1] // 16
+    x0 = _s8(rec[b + D_CX] - w) >> 1
+    y0 = _s8(rec[b + D_CY] - h) >> 1
+    return x0, y0, w, h
+
+
+def meteor_tick(e, r1):
+    if e.meteor:
+        _impact(e)
+        return
+    if (r1 >> 4) != 0xFFF:
+        return
+    e.mrnd = (r1 ^ e.frame) & 0xFFFF or 1
+    c = _mbyte(e) & 127
+    for _ in range(128):
+        if c < MAX_DOME + MAX_STRUCT:
+            rec, b = _node_rec(e, c)
+            if rec[b + D_STATE]:
+                e.mcx = _s8(rec[b + D_CX]) >> 1
+                e.mcy = _s8(rec[b + D_CY]) >> 1
+                e.meteor = METEOR_N
+                return
+        c = (c + 1) & 127
+
+
+def _impact(e):
+    e.meteor -= 1
+    b = _mbyte(e)
+    s = e.mrnd >> 8                         # ποια μηχανή, αν πέσει σε θόλο
+    tx = _s8(e.mcx + (b & 15) - 8)
+    ty = _s8(e.mcy + (b >> 4) - 8)
+    if not (-64 <= tx < 64 and -64 <= ty < 64):
+        return
+    for n in range(MAX_DOME + MAX_STRUCT):
+        rec, base = _node_rec(e, n)
+        if not rec[base + D_STATE]:
+            continue
+        x0, y0, w, h = _footprint(e, n)
+        if ((tx - x0) & 0xFF) < w and ((ty - y0) & 0xFF) < h:
+            break
+    else:
+        return                              # έδαφος: ο κρατήρας είναι του κόσμου
+    if rec[base + D_STATE] != DS_ACTIVE:
+        rec[base + D_INTEG] = 0             # εργοτάξιο: χάνει την πρόοδο
+    elif n < MAX_DOME:
+        break_one(e, n + 64 * s)            # μία μηχανή σταματά
+    else:
+        rec[base + ST_STATE] = DS_BUILDING  # ξανά εργοτάξιο
+        rec[base + ST_INTEG] = 0
+        e.flow_div = 1
+        post_build(e, n)
+
+
+def post_build(e, node):
+    """Μία εργασία Build στην πρώτη ελεύθερη θέση (src/jobs.asm, jb_post_build)."""
+    for j in range(MAX_JOB):
+        b = j * JOB_REC
+        if e.job[b + J_KIND] == NO_JOB:
+            e.job[b:b + JOB_REC] = bytes([J_BUILD, node, 255, 5, 0])
+            return
 
 
 def to_bytes(e):
@@ -503,10 +618,12 @@ def to_bytes(e):
     # τα μετακινούσαν όλα.
     out += int(e.ess_power).to_bytes(2, "little")
     out += int(e.acc_ess).to_bytes(2, "little")
+    out += bytes([e.meteor, e.mcx & 0xFF, e.mcy & 0xFF])   # βήμα 38
+    out += int(e.mrnd).to_bytes(2, "little")
     return bytes(out)
 
 
-ECON_BYTES = 64 + 8 + 10 + 4                        # + ess_power/acc_ess = 86
+ECON_BYTES = 64 + 8 + 10 + 4 + 5                    # + η βροχή μετεωριτών = 91
 
 
 def populate(e, n_dome=24, n_struct=30, seed=11):
@@ -627,6 +744,7 @@ J_BUILD, J_OPERATE, J_HAUL, J_DRILL, J_REPAIR, J_HEAL, J_DEFEND = range(7)
 # ποιοι ρόλοι δέχονται ποια εργασία — bitmask ανά είδος (§6.7)
 JOB_ROLES = [0x22, 0x05, 0x41, 0x81, 0x02, 0x08, 0x10]
 JOB_PRIO = [5, 3, 2, 4, 6, 8, 9]
+BUILD_STEP = 32                     # src/jobs.asm — οκτώ επισκέψεις
 # Το OPERATE δεν έχει μία προτεραιότητα αλλά μία ανά ΔΩΜΑΤΙΟ (§6.7): με κοινή
 # τιμή η ισοπαλία έσπαγε πάντα στην απόσταση, που δεν αλλάζει ποτέ, και ο
 # κοντινότερος θόλος κρατούσε όλο τον κόσμο.
@@ -698,6 +816,21 @@ def jobs_tick(e, a, F_ALIVE, F_WORKING):
             continue
         node = jb[b + J_NODE]
         if a.node[i] != node or a.edge[i] != 255:
+            continue
+        if jb[b + J_KIND] == J_BUILD:
+            # Ο ΕΡΓΑΤΗΣ ΜΕΝΕΙ ΚΑΙ ΧΤΙΖΕΙ (src/jobs.asm, ja_build): η πρόοδος
+            # είναι η ακεραιότητα, BUILD_STEP ανά επίσκεψη ως το 255. Ως το
+            # βήμα 38 η αναφορά τον έκανε χειριστή — δεν το είχε ζητήσει καμία
+            # δοκιμή, γιατί η αποικία της δεν έχει εργοτάξια.
+            rec, rb = _node_rec(e, node)
+            v = min(255, rec[rb + D_INTEG] + BUILD_STEP)
+            rec[rb + D_INTEG] = v
+            if v != 255:
+                continue
+            rec[rb + D_STATE] = DS_ACTIVE
+            e.flow_div = 1
+            a.task[i] = NO_TASK
+            jb[b + J_KIND] = NO_JOB
             continue
         if jb[b + J_KIND] == J_REPAIR:
             # Ο μηχανικός φτάνει με ένα ανταλλακτικό και φεύγει. Δεν πιάνει

@@ -35,6 +35,7 @@ x_txt_nopwr:  db "NO POWER           ",0
 x_txt_shed:   db "LOW POWER          ",0
 x_txt_noo2:   db "NO OXYGEN          ",0
 x_txt_storm:  db "SANDSTORM          ",0
+x_txt_meteor: db "METEOR SHOWER      ",0
 x_txt_nofood: db "LOW ON FOOD        ",0
 x_txt_nowater:db "LOW ON WATER       ",0
 x_txt_lost:   db "COLONY LOST        ",0
@@ -97,6 +98,7 @@ txt_nopwr equ x_txt_nopwr - TEXT_IMG + G_text
 txt_shed  equ x_txt_shed - TEXT_IMG + G_text
 txt_noo2  equ x_txt_noo2 - TEXT_IMG + G_text
 txt_storm equ x_txt_storm - TEXT_IMG + G_text
+txt_meteor equ x_txt_meteor - TEXT_IMG + G_text
 txt_lost  equ x_txt_lost - TEXT_IMG + G_text
 t_saving  equ x_t_saving - TEXT_IMG + G_text
 t_saved   equ x_t_saved - TEXT_IMG + G_text

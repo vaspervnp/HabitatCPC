@@ -48,7 +48,8 @@ SFX_DONE    equ 4                       ; το κτίριο τελείωσε
 SFX_SHIP    equ 5                       ; πλοίο στην πλατφόρμα
 SFX_ALERT   equ 6                       ; έπεσε ρεύμα ή οξυγόνο
 SFX_DEATH   equ 7                       ; πέθανε άποικος
-SFX_N       equ 8
+SFX_METEOR  equ 8                       ; κρούση μετεωρίτη (§6.10)
+SFX_N       equ 9
 
 ; ---------------------------------------------------------------------------
 ; snd_init — σιωπή, και το PPI στη θέση που θέλει ο ήχος.
@@ -360,6 +361,7 @@ sn_st:      defs SND_CH * SND_REC       ; ανά κανάλι: δείκτης, w
 sn_tab:
         dw fx_move, fx_menu, fx_deny, fx_build
         dw fx_done, fx_ship, fx_alert, fx_death
+        dw fx_meteor
 
 fx_move:    db 2, 1
             db 1, 6, 120, 0
@@ -394,6 +396,12 @@ fx_alert:   db 0, 8
             db 6, 11, 240, 0
             db 6, 11, 28, 1
             db 6, 11, 240, 0
+            db 0
+fx_meteor:  db 0, 7                    ; κάτω από τον συναγερμό, πάνω από το πλοίο
+            db 2, #8F, 31, 0            ; θόρυβος, η πιο χαμηλή περίοδος: βουητό
+            db 4, #8C, 31, 0
+            db 6, #88, 31, 0
+            db 8, #84, 31, 0
             db 0
 fx_death:   db 0, 9
             db 6, 11, 28, 1

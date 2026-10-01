@@ -977,16 +977,21 @@ ev_fl_go:
 ; ev_rnd — Galois, ίδιος με τη γεννήτρια κόσμου, ΞΕΧΩΡΙΣΤΗ κατάσταση.
 ev_rnd:
         ld      hl,(EC_RND)
+        call    lfsr_hl
+        ld      (EC_RND),hl
+        ret
+
+; lfsr_hl — ένα βήμα του Galois στο HL. Και για τη βροχή μετεωριτών, που έχει
+; δική της κατάσταση (EC_MRND, src/meteor.asm). Χαλάει το A.
+lfsr_hl:
         ld      a,l
         srl     h
         rr      l
         and     1
-        jr      z,ev_nox
+        ret     z
         ld      a,h
         xor     #B4
         ld      h,a
-ev_nox:
-        ld      (EC_RND),hl
         ret
 
 ; ev_shr — HL >>= B
@@ -1014,7 +1019,9 @@ ec_break:
         call    ev_shr
         ld      a,l
         ld      (eb_s),a
-
+; ec_break_d — ο θόλος (eb_d) και η υποδοχή (eb_s) ήδη διαλεγμένοι: τον
+; θόλο που χτύπησε ο μετεωρίτης τον ξέρουμε, δεν τον βγάζουμε από ζαριά.
+ec_break_d:
         ld      a,(eb_d)
         call    jb_dome_ptr
         push    hl
@@ -1063,6 +1070,7 @@ ec_break:
         ret
 
 ev_after:
+        call    mt_tick                 ; η βροχή μετεωριτών (src/meteor.asm)
         ld      a,(ev_newday)
         or      a
         call    nz,sol_rollover

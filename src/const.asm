@@ -157,6 +157,11 @@ P_ESS       equ 2                       ; μόνο η υποστήριξη ζω�
 ; κερδίσουν τίποτα.
 EC_EPOWER   equ G_econ_state + 82       ; ζήτηση ΥΠΟΣΤΗΡΙΞΗΣ ΖΩΗΣ (§6.5)
 EC_ACCE     equ G_econ_state + 84       ; ο συσσωρευτής της, ανά σάρωμα
+; Η βροχή μετεωριτών (§6.10), βήμα 38 — πάλι στο τέλος, για τον ίδιο λόγο.
+EC_METEOR   equ G_econ_state + 86       ; κρούσεις που μένουν (0 = καμία βροχή)
+EC_MCX      equ G_econ_state + 87       ; το κέντρο της, σε tiles, προσημασμένα
+EC_MCY      equ G_econ_state + 88
+EC_MRND     equ G_econ_state + 89       ; η δική της γεννήτρια (16 bit)
 
 EC_CAP      equ 600                     ; ταβάνι αποθέματος
 
