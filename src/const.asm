@@ -27,7 +27,7 @@ GA_INK      equ #40         ; 01cccccc τιμή χρώματος
 ; --- διαμορφώσεις RAM για το παράθυρο &4000-&7FFF (§4.1) ---
 PAGE_B1     equ #C0         ; βασική τράπεζα 1
 PAGE_B4     equ #C4         ; επίπεδο κόσμου
-PAGE_B5     equ #C5         ; NEXTHOP
+PAGE_B5     equ #C5         ; NEXTHOP, και πάνω του το ευρετήριο αντικειμένων
 PAGE_B6     equ #C6         ; τεταρτημόρια, φιγούρες, πίνακες οντοτήτων
 PAGE_B7     equ #C7         ; εξωτερικές δομές, φυτά, κείμενο, ήχος
 
@@ -251,3 +251,20 @@ DK_BUILT    equ 5                   ; a = κόμβος που μόλις τελ�
 DK_SITE     equ 6                   ; a = θόλος, b = σειρά tiles του εργοταξίου
 DK_CROW     equ 7                   ; a = tx, b = ty: τρία tiles μιας διαγωνίου
 DK_KINDS    equ 8
+
+; --- ευρετήριο αντικειμένων (src/object.asm, βήμα 39) ---
+; Στην τράπεζα 5, πάνω από το NEXTHOP[MAX_NODE][128], που τελειώνει στο
+; #6FFF: από το βήμα 30 (96 κόμβοι αντί για 128) τα 4 KB από εκεί ως το τέλος
+; δεν τα χρησιμοποιούσε κανείς. Ανά εγγραφή x0, x1, y0, y1 σε tiles του
+; κόσμου +128, και το id· θόλοι, διάδρομοι, δομές, με τη σειρά σχεδίασης.
+OI_REC      equ 5
+OB_IX_FIG   equ 1           ; ob_idx: πόρτες και φιγούρες (ob_conn_scan, ob_fig_scan)
+OB_IX_DOME  equ 2           ;         τα κελύφη των θόλων
+OB_IX_CORR  equ 4           ;         οι διάδρομοι
+OB_IX_STRUCT equ 8          ;         οι δομές
+OB_IX_ALL   equ 15
+OI_DOME     equ #4000 + MAX_NODE * 128
+OI_CORR     equ OI_DOME + MAX_DOME * OI_REC
+OI_STRUCT   equ OI_CORR + MAX_CORR * OI_REC
+OI_END      equ OI_STRUCT + MAX_STRUCT * OI_REC
+        assert  OI_END <= #8000

@@ -383,6 +383,9 @@ ob_frame:
 ; παράθυρο είναι μία στήλη 4 bytes, αυτό ήταν όλο το κόστος.
 ; ---------------------------------------------------------------------------
 ob_vis:
+        ld      a,(ob_meas)
+        or      a
+        jr      nz,ov_meas
         ld      hl,(d_fx)
         ld      (cl_pos),hl
         ld      a,(d_qw)
@@ -401,6 +404,19 @@ ob_vis:
         ld      hl,(clip_y0)
         ld      (cl_lo),hl
         jp      ob_clip
+; ov_meas — το πλαίσιο στο περίγραμμα του ευρετηρίου (oi_build), και «δεν
+; φαίνεται»: τίποτα δεν ζωγραφίζεται.
+ov_meas:
+        ld      hl,(d_fx)
+        ld      a,(d_qw)
+        add     a,a
+        call    oi_gx8
+        ld      hl,(d_fy)
+        ld      a,(d_qh)
+        add     a,a
+        call    oi_gy8
+        xor     a
+        ret
 
 ; ---------------------------------------------------------------------------
 ; ob_ovl — τέμνεται το [HL, HL+DE) με το [cl_lo, cl_hi); 16 bit, για τους
@@ -1188,6 +1204,9 @@ oc_run:
         ld      a,(oc_n)
         or      a
         ret     z
+        ld      a,(ob_meas)
+        or      a
+        jr      nz,oc_meas
         ; --- κουτί οριοθέτησης ολόκληρης της διαδρομής ---
         ; Το cl_lo/cl_hi μπαίνει ΠΡΙΝ το ob_box: το ob_box γυρίζει HL και DE,
         ; και ένα ld hl,(clip_x0) μετά θα τα έτρωγε.
@@ -1228,6 +1247,22 @@ occ_lp:
         ld      (oc_n),a
         jr      nz,occ_lp
         ret
+
+; oc_meas — το oc_run όταν χτίζεται το ευρετήριο: το κουτί του τρεξίματος
+; στο περίγραμμα, τίποτα στην οθόνη.
+oc_meas:
+        ld      a,(oc_dx)
+        ld      c,a
+        ld      hl,(ob_x)
+        ld      a,(ob_w)
+        call    ob_box
+        call    oi_gx
+        ld      a,(oc_dy)
+        ld      c,a
+        ld      hl,(ob_y)
+        ld      a,(ob_h)
+        call    ob_box
+        jp      oi_gy
 
 ; ---------------------------------------------------------------------------
 ; ob_box — το εύρος μιας διαδρομής σε έναν άξονα.
@@ -1380,12 +1415,22 @@ ob_struct:
         ld      a,4
 os_masked:
         ld      (ob_fl),a
+        ld      a,(ob_meas)
+        or      a
+        jr      nz,os_meas
         ld      bc,GA_PORT + PAGE_B7
         out     (c),c
         call    ob_blit
         ld      bc,GA_PORT + PAGE_B6
         out     (c),c
         ret
+os_meas:
+        ld      hl,(ob_x)
+        ld      a,(ob_w)
+        call    oi_gx8
+        ld      hl,(ob_y)
+        ld      a,(ob_h)
+        jp      oi_gy8
 
 ; ---------------------------------------------------------------------------
 ; ob_conn_scan — dome_conn[64]: ποιες κατευθύνσεις κάθε θόλου έχουν διάδρομο.
@@ -1546,60 +1591,335 @@ ofs_next:
 
 ; ---------------------------------------------------------------------------
 ; ob_draw_all — όλη η σκηνή, μέσα στο τρέχον clip.
+;
+; ΑΠΟ ΤΟ ΕΥΡΕΤΗΡΙΟ, ΟΧΙ ΑΠΟ ΤΟΥΣ ΠΙΝΑΚΕΣ (βήμα 39). Ως τότε κάθε κλήση ρωτούσε
+; 64 θόλους δύο φορές, 96 διαδρόμους και όλες τις δομές, και για να πει «όχι»
+; κάθε ζωντανό αντικείμενο αντέγραφε την εγγραφή του, υπολογίζε πλαίσιο και
+; τρεξίματα: 49 ms για μια αποικία 12 θόλων όπου ΤΙΠΟΤΑ δεν φαινόταν. Το
+; ευρετήριο κρατά για κάθε ζωντανό αντικείμενο το περίγραμμά του σε tiles του
+; κόσμου, με τη σειρά σχεδίασης, και το «όχι» είναι τέσσερις συγκρίσεις.
+; Ό,τι περνά πηγαίνει στις ίδιες ρουτίνες με πριν, που κόβουν ακριβώς.
 ; ---------------------------------------------------------------------------
 ob_draw_all:
         ld      bc,GA_PORT + PAGE_B6
         out     (c),c
         call    ob_index
-        ld      b,MAX_DOME
-        ld      c,0
-oda_sh:
-        push    bc
-        ld      a,c
-        call    ob_shell
-        pop     bc
-        inc     c
-        djnz    oda_sh
-        ld      b,MAX_CORR
-        ld      c,0
-oda_co:
-        push    bc
-        ld      a,c
-        call    ob_corr
-        pop     bc
-        inc     c
-        djnz    oda_co
-        ld      b,MAX_DOME
-        ld      c,0
-oda_fi:
-        push    bc
-        ld      a,c
-        call    ob_fittings
-        pop     bc
-        inc     c
-        djnz    oda_fi
-        call    ob_struct_all
+        call    oi_window
+        ; ΚΑΝΕΝΑΣ ΘΟΛΟΣ ΣΤΗ ΜΝΗΜΗ ΤΟΥ ob_corr. Το ob_corr δεν ξαναδιαβάζει τον
+        ; θόλο αφετηρίας αν είναι ο d_id· ως τώρα το πέρασμα κελυφών τον
+        ; διάβαζε πάντα με την τρέχουσα κάμερα. Τώρα διαβάζει μόνο όσους
+        ; φαίνονται, και ο d_id μπορεί να είναι από άλλη κάμερα — ή από το
+        ; (0, 0) του oi_build.
+        ld      a,255
+        ld      (d_id),a
+        ld      hl,OI_DOME
+        ld      a,(oi_nd)
+        ld      de,ob_shell
+        call    oi_walk
+        ld      hl,OI_CORR
+        ld      a,(oi_nc)
+        ld      de,ob_corr
+        call    oi_walk
+        ld      hl,OI_DOME
+        ld      a,(oi_nd)
+        ld      de,ob_fittings
+        call    oi_walk
+        ld      hl,OI_STRUCT
+        ld      a,(oi_ns)
+        ld      de,ob_struct
+        call    oi_walk
         ld      bc,GA_PORT + PAGE_B1
         out     (c),c
         ret
 
-; ob_index — τα δύο ευρετήρια (πόρτες, φιγούρες), αν τα ακύρωσε το ob_touch.
-; Απαιτεί τράπεζα 6. Και για όποιον ζωγραφίζει ΕΝΑΝ θόλο χωρίς το ob_draw_all.
-ob_index:
-        ld      a,(ob_idx)
+; oi_walk — HL = η πρώτη εγγραφή (τράπεζα 5), A = πόσες, DE = η ρουτίνα που
+; ζωγραφίζει (A = id, τράπεζα 6). Για όσες τέμνουν το παράθυρο (oi_window).
+oi_walk:
         or      a
         ret     z
-        xor     a
-        ld      (ob_idx),a
+        ld      (oiw_fn),de
+        ld      b,a
+        ld      de,(oi_wx0)             ; E = wx0, D = wx1
+        ld      a,b
+        ld      bc,GA_PORT + PAGE_B5
+        out     (c),c
+        ld      b,a
+oiw_lp:
+        push    hl
+        ld      a,(hl)                  ; x0 < wx1;
+        cp      d
+        jr      nc,oiw_no
+        inc     hl
+        ld      a,e                     ; wx0 < x1;
+        cp      (hl)
+        jr      nc,oiw_no
+        inc     hl
+        ld      a,(oi_wy1)              ; y0 < wy1;
+        cp      (hl)
+        jr      c,oiw_no
+        jr      z,oiw_no
+        inc     hl
+        ld      a,(oi_wy0)              ; wy0 < y1;
+        cp      (hl)
+        jr      nc,oiw_no
+        inc     hl
+        ld      a,(hl)                  ; το id
+        push    bc
+        push    de
+        ld      bc,GA_PORT + PAGE_B6
+        out     (c),c
+        call    oiw_go
+        ld      bc,GA_PORT + PAGE_B5
+        out     (c),c
+        pop     de
+        pop     bc
+oiw_no:
+        pop     hl
+        ld      a,l
+        add     a,OI_REC
+        ld      l,a
+        jr      nc,oiw_nx
+        inc     h
+oiw_nx:
+        djnz    oiw_lp
+        ld      bc,GA_PORT + PAGE_B6
+        out     (c),c
+        ret
+oiw_go:
+        ld      hl,(oiw_fn)
+        jp      (hl)
+
+; oi_window — το clip σε tiles του κόσμου, +128 ώστε οι συγκρίσεις να είναι
+; ανυπόγραφες: [wx0, wx1) x [wy0, wy1), στρογγυλεμένο προς τα έξω.
+oi_window:
+        ld      a,(cam_tx)
+        add     a,128
+        ld      c,a
+        ld      a,(clip_x0)
+        srl     a
+        srl     a
+        add     a,c
+        ld      (oi_wx0),a
+        ld      a,(clip_x1)
+        add     a,3
+        srl     a
+        srl     a
+        add     a,c
+        ld      (oi_wx1),a
+        ld      a,(cam_ty)
+        add     a,128
+        ld      c,a
+        ld      a,(clip_y0)
+        rrca
+        rrca
+        rrca
+        rrca
+        and     #0F
+        add     a,c
+        ld      (oi_wy0),a
+        ld      a,(clip_y1)
+        add     a,15
+        rrca
+        rrca
+        rrca
+        rrca
+        and     #0F
+        add     a,c
+        ld      (oi_wy1),a
+        ret
+
+; ob_index — τα ευρετήρια (πόρτες και φιγούρες, και τα αντικείμενα ανά
+; κατηγορία) που ακύρωσε το ob_touch. Απαιτεί τράπεζα 6. Και για όποιον
+; ζωγραφίζει ΕΝΑΝ θόλο χωρίς το ob_draw_all.
+ob_index:
+        ld      hl,ob_idx
+        ld      a,(hl)
+        or      a
+        ret     z
+        ld      (hl),0
+        ld      (oi_mask),a
+        rrca
+        jr      nc,oi_build
         call    ob_conn_scan
-        jp      ob_fig_scan
+        call    ob_fig_scan
+        ; fall through
 
 ; ---------------------------------------------------------------------------
-; ob_struct_all — οι δομές ταξινομημένες κατά cy, ώστε οι νότιες να σκεπάζουν
-; τις βόρειες (§8.4). Ταξινόμηση με παρεμβολή: 64 στοιχεία, μία φορά ανά
-; πλήρη σχεδίαση, και ο πίνακας είναι ήδη σχεδόν ταξινομημένος.
+; oi_build — το ευρετήριο αντικειμένων στην τράπεζα 5, πάνω από το NEXTHOP.
+;
+; ΜΕ ΤΗΝ ΚΑΜΕΡΑ ΣΤΟ (0, 0), όπου η οθόνη ΕΙΝΑΙ ο κόσμος: οι ίδιες ρουτίνες
+; που ζωγραφίζουν δίνουν τις θέσεις, και το ob_meas τις κάνει να τις ΜΕΤΡΑΝΕ
+; αντί να ζωγραφίζουν. Ενας θόλος είναι το πλαίσιό του (ob_vis) — σε αυτό
+; κόβονται κέλυφος και εξαρτήματα μαζί. Ενας διάδρομος είναι η ένωση των
+; τρεξιμάτων του (oc_run), μια δομή το sprite της (ob_struct). Οι δομές
+; μπαίνουν ταξινομημένες κατά cy, όπως τις ζωγράφιζε το ob_struct_all σε
+; κάθε κλήση· η ταξινόμηση γίνεται τώρα μία φορά ανά αλλαγή.
 ; ---------------------------------------------------------------------------
-ob_struct_all:
+;
+; ΜΟΝΟ Η ΚΑΤΗΓΟΡΙΑ ΠΟΥ ΑΛΛΑΞΕ. Ως να μπει αυτό, κάθε τοποθέτηση ξανάχτιζε
+; ολόκληρο το ευρετήριο, και η πρώτη σειρά ενός εργοταξίου — που δεν περνά
+; καν από το ob_draw_all — πλήρωνε 56 ms για διαδρόμους που δεν άλλαξαν.
+oi_build:
+        ld      hl,(cam_tx)
+        push    hl
+        ld      hl,0
+        ld      (cam_tx),hl
+        inc     l
+        ld      a,l
+        ld      (ob_meas),a
+        ld      hl,oi_mask
+        srl     (hl)                    ; ήδη: το bit των φιγούρων
+        srl     (hl)
+        jr      nc,oib_c
+        ld      hl,OI_DOME
+        ld      (oi_ptr),hl
+        ld      hl,oi_nd
+        ld      de,ob_shell
+        ld      b,MAX_DOME
+        call    oi_pass
+oib_c:
+        ld      hl,oi_mask
+        srl     (hl)
+        jr      nc,oib_s
+        ld      hl,OI_CORR
+        ld      (oi_ptr),hl
+        ld      hl,oi_nc
+        ld      de,ob_corr
+        ld      b,MAX_CORR
+        call    oi_pass
+oib_s:
+        ld      hl,oi_mask
+        srl     (hl)
+        jr      nc,oib_end
+        ld      hl,OI_STRUCT
+        ld      (oi_ptr),hl
+        call    ob_struct_sort
+        ld      hl,oi_ns
+        ld      de,ob_struct
+        ld      a,(st_n)
+        ld      b,a
+        ld      a,1                     ; τα id από το st_ord
+        call    oi_pass_a
+oib_end:
+        xor     a
+        ld      (ob_meas),a
+        pop     hl
+        ld      (cam_tx),hl
+        ret
+
+; oi_pass — B εγγραφές, id 0..B-1· oi_pass_a με A = 1: τα id από το st_ord.
+; HL = ο μετρητής (oi_nd/nc/ns), DE = η ρουτίνα σε τρόπο μέτρησης.
+oi_pass:
+        xor     a
+oi_pass_a:
+        ld      (oi_tab),a
+        ld      (hl),0
+        ld      (oi_cnt),hl
+        ld      (oiw_fn),de
+        ld      a,b
+        or      a
+        ret     z
+        ld      c,0
+oip_lp:
+        push    bc
+        ld      a,(oi_tab)
+        or      a
+        ld      a,c
+        jr      z,oip_id
+        ld      hl,st_ord
+        ld      b,0
+        add     hl,bc
+        ld      a,(hl)
+oip_id:
+        ld      (oi_e + 4),a
+        ld      hl,#00FF                ; άδειο: x0 = 255, x1 = 0
+        ld      (oi_e),hl
+        ld      (oi_e + 2),hl
+        call    oiw_go
+        ld      a,(oi_e + 1)
+        or      a
+        jr      z,oip_nx                ; τίποτα δεν θα ζωγραφιζόταν
+        ld      hl,(oi_cnt)
+        inc     (hl)
+        ld      bc,GA_PORT + PAGE_B5
+        out     (c),c
+        ld      hl,oi_e
+        ld      de,(oi_ptr)
+        ld      bc,OI_REC
+        ldir
+        ld      (oi_ptr),de
+        ld      bc,GA_PORT + PAGE_B6
+        out     (c),c
+oip_nx:
+        pop     bc
+        inc     c
+        djnz    oip_lp
+        ret
+
+; oi_gx8 / oi_gy8 — HL = αρχή, A = μήκος (byte). oi_gx / oi_gy — DE = μήκος.
+; Το περίγραμμα (oi_e) μεγαλώνει ως τα tiles που αγγίζει το [αρχή, αρχή+μήκος).
+oi_gx8:
+        ld      e,a
+        ld      d,0
+oi_gx:
+        push    hl
+        add     hl,de
+        inc     hl
+        inc     hl
+        inc     hl
+        call    oi_t4                   ; το τέλος, προς τα πάνω
+        ld      c,a
+        pop     hl
+        call    oi_t4
+        ld      hl,oi_e
+        jr      oi_grow
+oi_gy8:
+        ld      e,a
+        ld      d,0
+oi_gy:
+        push    hl
+        add     hl,de
+        ld      bc,15
+        add     hl,bc
+        call    oi_t16
+        ld      c,a
+        pop     hl
+        call    oi_t16
+        ld      hl,oi_e + 2
+oi_grow:                                ; A = αρχή, C = τέλος, HL -> (lo, hi)
+        cp      (hl)
+        jr      nc,oig_hi
+        ld      (hl),a
+oig_hi:
+        inc     hl
+        ld      a,(hl)
+        cp      c
+        ret     nc
+        ld      (hl),c
+        ret
+
+; oi_t16 / oi_t4 — HL προσημασμένο (bytes ή γραμμές) -> A = tile + 128.
+oi_t16:
+        sra     h
+        rr      l
+        sra     h
+        rr      l
+oi_t4:
+        sra     h
+        rr      l
+        sra     h
+        rr      l
+        ld      a,l
+        xor     #80
+        ret
+
+; ---------------------------------------------------------------------------
+; ob_struct_sort — st_ord[st_n]: οι ζωντανές δομές κατά cy, ώστε οι νότιες να
+; σκεπάζουν τις βόρειες (§8.4). Ταξινόμηση με παρεμβολή, ο πίνακας είναι ήδη
+; σχεδόν ταξινομημένος. Από το βήμα 39 τρέχει μόνο όταν χτίζεται το
+; ευρετήριο, όχι σε κάθε σχεδίαση.
+; ---------------------------------------------------------------------------
+ob_struct_sort:
         ld      hl,G_struct_tbl + ST_STATE
         ld      de,st_ord
         ld      b,MAX_STRUCT
@@ -1624,10 +1944,8 @@ osa_gskip:
         inc     c
         djnz    osa_gather
         ld      a,(st_n)
-        or      a
-        ret     z
         cp      2
-        jr      c,osa_draw
+        ret     c
         ; --- ταξινόμηση με παρεμβολή πάνω στο cy ---
         ld      a,(st_n)
         dec     a
@@ -1675,19 +1993,6 @@ osa_place:
         pop     bc
         inc     c
         djnz    osa_out
-osa_draw:
-        ld      a,(st_n)
-        ld      b,a
-        ld      hl,st_ord
-osa_dl:
-        push    bc
-        push    hl
-        ld      a,(hl)
-        call    ob_struct
-        pop     hl
-        inc     hl
-        pop     bc
-        djnz    osa_dl
         ret
 
 ; osa_key — A = δείκτης μέσα στο st_ord -> A = cy+128, E = το id.
@@ -1710,14 +2015,29 @@ osa_key:
         ret
 
 ; ---------------------------------------------------------------------------
-; ob_touch — τα δύο ευρετήρια είναι παλιά· ξαναχτίσου στην επόμενη σχεδίαση.
+; ob_touch — τα ευρετήρια είναι παλιά· ξαναχτίσου στην επόμενη σχεδίαση.
+; ob_touch_a — μόνο όσα λέει το A (OB_IX_*). ob_touch_n — A = ο κόμβος που
+; μόλις μπήκε: οι πόρτες και οι φιγούρες, και η κατηγορία του. Κρατά το A.
 ;
 ; Χωρίς αυτό, οι δύο σαρώσεις (96 διάδρομοι + 128 πράκτορες) έτρεχαν σε ΚΑΘΕ
 ; βήμα σκρολαρίσματος — 0,8 frames για δεδομένα που δεν είχαν αλλάξει.
 ; ---------------------------------------------------------------------------
+ob_touch_n:
+        push    af
+        cp      MAX_DOME
+        ld      a,OB_IX_FIG + OB_IX_DOME
+        jr      c,obt_n
+        ld      a,OB_IX_FIG + OB_IX_STRUCT
+obt_n:
+        call    ob_touch_a
+        pop     af
+        ret
 ob_touch:
-        ld      a,1
-        ld      (ob_idx),a
+        ld      a,OB_IX_ALL
+ob_touch_a:
+        ld      hl,ob_idx
+        or      (hl)
+        ld      (hl),a
         ret
 
 ; ---------------------------------------------------------------------------
@@ -1776,7 +2096,21 @@ role_fig:
         db      1, 7, 2, 3, 4, 8, 5, 6
 
 ; --- μεταβλητές ------------------------------------------------------------
-ob_idx:     db 1                ; τα ευρετήρια θέλουν ξαναχτίσιμο
+ob_idx:     db OB_IX_ALL        ; ποια ευρετήρια θέλουν ξαναχτίσιμο (OB_IX_*)
+oi_mask:    db 0
+ob_meas:    db 0                ; 1 = μέτρα, μη ζωγραφίζεις (oi_build)
+oi_nd:      db 0                ; εγγραφές ευρετηρίου: θόλοι,
+oi_nc:      db 0                ; διάδρομοι,
+oi_ns:      db 0                ; δομές
+oi_wx0:     db 0                ; το clip σε tiles +128 — wx0, wx1 ΜΑΖΙ (oi_walk)
+oi_wx1:     db 0
+oi_wy0:     db 0
+oi_wy1:     db 0
+oiw_fn:     dw 0
+oi_ptr:     dw 0
+oi_cnt:     dw 0
+oi_tab:     db 0
+oi_e:       defs OI_REC         ; η εγγραφή που μετριέται: x0, x1, y0, y1, id
 clip_x0:    db 0
 clip_x1:    db SCR_W
 clip_y0:    db 0

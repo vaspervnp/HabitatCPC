@@ -1077,7 +1077,8 @@ crm_done:
         call    cr_stamp
         call    cr_pay
         call    cr_link
-        call    ob_touch
+        ld      a,OB_IX_FIG + OB_IX_CORR    ; οι πόρτες και οι διάδρομοι
+        call    ob_touch_a
         xor     a
         ret
 

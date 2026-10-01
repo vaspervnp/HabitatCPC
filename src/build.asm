@@ -444,9 +444,8 @@ bdk_done:
         call    bd_stamp
         call    bd_link
         call    bd_postjob
-        call    ob_touch
         ld      a,(bd_node)
-        ret
+        jp      ob_touch_n              ; μόνο η κατηγορία του· κρατά το A
 
 ; ---------------------------------------------------------------------------
 ; bd_link — το εργοτάξιο συνδέεται με τον κοντινότερο ζωντανό θόλο.
