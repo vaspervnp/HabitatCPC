@@ -246,6 +246,7 @@ done_flag:  db 0
         include "../src/blit.asm"
         include "../src/tiles.asm"
         include "../src/object.asm"
+        include "../src/objindex.asm"
         include "../src/dirty.asm"
         include "../src/hud.asm"
         include "../src/view.asm"

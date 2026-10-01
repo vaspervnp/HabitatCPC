@@ -49,6 +49,10 @@ I_DOME_S, I_DOME_L, I_CORR, I_SOLAR = 0, 2, 3, 4
 R_FACTORY = 4
 DS_ACTIVE = 2
 DOME_TBL, STRUCT_TBL = 0x7500 - 0x4000, 0x7B00 - 0x4000   # μέσα στην τράπεζα 6
+# Το χειρότερο φάντασμα: θόλος L κόκκινος σε όλα του τα tiles. Πλαίσιο 32 x 128
+# σε τέσσερα ορθογώνια (κεφαλίδα 4 το καθένα, πάνω και κάτω πάχους 2) και 64
+# σημάδια 2x4. Από το βήμα 41 το GH_LOG είναι ΑΚΡΙΒΩΣ αυτό (src/const.asm).
+RED_L = 2 * (4 + 32 * 2) + 2 * (4 + 128 - 4) + 64 * (4 + 2 * 4)
 
 
 def check(ok, msg):
@@ -244,10 +248,24 @@ def finish(G, node):
     return G.state(node)[0] == DS_ACTIVE
 
 
-def dome(sym, g, cut_ghost=False):
+def dome(sym, g, cut_ghost=False, short=False):
     """Θόλος L εργοστάσιο: τοποθέτηση και ολοκλήρωση, με το κόκκινο φάντασμα
-    να κάθεται από πάνω του σε όλη τη διάρκεια — εκεί το αφήνει το uip_after."""
+    να κάθεται από πάνω του σε όλη τη διάρκεια — εκεί το αφήνει το uip_after.
+
+    Με `short` το όριο του αρχείου στο ghr_put κατεβαίνει ένα byte, και
+    επιστρέφεται μόνο πόσο γέμισε: το τελευταίο σημάδι δεν πρέπει να χωρά."""
     G = Game(sym, g)
+    if short:
+        at, want = sym["GHR_PUT"], G.ghbuf + RED_L + 1
+        for k in range(48):
+            if (G.m.peek(at + k) == 0x11 and G.m.peek(at + k + 1) == want & 0xFF
+                    and G.m.peek(at + k + 2) == want >> 8):
+                G.m.poke(at + k + 1, (want - 1) & 0xFF)
+                G.m.poke(at + k + 2, (want - 1) >> 8)
+                break
+        else:
+            raise SystemExit(f"το ghr_put δεν ελέγχει το #{want:04X}: το GH_LOG "
+                             f"δεν είναι {RED_L}")
     tx, ty = B.clear_spots(8, 1)[0]
     G.camera(tx - 6, ty - 1)                 # ο θόλος στις στήλες 6-13
     G.inside = interior(6 * 4, 1 * 16)
@@ -274,6 +292,8 @@ def dome(sym, g, cut_ghost=False):
     bands = sum(1 for a, b in zip(G.pend, G.pend[1:]) if b < a)
     most = max((a - b for a, b in zip(G.pend, G.pend[1:])), default=0)
     placed = G.worst()
+    if short:
+        return (G.m.peek(sym["GH_PTR"]) | (G.m.peek(sym["GH_PTR"] + 1) << 8)) - G.ghbuf
     if not cut_ghost:
         check(G.m.peek(g + 6) != metal and G.state(node)[0] == 1,
               f"ο θόλος L μπήκε στο {(tx, ty)}: κόμβος {node}, εργοτάξιο")
@@ -288,9 +308,12 @@ def dome(sym, g, cut_ghost=False):
               f"ο θόλος εμφανίστηκε σε {bands} γύρους, το πολύ {most} σειρά "
               f"ανά γύρο (§6.9: μία σειρά tiles ανά γύρο, οκτώ για τον L)")
         gp = G.m.peek(sym["GH_PTR"]) | (G.m.peek(sym["GH_PTR"] + 1) << 8)
-        check(gp != G.ghbuf and G.m.peek(sym["UI_STATE"]) == 2,
-              f"και μετά το φάντασμα ξαναμπήκε ({gp - G.ghbuf} bytes στο "
-              f"αρχείο, κατάσταση PLACE)")
+        # ΟΛΟΚΛΗΡΟ: το αρχείο είναι ακριβώς όσο αυτό το φάντασμα (βήμα 41), και
+        # ό,τι δεν χωρά απλώς δεν ζωγραφίζεται — ένα σημάδι λιγότερο θα ήταν
+        # 12 bytes λιγότερα εδώ, και τίποτε άλλο δεν θα το έλεγε.
+        check(gp - G.ghbuf == RED_L and G.m.peek(sym["UI_STATE"]) == 2,
+              f"και μετά το φάντασμα ξαναμπήκε κόκκινο ΟΛΟΚΛΗΡΟ: {gp - G.ghbuf} "
+              f"bytes στο αρχείο (πλαίσιο + 64 σημάδια = {RED_L}), κατάσταση PLACE")
         pic, ref = G.truth()
         ok, how = shape(pic, ref, skip={0})
         check(ok, f"και η οθόνη είναι η αλήθεια: το αποτύπωμα ζωγραφίστηκε "
@@ -480,6 +503,10 @@ def main():
                     f"εσωτερικό είναι ακριβώς η πλήρης σχεδίαση: εικονίδιο και "
                     f"μηχανές, {len(G.inside)} bytes, {bad} λάθος")
     check(ok, f"και έξω από αυτό, μόνο το γνωστό σχήμα του §15: {how}")
+    got = dome(sym, g, short=True)
+    check(got == RED_L - 12,
+          f"ΑΡΝΗΤΙΚΟ: με αρχείο ένα byte μικρότερο το τελευταίο σημάδι δεν "
+          f"μπαίνει — {got} bytes ({RED_L} - 12)")
     G, node = dome(sym, g, cut_ghost=True)
     bad, ok, how = ghost_moves(G, sym)
     check(bad > 0, f"ΑΡΝΗΤΙΚΟ: με το dt_ghost κομμένο, το φάντασμα που φεύγει "
