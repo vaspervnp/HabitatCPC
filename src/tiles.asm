@@ -123,6 +123,42 @@ td_next_col:
 ; tile_one — ένα tile: κλάση, παραλλαγή, blit, και φλέβα αν υπάρχει.
 ; ---------------------------------------------------------------------------
 tile_one:
+        call    tile_src
+        ld      de,(t_sptr)
+        call    blit_tile
+
+        ; --- φλέβα: μόνο σε βουνό με τον πόρο αναμμένο ---
+        ld      a,(t_cls)
+        cp      3                   ; MOUNTAIN
+        ret     nz
+        ld      a,(t_cur)
+        and     8                   ; bit πόρου
+        ret     z
+        ld      a,(t_cur)
+        rlca
+        rlca
+        and     1                   ; decor & 1 -> 2 παραλλαγές
+        ld      l,a
+        ld      h,0
+        add     hl,hl               ; *2
+        add     hl,hl
+        add     hl,hl
+        add     hl,hl
+        add     hl,hl
+        add     hl,hl
+        add     hl,hl               ; *128 = ORE_OVL_SZ
+        ld      de,G_ore_overlay
+        add     hl,de
+        ld      de,(t_sptr)
+        ld      b,TILE_W
+        ld      c,TILE_H
+        jp      blit_mask
+
+; tile_src — το sprite του tile στο (t_wptr): κλάση, παραλλαγή ή autotile.
+; Out: HL = πηγή, (t_cur), (t_cls). Απαιτεί τράπεζα 4. Χωριστά από το blit
+; από το βήμα 42, για τη θέση δακτυλίου που αδειάζει (dirty.asm, dhs_vacate):
+; εκεί το tile περνά από το ob_blit, κομμένο σε 2x8.
+tile_src:
         ld      hl,(t_wptr)
         ld      a,(hl)
         ld      (t_cur),a
@@ -171,35 +207,7 @@ to_have_var:
         ld      h,(hl)
         ld      l,a                 ; HL = tile_ptr[class]
         add     hl,de               ; + variant*64
-        ld      de,(t_sptr)
-        call    blit_tile
-
-        ; --- φλέβα: μόνο σε βουνό με τον πόρο αναμμένο ---
-        ld      a,(t_cls)
-        cp      3                   ; MOUNTAIN
-        ret     nz
-        ld      a,(t_cur)
-        and     8                   ; bit πόρου
-        ret     z
-        ld      a,(t_cur)
-        rlca
-        rlca
-        and     1                   ; decor & 1 -> 2 παραλλαγές
-        ld      l,a
-        ld      h,0
-        add     hl,hl               ; *2
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl               ; *128 = ORE_OVL_SZ
-        ld      de,G_ore_overlay
-        add     hl,de
-        ld      de,(t_sptr)
-        ld      b,TILE_W
-        ld      c,TILE_H
-        jp      blit_mask
+        ret
 
 ; ---------------------------------------------------------------------------
 ; tile_autotile — μάσκα γειτόνων για το tile στο (t_wptr).

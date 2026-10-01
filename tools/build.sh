@@ -39,6 +39,7 @@ python3 tests/test_scroll.py
 python3 tests/test_index.py
 python3 tests/test_hud.py
 python3 tests/test_dirty.py
+python3 tests/test_slot.py
 python3 tests/test_input.py
 python3 tests/test_build.py
 python3 tests/test_route.py

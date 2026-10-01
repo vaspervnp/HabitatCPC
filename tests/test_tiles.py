@@ -123,6 +123,12 @@ def main():
                       f"autotile {plane.autotile(tx, ty):>2}")
         else:
             print(f"OK {tag}  {why}")
+            # Το DONE_FLAG ανεβαίνει όταν γραφτεί και το ΤΕΛΕΥΤΑΙΟ tile· το
+            # framebuffer είναι το καρέ που η δέσμη ίσως πέρασε από εκεί πριν.
+            # Δύο ακόμη καρέ (ο βρόχος κρέμεται), και το PNG είναι η RAM που
+            # μόλις ελέγχθηκε — αλλιώς άλλαζε με κάθε αλλαγή στον χρονισμό
+            # (βήμα 42: το tile_src, και το κάτω δεξιά tile στο (-10,-5)).
+            m.run_frames(2)
             m.screenshot(os.path.join(HERE, "golden",
                                       f"tiles_{cam_tx}_{cam_ty}.png"), aspect=True)
 
