@@ -43,6 +43,7 @@ python3 tests/test_build.py
 python3 tests/test_route.py
 python3 tests/test_game.py
 python3 tests/test_reveal.py
+python3 tests/test_link.py
 python3 tests/test_needs.py
 python3 tests/test_map.py
 python3 tests/test_power.py

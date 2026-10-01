@@ -230,6 +230,11 @@ def dome_dirs(colony, d):
         if a_ == d:
             out.add(dr)
         if b_ == d:
+            # Ο b παίρνει την πόρτα του ΤΕΛΕΥΤΑΙΟΥ τρεξίματος: μια διαδρομή με
+            # στροφή συνεχίζει στην επόμενη εγγραφή (C_A = 255, §9.4) και
+            # φτάνει στον b με τη δική της κατεύθυνση.
+            if i + 1 < colony.n_corr and colony.c(i + 1, C_A) == 255:
+                dr = colony.c(i + 1, C_DIR)
             out.add((dr + 4) & 7)
     return out
 
