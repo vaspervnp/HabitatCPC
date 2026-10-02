@@ -446,6 +446,10 @@ def main():
     if event_branches(sym, g, nexthop, sim0):
         return 1
 
+    # --- οι ανάγκες στα όριά τους (βήμα 53) ---
+    if need_branches(sym, g, nexthop, sim0):
+        return 1
+
     # --- κόστος ανά θέση, μετρημένο ΚΑΤΕΥΘΕΙΑΝ ---
     # Ο τροχός καρφώνεται σε μία θέση και τρέχει PIN_TICKS φορές. Η παλιότερη
     # μέθοδος — τρέξε τα πάντα, μετά σβήσε ένα, κράτα τη διαφορά — έπαψε να
@@ -684,6 +688,75 @@ def event_branches(sym, g, nexthop, sim0):
           f"επισκέπτες — ίδια bytes στον Z80 και στην αναφορά. ΑΡΝΗΤΙΚΟ: με "
           f"37 -> 38 στον πίνακα της έκλαμψης διαφέρουν")
     return 0
+
+
+# (όνομα, οξυγόνο, νερό, τροφή, ύπνος, υγεία, ηθικό) — βήμα 53
+NEED_CASES = (
+    ("οξυγόνο κρίσιμο",          10, 200, 200, 200, 150, 100),
+    ("νερό κρίσιμο",            200,  10, 200, 200, 150, 100),
+    ("τροφή κρίσιμη",           200, 200,  10, 200, 150, 100),
+    ("οξυγόνο και νερό",         10,  10, 200, 200, 150, 100),
+    ("και τα τρία",              10,  10,  10, 200,  60, 100),
+    ("η ζημιά ως τον θάνατο",    10,  10,  10, 200,   5, 100),
+    ("ανάρρωση",                200, 200, 200, 200, 100, 100),
+    ("ανάρρωση στο ταβάνι",     200, 200, 200, 200, 255, 255),
+    ("τροφή 63: όχι ανάρρωση",  200, 200,  63, 200, 100, 100),
+    ("ηθικό στο πάτωμα",        200, 200, 200,  10, 150,   1),
+    ("ηθικό ανάμεσα",           200, 200, 200,  40, 150, 100),
+    ("υγεία χαμηλή: ιατρείο",   200, 200, 200, 200,  50, 100),
+    ("πείνα: κυλικείο",         200, 200,  50, 200, 150, 100),
+    ("δίψα: κυλικείο",          200,  50, 200, 200, 150, 100),
+    ("νύστα: κοιτώνας",         200, 200, 200,  50, 150, 100),
+)
+
+
+def need_branches(sym, g, nexthop, sim0):
+    """Οι ζωντανοί στημένοι κυκλικά στις NEED_CASES, και τέσσερις περιστροφές
+    — όλοι περνούν από το πέρασμα αναγκών — απέναντι στην αναφορά.
+
+    Το κοινό τρέξιμο δεν τα βλέπει: στην αποικία του κανείς δεν κατεβαίνει
+    στο κρίσιμο, και το βήμα 53 έγραψε τη ζημιά από την αρχή (τα carry των
+    συγκρίσεων ως bits). Με το οξυγόνο να ζυγίζει 2 αντί για 4 το κοινό
+    τρέξιμο έμενε πράσινο."""
+    base = fresh(g, nexthop, sim0)
+    alive = [i for i in range(128) if base.a.flags[i] & E.F_ALIVE]
+    for k, i in enumerate(alive):
+        _, o2, wa, fo, sl, he, mo = NEED_CASES[k % len(NEED_CASES)]
+        a = base.a
+        a.o2[i], a.water[i], a.food[i], a.sleep[i] = o2, wa, fo, sl
+        a.health[i], a.morale[i] = he, mo
+    base.e.gloom = 40                       # και το πένθος, όπου δεν παρηγορεί κανείς
+    end = same(sym, g, nexthop, base, 64, "ανάγκες στα όρια")
+    if end is None:
+        return 1
+    hurt = sum(1 for i in alive if 0 < end.a.health[i] < base.a.health[i])
+    died = sum(1 for i in alive if not end.a.flags[i] & E.F_ALIVE)
+    healed = sum(1 for i in alive if end.a.health[i] > base.a.health[i])
+    if not (hurt and died and healed):
+        print(f"ΑΠΟΤΥΧΙΑ ανάγκες: οι περιπτώσεις δεν έπιασαν — {hurt} χτυπήθηκαν, "
+              f"{died} πέθαναν, {healed} γιατρεύτηκαν")
+        return 1
+    # ΑΡΝΗΤΙΚΟ: το πρώτο `rl e` (CB 13) — το bit του οξυγόνου — γίνεται nop nop.
+    at = sym["ND_LOAD"]
+    k = next(k for k in range(64) if run_peek(sym, at + k, 2) == [0xCB, 0x13])
+    if same(sym, g, nexthop, base, 64, "", quiet=True,
+            patch=[(at + k, 0), (at + k + 1, 0)]) is not None:
+        print("ΑΠΟΤΥΧΙΑ ανάγκες: ΑΡΝΗΤΙΚΟ — χωρίς τη ζημιά του οξυγόνου ο Z80 "
+              "βγαίνει ίδιος με την αναφορά: η δοκιμή δεν έχει δόντια")
+        return 1
+    print(f"OK ανάγκες:  {len(NEED_CASES)} περιπτώσεις σε {len(alive)} άποικους — "
+          f"{hurt} χτυπήθηκαν, {died} πέθαναν, {healed} γιατρεύτηκαν — ίδια bytes "
+          f"στον Z80 και στην αναφορά. ΑΡΝΗΤΙΚΟ: χωρίς το bit του οξυγόνου διαφέρουν")
+    return 0
+
+
+def run_peek(sym, at, n):
+    """n bytes του κώδικα στο at, από το snapshot."""
+    from cpc import CPC
+    m = CPC()
+    m.run_frames(60)
+    assert m.quickload(SNA, start=False)
+    return [m.peek(at + j) for j in range(n)]
 
 
 def spread(e):

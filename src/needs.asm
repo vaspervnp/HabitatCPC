@@ -12,11 +12,28 @@
 ; Το οξυγόνο δεν είναι ταξίδι αλλά ΡΟΗ: όποιος είναι μέσα το αναπνέει. Τα
 ; υπόλοιπα θέλουν να πας κάπου, και το πού είναι μία ανάγνωση του ευρετηρίου
 ; δωματίων (θέση 14) συν ως οκτώ αναγνώσεις του DIST.
+;
+; ΜΙΚΡΟΤΕΡΟ, ΣΤΟ ΒΗΜΑ 53 (963 -> 776 bytes). Οι ενδιάμεσες τιμές ζουν σε
+; καταχωρητές αντί για μεταβλητές — η ζημιά, το ελάχιστο του ηθικού, ο κόμβος,
+; η καλύτερη απόσταση — και οι θόλοι και οι δομές της θέσης 14 διαβάζονται με
+; τον IX αντί για push, add, pop γύρω από κάθε πεδίο.
 
 NEED_LOW    equ 64
 NEED_CRIT   equ 16
 O2_REFILL   equ 2
 ROOM_MAX    equ 8       ; τα R_* είναι στο const.asm
+
+; Το ευρετήριο δωματίων: 12 μετρητές και 12 λίστες των ROOM_MAX, σε ΜΙΑ σελίδα
+; (layout του tools/pack.py), οπότε κάθε δείκτης μέσα του είναι «add, ld l».
+;
+; Η ΣΕΛΙΔΑ ΕΙΝΑΙ «>> 8», ΠΟΤΕ «/ 256». Η RASM λογαριάζει τις εκφράσεις σε
+; πραγματικούς αριθμούς και ΣΤΡΟΓΓΥΛΕΥΕΙ: το #9E84 / 256 βγαίνει #9F. Ετσι
+; έσπασε η πρώτη γραφή του βήματος 53 — οι άποικοι διάβαζαν τη λίστα των
+; δωματίων από την επόμενη σελίδα και πήγαιναν σε άλλους θόλους.
+        assert  G_room_list == G_room_n + 12
+        assert  (G_room_n & 255) + 12 + 12 * ROOM_MAX <= 256
+        assert  (G_machine_count & 255) <= 256 - 3
+        assert  (G_plant_class & 255) <= 256 - 12  ; στο θερμοκήπιο μόνο ποικιλίες 0-11
 
 ; «ΠΑΩ ΓΙΑ ΦΑΓΗΤΟ» ΕΙΝΑΙ ΚΙ ΑΥΤΟ ΕΡΓΑΣΙΑ, και το §6.7 το έλεγε από την αρχή:
 ; ο πίνακάς του έχει γραμμή «Rest / Eat / Drink — η ίδια του η ανάγκη — ό,τι
@@ -39,9 +56,8 @@ ent_needs_slice:
         dec     b
         ret     z
 ens_lp:
-        ld      a,c
         ld      h,AG_PG
-        ld      l,a
+        ld      l,c
         ld      a,(hl)
         and     F_ALIVE
         jr      z,ens_next
@@ -74,28 +90,23 @@ nd_one:
         ld      a,(hl)                  ; οξυγόνο
         or      a
         jr      z,nd_d2
-        dec     a
-        ld      (hl),a
+        dec     (hl)
 nd_d2:  set     7,l
         ld      a,(hl)                  ; νερό
         or      a
         jr      z,nd_d3
-        dec     a
-        ld      (hl),a
-nd_d3:  ld      h,AG_PG + 5
-        res     7,l
-        ld      a,(hl)                  ; τροφή
-        or      a
-        jr      z,nd_d4
-        dec     a
-        ld      (hl),a
-nd_d4:  set     7,l
+        dec     (hl)
+nd_d3:  inc     h
         ld      a,(hl)                  ; ύπνος
         or      a
+        jr      z,nd_d4
+        dec     (hl)
+nd_d4:  res     7,l
+        ld      a,(hl)                  ; τροφή
+        or      a
         jr      z,nd_d5
-        dec     a
-        ld      (hl),a
-nd_d5:  res     7,l
+        dec     (hl)
+nd_d5:
 
         ; --- 2. οξυγόνο: ροή, όχι ταξίδι ---
         ld      a,(EC_O2OK)
@@ -117,7 +128,7 @@ nd_sat:
         res     7,l
         cp      NO_EDGE
         jr      nz,nd_load              ; ταξιδεύει
-        ld      h,AG_PG + 1
+        dec     h
         ld      a,(hl)                  ; κόμβος
         cp      MAX_DOME
         jr      nc,nd_load              ; δομή, όχι θόλος
@@ -125,41 +136,29 @@ nd_sat:
         ld      a,(nd_i)
         ld      l,a                     ; το nd_satisfy πείραξε το HL
 
-        ; --- B=οξυγόνο C=νερό D=τροφή E=ύπνος ---
+        ; --- B=οξυγόνο C=νερό D=τροφή· ο ύπνος μετά, στο E ---
 nd_load:
         ld      h,AG_PG + 4
         ld      b,(hl)
         set     7,l
         ld      c,(hl)
-        ld      h,AG_PG + 5
+        inc     h
         res     7,l
         ld      d,(hl)
-        set     7,l
-        ld      e,(hl)
-        res     7,l
 
         ; --- 4. υγεία ---
+        ; Η ζημιά μαζεύεται στο E με τα carry των συγκρίσεων: 4 για το
+        ; οξυγόνο, 2 για το νερό, 1 για την τροφή — ακριβώς τα bits τους.
+        ld      e,0
         ld      a,b
         cp      NEED_CRIT
-        ld      a,0
-        jr      nc,nd_h1
-        ld      a,4
-nd_h1:
-        ld      (nd_dmg),a
+        rl      e
         ld      a,c
         cp      NEED_CRIT
-        jr      nc,nd_h2
-        ld      a,(nd_dmg)
-        add     a,2
-        ld      (nd_dmg),a
-nd_h2:
+        rl      e
         ld      a,d
         cp      NEED_CRIT
-        jr      nc,nd_h3
-        ld      a,(nd_dmg)
-        inc     a
-        ld      (nd_dmg),a
-nd_h3:
+        rl      e
         ; Η αμμοθύελλα χτυπά όποιον είναι έξω — και έξω σημαίνει «σε εξωτερική
         ; δομή». Αυτό ακριβώς κάνει τη θέση του αεροφράκτη απόφαση (§6.2).
         ld      a,(EC_STORM)
@@ -169,19 +168,16 @@ nd_h3:
         ld      a,(hl)
         cp      MAX_DOME
         jr      c,nd_h4
-        ld      a,(nd_dmg)
+        ld      a,e
         add     a,4
-        ld      (nd_dmg),a
+        ld      e,a
 nd_h4:
         ld      h,AG_PG + 6
-        ld      a,(nd_dmg)
+        ld      a,e
         or      a
         jr      z,nd_recover
         ld      a,(hl)                  ; υγεία
-        push    hl
-        ld      hl,nd_dmg
-        sub     (hl)
-        pop     hl
+        sub     e
         jr      nc,nd_hput
         xor     a
 nd_hput:
@@ -199,18 +195,19 @@ nd_recover:
         ld      a,d
         cp      NEED_LOW
         jr      c,nd_death
-        ld      a,(hl)
-        cp      255
-        jr      z,nd_death
-        inc     a
-        ld      (hl),a
+        inc     (hl)
+        jr      nz,nd_death
+        dec     (hl)                    ; ταβάνι το 255
 
         ; --- 5. θάνατος ---
 nd_death:
-        ld      h,AG_PG + 6
-        ld      a,(hl)
+        ld      a,(hl)                  ; H = AG_PG + 6 από όλους τους δρόμους
         or      a
         jp      z,nd_die
+        dec     h
+        set     7,l
+        ld      e,(hl)                  ; ο ύπνος
+        inc     h                       ; AG_PG + 6, bit 7: το ηθικό
 
         ; --- 6. ηθικό: το ελάχιστο των τεσσάρων ---
         ld      a,b
@@ -226,25 +223,21 @@ nd_m2:
         jr      c,nd_m3
         ld      a,e
 nd_m3:
-        ld      (nd_min),a
-        set     7,l                     ; ηθικό
         cp      NEED_CRIT
         jr      nc,nd_mo_up
         ld      a,(hl)
         sub     2
         jr      nc,nd_mo_st
         xor     a
-        jr      nd_mo_st
-nd_mo_up:
-        ld      a,(nd_min)
-        cp      NEED_LOW
-        jr      c,nd_gloom
-        ld      a,(hl)
-        cp      255
-        jr      z,nd_gloom
-        inc     a
 nd_mo_st:
         ld      (hl),a
+        jr      nd_gloom
+nd_mo_up:
+        cp      NEED_LOW                ; το A είναι ακόμη το ελάχιστο
+        jr      c,nd_gloom
+        inc     (hl)
+        jr      nz,nd_gloom
+        dec     (hl)
 nd_gloom:
         ld      a,(EC_AMENITY)          ; ένα δέντρο ή ένα σαλόνι παρηγορεί
         or      a
@@ -255,14 +248,11 @@ nd_gloom:
         ld      a,(hl)
         or      a
         jr      z,nd_seek0
-        dec     a
-        ld      (hl),a
+        dec     (hl)
 nd_seek0:
         res     7,l
 
         ; --- 7. πού πρέπει να πάει ---
-nd_seek:
-        ld      h,AG_PG + 6
         ld      a,(hl)                  ; υγεία
         cp      NEED_LOW
         ld      a,R_MEDBAY
@@ -277,7 +267,8 @@ nd_seek:
         jr      c,nd_want
         ld      a,e                     ; ύπνος
         cp      NEED_LOW
-        jr      c,nd_qrt
+        ld      a,R_QUARTERS
+        jr      c,nd_want
         ; Χορτάτος: αν κρατούσε το «πάω για φαγητό», το αφήνει και ξαναγίνεται
         ; διαθέσιμος για τον πίνακα εργασιών.
         ld      h,AG_PG + 3
@@ -287,8 +278,6 @@ nd_seek:
         ret     nz
         ld      (hl),NO_TASK
         ret
-nd_qrt:
-        ld      a,R_QUARTERS
 nd_want:
         ld      (nd_room),a
 
@@ -297,10 +286,7 @@ nd_want:
         ld      a,(hl)                  ; προορισμός
         cp      MAX_DOME
         jr      nc,nd_search
-        call    jb_dome_ptr
-        ld      de,D_ROOM
-        add     hl,de
-        ld      a,(hl)
+        call    nd_droom
         ld      hl,nd_room
         cp      (hl)
         ret     z
@@ -308,12 +294,12 @@ nd_search:
         ld      a,(nd_i)
         ld      l,a
         ld      h,AG_PG + 1
-        ld      a,(hl)
-        ld      (nd_node),a
+        ld      d,(hl)                  ; D = ο κόμβος του
         ld      a,(nd_room)
         call    nd_nearest
-        cp      255
+        inc     a
         ret     z                       ; δεν υπάρχει τέτοιο δωμάτιο
+        dec     a
         ld      c,a
         ld      a,(nd_i)                ; αφήνει τη δουλειά του (§6.7)
         ld      l,a
@@ -321,12 +307,20 @@ nd_search:
         set     7,l
         ld      (hl),T_NEED             ; ΟΧΙ NO_TASK: βλ. παραπάνω
         res     7,l
-        ld      h,AG_PG + 2
+        dec     h
         ld      (hl),c                  ; dest = ο θόλος
         ret
 
+; nd_droom — A = θόλος -> A = το είδος του δωματίου. Χαλάει DE, HL.
+nd_droom:
+        call    jb_dome_ptr
+        ld      de,D_ROOM
+        add     hl,de
+        ld      a,(hl)
+        ret
+
 ; ---------------------------------------------------------------------------
-; nd_satisfy — A = θόλος. Ο,τι έχει το δωμάτιο να δώσει.
+; nd_satisfy — A = θόλος, L = ταυτότητα. Ο,τι έχει το δωμάτιο να δώσει.
 ;
 ; ΓΕΜΙΖΕΙ ΤΗ ΜΠΑΡΑ, ΔΕΝ ΤΗΝ ΑΝΕΒΑΖΕΙ ΚΑΤΑ 64. Με +64 ο άποικος ξαναπεινούσε σε
 ; 64 περιστροφές και κατανάλωνε ένα γεύμα και ένα νερό δώδεκα φορές το sol —
@@ -337,10 +331,9 @@ nd_search:
 ; ακριβώς όσο λέει ο πίνακας του §6.5. Και ο άποικος δουλεύει αντί να τρώει.
 ; ---------------------------------------------------------------------------
 nd_satisfy:
-        call    jb_dome_ptr
-        ld      de,D_ROOM
-        add     hl,de
-        ld      a,(hl)
+        push    hl
+        call    nd_droom
+        pop     hl
         cp      R_QUARTERS
         jr      z,nds_sleep
         cp      R_CANTEEN
@@ -349,65 +342,53 @@ nd_satisfy:
         ret     nz
 
         ; --- ιατρείο: φάρμακο για υγεία ---
-        ld      a,(nd_i)
         ld      h,AG_PG + 6
-        ld      l,a
         ld      a,(hl)
         cp      NEED_LOW
         ret     nc
-        ld      a,7                     ; S_MEDI
+        ld      a,S_MEDI
         ld      c,32
-        jp      nds_spend
+        jr      nds_spend
 
 nds_sleep:
-        ld      a,(nd_i)
         ld      h,AG_PG + 5
-        ld      l,a
         set     7,l
-        ld      (hl),255                ; ΓΕΜΑΤΟ, όχι +64: βλ. παρακάτω
+        ld      (hl),255                ; ΓΕΜΑΤΟ, όχι +64: βλ. παραπάνω
         ret
 
 nds_canteen:
-        ; τροφή
-        ld      a,(nd_i)
         ld      h,AG_PG + 5
-        ld      l,a
-        ld      a,(hl)
+        ld      a,(hl)                  ; τροφή
         cp      NEED_LOW
         jr      nc,nds_water
-        ld      a,1                     ; S_FOOD
+        ld      a,S_FOOD
         ld      c,255
         call    nds_spend
 nds_water:
-        ld      a,(nd_i)
         ld      h,AG_PG + 4
-        ld      l,a
         set     7,l
-        ld      a,(hl)
+        ld      a,(hl)                  ; νερό
         cp      NEED_LOW
         ret     nc
-        ld      a,0                     ; S_WATER
+        ld      a,S_WATER
         ld      c,255
         ; πέφτει μέσα
 
-; nds_spend — A = απόθεμα, C = πόσο δίνει, HL = το πεδίο της ανάγκης.
+; nds_spend — A = απόθεμα, C = πόσο δίνει, HL = το πεδίο της ανάγκης (μένει).
 nds_spend:
         push    hl
         call    ec_stock_ptr            ; DE = &stock[A]
-        ld      a,(de)
-        ld      l,a
-        inc     de
-        ld      a,(de)
-        or      l
+        ex      de,hl
+        ld      e,(hl)
+        inc     hl
+        ld      d,(hl)
+        ld      a,d
+        or      e
         jr      z,nds_none              ; άδειο
         dec     de
-        ld      a,(de)
-        sub     1
-        ld      (de),a
-        inc     de
-        ld      a,(de)
-        sbc     a,0
-        ld      (de),a
+        ld      (hl),d
+        dec     hl
+        ld      (hl),e
         pop     hl
         ld      a,(hl)
         add     a,c
@@ -421,21 +402,17 @@ nds_none:
         ret
 
 ; ---------------------------------------------------------------------------
-; nd_die — θέση, δουλειά, χειριστής, πένθος.
+; nd_die — θέση, δουλειά, χειριστής, πένθος. L = ταυτότητα.
 ; ---------------------------------------------------------------------------
 nd_die:
         ld      a,SFX_DEATH
         call    snd_ping                ; δεν χαλάει καταχωρητές: §9.5
-        ld      a,(nd_i)
         ld      h,AG_PG
-        ld      l,a
         ld      a,(hl)
         and     F_WORKING
         jr      z,nd_d_slot
-        ld      a,(nd_i)
-        ld      h,AG_PG + 1
-        ld      l,a
-        ld      a,(hl)
+        inc     h
+        ld      a,(hl)                  ; κόμβος
         cp      MAX_DOME
         jr      nc,nd_d_slot
         call    jb_dome_ptr
@@ -445,20 +422,20 @@ nd_die:
 nd_d_slot:
         ld      a,(nd_i)
         ld      (em_id),a
-        ld      h,AG_PG + 1
         ld      l,a
+        ld      h,AG_PG + 1
         ld      a,(hl)
         ld      (em_node),a
         call    ent_release             ; ελευθερώνει και μηδενίζει το slot
 
         ld      a,(nd_i)
-        ld      h,AG_PG
         ld      l,a
+        ld      h,AG_PG
         ld      (hl),0                  ; δεν ζει πια
         ld      h,AG_PG + 2
         set     7,l
         ld      (hl),NO_EDGE
-        ld      h,AG_PG + 3
+        inc     h
         ld      (hl),NO_TASK
         res     7,l
         ld      (hl),0                  ; progress
@@ -469,76 +446,65 @@ nd_d_slot:
         ld      a,255
 nd_gl:
         ld      (EC_GLOOM),a
-        ld      a,(EC_DEATHS)           ; για το σερί «χωρίς θανάτους» (§10.2)
-        inc     a
-        jr      z,nd_dths
-        ld      (EC_DEATHS),a
-nd_dths:
+        ld      hl,EC_DEATHS            ; για το σερί «χωρίς θανάτους» (§10.2)
+        inc     (hl)
+        ret     nz
+        dec     (hl)
         ret
 
 ; ---------------------------------------------------------------------------
-; nd_nearest — A = είδος δωματίου, (nd_node) = κόμβος. A = θόλος ή 255.
+; nd_nearest — A = είδος δωματίου, D = κόμβος. A = θόλος ή 255.
 ;
 ; Η τράπεζα 1 μπαίνει μία φορά για ως οκτώ υποψηφίους, όχι μία ανά υποψήφιο.
 ; ---------------------------------------------------------------------------
 nd_nearest:
-        ld      hl,G_room_n
-        add     a,l
+        ld      c,a
+        add     a,G_room_n & 255
         ld      l,a
-        ld      a,0
-        adc     a,h
-        ld      h,a
+        ld      h,G_room_n >> 8
         ld      b,(hl)
+        ld      a,255
+        ld      (nd_best),a
         inc     b
         dec     b
-        ld      a,255
         ret     z                       ; δεν υπάρχει κανένα τέτοιο δωμάτιο
-
-        ; DE = η λίστα υποψηφίων
-        ld      a,(nd_room)
-        ld      h,0
-        ld      l,a
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl                   ; *8
-        ld      de,G_room_list
-        add     hl,de
-        ex      de,hl
 
         ; Η ΓΡΑΜΜΗ ΤΟΥ DIST ΥΠΟΛΟΓΙΖΕΤΑΙ ΜΙΑ ΦΟΡΑ. Ηταν μέσα στον βρόχο, και
         ; ο πολλαπλασιασμός x128 ανά υποψήφιο ήταν το μισό κόστος της
         ; αναζήτησης — που τρέχει για κάθε άποικο που του λείπει κάτι.
-        ld      a,(nd_node)
-        ld      h,a
+        ld      h,d
         ld      l,0
         srl     h
         rr      l
         set     6,h                     ; το DIST κάθεται στο &4000
-        ld      (nd_row),hl
+        ; DE = η λίστα υποψηφίων
+        ld      a,c
+        add     a,a
+        add     a,a
+        add     a,a
+        add     a,G_room_list & 255
+        ld      e,a
+        ld      d,G_room_list >> 8
 
-        ld      a,255
-        ld      (nd_bestd),a
-        ld      (nd_best),a
-
-        ld      hl,GA_PORT + PAGE_B1
         push    bc
-        ld      b,h
-        ld      c,l
+        ld      bc,GA_PORT + PAGE_B1
         out     (c),c
         pop     bc
+        ld      c,255                   ; η καλύτερη απόσταση ως τώρα
 ndn_lp:
         ld      a,(de)                  ; υποψήφιος θόλος
         inc     de
-        ld      (nd_cand),a
-        ld      hl,(nd_row)
+        push    hl
         add     a,l                     ; ο θόλος είναι < 64: δεν κρατάει
         ld      l,a
         ld      a,(hl)                  ; απόσταση
-        ld      hl,nd_bestd
-        cp      (hl)
+        pop     hl
+        cp      c
         jr      nc,ndn_n
-        ld      (hl),a
-        ld      a,(nd_cand)
+        ld      c,a
+        dec     de
+        ld      a,(de)
+        inc     de
         ld      (nd_best),a
 ndn_n:
         djnz    ndn_lp
@@ -554,66 +520,46 @@ ndn_n:
 rooms_rebuild:
         ld      hl,G_room_n
         ld      b,12
+        xor     a
 rr_clr:
-        ld      (hl),0
+        ld      (hl),a
         inc     hl
         djnz    rr_clr
-        xor     a
         ld      (rr_amen),a
 
-        ld      hl,G_dome_tbl
+        ld      ix,G_dome_tbl
         ld      c,0                     ; C = δείκτης θόλου
 rr_lp:
-        push    hl
-        ld      de,D_STATE
-        add     hl,de
-        ld      a,(hl)
+        ld      a,(ix+D_STATE)
         cp      DS_ACTIVE
         jr      nz,rr_next
-        pop     hl
-        push    hl
-        ld      de,D_ROOM
-        add     hl,de
-        ld      a,(hl)
+        ld      a,(ix+D_ROOM)
         cp      12
         jr      nc,rr_next
-        ld      e,a                     ; E = είδος
-        push    de
         push    bc
         call    rr_amenity              ; σαλόνια και δέντρα (§6.6)
         pop     bc
-        pop     de
-        ld      a,e
-        ld      hl,G_room_n
-        add     a,l
+        ld      a,(ix+D_ROOM)
+        ld      e,a                     ; E = είδος
+        add     a,G_room_n & 255
         ld      l,a
-        ld      a,0
-        adc     a,h
-        ld      h,a
+        ld      h,G_room_n >> 8
         ld      a,(hl)
         cp      ROOM_MAX
         jr      nc,rr_next              ; γέμισε αυτό το είδος
-        ld      d,a                     ; D = θέση μέσα στη λίστα
         inc     (hl)
+        ld      d,a                     ; D = θέση μέσα στη λίστα
         ld      a,e
-        ld      h,0
-        ld      l,a
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl                   ; είδος*8
-        ld      a,d
-        add     a,l
-        ld      l,a
-        ld      a,0
-        adc     a,h
-        ld      h,a
-        ld      de,G_room_list
-        add     hl,de
+        add     a,a
+        add     a,a
+        add     a,a                     ; είδος*8
+        add     a,d
+        add     a,G_room_list & 255
+        ld      l,a                     ; η ίδια σελίδα
         ld      (hl),c
 rr_next:
-        pop     hl
         ld      de,DOME_REC
-        add     hl,de
+        add     ix,de
         inc     c
         ld      a,c
         cp      MAX_DOME
@@ -624,118 +570,83 @@ rr_next:
         ; Το ταβάνι πληθυσμού είναι δουλειά του Control (§6.8), και η πίστα
         ; είναι ο κόμβος όπου κατεβαίνει ο κόσμος (§6.11). Και τα δύο βγαίνουν
         ; από ένα πέρασμα που γίνεται ούτως ή άλλως.
-        ld      hl,G_room_n + R_CONTROL
-        ld      a,(hl)
+        ld      a,(G_room_n + R_CONTROL)
         ld      b,a
         ld      a,4
         inc     b
+        jr      rr_cap_t
 rr_cap:
-        dec     b
-        jr      z,rr_capst
         add     a,POP_PER_CTL
-        jr      nc,rr_cap
-        ld      a,128
-        jr      rr_capst
-rr_capst:
+        jr      c,rr_cap_max
+rr_cap_t:
+        djnz    rr_cap
         cp      129
         jr      c,rr_capok
+rr_cap_max:
         ld      a,128
 rr_capok:
         ld      (EC_POPCAP),a
 
         ld      a,255
         ld      (EC_PADNODE),a
-        ld      hl,G_struct_tbl
-        ld      b,64
-        ld      c,0
+        ld      ix,G_struct_tbl
+        ld      bc,64 * 256 + MAX_DOME  ; B = δομές, C = ο κόμβος της πρώτης
 rr_pad:
-        push    hl
-        ld      de,ST_STATE
-        add     hl,de
-        ld      a,(hl)
-        pop     hl
+        ld      a,(ix+ST_STATE)
         cp      DS_ACTIVE
         jr      nz,rr_pad_n
-        push    hl
-        ld      de,ST_KIND
-        add     hl,de
-        ld      a,(hl)
-        pop     hl
+        ld      a,(ix+ST_KIND)
         cp      K_PAD
         jr      nz,rr_pad_n
         ld      a,c
-        add     a,MAX_DOME
         ld      (EC_PADNODE),a
         ret
 rr_pad_n:
         ld      de,STRUCT_REC
-        add     hl,de
+        add     ix,de
         inc     c
         djnz    rr_pad
         ret
 
-; rr_amenity — A/E = είδος δωματίου, (HL στο D_ROOM του θόλου). Μετράει
-; σαλόνια και δέντρα. Το δέντρο είναι φυτό κατηγορίας 3 σε θερμοκήπιο.
+; rr_amenity — A = είδος δωματίου, IX -> θόλος. Μετράει σαλόνια και δέντρα.
+; Το δέντρο είναι φυτό κατηγορίας 3 σε θερμοκήπιο. Χαλάει B, DE, HL.
 rr_amenity:
         cp      R_LOUNGE
         jr      z,rr_am_one
         cp      R_GREENHS
         ret     nz
-        ; πόσες υποδοχές;
-        ld      de,D_SIZE - D_ROOM
-        add     hl,de
-        ld      a,(hl)
-        ld      de,D_ROOM - D_SIZE
-        add     hl,de
-        push    hl
-        ld      hl,G_machine_count
-        add     a,l
+        ld      a,(ix+D_SIZE)           ; πόσες υποδοχές;
+        add     a,G_machine_count & 255
         ld      l,a
-        ld      a,0
-        adc     a,h
-        ld      h,a
+        ld      h,G_machine_count >> 8
         ld      b,(hl)
+        push    ix
         pop     hl
-        ld      de,D_MACH - D_ROOM
+        ld      de,D_MACH
         add     hl,de
 rr_am_lp:
         ld      a,(hl)
         cp      NO_MACH
         jr      z,rr_am_n
-        push    hl
-        ld      hl,G_plant_class
-        add     a,l
-        ld      l,a
-        ld      a,0
-        adc     a,h
-        ld      h,a
-        ld      a,(hl)
-        pop     hl
+        add     a,G_plant_class & 255
+        ld      e,a
+        ld      d,G_plant_class >> 8
+        ld      a,(de)
         and     3
         cp      3
-        jr      nz,rr_am_n
-        push    hl
-        call    rr_am_one
-        pop     hl
+        call    z,rr_am_one
 rr_am_n:
         inc     hl
         djnz    rr_am_lp
         ret
 rr_am_one:
         ld      a,(rr_amen)
-        cp      255
-        ret     z
         inc     a
+        ret     z                       ; ταβάνι το 255
         ld      (rr_amen),a
         ret
 
 nd_i:       db 0
-nd_dmg:     db 0
-nd_min:     db 0
 nd_room:    db 0
-nd_node:    db 0
 nd_best:    db 0
-nd_bestd:   db 0
-nd_cand:    db 0
-nd_row:     dw 0
 rr_amen:    db 0
