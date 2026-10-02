@@ -274,17 +274,6 @@ dt_end:
 dh_slot:
         call    dt_prep
         jr      z,dt_end
-        ld      a,(d_id)
-        ld      l,a
-        ld      h,0
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl
-        ld      de,dome_fig
-        add     hl,de
-        ld      (of_ptr),hl
-        ld      a,(d_rec+D_SIZE)
-        ld      (of_size),a
         ld      a,(dt_b)
         call    ob_fig_one              ; και το ob_x, ob_y της θέσης
         ld      a,(of_fig)
@@ -296,18 +285,7 @@ dh_slot:
 dh_mach:
         call    dt_prep
         jr      z,dt_end
-        ld      a,(d_rec+D_ROOM)
-        cp      R_GREENHS
-        ld      a,0
-        jr      nz,dh_m_nog
-        inc     a
-dh_m_nog:
-        ld      (om_green),a
-        or      a
-        jr      z,dh_m_go
-        ld      bc,GA_PORT + PAGE_B7
-        out     (c),c
-dh_m_go:
+        call    om_prep                 ; μηχανές ή φυτά, και η τράπεζα τους
         ld      a,(dt_b)
         call    ob_mach_one
         jr      dt_end
@@ -617,33 +595,23 @@ dirty_jmp:
 dhs_vacate:
         ; --- το clip: το 2x8 της θέσης, κομμένο στο κάδρο ---
         ld      hl,(ob_x)
-        ld      (cl_pos),hl
         ld      a,SLOT_W
-        ld      (cl_len),a
-        ld      hl,SCR_W * 256          ; lo = 0, hi = SCR_W
-        ld      (cl_lo),hl
+        ld      de,SCR_W * 256          ; lo = 0, hi = SCR_W
         call    ob_clip
-        or      a
         ret     z
+        ld      b,a                     ; cl_n
         ld      a,(cl_start)
         ld      (clip_x0),a
-        ld      b,a
-        ld      a,(cl_n)
         add     a,b
         ld      (clip_x1),a
         ld      hl,(ob_y)
-        ld      (cl_pos),hl
         ld      a,SLOT_H
-        ld      (cl_len),a
-        ld      hl,PLAY_LINES * 256
-        ld      (cl_lo),hl
+        ld      de,PLAY_LINES * 256
         call    ob_clip
-        or      a
         ret     z
+        ld      b,a
         ld      a,(cl_start)
         ld      (clip_y0),a
-        ld      b,a
-        ld      a,(cl_n)
         add     a,b
         ld      (clip_y1),a
         ; --- ΤΟ ΚΟΣΤΟΣ ΤΟ ΞΕΡΕΙ ΜΟΝΟ ΑΥΤΟΣ. Ο πίνακας λέει 1.500 για το
@@ -693,13 +661,9 @@ dhv_col:
         ld      a,(dhv_y)
         ld      l,a
         ld      (ob_y),hl
-        ld      a,TILE_W
-        ld      (ob_w),a
-        ld      a,TILE_H
-        ld      (ob_h),a
+        ld      hl,TILE_H*256 + TILE_W
         ld      a,4                     ; αδιαφανές
-        ld      (ob_fl),a
-        call    ob_blit
+        call    ob_put
         ld      a,(dhv_x)
         add     a,TILE_W
         ld      hl,clip_x1

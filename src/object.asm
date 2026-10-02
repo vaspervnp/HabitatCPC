@@ -33,51 +33,41 @@ OB_ALIVE    equ 1                       ; F_ALIVE του entity.asm
 ; Το καθρεφτισμένο sprite διαβάζεται ΑΝΑΠΟΔΑ από το τέλος της γραμμής (blt_mask_flip):
 ; κόβεται μέσα στο buffer: το clip από αριστερά αντιστοιχεί σε ζεύγη από το
 ; ΤΕΛΟΣ της πηγής, και κανένας δείκτης δεν το εκφράζει αυτό πιο απλά.
+;
+; ob_put — το ίδιο, με L = w, H = h, A = σημαίες: οι τρεις αναθέσεις που
+; έκανε με το χέρι κάθε καλών.
 ; ---------------------------------------------------------------------------
+ob_put:
+        ld      (ob_w),hl               ; ob_w, ob_h διπλανά
+        ld      (ob_fl),a
 ob_blit:
         ; --- κάθετο clip ---
         ld      hl,(ob_y)
-        ld      (cl_pos),hl
         ld      a,(ob_h)
-        ld      (cl_len),a
-        ld      hl,(clip_y0)            ; y0 χαμηλό, y1 ψηλό — ένα ld
-        ld      (cl_lo),hl
+        ld      de,(clip_y0)            ; y0 χαμηλό, y1 ψηλό — ένα ld
         call    ob_clip
-        or      a
         ret     z
-        ld      a,(cl_skip)
-        ld      (ob_st),a
-        ld      a,(cl_n)
-        ld      (ob_nl),a
+        ld      hl,(cl_skip)            ; skip, n -> ob_st, ob_nl
+        ld      (ob_st),hl
         ld      a,(cl_start)
         ld      (ob_y0),a
-        ; --- οριζόντιο clip ---
+        ; --- οριζόντιο clip. Τα cl_skip / cl_n / cl_start του μένουν όπως
+        ; βγήκαν ως το τέλος: τίποτα από κάτω δεν ξανακόβει. ---
         ld      hl,(ob_x)
-        ld      (cl_pos),hl
         ld      a,(ob_w)
-        ld      (cl_len),a
-        ld      hl,(clip_x0)
-        ld      (cl_lo),hl
+        ld      de,(clip_x0)
         call    ob_clip
-        or      a
         ret     z
-        ld      a,(cl_skip)
-        ld      (ob_sl),a
-        ld      a,(cl_n)
-        ld      (ob_nb),a
-        ld      a,(cl_start)
-        ld      (ob_x0),a
 
         ; --- βήμα πηγής ανά γραμμή: W αδιαφανές, 2W με μάσκα ---
-        ld      a,(ob_w)
-        ld      c,a
         ld      a,(ob_fl)
         and     4
+        ld      a,(ob_w)
         jr      nz,ob_stride
-        sla     c
+        add     a,a
 ob_stride:
-        ld      a,c
         ld      (ob_str),a
+        ld      c,a
 
         ; --- πρώτη γραμμή πηγής: από πάνω, ή από κάτω αν καθρεφτίζεται ---
         ld      a,(ob_fl)
@@ -89,44 +79,36 @@ ob_stride:
         dec     a
         sub     b
 ob_fromtop:
-        ld      c,a
-        ld      a,(ob_str)
-        call    ob_mul                  ; HL = γραμμή * βήμα
+        call    ob_mul                  ; HL = γραμμή * βήμα· το C μένει
         ld      de,(ob_src)
         add     hl,de
-        ld      (ob_ln),hl
 
-        ; --- μετατόπιση μέσα στη γραμμή, για το clip από αριστερά ---
-        ; Στο καθρεφτισμένο η μετατόπιση δείχνει στο ΠΡΩΤΟ ζεύγος που θα
-        ; χρειαστεί — δηλαδή στο (w-1-skip) μετρώντας από την αρχή — και το
-        ; blt_mask_flip διαβάζει μόνο όσα ζεύγη γράφονται.
+        ; --- και η μετατόπιση μέσα στη γραμμή, για το clip από αριστερά,
+        ; ΜΙΑ φορά εδώ και όχι σε κάθε γραμμή. Στο καθρεφτισμένο δείχνει στο
+        ; ΠΡΩΤΟ ζεύγος που θα χρειαστεί — στο (w-1-skip) μετρώντας από την
+        ; αρχή — και το blt_mask_flip διαβάζει μόνο όσα ζεύγη γράφονται.
         ld      a,(ob_fl)
-        and     1
-        jr      z,ob_noflip
+        rra
+        ld      a,(cl_skip)
+        jr      nc,ob_noflip
+        cpl                             ; -skip-1
+        ld      b,a
         ld      a,(ob_w)
-        dec     a
-        ld      c,a
-        ld      a,(ob_sl)
-        neg
-        add     a,c
+        add     a,b
         add     a,a
-        ld      c,a
-        ld      b,0
-        ld      (ob_sk),bc
         jr      ob_skdone
 ob_noflip:
-        ld      a,(ob_sl)
-        ld      c,a
+        ld      b,a
         ld      a,(ob_fl)
         and     4
-        jr      nz,ob_skip1
-        sla     c
-ob_skip1:
-        ld      b,0
-        ld      (ob_sk),bc
+        ld      a,b
+        jr      nz,ob_skdone
+        add     a,a
 ob_skdone:
+        call    ob_addu
+        ld      (ob_ln),hl
 
-        ld      a,(ob_x0)
+        ld      a,(cl_start)
         ld      c,a
         ld      a,(ob_y0)
         call    scr_addr
@@ -134,20 +116,15 @@ ob_skdone:
 ob_line:
         push    de
         ld      hl,(ob_ln)
-        ld      bc,(ob_sk)
-        add     hl,bc
-        ld      a,(ob_fl)
-        and     1
-        jr      z,ob_direct
-        ld      a,(ob_nb)
+        ld      a,(cl_n)
         ld      b,a
+        ld      a,(ob_fl)
+        rra
+        jr      nc,ob_direct
         call    blt_mask_flip           ; μόνο τα ζεύγη που γράφονται, κατευθείαν
         jr      ob_next
 ob_direct:
-        ld      a,(ob_nb)
-        ld      b,a
-        ld      a,(ob_fl)
-        and     4
+        and     2                       ; το «αδιαφανές», μετά το rra
         jr      nz,ob_opaque
         call    blt_mask_line
         jr      ob_next
@@ -163,29 +140,30 @@ ob_next:
         ld      a,(ob_fl)
         and     2
         jr      z,ob_down
-        or      a
-        sbc     hl,bc
+        sbc     hl,bc                   ; το and μηδένισε το carry
         jr      ob_store
 ob_down:
         add     hl,bc
 ob_store:
         ld      (ob_ln),hl
-        ld      a,(ob_nl)
-        dec     a
-        ld      (ob_nl),a
+        ld      hl,ob_nl
+        dec     (hl)
         jr      nz,ob_line
         ret
 
 ; ---------------------------------------------------------------------------
 ; ob_clip — ένας άξονας. Δίνει πόσο κόβεται από την αρχή, πόσο μένει, και πού
 ; αρχίζει στην οθόνη.
-; In :  (cl_pos) 16-bit προσημασμένο, (cl_len), (cl_lo), (cl_hi)
-; Out:  A = 0 -> εκτός· αλλιώς (cl_skip), (cl_n), (cl_start)
+; In :  HL = θέση, 16-bit προσημασμένη· A = μήκος· E = lo, D = hi — ένα
+;       ld de,(clip_x0) ή ld de,(clip_y0) τα φέρνει μαζί
+; Out:  Z -> εκτός· αλλιώς A = (cl_n), και (cl_skip), (cl_start)
+;
+; Ως το βήμα 43 έπαιρνε τα πάντα από τη μνήμη, και καθένας από τους οκτώ
+; καλούντες τα έγραφε εκεί με τέσσερα ld: 9 bytes ο καθένας.
 ; ---------------------------------------------------------------------------
 ob_clip:
-        ld      hl,(cl_pos)
-        ld      a,(cl_lo)
-        ld      e,a
+        ld      (cl_len),a
+        ld      (cl_lo),de              ; cl_lo, cl_hi
         ld      d,0
         ex      de,hl                   ; HL = lo, DE = pos
         or      a
@@ -227,7 +205,7 @@ oc_tail:
         ld      a,c
 oc_have:
         ld      (cl_n),a
-        ld      a,1
+        or      a                       ; NZ: το n είναι τουλάχιστον 1
         ret
 oc_cull:
         xor     a
@@ -260,32 +238,45 @@ ob_sext:
         ld      h,a
         ret
 
-; ob_sx / ob_sy — κέντρο αντικειμένου σε μισά tiles -> οθόνη (§3.4).
-;       x = 2*hx - 4*cam_tx        y = 8*hy - 16*cam_ty
-ob_sx:
-        call    ob_sext
-        add     hl,hl
-        push    hl
-        ld      a,(cam_tx)
-        call    ob_sext
-        add     hl,hl
-        add     hl,hl
-        ex      de,hl
-        pop     hl
+; ob_addu — HL += A, ανυπόγραφο. Δεν αγγίζει τα BC, DE: γι' αυτό αντικαθιστά
+; και το ld l,a / ld h,0 / ld de,πίνακας / add hl,de, που τα χαλούσε.
+ob_addu:
+        add     a,l
+        ld      l,a
+        ret     nc
+        inc     h
+        ret
+
+; ob_subu — HL -= A, ανυπόγραφο.
+ob_subu:
+        ld      e,a
+        ld      d,0
         or      a
         sbc     hl,de
         ret
+
+; ob_sx / ob_sy — κέντρο αντικειμένου σε μισά tiles -> οθόνη (§3.4).
+;       x = 2*hx - 4*cam_tx = 2*(hx - 2*cam_tx)
+;       y = 8*hy - 16*cam_ty = 8*(hy - 2*cam_ty)
+ob_sx:
+        ld      de,cam_tx
+        call    ob_rel
+        add     hl,hl
+        ret
 ob_sy:
+        ld      de,cam_ty
+        call    ob_rel
+        add     hl,hl
+        add     hl,hl
+        add     hl,hl
+        ret
+
+; ob_rel — HL = A - 2*(DE), και τα δύο προσημασμένα.
+ob_rel:
         call    ob_sext
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl
+        ld      a,(de)
         push    hl
-        ld      a,(cam_ty)
         call    ob_sext
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl
         add     hl,hl
         ex      de,hl
         pop     hl
@@ -340,38 +331,96 @@ ob_getdome:
 ; ob_frame — πλαίσιο του θόλου από το d_rec: (d_fx, d_fy) και ο πίνακας d_geo.
 ob_frame:
         ld      a,(d_rec+D_SIZE)
-        ld      l,a
-        ld      h,0
-        add     hl,hl
-        ld      d,h
-        ld      e,l                     ; 2*size
-        add     hl,hl
-        add     hl,hl                   ; 8*size
-        add     hl,de                   ; 10*size — η εγγραφή είναι ΔΕΚΑ bytes
-        ld      de,dome_geo
-        add     hl,de
+        add     a,a
+        ld      c,a
+        add     a,a
+        add     a,a
+        add     a,c                     ; 10*size — η εγγραφή είναι ΔΕΚΑ bytes
+        ld      hl,dome_geo
+        call    ob_addu
         ld      (d_geo),hl
+        ld      e,(hl)                  ; QW
+        inc     hl
+        ld      d,(hl)                  ; QH
+        ld      (d_qw),de               ; d_qw, d_qh διπλανά
         ld      a,(d_rec+D_CX)
         call    ob_sx
-        ld      de,(d_geo)
-        ld      a,(de)                  ; QW
-        ld      (d_qw),a
-        ld      c,a
-        ld      b,0
-        or      a
-        sbc     hl,bc
+        ld      a,(d_qw)
+        call    ob_subu
         ld      (d_fx),hl
         ld      a,(d_rec+D_CY)
         call    ob_sy
-        ld      de,(d_geo)
-        inc     de
-        ld      a,(de)                  ; QH
-        ld      (d_qh),a
-        ld      c,a
-        ld      b,0
-        or      a
-        sbc     hl,bc
+        ld      a,(d_qh)
+        call    ob_subu
         ld      (d_fy),hl
+        ret
+
+; ob_center — ob_x, ob_y = το κέντρο του θόλου: το πλαίσιο συν ένα τεταρτημόριο.
+ob_center:
+        ld      hl,(d_fx)
+        ld      a,(d_qw)
+        call    ob_addu
+        ld      (ob_x),hl
+        ld      hl,(d_fy)
+        ld      a,(d_qh)
+        call    ob_addu
+        ld      (ob_y),hl
+        ret
+
+; ob_slot_at — A = θέση (πόρτα, υποδοχή, θέση δακτυλίου), DE = ο πίνακας της
+; (px, py) ανά μέγεθος θόλου, 16 bytes το μέγεθος. ob_x, ob_y = το πλαίσιο
+; συν το (px, py). Out: C = px — το 255 λέει «αυτή η θέση δεν υπάρχει».
+;
+; Τέσσερις ρουτίνες το έγραφαν η καθεμιά μόνη της, ως το βήμα 43.
+ob_slot_at:
+        add     a,a
+        ld      c,a
+        ld      a,(d_rec+D_SIZE)
+        add     a,a
+        add     a,a
+        add     a,a
+        add     a,a
+        add     a,c                     ; size*16 + θέση*2
+        ex      de,hl
+        call    ob_addu
+        ld      c,(hl)                  ; px
+        inc     hl
+        ld      a,(hl)                  ; py
+        ld      hl,(d_fy)
+        call    ob_addu
+        ld      (ob_y),hl
+        ld      a,c
+        ld      hl,(d_fx)
+        call    ob_addu
+        ld      (ob_x),hl
+        ret
+
+; ob_move — HL -> (dx, dy), προσημασμένα: ob_x += dx, ob_y += dy.
+; ob_movek — το ίδιο, B φορές (και καμία, με B = 0).
+ob_movek:
+        inc     b
+        jr      obm_e
+obm_k:
+        push    bc
+        push    hl
+        call    ob_move
+        pop     hl
+        pop     bc
+obm_e:
+        djnz    obm_k
+        ret
+ob_move:
+        ld      a,(hl)
+        inc     hl
+        push    hl
+        ld      hl,(ob_x)
+        call    ob_addsx
+        ld      (ob_x),hl
+        pop     hl
+        ld      a,(hl)
+        ld      hl,(ob_y)
+        call    ob_addsx
+        ld      (ob_y),hl
         ret
 
 ; ---------------------------------------------------------------------------
@@ -387,22 +436,15 @@ ob_vis:
         or      a
         jp      nz,ov_meas              ; src/objindex.asm, τράπεζα 2
         ld      hl,(d_fx)
-        ld      (cl_pos),hl
         ld      a,(d_qw)
         add     a,a
-        ld      (cl_len),a
-        ld      hl,(clip_x0)
-        ld      (cl_lo),hl
+        ld      de,(clip_x0)
         call    ob_clip
-        or      a
         ret     z
         ld      hl,(d_fy)
-        ld      (cl_pos),hl
         ld      a,(d_qh)
         add     a,a
-        ld      (cl_len),a
-        ld      hl,(clip_y0)
-        ld      (cl_lo),hl
+        ld      de,(clip_y0)
         jp      ob_clip
 ; ---------------------------------------------------------------------------
 ; ob_ovl — τέμνεται το [HL, HL+DE) με το [cl_lo, cl_hi); 16 bit, για τους
@@ -465,17 +507,17 @@ ob_shell:
 ; ob_quads — DE = αρχή του nw· τέσσερα τεταρτημόρια στο πλαίσιο (d_fx,d_fy).
 ob_quads:
         ld      (ob_src),de
+        ld      hl,(d_qw)               ; QW, QH -> ob_w, ob_h: το ob_blit
+        ld      (ob_w),hl               ; δεν τα πειράζει
         xor     a
 oq_loop:
         ld      (oq_cur),a
         ld      (ob_fl),a               ; bits 0-1 = προσανατολισμός, bit2 = 0
         ld      hl,(d_fx)
-        and     1
-        jr      z,oq_nox
+        rra
+        jr      nc,oq_nox
         ld      a,(d_qw)
-        ld      c,a
-        ld      b,0
-        add     hl,bc
+        call    ob_addu
 oq_nox:
         ld      (ob_x),hl
         ld      hl,(d_fy)
@@ -483,18 +525,10 @@ oq_nox:
         and     2
         jr      z,oq_noy
         ld      a,(d_qh)
-        ld      c,a
-        ld      b,0
-        add     hl,bc
+        call    ob_addu
 oq_noy:
         ld      (ob_y),hl
-        ld      a,(d_qw)
-        ld      (ob_w),a
-        ld      a,(d_qh)
-        ld      (ob_h),a
-        push    hl
         call    ob_blit
-        pop     hl
         ld      a,(oq_cur)
         inc     a
         cp      4
@@ -530,162 +564,89 @@ obf_full:
         jp      ob_figures
 
 ; --- πόρτες: μόνο εκεί που υπάρχει διάδρομος -------------------------------
-; ob_conn_one — ΜΙΑ πόρτα. In: A = κατεύθυνση.
-ob_conn_one:
-        ld      (oc_dir),a
-        ld      a,(d_rec+D_SIZE)
-        add     a,a
-        add     a,a
-        add     a,a
-        add     a,a
-        ld      (oc_base),a
-        jp      ocn_draw
-
 ob_conns:
         ld      a,(d_id)
-        ld      e,a
-        ld      d,0
         ld      hl,dome_conn
-        add     hl,de
+        call    ob_addu
         ld      a,(hl)
         ld      (oc_mask),a
-        or      a
-        ret     z
-        ld      a,(d_rec+D_SIZE)
-        add     a,a
-        add     a,a
-        add     a,a
-        add     a,a                     ; size*16
-        ld      (oc_base),a
         xor     a
 ocn_lp:
         ld      (oc_dir),a
-        ld      b,a
-        ld      a,(oc_mask)
-        inc     b
-        jr      ocn_shend
-ocn_sh:
-        rrca
-ocn_shend:
-        djnz    ocn_sh
-        and     1
-        jr      z,ocn_skip
-        call    ocn_draw
-ocn_skip:
+        ld      hl,oc_mask
+        ld      a,(hl)
+        or      a
+        ret     z                       ; καμία πόρτα πια: οι υπόλοιπες γύροι
+        srl     (hl)                    ; θα έλεγχαν μηδενικά bits
+        call    c,ocn_draw
         ld      a,(oc_dir)
         inc     a
-        cp      8
-        jp      nz,ocn_lp
-        ret
+        jr      ocn_lp
 
-; ocn_draw — μία πόρτα, από τα oc_dir / oc_base.
+; ob_conn_one — ΜΙΑ πόρτα. In: A = κατεύθυνση.
+ob_conn_one:
+        ld      (oc_dir),a
+; ocn_draw — μία πόρτα, από το oc_dir.
 ocn_draw:
         ld      a,(oc_dir)
-        add     a,a
-        ld      c,a
-        ld      a,(oc_base)
-        add     a,c
-        ld      l,a
-        ld      h,0
         ld      de,G_conn_points
-        add     hl,de
-        ld      c,(hl)                  ; px
-        inc     hl
-        ld      b,(hl)                  ; py
-        push    bc
-        ld      hl,(d_fx)
-        ld      b,0
-        add     hl,bc
-        ld      (ob_x),hl
-        pop     bc
-        ld      c,b
-        ld      b,0
-        ld      hl,(d_fy)
-        add     hl,bc
-        ld      (ob_y),hl
+        call    ob_slot_at
         ld      a,(oc_dir)
         add     a,a
         add     a,a
         add     a,a
         add     a,a
         add     a,a                     ; dir*32
-        ld      l,a
-        ld      h,0
-        ld      de,G_connectors
-        add     hl,de
+        ld      hl,G_connectors
+        call    ob_addu
         ld      (ob_src),hl
-        ld      a,CONN_W
-        ld      (ob_w),a
-        ld      a,CONN_H
-        ld      (ob_h),a
+        ld      hl,CONN_H*256 + CONN_W
         xor     a
-        ld      (ob_fl),a
-        jp      ob_blit
+        jp      ob_put
 
 ; --- εικονίδιο δωματίου, στο interior_ofs από το ΚΕΝΤΡΟ --------------------
 ob_icon:
+        call    ob_center
         ld      a,(d_rec+D_SIZE)
         add     a,a
-        ld      l,a
-        ld      h,0
-        ld      de,G_interior_ofs
-        add     hl,de
-        ld      a,(hl)                  ; dx προσημασμένο
-        inc     hl
-        ld      c,(hl)                  ; dy προσημασμένο
-        push    bc
-        call    ob_sext
-        ex      de,hl
-        ld      hl,(d_fx)
-        add     hl,de
-        ld      a,(d_qw)
-        ld      c,a
-        ld      b,0
-        add     hl,bc
-        ld      (ob_x),hl
-        pop     bc
-        ld      a,c
-        call    ob_sext
-        ex      de,hl
-        ld      hl,(d_fy)
-        add     hl,de
-        ld      a,(d_qh)
-        ld      c,a
-        ld      b,0
-        add     hl,bc
-        ld      (ob_y),hl
+        ld      hl,G_interior_ofs
+        call    ob_addu
+        call    ob_move                 ; (dx, dy) προσημασμένα
         ; πηγή: icon_{size}_ptr[room]
         ld      hl,(d_geo)
-        ld      de,6
-        add     hl,de                   ; -> icon_ptr, icon_w, icon_h
+        ld      a,6
+        call    ob_addu                 ; -> icon_ptr, icon_w, icon_h
         ld      e,(hl)
         inc     hl
         ld      d,(hl)
         inc     hl
         ld      a,(hl)
-        ld      (ob_w),a
         inc     hl
-        ld      a,(hl)
-        ld      (ob_h),a
+        ld      h,(hl)
+        ld      l,a
+        push    hl                      ; w, h
         ld      a,(d_rec+D_ROOM)
         add     a,a
-        ld      l,a
-        ld      h,0
-        add     hl,de
+        ex      de,hl
+        call    ob_addu
         ld      a,(hl)
         inc     hl
         ld      h,(hl)
         ld      l,a
         ld      (ob_src),hl
+        pop     hl
         ld      a,4                     ; αδιαφανές
-        ld      (ob_fl),a
         ; Τα εικονίδια m και l μετακόμισαν στην ΤΡΑΠΕΖΑ 1, πάνω από τον πίνακα
         ; DIST (§4.2): με 96 κόμβους ο πίνακας αφήνει 4 KB, και αυτά τα 4 KB
         ; έγιναν χώρος ΚΩΔΙΚΑ στην τράπεζα 2. Τα s έμειναν στη 2 — η
         ; σελιδοποίηση δεν τα πειράζει, η 2 φαίνεται πάντα.
-        ld      bc,GA_PORT + PAGE_B1
+        ld      c,PAGE_B1
+; ob_put_in — ob_put με την τράπεζα C στο παράθυρο, και μετά πίσω η 6.
+ob_put_in:
+        ld      b,GA_PORT / 256
         out     (c),c
-        call    ob_blit
+        call    ob_put
+ob_b6:
         ld      bc,GA_PORT + PAGE_B6
         out     (c),c
         ret
@@ -695,24 +656,11 @@ ob_icon:
 ; τράπεζα 7. Γι' αυτό η εγγραφή αντιγράφηκε: εδώ φεύγει η 6.
 ob_machines:
         ld      a,(d_rec+D_SIZE)
-        ld      l,a
-        ld      h,0
-        ld      de,G_machine_count
-        add     hl,de
+        ld      hl,G_machine_count
+        call    ob_addu
         ld      a,(hl)
         ld      (om_n),a
-        ld      a,(d_rec+D_ROOM)
-        cp      R_GREENHS
-        ld      a,0
-        jr      nz,om_notgreen
-        inc     a
-om_notgreen:
-        ld      (om_green),a
-        or      a
-        jr      z,om_go
-        ld      bc,GA_PORT + PAGE_B7
-        out     (c),c
-om_go:
+        call    om_prep
         xor     a
 om_lp:
         call    ob_mach_one
@@ -720,128 +668,95 @@ om_lp:
         inc     a
         ld      hl,om_n
         cp      (hl)
-        jp      nz,om_lp
-        ld      a,(om_green)
-        or      a
-        ret     z
-        ld      bc,GA_PORT + PAGE_B6
+        jr      nz,om_lp
+        jp      ob_b6
+
+; om_prep — ο πίνακας των sprites: μηχανές, ή φυτά στο θερμοκήπιο — και τότε
+; η τράπεζα 7, όπου ζουν. Για το ob_machines και για τη λίστα (dh_mach).
+om_prep:
+        ld      hl,G_mach_ptr
+        ld      a,(d_rec+D_ROOM)
+        cp      R_GREENHS
+        jr      nz,omp_set
+        ld      hl,G_plant_ptr
+        ld      bc,GA_PORT + PAGE_B7
         out     (c),c
+omp_set:
+        ld      (om_tab),hl
         ret
 
 ; ---------------------------------------------------------------------------
-; ob_mach_one — ΜΙΑ υποδοχή. In: A = υποδοχή· το om_green ορισμένο και η σωστή
-; τράπεζα μέσα. Η λίστα αλλαγών (§8.5) ξαναζωγραφίζει μία υποδοχή όταν μια
-; μηχανή χαλάσει ή ένα φυτό μεγαλώσει, και δεν έχει λόγο να δει τις άλλες επτά.
+; ob_mach_one — ΜΙΑ υποδοχή. In: A = υποδοχή· το om_prep έχει τρέξει. Η
+; λίστα αλλαγών (§8.5) ξαναζωγραφίζει μία υποδοχή όταν μια μηχανή χαλάσει ή
+; ένα φυτό μεγαλώσει, και δεν έχει λόγο να δει τις άλλες επτά.
 ; ---------------------------------------------------------------------------
 ob_mach_one:
         ld      (om_slot),a
-        ld      e,a
-        ld      d,0
         ld      hl,d_rec+D_MACH
-        add     hl,de
+        call    ob_addu
         ld      a,(hl)
         cp      NO_MACH
-        jr      z,om_skip
-        ld      (om_type),a
-        ; θέση μέσα στο πλαίσιο
-        ld      a,(d_rec+D_SIZE)
+        ret     z
         add     a,a
-        add     a,a
-        add     a,a
-        add     a,a
-        ld      c,a
-        ld      a,(om_slot)
-        add     a,a
-        add     a,c
-        ld      l,a
-        ld      h,0
-        ld      de,G_machine_slots
-        add     hl,de
-        ld      c,(hl)
-        inc     hl
-        ld      b,(hl)
-        ld      a,c
-        cp      255
-        jr      z,om_skip
-        push    bc
-        ld      b,0
-        ld      hl,(d_fx)
-        add     hl,bc
-        ld      (ob_x),hl
-        pop     bc
-        ld      c,b
-        ld      b,0
-        ld      hl,(d_fy)
-        add     hl,bc
-        ld      (ob_y),hl
-        ; πηγή
-        ld      a,(om_type)
-        add     a,a
-        ld      l,a
-        ld      h,0
-        ld      a,(om_green)
-        or      a
-        ld      de,G_mach_ptr
-        jr      z,om_tab
-        ld      de,G_plant_ptr
-om_tab:
-        add     hl,de
+        ld      hl,(om_tab)
+        call    ob_addu
         ld      a,(hl)
         inc     hl
         ld      h,(hl)
         ld      l,a
         ld      (ob_src),hl
-        ld      a,MACH_W
-        ld      (ob_w),a
-        ld      a,MACH_H
-        ld      (ob_h),a
+        ld      a,(om_slot)
+        ld      de,G_machine_slots
+        call    ob_slot_at
+        inc     c
+        ret     z                       ; px = 255: αυτή η υποδοχή δεν υπάρχει
+        ld      hl,MACH_H*256 + MACH_W
         ld      a,4
-        ld      (ob_fl),a
-        jp      ob_blit
-om_skip:
-        ret
+        jp      ob_put
 
 ; --- φιγούρες στις θέσεις του δακτυλίου ------------------------------------
 ; Το DOME_FIG γέμισε με ΕΝΑ πέρασμα πάνω στους 128 πράκτορες (ob_fig_scan).
 ; Χωρίς αυτό κάθε θόλος θα σάρωνε και τους 128, δηλαδή 8.192 αναγνώσεις.
+;
+; Η ΚΕΝΗ ΠΑΡΑΛΛΑΓΗ ΠΑΡΑΛΕΙΠΕΤΑΙ ΕΔΩ. Στην πλήρη σχεδίαση ο δακτύλιος — και το
+; έδαφος κάτω από τα διαφανή του pixel — μόλις ζωγραφίστηκαν. Οταν ΦΕΥΓΕΙ
+; ένας άποικος, η λίστα αλλαγών ξαναστρώνει έδαφος και αντικείμενα κάτω από
+; τη θέση (dh_slot, βήμα 42): η κενή παραλλαγή είναι ο δακτύλιος πάνω σε
+; μαύρο, και μόνη της άφηνε pen 0 εκεί που φαίνεται το έδαφος.
 ob_figures:
+        xor     a
+of_lp:
+        ld      (of_slot),a
+        call    of_at
+        or      a
+        ld      a,(of_slot)
+        call    nz,ob_fig_one
+        ld      a,(of_slot)
+        inc     a
+        cp      CORR_SLOTS
+        jr      nz,of_lp
+        ret
+
+; of_at — A = θέση του θόλου d_id -> A = η φιγούρα της (0 = κενή).
+of_at:
+        ld      c,a
         ld      a,(d_id)
         ld      l,a
         ld      h,0
         add     hl,hl
         add     hl,hl
         add     hl,hl                   ; id*8 — ως 512, θέλει 16 bit
+        ld      a,c
+        or      l                       ; + θέση: τα τρία κάτω bits είναι 0
+        ld      l,a
         ld      de,DOME_FIG
         add     hl,de
-        ld      (of_ptr),hl
-        ld      a,(d_rec+D_SIZE)
-        ld      (of_size),a
-        xor     a
-; Η ΚΕΝΗ ΠΑΡΑΛΛΑΓΗ ΠΑΡΑΛΕΙΠΕΤΑΙ ΕΔΩ. Στην πλήρη σχεδίαση ο δακτύλιος — και το
-; έδαφος κάτω από τα διαφανή του pixel — μόλις ζωγραφίστηκαν. Οταν ΦΕΥΓΕΙ
-; ένας άποικος, η λίστα αλλαγών ξαναστρώνει έδαφος και αντικείμενα κάτω από
-; τη θέση (dh_slot, βήμα 42): η κενή παραλλαγή είναι ο δακτύλιος πάνω σε
-; μαύρο, και μόνη της άφηνε pen 0 εκεί που φαίνεται το έδαφος.
-of_lp:
-        ld      (of_slot),a
-        ld      hl,(of_ptr)
-        ld      e,a
-        ld      d,0
-        add     hl,de
         ld      a,(hl)
-        or      a
-        jr      z,of_next
-        ld      a,(of_slot)
-        call    ob_fig_one
-of_next:
-        ld      a,(of_slot)
-        inc     a
-        cp      CORR_SLOTS
-        jp      nz,of_lp
         ret
 
 ; ---------------------------------------------------------------------------
-; ob_fig_one — ΜΙΑ θέση δακτυλίου. In: A = θέση· of_ptr και of_size ορισμένα.
+; ob_fig_one — ΜΙΑ θέση δακτυλίου του θόλου d_id. In: A = θέση.
+; Out: (of_fig) = η φιγούρα, ob_x / ob_y = η θέση.
 ;
 ; Μια φιγούρα είναι αδιαφανές blit 16 bytes, με τον δακτύλιο της θέσης ψημένο
 ; μέσα — και αυτό αρκεί για να ΕΜΦΑΝΙΣΤΕΙ. Για να σβηστεί δεν αρκεί: η κενή
@@ -850,74 +765,42 @@ of_next:
 ; ---------------------------------------------------------------------------
 ob_fig_one:
         ld      (of_slot),a
-        ld      hl,(of_ptr)
-        ld      e,a
-        ld      d,0
-        add     hl,de
-        ld      a,(hl)
+        call    of_at
         ld      (of_fig),a
-        ld      a,(of_size)
-        add     a,a
-        add     a,a
-        add     a,a
-        add     a,a
-        ld      c,a
         ld      a,(of_slot)
-        add     a,a
-        add     a,c
-        ld      l,a
-        ld      h,0
         ld      de,G_corr_slots
-        add     hl,de
-        ld      c,(hl)
-        inc     hl
-        ld      b,(hl)
-        push    bc
-        ld      b,0
-        ld      hl,(d_fx)
-        add     hl,bc
-        ld      (ob_x),hl
-        pop     bc
-        ld      c,b
-        ld      b,0
-        ld      hl,(d_fy)
-        add     hl,bc
-        ld      (ob_y),hl
+        call    ob_slot_at
         ; πηγή = corr_slot_gfx + size*SLOT_BANK + slot*SLOT_STRIDE + fig*SLOT_SIZE
-        ld      a,(of_size)
+        ;      = corr_slot_gfx + 16 * ((size*8 + slot)*9 + fig)
+        ; και το εσωτερικό γινόμενο είναι το πολύ (2*8+7)*9+8 = 215: ένα byte.
+        ; Ως το βήμα 43 ήταν δύο ob_mul και ένας πίνακας για το size*1.152.
+        ld      a,(d_rec+D_SIZE)
         add     a,a
+        add     a,a
+        add     a,a
+        ld      hl,of_slot
+        add     a,(hl)
+        ld      c,a
+        add     a,a
+        add     a,a
+        add     a,a
+        add     a,c                     ; *9
+        ld      hl,of_fig
+        add     a,(hl)
         ld      l,a
         ld      h,0
-        ld      de,ob_sbank
-        add     hl,de
-        ld      a,(hl)
-        inc     hl
-        ld      h,(hl)
-        ld      l,a                     ; size*SLOT_BANK — πίνακας, όχι γινόμενο:
-        ld      (of_acc),hl             ; το 1152 δεν χωράει σε 8x8
-        ld      a,(of_slot)
-        ld      c,SLOT_STRIDE
-        call    ob_mul
-        ld      de,(of_acc)
-        add     hl,de
-        ld      (of_acc),hl
-        ld      a,(of_fig)
-        ld      c,SLOT_SIZE
-        call    ob_mul
-        ld      de,(of_acc)
-        add     hl,de
+        add     hl,hl
+        add     hl,hl
+        add     hl,hl
+        add     hl,hl
         ld      de,G_corr_slot_gfx
         add     hl,de
         ld      (ob_src),hl
-        ld      a,SLOT_W
-        ld      (ob_w),a
-        ld      a,SLOT_H
-        ld      (ob_h),a
+        ld      hl,SLOT_H*256 + SLOT_W
         ld      a,4
-        ld      (ob_fl),a
-        jp      ob_blit
-of_skip:
-        ret
+        jp      ob_put
+        assert  SLOT_SIZE == 16 && SLOT_STRIDE == 9 * SLOT_SIZE
+        assert  SLOT_BANK == 8 * SLOT_STRIDE && SLOT_FIGS <= 9
 
 ; ---------------------------------------------------------------------------
 ; ob_corr — ένας διάδρομος. In: A = id διαδρόμου. Απαιτεί τράπεζα 6.
@@ -936,49 +819,36 @@ ob_corr:
         add     hl,de                   ; 5*id
         ld      de,G_corr_tbl
         add     hl,de
-        push    hl
-        ld      de,C_CSTATE
-        add     hl,de
-        ld      a,(hl)
-        pop     hl
+        ; Η εγγραφή ΚΑΙ η επόμενη, σε c_rec και oc_cr, με ένα ldir: το αν
+        ; ακολουθεί συνέχεια ρωτιέται ΕΔΩ, όσο η τράπεζα 6 είναι ακόμη στο
+        ; παράθυρο — μετά το ob_getdome ο πίνακας διαδρόμων δεν φαίνεται πια.
+        ; Η τελευταία εγγραφή διαβάζει 5 bytes έξω από τον πίνακα· η σύγκριση
+        ; με το MAX_CORR πιο κάτω δεν τα κοιτάζει.
+        ld      de,c_rec
+        ld      bc,2 * CORR_REC
+        ldir
+        ld      a,(c_rec+C_CSTATE)
         or      a
-        ret     z                       ; άδεια θέση — τίποτα να αντιγραφεί
-        ld      a,(hl)
+        ret     z                       ; άδεια θέση
+        ld      a,(c_rec+C_A)
         inc     a
         ret     z                       ; C_A = 255: ΣΥΝΕΧΕΙΑ διαδρομής — τη
                                         ; ζωγραφίζει η εγγραφή που την ξεκίνησε
-        ; --- ακολουθεί συνέχεια; Η ερώτηση γίνεται ΕΔΩ, όσο η τράπεζα 6 είναι
-        ; ακόμη στο παράθυρο, και η απάντηση φυλάγεται: μετά το ob_getdome το
-        ; παράθυρο έχει αλλάξει και ο πίνακας διαδρόμων δεν φαίνεται πια.
-        xor     a
-        ld      (oc_cont),a
-        push    hl
+        ld      b,0                     ; oc_cont
         ld      a,(oc_id)
         inc     a
         cp      MAX_CORR
         jr      nc,occ_nocont           ; τελευταία εγγραφή — δεν έχει επόμενη
-        ld      de,CORR_REC
-        add     hl,de
-        ld      a,(hl)
+        ld      a,(oc_cr+C_A)
         inc     a
         jr      nz,occ_nocont
-        push    hl
-        ld      de,C_CSTATE
-        add     hl,de
-        ld      a,(hl)
-        pop     hl
+        ld      a,(oc_cr+C_CSTATE)
         or      a
         jr      z,occ_nocont
-        ld      de,oc_cr
-        ld      bc,CORR_REC
-        ldir
-        ld      a,1
-        ld      (oc_cont),a
+        inc     b
 occ_nocont:
-        pop     hl
-        ld      de,c_rec
-        ld      bc,CORR_REC
-        ldir
+        ld      a,b
+        ld      (oc_cont),a
         ; Οι διάδρομοι έρχονται σε σειρά και μοιράζονται αφετηρία: μισοί από
         ; αυτούς ξεκινούν από τον ίδιο θόλο με τον προηγούμενο. Δύο εντολές
         ; γλιτώνουν την αντιγραφή 24 bytes και τον υπολογισμό του πλαισίου.
@@ -989,149 +859,65 @@ occ_nocont:
         call    oc_setdir
         ld      a,(oc_diag)
         or      a
-        jp      nz,ob_corr_d
-        jp      oc_axial
+        jr      nz,ob_corr_d
+        ; --- αξονικός: από το σημείο σύνδεσης, προς τα έξω ---
+        ld      a,(c_rec+C_DIR)
+        ld      de,G_conn_points
+        call    ob_slot_at
+        ld      hl,oc_ox
+        call    ob_move
+        jr      ob_corr_run
 
-; oc_setdir — γεμίζει sprite, διαστάσεις και βήμα από τον πίνακα corr_dir.
+; oc_setdir — sprite, διαστάσεις, βήμα, μετατόπιση και «διαγώνιος;» από τον
+; πίνακα corr_dir: εννέα bytes, που πέφτουν με τη σειρά τους στα ob_src, ob_w,
+; ob_h, oc_dx, oc_dy, oc_ox, oc_oy, oc_diag (βλ. τις μεταβλητές).
 oc_setdir:
         ld      a,(c_rec+C_DIR)
         and     7
         ld      c,a
-        ld      b,0
-        ld      l,a
-        ld      h,0
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl
-        add     hl,bc                   ; dir*9
-        ld      de,corr_dir
-        add     hl,de
-        ld      e,(hl)
-        inc     hl
-        ld      d,(hl)
-        ld      (ob_src),de
-        inc     hl
-        ld      a,(hl)
-        ld      (ob_w),a
-        inc     hl
-        ld      a,(hl)
-        ld      (ob_h),a
-        inc     hl
-        ld      a,(hl)
-        ld      (oc_dx),a
-        inc     hl
-        ld      a,(hl)
-        ld      (oc_dy),a
-        inc     hl
-        ld      a,(hl)
-        ld      (oc_ox),a
-        inc     hl
-        ld      a,(hl)
-        ld      (oc_oy),a
-        inc     hl
-        ld      a,(hl)
-        ld      (oc_diag),a
+        add     a,a
+        add     a,a
+        add     a,a
+        add     a,c                     ; dir*9
+        ld      hl,corr_dir
+        call    ob_addu
+        ld      de,ob_src
+        ld      bc,9
+        ldir
         ret
 
-oc_axial:
-        ; --- αξονικός: από το σημείο σύνδεσης, προς τα έξω ---
-        ld      a,(d_rec+D_SIZE)
-        add     a,a
-        add     a,a
-        add     a,a
-        add     a,a
-        ld      c,a
-        ld      a,(c_rec+C_DIR)
-        add     a,a
-        add     a,c
-        ld      l,a
-        ld      h,0
-        ld      de,G_conn_points
-        add     hl,de
-        ld      c,(hl)
-        ld      b,0
-        ld      hl,(d_fx)
-        add     hl,bc
-        ld      a,(oc_ox)
-        call    ob_addsx
-        ld      (ob_x),hl
-        ld      a,(d_rec+D_SIZE)
-        add     a,a
-        add     a,a
-        add     a,a
-        add     a,a
-        ld      c,a
-        ld      a,(c_rec+C_DIR)
-        add     a,a
-        add     a,c
-        inc     a
-        ld      l,a
-        ld      h,0
-        ld      de,G_conn_points
-        add     hl,de
-        ld      c,(hl)
-        ld      b,0
-        ld      hl,(d_fy)
-        add     hl,bc
-        ld      a,(oc_oy)
-        call    ob_addsx
-        ld      (ob_y),hl
-        jr      ob_corr_run
 ob_corr_d:
         ; --- διαγώνιος: πλέγμα DIAG_K από το ΚΕΝΤΡΟ του θόλου ---
         ld      a,(d_rec+D_SIZE)
-        ld      l,a
-        ld      h,0
-        ld      de,diag_k
-        add     hl,de
-        ld      a,(hl)
-        ld      (oc_k),a
-        ld      hl,(d_fx)
-        ld      a,(d_qw)
-        sub     4
-        call    ob_addsx
-        ld      a,(oc_dx)
-        call    ob_addk
-        ld      (ob_x),hl
-        ld      hl,(d_fy)
-        ld      a,(d_qh)
-        sub     8
-        call    ob_addsx
-        ld      a,(oc_dy)
-        call    ob_addk
-        ld      (ob_y),hl
+        ld      hl,diag_k
+        call    ob_addu
+        ld      b,(hl)
+        push    bc
+        call    ob_center
+        ld      hl,diag_ofs
+        call    ob_move
+        pop     bc
+        ld      hl,oc_dx
+        call    ob_movek
 ob_corr_run:
         ld      a,(c_rec+C_LEN)
         or      a
         ret     z
         ld      (oc_n),a
-        ; Πού τελειώνει ΑΥΤΟ το τρέξιμο — υπολογισμένο, όχι μετρημένο από τον
-        ; βρόχο: το κουτί μπορεί να είναι όλο εκτός κάδρου και ο βρόχος να μην
-        ; τρέξει καθόλου, ενώ η συνέχεια μπορεί κάλλιστα να φαίνεται.
-        ld      a,(oc_cont)
-        or      a
-        call    nz,oc_last
+        ; Πού ΑΡΧΙΖΕΙ αυτό το τρέξιμο, για τη στροφή: από εκεί το oc_bend
+        ; βρίσκει το τελευταίο του πλακίδιο — υπολογισμένο, όχι μετρημένο από
+        ; τον βρόχο: το κουτί μπορεί να είναι όλο εκτός κάδρου και ο βρόχος να
+        ; μην τρέξει καθόλου, ενώ η συνέχεια μπορεί κάλλιστα να φαίνεται.
+        ld      hl,(ob_x)
+        ld      (oc_lx),hl
+        ld      hl,(ob_y)
+        ld      (oc_ly),hl
         call    oc_run
         ld      a,(oc_cont)
         or      a
         ret     z
         call    oc_bend
-        jp      oc_run
-
-; oc_last — (oc_lx, oc_ly) = η θέση του ΤΕΛΕΥΤΑΙΟΥ πλακιδίου του τρεξίματος.
-oc_last:
-        ld      a,(oc_n)
-        dec     a
-        ld      (oc_k),a
-        ld      hl,(ob_x)
-        ld      a,(oc_dx)
-        call    ob_addk
-        ld      (oc_lx),hl
-        ld      hl,(ob_y)
-        ld      a,(oc_dy)
-        call    ob_addk
-        ld      (oc_ly),hl
-        ret
+        jr      oc_run
 
 ; ---------------------------------------------------------------------------
 ; oc_bend — η στροφή διαγώνιος -> άξονας (§9.4, και tools/route.py).
@@ -1142,47 +928,49 @@ oc_last:
 ; δύο στροφές δεν έχουν τον ίδιο τύπο.
 ; ---------------------------------------------------------------------------
 oc_bend:
-        ld      a,(oc_dx)
-        ld      (oc_odx),a
-        ld      a,(oc_dy)
-        ld      (oc_ody),a
+        ; --- το τελευταίο διαγώνιο: το πρώτο, συν (n-1) βήματα ---
+        ld      hl,(oc_lx)
+        ld      (ob_x),hl
+        ld      hl,(oc_ly)
+        ld      (ob_y),hl
+        ld      a,(c_rec+C_LEN)
+        dec     a
+        ld      b,a
+        ld      hl,oc_dx
+        call    ob_movek
+        ; --- και η συνέχεια ---
+        ld      hl,(oc_dx)              ; το βήμα της διαγωνίου, πριν φύγει
+        push    hl
         ld      hl,oc_cr
         ld      de,c_rec
         ld      bc,CORR_REC
         ldir
         call    oc_setdir
+        pop     hl                      ; L = dx, H = dy της διαγωνίου
         ld      a,(oc_dx)
         or      a
         jr      z,ocb_v
         ; --- οριζόντια: το πρώτο πλακίδιο κάθεται ΠΑΝΩ στο τελευταίο διαγώνιο,
-        ; στο μισό του που βλέπει προς τον θόλο αφετηρίας.
-        ld      hl,(oc_lx)
-        ld      a,(oc_odx)
-        bit     7,a
-        jr      z,ocb_h1
-        ld      de,4
-        add     hl,de
-ocb_h1:
-        ld      (ob_x),hl
-        ld      hl,(oc_ly)
-        ld      de,8
-        add     hl,de
-        ld      (ob_y),hl
-        jr      ocb_len
+        ; στο μισό του που βλέπει προς τον θόλο αφετηρίας: (dx < 0 ? 4 : 0, 8).
+        ld      a,l
+        rla
+        sbc     a,a
+        and     4
+        ld      l,a
+        ld      h,8
+        jr      ocb_go
 ocb_v:
         ; --- κάθετη: η λωρίδα περνά από το ΚΕΝΤΡΟ του θόλου προορισμού, που
-        ; είναι ένα σημείο πλέγματος πιο πέρα από το τελευταίο διαγώνιο.
-        ld      hl,(oc_lx)
-        ld      a,(oc_odx)
+        ; είναι ένα σημείο πλέγματος πιο πέρα από το τελευταίο διαγώνιο:
+        ; (dx + 4, dy / 2).
+        ld      a,l
         add     a,4
-        call    ob_addsx
-        ld      (ob_x),hl
-        ld      hl,(oc_ly)
-        ld      a,(oc_ody)
-        sra     a
-        call    ob_addsx
-        ld      (ob_y),hl
-ocb_len:
+        ld      l,a
+        sra     h
+ocb_go:
+        ld      (oc_lx),hl              ; ως ζεύγος για το ob_move
+        ld      hl,oc_lx
+        call    ob_move
         ld      a,(c_rec+C_LEN)
         ld      (oc_n),a
         ret
@@ -1217,21 +1005,14 @@ oc_run:
         call    ob_ovl
         or      a
         ret     z
-occ_lp:
         xor     a
-        ld      (ob_fl),a
+        ld      (ob_fl),a               ; το ob_blit δεν το πειράζει
+occ_lp:
         call    ob_blit
-        ld      hl,(ob_x)
-        ld      a,(oc_dx)
-        call    ob_addsx
-        ld      (ob_x),hl
-        ld      hl,(ob_y)
-        ld      a,(oc_dy)
-        call    ob_addsx
-        ld      (ob_y),hl
-        ld      a,(oc_n)
-        dec     a
-        ld      (oc_n),a
+        ld      hl,oc_dx
+        call    ob_move
+        ld      hl,oc_n
+        dec     (hl)
         jr      nz,occ_lp
         ret
 
@@ -1289,20 +1070,6 @@ ob_addsx:
         add     hl,de
         ret
 
-; ob_addk — HL += A προσημασμένο, oc_k φορές.
-ob_addk:
-        ld      b,a
-        ld      a,(oc_k)
-        or      a
-        ret     z
-        ld      c,a
-oak_lp:
-        ld      a,b
-        call    ob_addsx
-        dec     c
-        jr      nz,oak_lp
-        ret
-
 ; ---------------------------------------------------------------------------
 ; ob_struct — μία εξωτερική δομή. In: A = id. Απαιτεί τράπεζα 6 στην είσοδο·
 ; γυρίζει με την 6 μέσα.
@@ -1315,86 +1082,68 @@ ob_struct:
         add     hl,hl                   ; 8*id
         ld      de,G_struct_tbl
         add     hl,de
-        push    hl
-        ld      de,ST_STATE
-        add     hl,de
-        ld      a,(hl)
-        pop     hl
+        ld      de,s_rec                ; πρώτα η αντιγραφή, μετά η ερώτηση:
+        ld      bc,STRUCT_REC           ; το s_rec είναι πρόχειρο
+        ldir
+        ld      a,(s_rec+ST_STATE)
         or      a
         ret     z
-        ld      de,s_rec
-        ld      bc,STRUCT_REC
-        ldir
+        ; (kind*4 + size)*2: ο ίδιος δείκτης για το struct_dims (δύο bytes
+        ; ανά μέγεθος) και για το struct_ptr (μία λέξη ανά μέγεθος).
         ld      a,(s_rec+ST_KIND)
         add     a,a
         add     a,a
-        add     a,a                     ; kind*8
-        ld      c,a
-        ld      a,(s_rec+ST_SIZE)
+        ld      hl,s_rec+ST_SIZE
+        add     a,(hl)
         add     a,a
-        add     a,c
-        ld      l,a
-        ld      h,0
-        ld      de,G_struct_dims
-        add     hl,de
+        ld      c,a
+        ld      hl,G_struct_dims
+        call    ob_addu
         ld      a,(hl)
         or      a
         ret     z                       ; 0,0 = αυτό το μέγεθος δεν υπάρχει
-        ld      (ob_w),a
+        ld      e,a
         inc     hl
-        ld      a,(hl)
-        ld      (ob_h),a
-        ; θέση: κέντρο μείον το μισό πλαίσιο
+        ld      d,(hl)
+        ld      (ob_w),de
+        ; θέση: κέντρο μείον το μισό πλαίσιο — το C περνά από κάτω ανέγγιχτο
         ld      a,(s_rec+ST_CX)
         call    ob_sx
         ld      a,(ob_w)
         srl     a
-        neg
-        call    ob_addsx
+        call    ob_subu
         ld      (ob_x),hl
         ld      a,(s_rec+ST_CY)
         call    ob_sy
         ld      a,(ob_h)
         srl     a
-        neg
-        call    ob_addsx
+        call    ob_subu
         ld      (ob_y),hl
+        ld      a,c
         ; πηγή από το struct_ptr, και η πλατφόρμα είναι η μόνη ΑΔΙΑΦΑΝΗ
-        ld      a,(s_rec+ST_KIND)
-        add     a,a
-        add     a,a
-        ld      c,a
-        ld      a,(s_rec+ST_SIZE)
-        add     a,c
-        add     a,a
-        ld      l,a
-        ld      h,0
-        ld      de,G_struct_ptr
-        add     hl,de
+        ld      hl,G_struct_ptr
+        call    ob_addu
         ld      a,(hl)
         inc     hl
         ld      h,(hl)
         ld      l,a
-        ld      a,h
-        or      l
+        or      h
         ret     z
         ld      (ob_src),hl
         ld      a,(s_rec+ST_KIND)
         cp      K_PAD
-        ld      a,0
-        jr      nz,os_masked
         ld      a,4
-os_masked:
+        jr      z,os_opaque
+        xor     a
+os_opaque:
         ld      (ob_fl),a
         ld      a,(ob_meas)
         or      a
         jp      nz,os_meas              ; src/objindex.asm
-        ld      bc,GA_PORT + PAGE_B7
-        out     (c),c
-        call    ob_blit
-        ld      bc,GA_PORT + PAGE_B6
-        out     (c),c
-        ret
+        ld      hl,(ob_w)
+        ld      a,(ob_fl)
+        ld      c,PAGE_B7
+        jp      ob_put_in
 
 ; ---------------------------------------------------------------------------
 ; ob_conn_scan — dome_conn[64]: ποιες κατευθύνσεις κάθε θόλου έχουν διάδρομο.
@@ -1646,50 +1395,46 @@ oiw_no:
         inc     h
 oiw_nx:
         djnz    oiw_lp
-        ld      bc,GA_PORT + PAGE_B6
-        out     (c),c
-        ret
+        jp      ob_b6
 oiw_go:
         ld      hl,(oiw_fn)
         jp      (hl)
 
 ; oi_window — το clip σε tiles του κόσμου, +128 ώστε οι συγκρίσεις να είναι
 ; ανυπόγραφες: [wx0, wx1) x [wy0, wy1), στρογγυλεμένο προς τα έξω.
+; Τα clip_x0..clip_y1 και oi_wx0..oi_wy1 είναι με την ίδια σειρά.
 oi_window:
+        ld      hl,clip_x0
+        ld      de,oi_wx0
         ld      a,(cam_tx)
-        add     a,128
-        ld      c,a
-        ld      a,(clip_x0)
-        srl     a
-        srl     a
-        add     a,c
-        ld      (oi_wx0),a
-        ld      a,(clip_x1)
-        add     a,3
-        srl     a
-        srl     a
-        add     a,c
-        ld      (oi_wx1),a
+        ld      b,%11111100             ; tiles των 4 bytes
+        call    oiw_axis
         ld      a,(cam_ty)
+        ld      b,%11110000             ; tiles των 16 γραμμών
+; oiw_axis — HL -> (lo, hi) του clip, DE -> (w0, w1), A = κάμερα, B = μάσκα.
+oiw_axis:
         add     a,128
         ld      c,a
-        ld      a,(clip_y0)
+        ld      a,(hl)                  ; lo, προς τα κάτω
+        call    oiw_cv
+        ld      a,b
+        cpl                             ; tile - 1
+        add     a,(hl)                  ; hi, προς τα πάνω
+; oiw_cv — A στρογγυλεμένο από τη μάσκα, / tile, + κάμερα -> (DE); HL++, DE++.
+oiw_cv:
+        and     b
+        push    bc
+oiw_sh:
+        rrc     b                       ; τα μηδενικά της μάσκας μετρούν τις
+        jr      c,oiw_d                 ; ολισθήσεις: 2 για x, 4 για y
         rrca
-        rrca
-        rrca
-        rrca
-        and     #0F
+        jr      oiw_sh
+oiw_d:
+        pop     bc
         add     a,c
-        ld      (oi_wy0),a
-        ld      a,(clip_y1)
-        add     a,15
-        rrca
-        rrca
-        rrca
-        rrca
-        and     #0F
-        add     a,c
-        ld      (oi_wy1),a
+        ld      (de),a
+        inc     hl
+        inc     de
         ret
 
 ; ob_index — τα ευρετήρια (πόρτες και φιγούρες, και τα αντικείμενα ανά
@@ -1718,10 +1463,7 @@ ob_index:
 ob_struct_sort:
         ld      hl,G_struct_tbl + ST_STATE
         ld      de,st_ord
-        ld      b,MAX_STRUCT
-        ld      c,0
-        ld      a,0
-        ld      (st_n),a
+        ld      bc,MAX_STRUCT * 256     ; B = πόσες, C = id
 osa_gather:
         ld      a,(hl)
         or      a
@@ -1729,9 +1471,6 @@ osa_gather:
         ld      a,c
         ld      (de),a
         inc     de
-        ld      a,(st_n)
-        inc     a
-        ld      (st_n),a
 osa_gskip:
         push    de
         ld      de,STRUCT_REC
@@ -1739,66 +1478,51 @@ osa_gskip:
         pop     de
         inc     c
         djnz    osa_gather
-        ld      a,(st_n)
+        ld      a,e
+        sub     st_ord & #FF            ; πόσες μπήκαν: < 256, άρα αρκεί το
+        ld      (st_n),a                ; κάτω byte, όπου κι αν πέφτει το st_ord
         cp      2
         ret     c
         ; --- ταξινόμηση με παρεμβολή πάνω στο cy ---
-        ld      a,(st_n)
+        ; HL -> st_ord[j], D = το id που μπαίνει, E = το κλειδί του.
         dec     a
         ld      b,a
-        ld      c,1
+        ld      hl,st_ord+1
 osa_out:
         push    bc
-        ld      a,c
-        call    osa_key                 ; A = cy+128 του st_ord[c], E = id
-        ld      d,a
-        ld      a,c
-        ld      (osa_j),a
-osa_in:
-        ld      a,(osa_j)
-        or      a
-        jr      z,osa_place
-        dec     a
-        push    de
+        push    hl
+        ld      d,(hl)
+        ld      a,d
         call    osa_key
-        pop     de
-        cp      d
-        jr      c,osa_place
+        ld      e,a
+osa_in:
+        ld      a,l
+        cp      st_ord & #FF            ; j = 0; τα 32 κάτω bytes είναι μοναδικά
         jr      z,osa_place
-        ; μετακίνησε ένα δεξιά
-        ld      hl,st_ord
-        ld      a,(osa_j)
-        ld      c,a
-        ld      b,0
-        add     hl,bc
         dec     hl
         ld      a,(hl)
+        call    osa_key                 ; το κλειδί του st_ord[j-1]
+        cp      e
+        jr      c,osa_put
+        jr      z,osa_put               ; ίσο: μένει μπροστά — σταθερή
+        ld      a,(hl)                  ; st_ord[j] = st_ord[j-1]
         inc     hl
         ld      (hl),a
-        ld      a,(osa_j)
-        dec     a
-        ld      (osa_j),a
+        dec     hl
         jr      osa_in
+osa_put:
+        inc     hl
 osa_place:
-        ld      hl,st_ord
-        ld      a,(osa_j)
-        ld      c,a
-        ld      b,0
-        add     hl,bc
-        ld      (hl),e
+        ld      (hl),d
+        pop     hl
+        inc     hl
         pop     bc
-        inc     c
         djnz    osa_out
         ret
 
-; osa_key — A = δείκτης μέσα στο st_ord -> A = cy+128, E = το id.
+; osa_key — A = id -> A = cy+128. Κρατά τα HL, DE.
 osa_key:
-        ld      l,a
-        ld      h,0
-        ld      de,st_ord
-        add     hl,de
-        ld      a,(hl)
-        ld      e,a
+        push    hl
         ld      l,a
         ld      h,0
         add     hl,hl
@@ -1808,6 +1532,7 @@ osa_key:
         add     hl,bc
         ld      a,(hl)
         add     a,128
+        pop     hl
         ret
 
 ; ---------------------------------------------------------------------------
@@ -1840,13 +1565,10 @@ ob_touch_a:
 ; ob_clip_full / ob_clip_set — το παράθυρο σχεδίασης.
 ; ---------------------------------------------------------------------------
 ob_clip_full:
-        xor     a
-        ld      (clip_x0),a
-        ld      (clip_y0),a
-        ld      a,SCR_W
-        ld      (clip_x1),a
-        ld      a,PLAY_LINES
-        ld      (clip_y1),a
+        ld      hl,SCR_W * 256
+        ld      (clip_x0),hl
+        ld      hl,PLAY_LINES * 256
+        ld      (clip_y0),hl
         ret
 
 ; --- πίνακες ---------------------------------------------------------------
@@ -1873,16 +1595,12 @@ corr_dir:
         dw G_corr_h  : db CORR_H_W, CORR_H_H, -4,  0, -4,  0, 0   ; w
         dw G_corr_dr : db CORR_D_W, CORR_D_H, -4,-16,  0,  0, 1   ; nw
 
-; Από ποιο βήμα του πλέγματος ξεκινά ο διαγώνιος, ανά μέγεθος θόλου.
+; Από ποιο βήμα του πλέγματος ξεκινά ο διαγώνιος, ανά μέγεθος θόλου, και
+; από πού μετριέται: το κέντρο μείον (4, 8).
 diag_k:
         db      2, 3, 3
-
-; size*SLOT_BANK. Τρεις λέξεις αντί για πολλαπλασιασμό που δεν χωρά σε 8x8 —
-; και η πρώτη γραφή του (x9 και μετά x2) έδινε 18 αντί για 1.152: μόνο οι
-; φιγούρες των ΜΕΣΑΙΩΝ και ΜΕΓΑΛΩΝ θόλων έβγαιναν λάθος, δηλαδή ακριβώς όσες
-; ένα βλέμμα στην οθόνη δεν θα ξεχώριζε.
-ob_sbank:
-        dw      0, SLOT_BANK, SLOT_BANK*2
+diag_ofs:
+        db      -4, -8
 
 ; Ρόλος της προσομοίωσης -> φιγούρα της τέχνης (SPRITES.md §7).
 ; Δεν είναι ταυτοτικό: η τέχνη έχει τέσσερα ρομπότ και η προσομοίωση τρία, με
@@ -1908,23 +1626,27 @@ clip_x1:    db SCR_W
 clip_y0:    db 0
 clip_y1:    db PLAY_LINES
 
-ob_src:     dw 0
 ob_x:       dw 0
 ob_y:       dw 0
+; Τα εννέα bytes μιας γραμμής του corr_dir πέφτουν εδώ με ΕΝΑ ldir (oc_setdir),
+; και τα ob_w, ob_h γράφονται μαζί (ob_put): η σειρά είναι συμβόλαιο.
+ob_src:     dw 0
 ob_w:       db 0
 ob_h:       db 0
+oc_dx:      db 0
+oc_dy:      db 0
+oc_ox:      db 0
+oc_oy:      db 0
+oc_diag:    db 0
 ob_fl:      db 0
 ob_st:      db 0                ; πόσες γραμμές κόπηκαν από πάνω
 ob_nl:      db 0                ; πόσες μένουν
-ob_sl:      db 0                ; πόσα bytes κόπηκαν από αριστερά
-ob_nb:      db 0
-ob_x0:      db 0
 ob_y0:      db 0
 ob_str:     db 0                ; bytes ανά γραμμή πηγής
-ob_sk:      dw 0
 ob_ln:      dw 0
 
-cl_pos:     dw 0
+; Ο οριζόντιος άξονας του ob_blit ΔΕΝ αντιγράφεται: διαβάζει κατευθείαν τα
+; cl_skip, cl_n, cl_start του δεύτερου ob_clip.
 cl_len:     db 0
 cl_lo:      db 0
 cl_hi:      db 0
@@ -1942,42 +1664,28 @@ d_qh:       db 0
 
 s_rec:      defs STRUCT_REC
 c_rec:      defs CORR_REC
+oc_cr:      defs CORR_REC       ; η ΕΠΟΜΕΝΗ εγγραφή, με το ίδιο ldir (ob_corr)
 
 oq_cur:     db 0
 oc_mask:    db 0
-oc_base:    db 0
 oc_dir:     db 0
-oc_dx:      db 0
-oc_dy:      db 0
-oc_ox:      db 0
-oc_oy:      db 0
-oc_diag:    db 0
-oc_k:       db 0
 oc_n:       db 0
 oc_id:      db 0
 oc_cont:    db 0
-oc_odx:     db 0
-oc_ody:     db 0
-oc_lx:      dw 0
-oc_ly:      dw 0
-oc_cr:      defs CORR_REC
+oc_lx:      dw 0                ; το πρώτο πλακίδιο του τρεξίματος· στο
+oc_ly:      dw 0                ; oc_bend και ζεύγος (dx, dy) για το ob_move
 
 om_n:       db 0
 om_slot:    db 0
-om_type:    db 0
-om_green:   db 0
+om_tab:     dw 0                ; G_mach_ptr ή G_plant_ptr (om_prep)
 
-of_ptr:     dw 0
-of_size:    db 0
 of_slot:    db 0
 of_fig:     db 0
-of_acc:     dw 0
 
 ofs_node:   db 0
 ofs_slot:   db 0
 
 st_n:       db 0
-osa_j:      db 0
 obx_w:      db 0
 obx_sgn:    db 0
 
@@ -1986,3 +1694,8 @@ obx_sgn:    db 0
 ;   DOME_FIG[64][8]   ποια φιγούρα σε κάθε θέση      (αλλιώς 64 x 128)
 st_ord:     defs MAX_STRUCT
 dome_conn:  defs MAX_DOME
+
+        assert  ob_w == ob_src + 2 && ob_h == ob_w + 1 && oc_diag == ob_src + 8
+        assert  ob_nl == ob_st + 1 && cl_n == cl_skip + 1 && cl_hi == cl_lo + 1
+        assert  d_qh == d_qw + 1 && oc_cr == c_rec + CORR_REC
+        assert  clip_y1 == clip_x0 + 3 && oi_wy1 == oi_wx0 + 3

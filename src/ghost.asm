@@ -54,26 +54,17 @@ gh_wrap:
 ; ---------------------------------------------------------------------------
 gh_rect:
         ld      hl,(gh_y)
-        ld      (cl_pos),hl
         ld      a,(gh_nv)
-        ld      (cl_len),a
-        ld      hl,(clip_y0)
-        ld      (cl_lo),hl
+        ld      de,(clip_y0)
         call    ob_clip
-        or      a
         ret     z
+        ld      (gh_hs),a               ; cl_n
         ld      a,(cl_start)
         ld      (gh_ys),a
-        ld      a,(cl_n)
-        ld      (gh_hs),a
         ld      hl,(gh_x)
-        ld      (cl_pos),hl
         ld      a,(gh_n)
-        ld      (cl_len),a
-        ld      hl,(clip_x0)
-        ld      (cl_lo),hl
+        ld      de,(clip_x0)
         call    ob_clip
-        or      a
         ret     z
         ; --- από εδώ: ορθογώνιο ΜΕΣΑ στο κάδρο, (cl_start, gh_ys) πάνω-αριστερά,
         ; cl_n x gh_hs. Εδώ μπαίνει και το gh_mark, που δεν χρειάζεται clip.
