@@ -6,8 +6,8 @@
 | | |
 |---|---|
 | Πηγή | repo `CPCArt`, φάκελος `planetbase/` |
-| Έκδοση | `8957057` |
-| Συγχρονίστηκε | 2026-09-22 |
+| Έκδοση | `034eab3` |
+| Συγχρονίστηκε | 2026-10-02 |
 
 ```bash
 ./sync-assets.sh --regen      # ξαναχτίζει στο CPCArt και τραβάει εδώ
@@ -21,6 +21,7 @@
 | `sprites.asm` | πηγαίος κώδικας RASM — αυτό κάνεις include |
 | `sprites.bin` | τα ίδια bytes σε raw binary, αν προτιμάς φόρτωση από δίσκο |
 | `sprites_map.txt` | offset και μέγεθος κάθε sprite μέσα στο `.bin` |
+| `palette.gpl` | τα 16 pens σε μορφή GIMP (ανοίγει και στο Aseprite) — η θέση στη λίστα είναι ο αριθμός του pen· τιμές του desert, το έδαφος των άλλων πλανητών στα σχόλια |
 | `aseprite/` | τα spritemaps (`.aseprite`) και οι εξαγωγές τους (`_sheet.png`, `_sheet.json`) |
 | `preview/` | `scene.png` (θόλος, διάδρομος και αεροθάλαμος σε έδαφος), `planet_*.png`, `composite_*.png`, `sheet.png` |
 

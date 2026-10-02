@@ -2877,6 +2877,17 @@ pen *n* covers *n+1* bytes, reads the emulator's framebuffer, and checks that ea
 colour's **share of the screen** is the one its pen asked for. It reproduces all three
 errors when the old table is restored.
 
+**For whoever draws, `assets/palette.gpl`** (milestone 48): the same sixteen pens as a
+GIMP palette, which Aseprite also opens. The position in the list **is** the pen number,
+each colour is named `pen N name (fw N) — role`, and the comments carry the pinned pens,
+the terrain pens and the other three planets' terrain. Two pairs share a colour on the
+desert, 11/13 and 10/14 — terrain and icon — so a conversion to indexed must keep
+duplicates or the pen is lost. Like everything in `assets/`, it is generated in
+`CPCArt` from the same `palette.py`. `tests/test_gpl.py` reads it the way Aseprite does
+(an unnamed colour line is silently skipped, and every later pen slides up one) and
+compares it with `palette_fw` and `planet_pens` in `sprites.bin` — the bytes the game
+loads, not the table it came from.
+
 ---
 
 ## 9. Interface
@@ -3827,6 +3838,7 @@ tests in this document runnable rather than aspirational:
 | Disc driver | the μPD765 without AMSDOS: reads the disc's own **catalogue** and compares it with the host's `.dsk` byte for byte, then writes three sectors, reads them back, and checks the neighbouring sector is untouched (`test_fdc.py`) |
 | Save and load | freeze the wheel, photograph the state, `S`, run 12,000 frames until it has moved, `L`, and assert the economy, the world plane and the **picture** are back — plus a load from an empty slot that must be refused (`test_save.py`) |
 | Palette | the only test that looks at **colour** rather than pen number: a share-per-pen pattern on screen, weighed against `palette_fw` and against each planet's four pens (`test_palette.py`) |
+| The palette for drawing | `assets/palette.gpl` read as Aseprite reads it: sixteen named colours in pen order, equal to `palette_fw`, and the terrain table equal to `planet_pens`. Negatives: two colours swapped, pens 11 and 13 swapped (same colour — only the name catches it), a name dropped, a planet's value changed, the header in the wrong case (`test_gpl.py`, [§8.6](#86-palette)) |
 | Game speed | the four speed keys against the simulation's own frame counter, and the HUD indicator read back off the screen (`test_speed.py`) |
 | Playability of every seed | headless run of N seeds, assert water and ore within 30 tiles of centre — **which is now a playability claim and not a cosmetic one** ([§6.5](#65-economy)) |
 
