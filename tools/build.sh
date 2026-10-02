@@ -56,6 +56,7 @@ python3 tests/test_fdc.py
 python3 tests/test_save.py
 python3 tests/test_palette.py
 python3 tests/test_gpl.py
+python3 tests/test_silhouette.py
 python3 tests/test_speed.py
 python3 tests/test_sound.py
 python3 tests/test_balance.py

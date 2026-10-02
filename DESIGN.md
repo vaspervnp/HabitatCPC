@@ -2895,11 +2895,19 @@ not the table they came from.
 The barren pair is the one that could show. Pen 10 is the cyan of the solar cells and
 of the ship's hull, and on the barren moon it is also the ground. Rendered over
 `tile_ground_0`: the solar panels survive it, framed in pen 4; the ship's hull, which
-has no frame, **vanishes** and leaves only the cockpit, the wingtips and the engines.
-Today that costs nothing — the game does not draw the ship sprite yet, and the pad it
-would stand on is pens 1, 4, 5 and 6 only, so on the pad it reads on every planet. It
-matters the day a ship is drawn off the pad (an approach over open ground), or any
-other pen-10 art is put on bare terrain without a frame.
+had no frame, **vanished** and left only the cockpit, the wingtips and the engines.
+The game does not draw the ship sprite yet, and the pad it would stand on is pens 1,
+4, 5 and 6 only — but an approach over open ground would have shown it.
+
+**Milestone 50 outlined the ship** in pen 1, one pixel wide and two rows tall, which is
+the same width on screen in Mode 0. Pen 1 was measured, not picked: it is the only pen
+with a luminance gap of at least 75 against the ground of all four planets and 113
+against the pad's floor; white would have had more, and would have merged with the
+ship's own nose. The shape is drawn four rows shorter so the outline fits inside the
+same 16×32 — the sprite stays 512 bytes at the same offset, and 188 of its bytes
+changed. The rule for whoever draws next: **art that will stand on bare terrain needs
+an edge in a colour no planet's ground uses** — `tests/test_silhouette.py` checks every
+outdoor structure against all four.
 
 ---
 
@@ -3852,6 +3860,7 @@ tests in this document runnable rather than aspirational:
 | Save and load | freeze the wheel, photograph the state, `S`, run 12,000 frames until it has moved, `L`, and assert the economy, the world plane and the **picture** are back — plus a load from an empty slot that must be refused (`test_save.py`) |
 | Palette | the only test that looks at **colour** rather than pen number: a share-per-pen pattern on screen, weighed against `palette_fw` and against each planet's four pens (`test_palette.py`) |
 | The palette for drawing | the four `assets/palette*.gpl` read as Aseprite reads them: sixteen named colours in pen order, equal to `palette_fw` with that planet's row of `planet_pens`, the file names from `PLANETS` in `sprites.asm`, no stray `.gpl`, and the terrain table equal to `planet_pens`. Negatives: two colours swapped, pens 11 and 13 swapped on the desert and 7 and 10 on the barren moon (same colour — only the name catches it), a name dropped, a table value changed, the header in the wrong case, the ice file holding the desert, a palette named after the wrong planet (`test_gpl.py`, [§8.6](#86-palette)) |
+| Structures stay visible | every masked outdoor structure in `sprites.bin` — fifteen, solar to ship — decoded with its mask, and no pixel on the edge of its shape may have the colour of the ground's base on any planet. Negatives: the ship with its outline erased loses 26 edge pixels on the barren moon (exactly what the pre-milestone-50 `sprites.bin` gives), and a ground painted the solar frame's grey swallows `solar_m` (`test_silhouette.py`, [§8.6](#86-palette)) |
 | Game speed | the four speed keys against the simulation's own frame counter, and the HUD indicator read back off the screen (`test_speed.py`) |
 | Playability of every seed | headless run of N seeds, assert water and ore within 30 tiles of centre — **which is now a playability claim and not a cosmetic one** ([§6.5](#65-economy)) |
 
