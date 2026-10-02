@@ -271,6 +271,8 @@ vr_tx:      db 0
 vr_ty:      db 0
 vr_w:       db 0
 vr_h:       db 0
+        ; διπλανά: το dirty.asm (dh_site, dh_crow, dh_tile) τα γράφει ανά δύο
+        assert  vr_ty == vr_tx + 1 && vr_h == vr_w + 1
 
 ; --- μεταβλητές ------------------------------------------------------------
 cam_off:    dw 0                ; λέξεις offset του CRTC (0..1023)

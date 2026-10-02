@@ -12,7 +12,7 @@
 χωρίς να αποδεικνύεται τίποτα. Γι' αυτό συγκρίνουμε και με την ΠΡΙΝ εικόνα:
 πρέπει να διαφέρει.
 """
-import os, sys
+import os, re, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -24,6 +24,29 @@ from test_object import build                                           # noqa: 
 
 SNA = os.path.join(ROOT, "build", "objtest.sna")
 CAM = (-21, -13)
+
+# Ο,ΤΙ ΣΠΡΩΧΝΕΙ ΤΟ push_all ΤΟΥ objtest, με τη σειρά του: (είδος, αδειάζει).
+# Η θέση (1,0) αδειάζει και φαίνεται — ο άποικος 2 πήγε στον θόλο 0 — και ο
+# dh_slot χρεώνει γι' αυτήν και το DHS_VAC_US.
+PUSHED = [(2, False), (1, False), (1, False), (0, False), (0, True), (3, False), (4, False)]
+
+
+def model(items, cost, bud, vac):
+    """Πόσα μένουν μετά από κάθε πέρασμα του dirty_tick (dt_lp, dt_store)."""
+    left, trace = list(items), []
+    while left:
+        spent = 0
+        while left:
+            kind, vacates = left[0]
+            new = spent + cost[kind]
+            if spent and (new > 0xFFFF or new > bud):
+                break                           # μένει για το επόμενο
+            spent = new
+            if vacates:
+                spent = min(spent + vac, 0xFFFF)
+            left.pop(0)
+        trace.append(len(left))
+    return trace
 
 
 def main():
@@ -84,16 +107,35 @@ def main():
         print(f"OK η μετάλλαξη αλλάζει {len(moved)} bytes σε "
               f"{len({(x//4, y//16) for x, y in moved})} tiles")
 
-    # Ο προϋπολογισμός πρέπει να ΔΑΓΚΩΝΕΙ: επτά στοιχεία των 29.000 us δεν
-    # χωράνε σε ένα frame των 20.000, άρα η λίστα πρέπει να χρειαστεί δεύτερο
-    # πέρασμα. Αν βγει με ένα, ο προϋπολογισμός δεν υπάρχει.
-    if ticks < 2:
-        print("ΑΠΟΤΥΧΙΑ: η λίστα άδειασε σε ένα πέρασμα — "
-              "ο προϋπολογισμός δεν κόβει")
+    # Ο προϋπολογισμός πρέπει να ΔΑΓΚΩΝΕΙ — και ΑΚΡΙΒΩΣ όσο λέει ο πίνακας.
+    # Ως το βήμα 54 ο έλεγχος ήταν «τουλάχιστον δύο περάσματα», που τα 29.000
+    # us τα δίνουν και με διπλό προϋπολογισμό, και χωρίς τον φόρο του
+    # αδειάσματος: τα δύο λάθη περνούσαν. Τώρα το objtest κρατά πόσα έμειναν
+    # μετά από ΚΑΘΕ πέρασμα, και το μοντέλο εδώ λέει πόσα πρέπει να μείνουν.
+    trace = [ma.peek(sym["DD_LEFT"] + i) for i in range(ticks)]
+    cost = [ma.peek(sym["DIRTY_COST"] + 2 * k) | (ma.peek(sym["DIRTY_COST"] + 2 * k + 1) << 8)
+            for k in range(8)]
+    src = open(os.path.join(ROOT, "src", "dirty.asm"), encoding="utf-8").read()
+    bud = int(re.search(r"^DIRTY_BUD\s+equ\s+(\d+)", src, re.M).group(1))
+    vac = int(re.search(r"^DHS_VAC_US\s+equ\s+(\d+)", src, re.M).group(1))
+    want_trace = model(PUSHED, cost, bud, vac)
+    if trace != want_trace:
+        print(f"ΑΠΟΤΥΧΙΑ: ο προϋπολογισμός δεν κόβει όπου λέει ο πίνακας — "
+              f"έμειναν {trace} ανά πέρασμα, το μοντέλο λέει {want_trace}")
         fails += 1
     else:
-        print(f"OK ο προϋπολογισμός κόβει: {ticks} περάσματα για 7 αλλαγές "
-              f"(29.000 us σε frames των 20.000)")
+        print(f"OK ο προϋπολογισμός κόβει όπου λέει ο πίνακας: έμειναν {trace} "
+              f"από τα {len(PUSHED)} ({bud} us το πέρασμα, +{vac} το άδειασμα)")
+    # ΑΡΝΗΤΙΚΑ του μοντέλου: τα δύο λάθη που ο παλιός έλεγχος άφηνε να περάσουν
+    # πρέπει να δίνουν ΑΛΛΟ ίχνος — αλλιώς η σύγκριση δεν ξεχωρίζει τίποτα.
+    for label, alt in (("με διπλό προϋπολογισμό", model(PUSHED, cost, 2 * bud, vac)),
+                       ("χωρίς τον φόρο του αδειάσματος", model(PUSHED, cost, bud, 0))):
+        if alt == want_trace:
+            print(f"ΑΠΟΤΥΧΙΑ: {label} το ίχνος είναι πάλι {alt} — το σενάριο "
+                  f"δεν το ξεχωρίζει")
+            fails += 1
+        else:
+            print(f"OK {label} θα έμεναν {alt}")
 
     bad = diff(got, want)
     if bad:

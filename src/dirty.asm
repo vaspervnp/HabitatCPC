@@ -14,17 +14,25 @@
 ;
 ; ΠΑΝΤΑ βγαίνει τουλάχιστον ΕΝΑ στοιχείο ανά κλήση: αλλιώς ένα στοιχείο πιο
 ; ακριβό από τον προϋπολογισμό θα κολλούσε τη λίστα για πάντα.
+;
+; ΜΙΚΡΟΤΕΡΟ, ΣΤΟ ΒΗΜΑ 54 (1.126 -> 0 bytes). Το tile που αλλάζει περνά από το
+; ίδιο ορθογώνιο κόσμου (vr_*) με το εργοτάξιο και τη διαγώνιο, αντί για
+; δικό του αντίγραφο του κοψίματος· ένας θόλος εκτός κάδρου γυρίζει από το
+; dt_prep κατευθείαν στη λίστα, αντί για ένα «jr z» σε κάθε χειριστή.
 
-DIRTY_N     equ 32
+DIRTY_N     equ 32                  ; δύναμη του 2: το δαχτυλίδι είναι «and»
 DIRTY_REC   equ 3
 DIRTY_BUD   equ 20000               ; us ανά frame (§8.5)
 DHS_VAC_US  equ 18000               ; θέση δακτυλίου που αδειάζει και φαίνεται, πέρα
                                     ; από το DK_SLOT (dhs_vacate, μετρημένο)
 
+        assert  (DIRTY_N & (DIRTY_N - 1)) == 0
+        assert  D_CY == D_CX + 1
+
 ; τα DK_* είναι στο const.asm — τα σπρώχνει και η προσομοίωση
 
 ; ---------------------------------------------------------------------------
-; dirty_reset — άδεια λίστα.
+; dirty_reset — άδεια λίστα. Χαλάει A.
 ; ---------------------------------------------------------------------------
 dirty_reset:
         xor     a
@@ -35,55 +43,50 @@ dirty_reset:
         ret
 
 ; ---------------------------------------------------------------------------
-; dirty_push — A = είδος, B = a, C = b.
+; dirty_push — A = είδος, B = a, C = b. Χαλάει A, D, HL· τα B, C, E μένουν.
 ;
 ; Αν το δαχτυλίδι γεμίσει, ΔΕΝ πετάμε το παλιότερο: σηκώνουμε σημαία. Μια
 ; χαμένη αλλαγή αφήνει ψέμα στην οθόνη για πάντα· μια πλήρης επανασχεδίαση
 ; κοστίζει, αλλά λέει αλήθεια.
 ; ---------------------------------------------------------------------------
 dirty_push:
-        ld      (dp_kind),a             ; ΟΧΙ στο D: το dirty_slot_addr το πατάει
+        ld      d,a
         or      a                       ; DK_SLOT είναι το μηδέν
         jr      nz,dp_nofig
         dec     a
         ld      (dirty_figs),a          ; «ο πίνακας φιγούρων είναι μπαγιάτικος»
-        xor     a                       ; και πίσω το DK_SLOT
 dp_nofig:
-        ld      a,(dirty_num)
+        ld      hl,dirty_num
+        ld      a,(hl)
         cp      DIRTY_N
-        jr      c,dp_room
-        ld      a,1
-        ld      (dirty_over),a
-        ret
-dp_room:
-        ld      e,a
-        inc     a
-        ld      (dirty_num),a
-        ld      a,(dirty_head)
-        add     a,e
-        cp      DIRTY_N
-        jr      c,dp_nowrap
-        sub     DIRTY_N
-dp_nowrap:
+        jr      nc,dp_full
+        inc     (hl)
+        dec     hl                      ; dirty_head
+        add     a,(hl)
+        and     DIRTY_N - 1
         call    dirty_slot_addr
-        ld      a,(dp_kind)
-        ld      (hl),a
+        ld      (hl),d
         inc     hl
         ld      (hl),b
         inc     hl
         ld      (hl),c
         ret
+dp_full:
+        inc     hl                      ; dirty_over
+        ld      (hl),1
+        ret
 
-; dirty_slot_addr — A = θέση στο δαχτυλίδι -> HL = η εγγραφή.
+; dirty_slot_addr — A = θέση στο δαχτυλίδι -> HL = η εγγραφή. BC, DE μένουν.
 dirty_slot_addr:
         ld      l,a
-        ld      h,0
-        ld      d,h
-        ld      e,l
-        add     hl,hl
-        add     hl,de                   ; *3
-        ld      de,dirty_ring
-        add     hl,de
+        add     a,a
+        add     a,l                     ; 3 x θέση, κάτω από 96
+        ld      hl,dirty_ring
+        add     a,l
+        ld      l,a
+        adc     a,h
+        sub     l
+        ld      h,a
         ret
 
 ; ---------------------------------------------------------------------------
@@ -101,11 +104,11 @@ dirty_tick:
         ; Η σάρωση περνά και τους 128 πράκτορες και κοστίζει ΜΕΤΡΗΜΕΝΑ 9.984 us
         ; — μισό frame. Πολύ ακριβή για να τρέχει σε κάθε πέρασμα της λίστας·
         ; μία φορά ανά ριπή σπρωξιμάτων είναι το σωστό.
-        ld      a,(dirty_figs)
-        or      a
-        jr      z,dt_figs_ok
+        ld      hl,dirty_figs
         xor     a
-        ld      (dirty_figs),a
+        or      (hl)
+        jr      z,dt_figs_ok
+        ld      (hl),0
         ld      bc,GA_PORT + PAGE_B6
         out     (c),c
         call    ob_fig_scan
@@ -118,13 +121,18 @@ dt_lp:
         ld      a,(dirty_num)
         or      a
         jr      z,dt_done
-        ; --- χωράει άλλο ένα; ---
         ld      a,(dirty_head)
         call    dirty_slot_addr
         ld      a,(hl)
         cp      DK_KINDS
         jr      nc,dt_pop               ; άγνωστο είδος: πέτα το
         ld      (dt_kind),a
+        inc     hl
+        ld      e,(hl)
+        inc     hl
+        ld      d,(hl)
+        ld      (dt_a),de               ; τα ορίσματα, dt_a και dt_b
+        ; --- χωράει άλλο ένα; ---
         add     a,a
         ld      e,a
         ld      d,0
@@ -135,59 +143,39 @@ dt_lp:
         ld      d,(hl)                  ; DE = κόστος
         ld      hl,(dt_spent)
         ld      a,h
-        or      l
-        jr      z,dt_take               ; το πρώτο βγαίνει πάντα
-        add     hl,de
+        or      l                       ; Z: το πρώτο, που βγαίνει πάντα
+        add     hl,de                   ; (το add hl δεν αγγίζει το Z)
+        jr      z,dt_store
         ; ΞΕΧΕΙΛΙΣΜΑ 16 BIT = σίγουρα πάνω από τον προϋπολογισμό. Χωρίς αυτό
         ; δύο σειρές διαγωνίου (40.000 + 40.000) έβγαιναν 14.464 και περνούσαν
         ; μαζί σε έναν γύρο· δύο σειρές εργοταξίου τύλιγαν στα 44.464 και
         ; σταματούσαν από τύχη (βήμα 37).
         jr      c,dt_done
-        ld      (dt_new),hl
-        ex      de,hl
-        ld      hl,DIRTY_BUD
-        or      a
-        sbc     hl,de
+        push    hl
+        ld      de,-DIRTY_BUD - 1
+        add     hl,de                   ; CY αν πάνω από τον προϋπολογισμό
+        pop     hl
         jr      c,dt_done               ; θα ξεπερνούσε — μένει για το επόμενο
-        ld      hl,(dt_new)
-        jr      dt_store
-dt_take:
-        add     hl,de
 dt_store:
         ld      (dt_spent),hl
-        ; --- τα ορίσματα, πριν χαθεί η εγγραφή ---
-        ld      a,(dirty_head)
-        call    dirty_slot_addr
-        inc     hl
-        ld      a,(hl)
-        ld      (dt_a),a
-        inc     hl
-        ld      a,(hl)
-        ld      (dt_b),a
-        push    af
         call    dt_dispatch
-        pop     af
 dt_pop:
-        ld      a,(dirty_head)
+        ld      hl,dirty_head
+        ld      a,(hl)
         inc     a
-        cp      DIRTY_N
-        jr      c,dt_ph
-        xor     a
-dt_ph:
-        ld      (dirty_head),a
-        ld      hl,dirty_num
+        and     DIRTY_N - 1
+        ld      (hl),a
+        inc     hl                      ; dirty_num
         dec     (hl)
         jr      dt_lp
 dt_done:
         ; ΤΟ ΦΑΝΤΑΣΜΑ ΞΑΝΑΜΠΑΙΝΕΙ ΜΙΑ ΦΟΡΑ, στο τέλος. Αν κάποιος χειριστής το
         ; έβγαλε (dt_ghost), κάθε επόμενος ζωγράφισε ελεύθερα από κάτω του.
-        ld      a,(dt_hid)
-        or      a
-        jr      z,dt_out
+        ld      hl,dt_hid
         xor     a
-        ld      (dt_hid),a
-        call    gh_swap
-dt_out:
+        or      (hl)
+        ld      (hl),0
+        call    nz,gh_swap
         ld      a,(dirty_num)
         ret
 
@@ -206,22 +194,84 @@ dt_dispatch:
         jp      (hl)
 
 ; ---------------------------------------------------------------------------
-; Οι χειριστές. Καθένας σελιδοποιεί ό,τι χρειάζεται και γυρίζει στην τράπεζα 1.
+; Οι χειριστές. Καθένας αρχίζει με το dt_prep (παρακάτω, ανάμεσά τους: ως
+; εκεί φτάνουν όλοι με jr) και τελειώνει στο dt_end.
 ; ---------------------------------------------------------------------------
+; --- μπαινοβγαίνει άποικος: ΜΙΑ θέση, 16 bytes ---
+dh_slot:
+        call    dt_prep
+        ld      a,(dt_b)
+        call    ob_fig_one              ; και το ob_x, ob_y της θέσης
+        ld      a,(of_fig)
+        or      a
+        call    z,dhs_vacate            ; ΕΦΥΓΕ: βλ. dhs_vacate
+        jr      dt_end
+
+; --- αλλάζει ή χαλάει μηχάνημα, ή μεγαλώνει φυτό: ΜΙΑ υποδοχή ---
+; Η ΥΠΟΔΟΧΗ ΠΟΥ ΑΔΕΙΑΖΕΙ (ο εξοπλισμός, βήμα 45) δεν έχει sprite να γράψει
+; από πάνω: ό,τι ήταν κάτω από τη μηχανή ξαναστρώνεται όπως για τη θέση
+; δακτυλίου που αδειάζει (dhv_rect).
+dh_mach:
+        call    dt_prep
+        ld      a,(dt_b)
+        ld      hl,d_rec + D_MACH
+        call    ob_addu
+        ld      a,(hl)
+        inc     a
+        jr      z,dhm_vac
+        call    om_prep                 ; μηχανές ή φυτά, και η τράπεζα τους
+        ld      a,(dt_b)
+        call    ob_mach_one
+        jr      dt_end
+dhm_vac:
+        ld      a,(dt_b)
+        ld      de,G_machine_slots
+        call    ob_slot_at
+        ld      hl,MACH_H*256 + MACH_W
+        call    dhv_rect
+        jr      dt_end
+
+; --- αλλάζει τύπος δωματίου: το εικονίδιο ---
+dh_icon:
+        call    dt_prep
+        call    ob_icon
+        jr      dt_end
+
+; --- προστίθεται διάδρομος: το conn της πλευράς ---
+dh_conn:
+        call    dt_prep
+        ld      a,(dt_b)
+        and     7
+        call    ob_conn_one
+        jr      dt_end
+
+; ---------------------------------------------------------------------------
+; Οι χειριστές. Καθένας σελιδοποιεί ό,τι χρειάζεται και γυρίζει στην τράπεζα 1.
+;
+; dt_prep — ο θόλος dt_a, στο d_rec, με την τράπεζα 6 μέσα. Αν ΔΕΝ φαίνεται, ο
+; χειριστής δεν συνεχίζει: το dt_prep πετά τη διεύθυνση επιστροφής του και
+; γυρίζει κατευθείαν στη λίστα, από το dt_end. Αν φαίνεται, σηκώνει και το
+; φάντασμα όταν πέφτει από πάνω (dt_ghost).
+; ---------------------------------------------------------------------------
+dt_skip:
+        pop     hl                      ; ο χειριστής δεν συνεχίζει
+dt_end:
+        ld      bc,GA_PORT + PAGE_B1
+        out     (c),c
+dt_no:
+        ret
+
 dt_prep:
         ld      bc,GA_PORT + PAGE_B6
         out     (c),c
         ld      a,(dt_a)
         call    ob_dome_live
-        jr      z,dt_no
+        jr      z,dt_skip
         call    ob_getdome
         call    ob_vis
         or      a
-        ret     z
-        call    dt_ghost
-        or      1                       ; NZ: «ζωγράφισε»
-dt_no:
-        ret
+        jr      z,dt_skip
+        ; fall through
 
 ; dt_ghost — πέφτει ο θόλος κάτω από το φάντασμα; Τότε το φάντασμα σηκώνεται
 ; ΠΡΙΝ ζωγραφίσει ο χειριστής, και το dirty_tick το ξαναρίχνει στο τέλος.
@@ -265,63 +315,6 @@ dt_ghost:
         ld      (dt_hid),a
         jp      gh_swap
 
-dt_end:
-        ld      bc,GA_PORT + PAGE_B1
-        out     (c),c
-        ret
-
-; --- μπαινοβγαίνει άποικος: ΜΙΑ θέση, 16 bytes ---
-dh_slot:
-        call    dt_prep
-        jr      z,dt_end
-        ld      a,(dt_b)
-        call    ob_fig_one              ; και το ob_x, ob_y της θέσης
-        ld      a,(of_fig)
-        or      a
-        call    z,dhs_vacate            ; ΕΦΥΓΕ: βλ. dhs_vacate
-        jr      dt_end
-
-; --- αλλάζει ή χαλάει μηχάνημα, ή μεγαλώνει φυτό: ΜΙΑ υποδοχή ---
-; Η ΥΠΟΔΟΧΗ ΠΟΥ ΑΔΕΙΑΖΕΙ (ο εξοπλισμός, βήμα 45) δεν έχει sprite να γράψει
-; από πάνω: ό,τι ήταν κάτω από τη μηχανή ξαναστρώνεται όπως για τη θέση
-; δακτυλίου που αδειάζει (dhv_rect).
-dh_mach:
-        call    dt_prep
-        jr      z,dt_end
-        ld      a,(dt_b)
-        ld      hl,d_rec + D_MACH
-        call    ob_addu
-        ld      a,(hl)
-        inc     a
-        jr      z,dhm_vac
-        call    om_prep                 ; μηχανές ή φυτά, και η τράπεζα τους
-        ld      a,(dt_b)
-        call    ob_mach_one
-        jr      dt_end
-dhm_vac:
-        ld      a,(dt_b)
-        ld      de,G_machine_slots
-        call    ob_slot_at
-        ld      hl,MACH_H*256 + MACH_W
-        call    dhv_rect
-        jr      dt_end
-
-; --- αλλάζει τύπος δωματίου: το εικονίδιο ---
-dh_icon:
-        call    dt_prep
-        jr      z,dt_end
-        call    ob_icon
-        jr      dt_end
-
-; --- προστίθεται διάδρομος: το conn της πλευράς ---
-dh_conn:
-        call    dt_prep
-        jr      z,dt_end
-        ld      a,(dt_b)
-        and     7
-        call    ob_conn_one
-        jr      dt_end
-
 ; --- ένα κτίριο τελείωσε (§6.9 βήμα 4) ---
 ; ΑΛΛΑΖΕΙ ΜΟΝΟ ΤΟ ΕΣΩΤΕΡΙΚΟ. Το εργοτάξιο ζωγραφίστηκε στην τοποθέτηση με
 ; δακτύλιο, θόλο, πόρτες και φιγούρες· του έλειπαν το εικονίδιο του δωματίου
@@ -339,10 +332,9 @@ dh_built:
         cp      MAX_DOME
         ret     nc
         call    dt_prep
-        jr      z,dt_end
         call    ob_icon
         call    ob_machines
-        jp      dt_end                  ; jr: εκτός εμβέλειας από το βήμα 42
+        jr      dt_end
 
 ; --- ένα εργοτάξιο εμφανίζεται: ΜΙΑ σειρά tiles του (§6.9 βήμα 4) ---
 ; Η σειρά βγαίνει από την εγγραφή του θόλου, όχι από το πού ήταν η κάμερα όταν
@@ -354,24 +346,26 @@ dh_site:
         ld      hl,rv_pend
         dec     (hl)
         call    dt_prep
-        jp      z,dt_end
         ld      a,(d_rec+D_SIZE)
         add     a,a
         add     a,4                     ; πλευρά σε tiles: 4, 6, 8
-        ld      (vr_w),a
         ld      e,a
-        ld      a,(d_rec+D_CX)          ; κέντρο σε μισά tiles, ίδια ισοτιμία
+        ld      l,a
+        ld      h,1
+        ld      (vr_w),hl               ; vr_w, vr_h: η πλευρά, μία σειρά
+        ld      hl,(d_rec+D_CX)         ; το κέντρο σε μισά tiles, ίδια ισοτιμία
+        ld      a,l
         sub     e
         sra     a
-        ld      (vr_tx),a
-        ld      a,(d_rec+D_CY)
+        ld      l,a
+        ld      a,h
         sub     e
         sra     a
-        ld      hl,dt_b
-        add     a,(hl)
-        ld      (vr_ty),a
-        ld      a,1
-        ld      (vr_h),a
+        ld      h,a
+        ld      a,(dt_b)
+        add     a,h
+        ld      h,a
+        ld      (vr_tx),hl              ; vr_tx, vr_ty
         call    dt_end
         call    vr_tiles
         ret     z
@@ -390,7 +384,7 @@ dh_site:
         ld      a,(dt_a)
         call    ob_fittings
         call    ob_clip_full
-        jp      dt_end
+        jp      dt_end                  ; jr: εκτός εμβέλειας
 
 ; --- ένας διάδρομος εμφανίζεται: ΜΙΑ σειρά της διαγωνίου του (§6.9) ---
 ; Τρία tiles από το (dt_a, dt_b) του κόσμου: όσα αγγίζουν τα δύο διαγώνια
@@ -407,14 +401,10 @@ dh_site:
 dh_crow:
         ld      hl,rv_pend
         dec     (hl)
-        ld      a,(dt_a)
-        ld      (vr_tx),a
-        ld      a,(dt_b)
-        ld      (vr_ty),a
-        ld      a,3
-        ld      (vr_w),a
-        ld      a,1
-        ld      (vr_h),a
+        ld      hl,(dt_a)
+        ld      (vr_tx),hl              ; vr_tx, vr_ty = dt_a, dt_b
+        ld      hl,1 * 256 + 3
+        ld      (vr_w),hl               ; 3 tiles x 1 σειρά
         call    vr_clip
         ret     z
         call    dt_ghost_rect
@@ -459,88 +449,58 @@ dtg_ovl:
 ; --- αλλάζει tile (ορυχείο, μετεωρίτης): το tile ΚΑΙ οι τέσσερις γείτονες ---
 ; Το autotile του καθενός εξαρτάται από τους δικούς του γείτονες, οπότε ένα
 ; tile που αλλάζει κλάση αλλάζει και τις τέσσερις παραλλαγές γύρω του. Το 3x3
-; τα πιάνει όλα με ένα ορθογώνιο αντί για πέντε.
+; τα πιάνει όλα με ένα ορθογώνιο αντί για πέντε — το ίδιο ορθογώνιο κόσμου
+; (vr_*) με το εργοτάξιο και τη διαγώνιο. Ως το βήμα 53 είχε δικό του
+; αντίγραφο του κοψίματος στο κάδρο.
 dh_tile:
-        ld      a,(dt_a)
-        ld      hl,cam_tx
-        sub     (hl)
-        dec     a                       ; στήλη κάδρου του γείτονα δυτικά
-        ld      (dk_c0),a
-        ld      a,(dt_b)
-        ld      hl,cam_ty
-        sub     (hl)
-        dec     a
-        ld      (dk_r0),a
-        ld      hl,dk_c0
-        ld      bc,VIEW_TW * 256 + 3
-        call    dk_clamp
-        ld      a,c
-        ld      (td_c0),a
-        ld      a,b
-        ld      (td_nc),a
-        or      a
+        ld      hl,(dt_a)
+        dec     l
+        dec     h
+        ld      (vr_tx),hl              ; ο γείτονας βορειοδυτικά
+        ld      hl,3 * 256 + 3
+        ld      (vr_w),hl
+        call    vr_tiles                ; το έδαφος, και το clip πάνω του
         ret     z
-        ld      hl,dk_r0
-        ld      bc,VIEW_TH * 256 + 3
-        call    dk_clamp
-        ld      a,c
-        ld      (td_r0),a
-        ld      a,b
-        ld      (td_nr),a
-        or      a
-        ret     z
-        call    view_cliprect
-        ld      bc,GA_PORT + PAGE_B4
-        out     (c),c
-        call    tile_draw_rect
-        call    dh_occupied             ; ΟΣΟ η τράπεζα 4 είναι ακόμη μέσα
-        ld      bc,GA_PORT + PAGE_B1
-        out     (c),c
-        or      a
-        jr      z,dh_t_clean
-        call    ob_draw_all
-dh_t_clean:
+        call    dh_occupied
+        call    nz,ob_draw_all
         jp      ob_clip_full
 
-; dh_occupied — πατάει κάτι το ορθογώνιο; A = 0 αν είναι όλο ελεύθερο έδαφος.
+; dh_occupied — πατάει κάτι το ορθογώνιο td_*; NZ αν ναι. Σελιδοποιεί την
+; τράπεζα 4, όπου ζει ο κόσμος, και γυρίζει στην 1.
 ;
 ; Χωρίς αυτό, ΚΑΘΕ αλλαγή εδάφους πλήρωνε ολόκληρο το πέρασμα αντικειμένων —
 ; 99.840 us για ένα tile που έσκαψε ένα ρομπότ στην ερημιά. Τα bits κατοχής
 ; του §3.5 υπάρχουν ακριβώς για να μη χρειάζεται να ρωτηθεί η λίστα θόλων.
 dh_occupied:
+        ld      bc,GA_PORT + PAGE_B4
+        out     (c),c
         ld      a,(td_nr)
-        ld      (dh_rows),a
+        ld      e,a                     ; E = σειρές
         ld      a,(cam_ty)
         ld      hl,td_r0
         add     a,(hl)
-        ld      (dh_ty),a
+        ld      d,a                     ; D = η σειρά του κόσμου
 dho_row:
         ld      a,(cam_tx)
         ld      hl,td_c0
         add     a,(hl)
         ld      b,a
-        ld      a,(dh_ty)
-        ld      c,a
-        call    tile_addr
+        ld      c,d
+        call    tile_addr               ; DE μένει
         ld      a,(td_nc)
         ld      b,a
 dho_col:
         ld      a,(hl)
         and     #30                     ; bits κατοχής
-        jr      nz,dho_yes
+        jr      nz,dho_out
         inc     hl
         djnz    dho_col
-        ld      a,(dh_ty)
-        inc     a
-        ld      (dh_ty),a
-        ld      a,(dh_rows)
-        dec     a
-        ld      (dh_rows),a
-        jr      nz,dho_row
-        xor     a
-        ret
-dho_yes:
-        ld      a,1
+        inc     d
+        dec     e
+        jr      nz,dho_row              ; στο τέλος Z: όλο ελεύθερο
+dho_out:
+        ld      bc,GA_PORT + PAGE_B1
+        out     (c),c                   ; οι σημαίες μένουν
         ret
 
 ; dk_clamp — (HL) = αρχή, C = μήκος, B = όριο κάδρου. Το μήκος ήταν πάντα 3
@@ -574,21 +534,12 @@ dkc_ok:
         ld      c,d
         ret
 dkc_out:
-        ld      b,0
-        ld      c,0
+        ld      bc,0
         ret
 
 dirty_jmp:
         dw      dh_slot, dh_mach, dh_icon, dh_conn, dh_tile, dh_built, dh_site
         dw      dh_crow
-
-; Μετρημένο κόστος ανά είδος, σε us. Ο προϋπολογισμός δεν έχει ρολόι να
-; κοιτάξει· έχει αυτόν τον πίνακα, και το test_dirty τον ελέγχει.
-; ΜΕΤΡΗΜΕΝΑ, όχι εκτιμημένα. Το §8.5 έλεγε 64 / 530 / 800 / 450 / 1.600 και τα
-; πέντε βγήκαν χαμηλά, από 2x ως 21x: το blit δεν είναι το κόστος — είναι η
-; προετοιμασία (σελιδοποίηση, εγγραφή θόλου, πλαίσιο, έλεγχος ορατότητας) που
-; πληρώνεται ολόκληρη για να γραφτούν δεκαέξι bytes.
-
 
 ; ---------------------------------------------------------------------------
 ; dhs_vacate — μια θέση του δακτυλίου άδειασε (dh_slot· ob_x, ob_y = η θέση).
@@ -619,17 +570,13 @@ dhv_rect:
         ld      a,l
         ld      hl,(ob_x)
         ld      de,SCR_W * 256          ; lo = 0, hi = SCR_W
-        call    ob_clip
+        call    dhv_cut
         ret     z
-        ld      b,a                     ; cl_n
-        ld      a,(cl_start)
-        ld      (clip_x0),a
-        add     a,b
-        ld      (clip_x1),a
+        ld      (clip_x0),hl            ; clip_x0, clip_x1
         ld      hl,(ob_y)
         ld      a,(dhv_h)
         ld      de,PLAY_LINES * 256
-        call    ob_clip
+        call    dhv_cut
         ; ΤΟ clip_x ΕΧΕΙ ΗΔΗ ΣΤΕΝΕΨΕΙ. Με `ret z` εδώ, μια θέση που φαίνεται
         ; οριζόντια αλλά πέφτει κάτω ή πάνω από το κάδρο άφηνε το clip μια
         ; στήλη δύο bytes, και ΚΑΘΕ επόμενος χειριστής της λίστας ζωγράφιζε
@@ -638,11 +585,7 @@ dhv_rect:
         ; το test_link του βήματος 45, που περιμένει τον εξοπλισμό, βρήκε έναν
         ; L χωρίς εικονίδιο και χωρίς καμία από τις οκτώ μηχανές του.
         jp      z,ob_clip_full
-        ld      b,a
-        ld      a,(cl_start)
-        ld      (clip_y0),a
-        add     a,b
-        ld      (clip_y1),a
+        ld      (clip_y0),hl            ; clip_y0, clip_y1
         ; --- ΤΟ ΚΟΣΤΟΣ ΤΟ ΞΕΡΕΙ ΜΟΝΟ ΑΥΤΟΣ. Ο πίνακας λέει 1.500 για το
         ; DK_SLOT, όσο κοστίζει ένας άποικος που ΕΡΧΕΤΑΙ. Ενα άδειασμα που
         ; φαίνεται κοστίζει ως 18 ms ακόμη: ο θόλος, κομμένος στο 2x8, περνά
@@ -660,18 +603,20 @@ dhv_spent:
         out     (c),c
         ld      a,(clip_y0)
         and     #F0                     ; η γραμμή του πρώτου tile
+        ld      d,a
 dhv_row:
-        ld      (dhv_y),a
         ld      a,(clip_x0)
         and     #FC
+        ld      e,a
 dhv_col:
-        ld      (dhv_x),a
+        push    de                      ; D = γραμμή, E = byte του tile
+        ld      a,e
         rrca
         rrca                            ; στήλη tile (το x < 80)
         ld      hl,cam_tx
         add     a,(hl)
         ld      b,a
-        ld      a,(dhv_y)
+        ld      a,d
         rrca
         rrca
         rrca
@@ -683,23 +628,26 @@ dhv_col:
         ld      (t_wptr),hl
         call    tile_src
         ld      (ob_src),hl
-        ld      a,(dhv_x)
-        ld      l,a
+        pop     de
+        push    de
         ld      h,0
+        ld      l,e
         ld      (ob_x),hl
-        ld      a,(dhv_y)
-        ld      l,a
+        ld      l,d
         ld      (ob_y),hl
         ld      hl,TILE_H*256 + TILE_W
         ld      a,4                     ; αδιαφανές
         call    ob_put
-        ld      a,(dhv_x)
+        pop     de
+        ld      a,e
         add     a,TILE_W
+        ld      e,a
         ld      hl,clip_x1
         cp      (hl)
         jr      c,dhv_col
-        ld      a,(dhv_y)
+        ld      a,d
         add     a,TILE_H
+        ld      d,a
         ld      hl,clip_y1
         cp      (hl)
         jr      c,dhv_row
@@ -709,12 +657,24 @@ dhv_col:
         call    ob_draw_all
         jp      ob_clip_full
 
-dhv_x:      db 0
-dhv_y:      db 0
-dhv_w:      db 0
-dhv_h:      db 0
+; dhv_cut — A = μήκος, HL = θέση, DE = όρια: το ob_clip. Out: Z αν εκτός
+; κάδρου, αλλιώς L = αρχή και H = τέλος του κομμένου.
+dhv_cut:
+        call    ob_clip
+        ret     z
+        ld      b,a                     ; cl_n
+        ld      a,(cl_start)
+        ld      l,a
+        add     a,b                     ; NZ: το τέλος δεν είναι ποτέ 0
+        ld      h,a
+        ret
 
-
+; Μετρημένο κόστος ανά είδος, σε us. Ο προϋπολογισμός δεν έχει ρολόι να
+; κοιτάξει· έχει αυτόν τον πίνακα, και το test_dirty τον ελέγχει.
+; ΜΕΤΡΗΜΕΝΑ, όχι εκτιμημένα. Το §8.5 έλεγε 64 / 530 / 800 / 450 / 1.600 και τα
+; πέντε βγήκαν χαμηλά, από 2x ως 21x: το blit δεν είναι το κόστος — είναι η
+; προετοιμασία (σελιδοποίηση, εγγραφή θόλου, πλαίσιο, έλεγχος ορατότητας) που
+; πληρώνεται ολόκληρη για να γραφτούν δεκαέξι bytes.
 dirty_cost:
         dw      1500                    ; θέση δακτυλίου — 16 bytes αδιαφανή
         dw      5000                    ; μηχάνημα ή φυτό — 132 bytes
@@ -729,19 +689,20 @@ dirty_cost:
                                         ; γύρο ακόμη: δύο θα ήταν 24.000
 
 dirty_ring: defs DIRTY_N * DIRTY_REC
-dirty_head: db 0
-dirty_num:  db 0
+dirty_head: db 0                        ; αυτά τα τρία με αυτή τη σειρά:
+dirty_num:  db 0                        ; dirty_push, dt_pop
 dirty_over: db 0
 dirty_figs: db 0
 dt_spent:   dw 0
-dt_new:     dw 0
-dp_kind:    db 0
 dt_kind:    db 0
-dt_a:       db 0
+dt_a:       db 0                        ; dt_a, dt_b διπλανά: ld (dt_a),de
 dt_b:       db 0
 dt_hid:     db 0                    ; το dt_ghost έβγαλε το φάντασμα σε αυτό το τικ
 rv_pend:    db 0                    ; σειρές εργοταξίου που περιμένουν (DK_SITE)
-dk_c0:      db 0
+dhv_w:      db 0                        ; dhv_w, dhv_h διπλανά
+dhv_h:      db 0
+dk_c0:      db 0                        ; του vr_clip (view.asm)
 dk_r0:      db 0
-dh_ty:      db 0
-dh_rows:    db 0
+
+        assert  dirty_num == dirty_head + 1 && dirty_over == dirty_num + 1
+        assert  dt_b == dt_a + 1 && dhv_h == dhv_w + 1

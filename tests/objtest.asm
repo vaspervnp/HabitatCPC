@@ -108,6 +108,11 @@ dd_lp:
         call    dirty_tick
         ld      hl,dd_ticks
         inc     (hl)
+        ld      e,(hl)                  ; ΤΟ ΙΧΝΟΣ: πόσα έμειναν μετά από
+        ld      d,0                     ; κάθε πέρασμα, dd_left[0..]
+        ld      hl,dd_left - 1
+        add     hl,de
+        ld      (hl),a
         or      a
         jr      nz,dd_lp
         ld      a,#5A
@@ -232,6 +237,7 @@ oo_a:       db 0
 oo_b:       db 0
 o1_n:       db 0
 dd_ticks:   db 0
+dd_left:    defs 8                  ; 7 στοιχεία, ως 7 περάσματα
 hu_n:       db 0
 hu_cold:    db 0
 rep_n:      db 0
