@@ -665,3 +665,4 @@ bd_span:    db 0
 bd_nbad:    db 0
 bd_node:    db 255
 bd_bad:     defs 8
+        assert  bd_ty == bd_tx + 1 && bd_h == bd_w + 1  ; το ui_rect τα διαβάζει ανά δύο

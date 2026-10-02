@@ -32,27 +32,21 @@ PEN_NO      equ 8                       ; έντονο κόκκινο — δεν
 ; ---------------------------------------------------------------------------
 ui_init:
         xor     a
-        ld      (cur_hx),a
-        ld      (cur_hy),a
         ld      (ui_state),a
         ld      (ui_sel),a
         call    gh_reset
-        call    ui_center
-        call    view_draw
-        call    ui_hudall
-        call    ui_show
-        ret
+        jr      ui_home
 
 ; ui_center — η κάμερα με τον κέρσορα στη μέση του κάδρου.
 ui_center:
-        ld      a,(cur_hx)
-        sra     a
+        call    ui_curt
+        ld      a,l
         sub     VIEW_TW/2
-        ld      (cam_tx),a
-        ld      a,(cur_hy)
-        sra     a
+        ld      l,a
+        ld      a,h
         sub     VIEW_TH/2
-        ld      (cam_ty),a
+        ld      h,a
+        ld      (cam_tx),hl             ; cam_tx, cam_ty διπλανά
         ret
 
 ; ---------------------------------------------------------------------------
@@ -68,9 +62,11 @@ ui_tick:
         call    in_hit
         jr      z,uit_state
         call    ui_hide
-        xor     a
-        ld      (cur_hx),a
-        ld      (cur_hy),a
+; ui_home — ο κέρσορας στο κέντρο του κόσμου, η κάμερα μαζί του, όλα από την
+; αρχή. Και το ui_init τελειώνει εδώ.
+ui_home:
+        ld      hl,0
+        ld      (cur_hx),hl
         call    ui_center
         call    view_draw
         call    ui_hudall
@@ -122,11 +118,7 @@ ush_none:
         call    ui_hide
         ld      a,UI_MENU
         ld      (ui_state),a
-        ld      a,(ui_sel)
-        call    bd_select
-        ld      a,SFX_MENU
-        call    snd_play
-        jp      ui_show
+        jp      uim_pick
 
 ; ---------------------------------------------------------------------------
 ; ui_speed — τα πλήκτρα 1-4 (§9.1). Δουλεύουν σε ΚΑΘΕ κατάσταση: η παύση είναι
@@ -204,10 +196,8 @@ ui_ship:
         jr      c,ush_say
         ld      hl,t_shipno             ; ένα τη φορά
 ush_say:
-        call    ui_msg
-        call    ui_dirty
-        jp      ui_show
-        endif
+        jr      ui_say                  ; το ui_msg ζει στο μπλοκ του δίσκου:
+        endif                           ; HAS_SIM χωρίς HAS_DISC δεν υπάρχει
 
         ifdef HAS_DISC
 ; --- δίσκος ----------------------------------------------------------------
@@ -215,26 +205,21 @@ ush_say:
 ; δευτερόλεπτα με τις διακοπές ανοιχτές και τίποτα δεν σχεδιάζεται στο μεταξύ.
 ; Το μήνυμα μένει ως το επόμενο ui_panel, δηλαδή ως μία περιστροφή τροχού.
 ui_dosave:
-        call    sl_digit
-        call    ui_hide
         ld      hl,t_saving
-        call    ui_msg
-        ld      a,(sl_pick)
+        call    uds_go
         call    sv_save
         ld      hl,t_saved
-        jr      z,uds_end
+        jr      z,ui_say
         ld      hl,t_dskerr
-uds_end:
+; ui_say — HL = μήνυμα: στη σειρά 3, ο πίνακας άκυρος, ο κέρσορας πίσω.
+ui_say:
         call    ui_msg
         call    ui_dirty
         jp      ui_show
 
 ui_doload:
-        call    sl_digit
-        call    ui_hide
         ld      hl,t_loading
-        call    ui_msg
-        ld      a,(sl_pick)
+        call    uds_go
         call    sv_load                 ; πετυχαίνοντας, ξανασχεδιάζει τα πάντα
         push    af
         ld      hl,t_loaded
@@ -264,44 +249,25 @@ uist_slot:
         ld      a,A_CANCEL
         call    in_hit
         jr      z,usl_fire
-        ld      a,UI_LOOK
+        xor     a                       ; UI_LOOK
         ld      (ui_state),a
         ret
 usl_fire:
         ld      a,A_FIRE
         call    in_hit
         jr      z,usl_lr
-        ld      a,UI_LOOK
+        xor     a                       ; UI_LOOK
         ld      (ui_state),a
         ld      a,(sl_mode)
         or      a
-        ld      a,(sl_pick)
-        jp      z,ui_dosave
-        jp      ui_doload
+        jr      z,ui_dosave
+        jr      ui_doload
 usl_lr:
-        ld      a,A_RIGHT
-        call    in_hit
-        jr      z,usl_left
-        ld      a,(sl_pick)
-        inc     a
-        cp      SV_SLOTS
-        jr      c,usl_set
-        xor     a
-        jr      usl_set
-usl_left:
-        ld      a,A_LEFT
-        call    in_hit
+        ld      hl,sl_pick
+        ld      c,SV_SLOTS
+        call    ui_lr
         ret     z
-        ld      a,(sl_pick)
-        or      a
-        jr      nz,usl_dec
-        ld      a,SV_SLOTS
-usl_dec:
-        dec     a
-usl_set:
-        ld      (sl_pick),a
-        ld      a,SFX_MENU
-        jp      snd_play
+        jp      ui_click
 
 ; ui_askslot — μπαίνει στην επιλογή. A = 0 σώσιμο, 1 φόρτωμα.
 ; (ΟΧΙ «ui_slot»: ο rasm δεν ξεχωρίζει ετικέτα από alias, και το UI_SLOT
@@ -310,14 +276,17 @@ ui_askslot:
         ld      (sl_mode),a
         ld      a,UI_SLOT
         ld      (ui_state),a
-        ld      a,SFX_MENU
-        jp      snd_play
+        jp      ui_click
 
-; sl_digit — το νούμερο της θέσης μέσα στα τρία μηνύματα, γραμμένο πριν φανούν.
-; Οι τρεις μετατοπίσεις είναι μετρημένες στα κείμενα από κάτω: αν αλλάξει λέξη,
+; uds_go — η αρχή του σωσίματος και του φορτώματος. HL = το πρώτο μήνυμα.
+; Out: A = η θέση. Ο κέρσορας σβηστός, το μήνυμα στη σειρά 3.
+;
+; Και το νούμερο της θέσης μέσα στα τρία μηνύματα του τέλους, γραμμένο πριν
+; φανούν. Οι τρεις μετατοπίσεις είναι μετρημένες στα κείμενα: αν αλλάξει λέξη,
 ; αλλάζει και ο αριθμός εδώ — γι' αυτό το test_save διαβάζει το ψηφίο από την
 ; ΟΘΟΝΗ και όχι από τη μνήμη.
-sl_digit:
+uds_go:
+        push    hl
         ld      bc,GA_PORT + PAGE_B7    ; τα κείμενα ζουν στην τράπεζα 7
         out     (c),c
         ld      a,(sl_pick)
@@ -327,6 +296,10 @@ sl_digit:
         ld      (t_empty + 16),a
         ld      bc,GA_PORT + PAGE_B1
         out     (c),c
+        call    ui_hide
+        pop     hl
+        call    ui_msg
+        ld      a,(sl_pick)
         ret
 
 sl_mode:    db 0
@@ -371,10 +344,8 @@ uist_menu:
         ld      a,A_CANCEL
         call    in_hit
         jr      z,uim_fire
-        call    ui_hide
-        xor     a
-        ld      (ui_state),a
-        jp      ui_show
+        xor     a                       ; UI_LOOK
+        jr      ui_goto
 uim_fire:
         ld      a,A_FIRE
         call    in_hit
@@ -389,9 +360,8 @@ uim_fire:
         ld      a,UI_LINK
 uim_go:
         ld      (ui_state),a
-        ld      a,SFX_MENU              ; «διάλεξες»: το FIRE στον κατάλογο δεν
-        call    snd_play                ; αλλάζει τίποτα ορατό εκτός φαντάσματος
-        jp      ui_show
+        call    ui_click                ; «διάλεξες»: το FIRE στον κατάλογο δεν
+        jp      ui_show                 ; αλλάζει τίποτα ορατό εκτός φαντάσματος
 uim_lr:
         ; ΔΥΟ ΑΞΟΝΕΣ ΣΤΟ ΙΔΙΟ ΜΕΝΟΥ: δεξιά-αριστερά το αντικείμενο, πάνω-κάτω το
         ; δωμάτιο του θόλου (§6.1). Το πάνω-κάτω δεν έκανε τίποτα ως τώρα.
@@ -410,52 +380,75 @@ uim_dn:
         ld      a,1
 uim_room:
         call    rm_step
-        ld      a,SFX_MENU
-        call    snd_play
+        call    ui_click
         jp      ui_panel                ; το φάντασμα δεν αλλάζει σχήμα, ο
                                         ; πίνακας όμως λέει άλλο δωμάτιο
 uim_item:
-        ld      a,A_RIGHT
-        call    in_hit
-        jr      z,uim_left
-        ld      a,(ui_sel)
-        inc     a
-        cp      BLD_N
-        jr      c,uim_set
-        xor     a
-        jr      uim_set
-uim_left:
-        ld      a,A_LEFT
-        call    in_hit
+        ld      hl,ui_sel
+        ld      c,BLD_N
+        call    ui_lr
         ret     z
-        ld      a,(ui_sel)
-        or      a
-        jr      nz,uim_dec
-        ld      a,BLD_N
-uim_dec:
-        dec     a
-uim_set:
-        ld      (ui_sel),a
         call    ui_hide
+; uim_pick — το αντικείμενο του ui_sel στο φάντασμα, με το «κλικ». Και από
+; το LOOK, όταν ανοίγει ο κατάλογος.
+uim_pick:
         ld      a,(ui_sel)
         call    bd_select
-        ld      a,SFX_MENU
-        call    snd_play
+        call    ui_click
         jp      ui_show
+
+; ui_goto — A = η νέα κατάσταση: σβήνει το φάντασμα, αλλάζει, το ξαναδείχνει.
+; ui_goto_h — το ίδιο, με το φάντασμα ήδη σβηστό.
+ui_goto:
+        push    af
+        call    ui_hide
+        pop     af
+ui_goto_h:
+        ld      (ui_state),a
+        jp      ui_show
+
+; ui_lr — δεξιά / αριστερά, κυκλικά. HL -> η τιμή, C = πόσες τιμές.
+; Out: Z = κανένα από τα δύο· αλλιώς NZ, και η τιμή άλλαξε.
+; Ως το βήμα 44 γραμμένο δύο φορές, για τη θέση δίσκου και για τον κατάλογο.
+ui_lr:
+        push    hl
+        ld      e,1                     ; το in_hit κρατά τα C, DE
+        ld      a,A_RIGHT
+        call    in_hit
+        jr      nz,uilr_go
+        ld      e,c
+        dec     e                       ; -1 ≡ πόσες - 1
+        ld      a,A_LEFT
+        call    in_hit
+uilr_go:
+        pop     hl
+        ret     z
+        ld      a,(hl)
+        add     a,e
+        cp      c
+        jr      c,uilr_set
+        sub     c
+uilr_set:
+        ld      (hl),a
+        or      1                       ; NZ, ό,τι κι αν βγήκε
+        ret
+
+; ui_click / uip_deny — οι δύο ήχοι που πληρώνονταν με δύο ld σε κάθε σημείο.
+ui_click:
+        ld      a,SFX_MENU
+        jp      snd_play
 
 ; --- PLACE -----------------------------------------------------------------
 uist_place:
         ld      a,A_CANCEL
         call    in_hit
         jr      z,uip_fire
-        call    ui_hide
         ld      a,UI_MENU
-        ld      (ui_state),a
-        jp      ui_show
+        jr      ui_goto
 uip_fire:
         ld      a,A_FIRE
         call    in_hit
-        jr      z,uip_move
+        jp      z,ui_move
         call    ui_validate
         or      a
         jr      nz,uip_deny             ; άκυρη θέση — το FIRE δεν κάνει τίποτα
@@ -468,17 +461,18 @@ uip_fire:
         ld      a,SFX_BUILD
         call    snd_play
         call    bd_redraw               ; το νέο αντικείμενο μπαίνει στη σκηνή
+uip_late:
         jr      z,uip_after
         ; ΤΟ ΦΑΝΤΑΣΜΑ ΠΕΡΙΜΕΝΕΙ ΤΟ ΕΡΓΟΤΑΞΙΟ. Θα ξανάπεφτε κόκκινο πάνω στον θόλο
         ; που μόλις μπήκε, και κάθε σειρά που εμφανίζεται από κάτω του θα το
         ; σήκωνε και θα το ξανάριχνε. Το ui_late το δείχνει μόλις βγει η
-        ; τελευταία σειρά — ή νωρίτερα, αν ο παίκτης κουνήσει τον κέρσορα.
+        ; τελευταία σειρά — ή νωρίτερα, αν ο παίκτης κουνήσει τον κέρσορα. Το
+        ; ίδιο και μετά από διαγώνιο διάδρομο, που βγαίνει σειρά-σειρά.
         ld      a,1
         ld      (ui_owed),a
         jp      hud_draw
 uip_nospace:
-        ld      a,SFX_DENY
-        call    snd_play
+        call    uip_deny
 uip_after:
         ; hud_draw, ΟΧΙ ui_hudall: το δεύτερο αναγκάζει και τον πίνακα (σειρές
         ; 3-4) να ξαναγραφτεί, ~20 ms, ενώ ό,τι αλλάζει σε αυτόν με την
@@ -489,8 +483,6 @@ uip_after:
 uip_deny:
         ld      a,SFX_DENY
         jp      snd_play
-uip_move:
-        jp      ui_move
 
 ; --- LINK ------------------------------------------------------------------
 ; Δύο πατήματα: το πρώτο διαλέγει την αφετηρία, το δεύτερο τον προορισμό. Η
@@ -504,13 +496,10 @@ uist_link:
         call    ui_hide
         ld      a,(ln_a)
         inc     a
-        jr      z,uil_out
+        ld      a,UI_MENU
+        jp      z,ui_goto_h             ; χωρίς αφετηρία: έξω
         ld      a,255
         ld      (ln_a),a
-        jp      ui_show
-uil_out:
-        ld      a,UI_MENU
-        ld      (ui_state),a
         jp      ui_show
 uil_fire:
         ld      a,A_FIRE
@@ -530,47 +519,29 @@ uil_fire:
 uil_second:
         call    ln_plan
         or      a
-        jr      nz,uil_deny             ; άκυρη διαδρομή — το FIRE δεν κάνει τίποτα
+        jr      nz,uip_deny             ; άκυρη διαδρομή — το FIRE δεν κάνει τίποτα
         ld      a,(cr_n)
         or      a
-        jr      z,uil_deny
+        jr      z,uip_deny
         call    cr_afford
-        jr      nz,uil_deny
+        jr      nz,uip_deny
         call    ui_hide
         call    cr_commit
         or      a
-        jr      nz,uil_full
+        jr      nz,uip_nospace
         ld      a,255
         ld      (ln_a),a                ; μια διαδρομή τη φορά
         ld      a,SFX_BUILD
         call    snd_play
         call    cr_redraw
-        jr      z,uil_after
-        ; Η διαγώνιος βγαίνει σειρά-σειρά από τη λίστα αλλαγών (cr_redraw):
-        ; το φάντασμα περιμένει την τελευταία, όπως μετά από θόλο (uip_fire).
-        ld      a,1
-        ld      (ui_owed),a
-        jp      hud_draw
-uil_full:
-        ld      a,SFX_DENY
-        call    snd_play
-uil_after:
-        call    hud_draw                ; όπως στο uip_after
-        jp      ui_show
-uil_deny:
-        ld      a,SFX_DENY
-        jp      snd_play
+        jr      uip_late                ; όπως μετά από θόλο
 
 ; ---------------------------------------------------------------------------
 ; ui_dome — ποιος θόλος είναι κάτω από τον κέρσορα; A = id ή 255.
 ; ---------------------------------------------------------------------------
 ui_dome:
-        ld      a,(cur_hx)
-        sra     a
-        ld      (uid_tx),a
-        ld      a,(cur_hy)
-        sra     a
-        ld      (uid_ty),a
+        call    ui_curt
+        ld      (uid_tx),hl             ; uid_tx, uid_ty διπλανά
         ld      bc,GA_PORT + PAGE_B6
         out     (c),c
         ld      c,0
@@ -580,29 +551,22 @@ uid_lp:
         jr      z,uid_next              ; άδεια θέση
         push    bc
         call    ob_domeadr
-        ld      a,(hl)                  ; cx σε μισά tiles — ΣΤΗ ΜΝΗΜΗ: το
-        ld      (uid_cx),a              ; cr_look παρακάτω χαλάει το DE
+        ld      e,(hl)                  ; cx, cy σε μισά tiles — ΣΤΗ ΜΝΗΜΗ: το
+        inc     hl                      ; cr_look παρακάτω χαλάει το DE
+        ld      d,(hl)
         inc     hl
-        ld      a,(hl)                  ; cy
-        ld      (uid_cy),a
-        inc     hl
+        ld      (uid_cx),de             ; uid_cx, uid_cy διπλανά
         ld      a,(hl)                  ; μέγεθος
         ld      hl,uid_wt
         call    cr_look
         ld      b,a                     ; W σε tiles
-        ld      a,(uid_cx)
-        call    uid_left                ; A = αριστερό tile
-        ld      e,a
-        ld      a,(uid_tx)
-        sub     e
-        cp      b
+        ld      hl,uid_cx
+        ld      de,uid_tx
+        call    uid_in
         jr      nc,uid_no
-        ld      a,(uid_cy)
-        call    uid_left
-        ld      e,a
-        ld      a,(uid_ty)
-        sub     e
-        cp      b
+        inc     hl
+        inc     de
+        call    uid_in
         jr      nc,uid_no
         pop     bc
         ld      a,c
@@ -615,6 +579,7 @@ uid_next:
         cp      MAX_DOME
         jr      c,uid_lp
         ld      a,255
+; uid_out — πίσω η τράπεζα 1, με το AF όπως ήταν. Και για το ui_validate.
 uid_out:
         push    af
         ld      bc,GA_PORT + PAGE_B1
@@ -622,11 +587,18 @@ uid_out:
         pop     af
         ret
 
-; uid_left — A = κέντρο σε μισά tiles, B = W σε tiles -> A = αριστερό tile.
+; uid_in — ένας άξονας. (HL) = κέντρο σε μισά tiles, (DE) = το tile του
+; κέρσορα, B = W σε tiles. Out: C αν ο κέρσορας είναι μέσα. Το BC του βρόχου
+; είναι στη στοίβα· το C εδώ είναι πρόχειρο.
 ;       left = (κέντρο - W) / 2, ακριβές: κέντρο και W έχουν την ίδια ισοτιμία
-uid_left:
+uid_in:
+        ld      a,(hl)
         sub     b
         sra     a
+        ld      c,a
+        ld      a,(de)
+        sub     c
+        cp      b
         ret
 
 uid_wt:     db 4,6,8
@@ -664,19 +636,29 @@ lnp_no:
         ld      (ui_bad),a
         ret
 
-; cr_cb_gh — ένα tile της διαδρομής σαν σημάδι φαντάσματος.
-cr_cb_gh:
+; ui_mark — B, C = ένα tile του κόσμου: σημάδι φαντάσματος εκεί. Κρατά τα
+; BC, DE. Και για τα tiles της διαδρομής (cr_walk), και για τα άκυρα tiles.
+ui_mark:
         push    bc
-        ld      a,b
+        push    de
         ld      hl,cam_tx
+        ld      a,b
         sub     (hl)
         ld      b,a
+        inc     hl                      ; cam_ty
         ld      a,c
-        ld      hl,cam_ty
         sub     (hl)
         ld      c,a
         call    gh_mark
+        pop     de
         pop     bc
+        ret
+
+; ui_curt — HL = το tile του κέρσορα: L = x, H = y.
+ui_curt:
+        ld      hl,(cur_hx)
+        sra     l
+        sra     h
         ret
 
 ; ---------------------------------------------------------------------------
@@ -691,52 +673,46 @@ cr_cb_gh:
 ; το κρατημένο πλήκτρο επαναλαμβάνει, όπως περιμένει κανείς από κέρσορα, και ο
 ; ρυθμός επανάληψης είναι ο ρυθμός του κύκλου.
 ui_move:
-        xor     a
-        ld      (ui_dx),a
-        ld      (ui_dy),a
+        ld      de,0                    ; E = dx, D = dy: το in_held τα κρατά
         ld      a,A_LEFT
         call    in_held
         jr      z,um_r
-        ld      a,-2
-        ld      (ui_dx),a
+        ld      e,-2
 um_r:
         ld      a,A_RIGHT
         call    in_held
         jr      z,um_u
-        ld      a,2
-        ld      (ui_dx),a
+        ld      e,2
 um_u:
         ld      a,A_UP
         call    in_held
         jr      z,um_d
-        ld      a,-2
-        ld      (ui_dy),a
+        ld      d,-2
 um_d:
         ld      a,A_DOWN
         call    in_held
         jr      z,um_go
-        ld      a,2
-        ld      (ui_dy),a
+        ld      d,2
 um_go:
-        ld      a,(ui_dx)
-        ld      hl,ui_dy
-        or      (hl)
+        ld      a,d
+        or      e
         ret     z                       ; τίποτα δεν πατήθηκε
+        push    de
         call    ui_hide
-        ld      a,(ui_dx)
+        pop     de
         ld      hl,cur_hx
-        add     a,(hl)
+        ld      a,(hl)
+        add     a,e
         ld      (hl),a
-        ld      a,(ui_dy)
-        ld      hl,cur_hy
-        add     a,(hl)
+        inc     hl                      ; cur_hy
+        ld      a,(hl)
+        add     a,d
         ld      (hl),a
         call    ui_follow
         call    ui_show
         ld      a,SFX_MOVE
         call    snd_play
-        ld      a,1
-        or      a
+        or      1                       ; NZ: κουνήθηκε
         ret
 
 ; ---------------------------------------------------------------------------
@@ -800,26 +776,17 @@ ui_rect:
         ld      a,(ui_state)
         cp      UI_PLACE
         jr      z,uir_foot
-        ld      a,(cur_hx)
-        sra     a
-        ld      (ui_tx),a
-        ld      a,(cur_hy)
-        sra     a
-        ld      (ui_ty),a
-        ld      a,1
-        ld      (ui_w),a
-        ld      (ui_h),a
+        call    ui_curt
+        ld      (ui_tx),hl              ; ui_tx, ui_ty διπλανά
+        ld      hl,#0101
+        ld      (ui_w),hl               ; ui_w, ui_h διπλανά
         ret
 uir_foot:
         call    bd_rect
-        ld      a,(bd_tx)
-        ld      (ui_tx),a
-        ld      a,(bd_ty)
-        ld      (ui_ty),a
-        ld      a,(bd_w)
-        ld      (ui_w),a
-        ld      a,(bd_h)
-        ld      (ui_h),a
+        ld      hl,(bd_tx)              ; bd_tx, bd_ty διπλανά (build.asm)
+        ld      (ui_tx),hl
+        ld      hl,(bd_w)               ; bd_w, bd_h διπλανά
+        ld      (ui_w),hl
         ret
 
 ; ---------------------------------------------------------------------------
@@ -833,11 +800,7 @@ ui_validate:
         ld      bc,GA_PORT + PAGE_B4
         out     (c),c
         call    bd_check
-        push    af
-        ld      bc,GA_PORT + PAGE_B1
-        out     (c),c
-        pop     af
-        ret
+        jp      uid_out
 
 ; ---------------------------------------------------------------------------
 ; ui_show / ui_hide — το φάντασμα πάνω στη σκηνή, και πίσω.
@@ -863,19 +826,24 @@ ui_show:
         xor     a
         ld      (ui_owed),a             ; κάθε εμφάνιση ξοφλά το χρέος
         call    ui_rect
+        ; --- το χρώμα: ροζ κέρσορας, ή πράσινο / κόκκινο για ό,τι χτίζεται ---
         ld      a,(ui_state)
         cp      UI_LINK
-        jp      z,uis_link
-        cp      UI_PLACE
-        jr      nz,uis_pen
-        call    ui_validate
-        ld      (ui_bad),a
-uis_pen:
-        ld      a,(ui_state)
+        jr      nz,uis_np
+        call    ln_plan
+        ld      a,(ln_a)
+        inc     a
+        ld      a,PEN_CUR               ; δεν έχει αφετηρία ακόμη
+        jr      z,uis_set
+        ld      a,(ui_bad)
+        jr      uis_okno
+uis_np:
         cp      UI_PLACE
         ld      a,PEN_CUR
         jr      nz,uis_set
-        ld      a,(ui_bad)
+        call    ui_validate
+        ld      (ui_bad),a
+uis_okno:
         or      a
         ld      a,PEN_OK
         jr      z,uis_set
@@ -883,7 +851,55 @@ uis_pen:
 uis_set:
         call    gh_setpen
         call    uis_box
-        jr      uis_bad
+        ld      a,(ui_state)
+        cp      UI_LINK
+        jr      z,uis_route
+
+uis_bad:
+        ; --- τα άκυρα tiles ---
+        cp      UI_PLACE
+        jp      nz,ui_panel
+        ld      a,(ui_bad)
+        or      a
+        jp      z,ui_panel
+        ld      a,PEN_NO
+        call    gh_setpen
+        ld      de,(ui_tx)              ; E = ui_tx, D = ui_ty
+        ld      a,(ui_h)
+        ld      b,a
+        ld      hl,bd_bad               ; ένα byte ανά σειρά, ένα bit ανά στήλη,
+uisb_row:                               ; ΜΟΝΟ μέσα στο πλάτος (bd_check)
+        push    bc
+        push    hl
+        ld      a,(hl)
+        ld      b,e                     ; στήλη
+        ld      c,d                     ; σειρά
+uisb_col:
+        or      a
+        jr      z,uisb_rn               ; τίποτα άλλο σε αυτή τη σειρά
+        srl     a
+        push    af
+        call    c,ui_mark
+        pop     af
+        inc     b
+        jr      uisb_col
+uisb_rn:
+        pop     hl
+        pop     bc
+        inc     hl
+        inc     d
+        djnz    uisb_row
+        jp      ui_panel
+
+; --- το φάντασμα της διαδρομής ---------------------------------------------
+uis_route:
+        ld      a,(cr_n)
+        or      a
+        jp      z,ui_panel
+        ld      hl,ui_mark
+        ld      (cr_cb),hl
+        call    cr_walk
+        jp      ui_panel
 
 ; uis_box — το πλαίσιο του (ui_tx, ui_ty, ui_w, ui_h) σε συντεταγμένες οθόνης.
 uis_box:
@@ -893,134 +909,42 @@ uis_box:
         ld      a,(ui_ty)
         call    ui_syt
         ld      (gh_by),hl
-        ld      a,(ui_w)
+        ld      hl,(ui_w)               ; L = w, H = h, σε tiles
+        ld      a,l
         add     a,a
         add     a,a
-        ld      (gh_bw),a
-        ld      a,(ui_h)
+        ld      l,a                     ; x4 bytes
+        ld      a,h
         add     a,a
         add     a,a
         add     a,a
         add     a,a
-        ld      (gh_bh),a
+        ld      h,a                     ; x16 γραμμές
+        ld      (gh_bw),hl              ; gh_bw, gh_bh διπλανά
         jp      gh_box
 
-uis_bad:
-        ; --- τα άκυρα tiles ---
-        ld      a,(ui_state)
-        cp      UI_PLACE
-        jp      nz,ui_panel
-        ld      a,(ui_bad)
-        or      a
-        jp      z,ui_panel
-        ld      a,PEN_NO
-        call    gh_setpen
-        xor     a
-        ld      (uis_row),a
-uis_rl:
-        ld      a,(uis_row)
-        ld      l,a
-        ld      h,0
-        ld      de,bd_bad
-        add     hl,de
-        ld      a,(hl)
-        or      a
-        jr      z,uis_rn
-        ld      c,a
-        xor     a
-        ld      (uis_col),a
-uis_cl:
-        ld      a,c
-        rrca
-        ld      c,a
-        jr      nc,uis_cn
-        push    bc
-        ld      a,(ui_tx)
-        ld      hl,uis_col
-        add     a,(hl)
-        ld      hl,cam_tx
-        sub     (hl)
-        ld      b,a                     ; στήλη μέσα στο κάδρο
-        ld      a,(ui_ty)
-        ld      hl,uis_row
-        add     a,(hl)
-        ld      hl,cam_ty
-        sub     (hl)
-        ld      c,a                     ; σειρά
-        call    gh_mark
-        pop     bc
-uis_cn:
-        ld      a,(uis_col)
-        inc     a
-        ld      (uis_col),a
-        ld      hl,ui_w
-        cp      (hl)
-        jr      nz,uis_cl
-uis_rn:
-        ld      a,(uis_row)
-        inc     a
-        ld      (uis_row),a
-        ld      hl,ui_h
-        cp      (hl)
-        jr      nz,uis_rl
-        jp      ui_panel
-
-; --- το φάντασμα της διαδρομής ---------------------------------------------
-uis_link:
-        call    ln_plan
-        ld      a,(ln_a)
-        inc     a
-        ld      a,PEN_CUR
-        jr      z,uisl_pen
-        ld      a,(ui_bad)
-        or      a
-        ld      a,PEN_OK
-        jr      z,uisl_pen
-        ld      a,PEN_NO
-uisl_pen:
-        call    gh_setpen
-        call    uis_box
-        ld      a,(cr_n)
-        or      a
-        jp      z,ui_panel
-        ld      hl,cr_cb_gh
-        ld      (cr_cb),hl
-        call    cr_walk
-        jp      ui_panel
-
-; ui_sxt / ui_syt — tile -> οθόνη, προσημασμένα 16 bit.
+; ui_sxt / ui_syt — tile -> οθόνη, προσημασμένα 16 bit:
+;       x = 4*(tx - cam_tx) = 2*(2*tx - 2*cam_tx)
+;       y = 16*(ty - cam_ty) = 8*(2*ty - 2*cam_ty)
+; Το 2*tile - 2*κάμερα είναι το ob_rel με το A διπλασιασμένο σε 16 bit: ένα
+; αποτύπωμα στο χείλος του κόσμου αρχίζει πριν από το -64, και το 2*tx δεν
+; χωρά σε byte.
 ui_sxt:
-        call    ob_sext
+        ld      de,cam_tx
+        call    ui_rel
         add     hl,hl
-        add     hl,hl
-        push    hl
-        ld      a,(cam_tx)
-        call    ob_sext
-        add     hl,hl
-        add     hl,hl
-        ex      de,hl
-        pop     hl
-        or      a
-        sbc     hl,de
         ret
 ui_syt:
-        call    ob_sext
+        ld      de,cam_ty
+        call    ui_rel
         add     hl,hl
         add     hl,hl
         add     hl,hl
-        add     hl,hl
-        push    hl
-        ld      a,(cam_ty)
-        call    ob_sext
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl
-        ex      de,hl
-        pop     hl
-        or      a
-        sbc     hl,de
         ret
+ui_rel:
+        call    ob_sext
+        add     hl,hl
+        jp      obr_t
 
 ; ---------------------------------------------------------------------------
 ; ui_panel — οι σειρές 3-4 του HUD: τι κρατάς και τι σου λέει το έδαφος.
@@ -1133,11 +1057,7 @@ uipi_go:
         call    hud_blank
         ld      a,(bd_param)
         ld      hl,uip_szc
-        add     a,l
-        ld      l,a
-        ld      a,0
-        adc     a,h
-        ld      h,a
+        call    ob_addu
         ld      a,(hl)
         call    hud_char
         jr      uipi_arrow
@@ -1255,10 +1175,8 @@ uip_spd:
         call    hud_adv
         ld      a,(ui_spd)
         add     a,a
-        ld      l,a
-        ld      h,0
-        ld      de,t_spd_ptr
-        add     hl,de
+        ld      hl,t_spd_ptr
+        call    ob_addu
         ld      a,(hl)
         inc     hl
         ld      h,(hl)
@@ -1268,6 +1186,9 @@ uip_spd:
 t_spd_ptr:  dw t_pause, t_x1, t_x2, t_x2, t_x4
 
 ; ui_sig — η υπογραφή των σειρών 3-4 στο uip_now.
+; ΓΡΑΜΜΕΝΗ ΕΥΘΕΙΑ, ΟΧΙ ΑΠΟ ΠΙΝΑΚΑ. Με πίνακα διευθύνσεων είναι 12 bytes
+; μικρότερη (βήμα 44) — και 139 us ακριβότερη σε ΚΑΘΕ βήμα κέρσορα, που
+; τρέχει το ui_panel και άρα αυτήν (4.942 -> 5.081 us).
 ui_sig:
         ld      hl,uip_now
         ld      a,(ui_state)
@@ -1341,10 +1262,6 @@ ui_ty:      db 0
 ui_w:       db 1
 ui_h:       db 1
 ui_bad:     db 0
-ui_dx:      db 0
-ui_dy:      db 0
-uis_row:    db 0
-uis_col:    db 0
 ln_a:       db 255
 ln_pick:    db 255
 uid_tx:     db 0
@@ -1362,3 +1279,8 @@ uip_sig:    defs UIP_NSIG, 255
 uip_now:    defs UIP_NSIG
 cur_hx:     db 0
 cur_hy:     db 0
+
+        assert  cam_ty == cam_tx + 1 && cur_hy == cur_hx + 1
+        assert  ui_ty == ui_tx + 1 && ui_h == ui_w + 1 && uid_ty == uid_tx + 1
+        assert  uid_cy == uid_cx + 1
+        assert  gh_bh == gh_bw + 1 && UI_LOOK == 0

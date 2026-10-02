@@ -25,6 +25,7 @@ from sprites import load_map, load_bin                                  # noqa: 
 RASM = os.path.expanduser("~/rasm/rasm.exe")
 SNA = os.path.join(ROOT, "build", "uitest.sna")
 UI_LOOK, UI_MENU, UI_PLACE = 0, 1, 2
+BLD_N = 11                              # src/build.asm: τα είδη του καταλόγου
 
 
 def build():
@@ -280,6 +281,38 @@ def main():
         fails += 1
     else:
         print("OK και το πάνω βελάκι γυρίζει πίσω: OXYGEN")
+    # --- Η ΑΝΑΔΙΠΛΩΣΗ ΤΟΥ ΚΑΤΑΛΟΓΟΥ (ui_lr, βήμα 44) ------------------
+    # Αριστερά από το πρώτο πάει στο τελευταίο, δεξιά από το τελευταίο ξανά
+    # στο πρώτο. Κανένα άλλο πάτημα εδώ δεν περνά το όριο, και το ui_lr είναι
+    # καινούργιο: ένα για τη θέση δίσκου και τον κατάλογο. Σε δικό του
+    # μηχάνημα, γιατί το bd_select μετακινεί τον κέρσορα για την ισοτιμία.
+    def wrap(patch=None):
+        mm = boot()
+        if patch:
+            at = sym["UI_LR"]
+            k = next(i for i in range(16) if mm.peek(at + i) == 0x1D)  # dec e
+            mm.poke(at + k, 0x00)
+        tap(mm, KEY_SPACE)
+        tap(mm, KEY_LEFT)
+        mm.run_frames(20)
+        last, row = mm.peek(sym["UI_SEL"]), hud(mm, 3)
+        tap(mm, KEY_RIGHT)
+        return last, row, mm.peek(sym["UI_SEL"])
+    last, row, back = wrap()
+    if last != BLD_N - 1 or "LANDING" not in row or back != 0:
+        print(f"ΑΠΟΤΥΧΙΑ αναδίπλωση: αριστερά -> {last} |{row.rstrip()}|, "
+              f"δεξιά -> {back}")
+        fails += 1
+    else:
+        print(f"OK ο κατάλογος αναδιπλώνεται: αριστερά από το 0 -> {last} "
+              f"(LANDING), δεξιά -> {back}")
+    nlast, _, _ = wrap(patch=True)
+    if nlast == BLD_N - 1:
+        print("ΑΠΟΤΥΧΙΑ: ΑΡΝΗΤΙΚΟ — χωρίς το dec e το αριστερά αναδιπλώνεται ακόμη")
+        fails += 1
+    else:
+        print(f"OK ΑΡΝΗΤΙΚΟ: χωρίς το dec e του ui_lr το αριστερά μένει στο {nlast}")
+
     tap(m3, KEY_RIGHT, 2)               # -> DOME L για τη συνέχεια
     m3.run_frames(20)
     m3.key_down("\x01")                 # COPY δεν στέλνεται· το FIRE έρχεται

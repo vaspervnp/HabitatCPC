@@ -271,9 +271,11 @@ ob_sy:
         add     hl,hl
         ret
 
-; ob_rel — HL = A - 2*(DE), και τα δύο προσημασμένα.
+; ob_rel — HL = A - 2*(DE), και τα δύο προσημασμένα. obr_t — HL - 2*(DE),
+; για όποιον έχει ήδη το HL (ui_rel).
 ob_rel:
         call    ob_sext
+obr_t:
         ld      a,(de)
         push    hl
         call    ob_sext
