@@ -13,6 +13,7 @@ COLS, ROWS = 40, 5
 BAR_CELLS = 6
 PEN_FULL, PEN_EMPTY, PEN_LOW = 9, 1, 8
 CAP = 600
+P_ESS = 2                       # src/const.asm — μόνο η υποστήριξη ζωής
 
 # Το byte ενός συμπαγούς pen στο Mode 0: τα bits του αριστερού pixel είναι τα
 # 7,3,5,1 και του δεξιού τα 6,2,4,0.
@@ -39,8 +40,7 @@ class Hud:
             self.put(ch)
 
     def num(self, v, n):
-        s = str(int(v))[-n:].rjust(n)
-        self.text(s)
+        self.text(num_leading(v, n))
 
     def cell(self, pen):
         self.cells[self.row][self.col] = ("p", pen)
@@ -95,12 +95,24 @@ class Hud:
 
     @staticmethod
     def alert(e):
+        # Η σειρά του hud_alert (§6.5, §6.10): ό,τι σκοτώνει γρηγορότερα πρώτο.
+        # Φαγητό και νερό «λίγα» = κάτω από μία μερίδα ανά ζωντανό (hd_short).
+        def short(v):
+            return v < 256 and v < e["alive"]
         if e["gameover"]:
             return "COLONY LOST        "
         if not e["pok"]:
             return "NO POWER           "
         if not e["o2ok"]:
             return "NO OXYGEN          "
+        if e["pok"] == P_ESS:
+            return "LOW POWER          "
+        if e.get("meteor"):
+            return "METEOR SHOWER      "
+        if short(e["stock"][1]):
+            return "LOW ON FOOD        "
+        if short(e["stock"][0]):
+            return "LOW ON WATER       "
         if e["storm"]:
             return "SANDSTORM          "
         return "ALL SYSTEMS OK     "
@@ -125,5 +137,11 @@ class Hud:
 
 
 def num_leading(v, n):
-    """Ο κανόνας των μπροστινών μηδενικών, ξεχωριστά για να ελεγχθεί."""
-    return str(int(v))[-n:].rjust(n)
+    """Ο κανόνας των μπροστινών μηδενικών, ξεχωριστά για να ελεγχθεί.
+
+    Τιμή με περισσότερα ψηφία από n δείχνει το υπόλοιπο της διαίρεσης με 10^n,
+    και ΜΕΤΑ σβήνονται τα μπροστινά μηδενικά: το 1005 σε τρία ψηφία είναι
+    «  5», όχι «005». Ετσι έκανε ο Z80 από την αρχή (και με διαιρέσεις, και με
+    αφαιρέσεις από το βήμα 52)· ως το βήμα 52 η αναφορά έκοβε τη συμβολοσειρά.
+    """
+    return str(int(v) % 10 ** n).rjust(n)

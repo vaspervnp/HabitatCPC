@@ -30,7 +30,7 @@ REPS = 20
 MARK = 0xAA
 
 EC = dict(STOCK=0, PSTORE=28, PCAP=30, O2PROD=38, O2USE=40, POK=46, O2OK=47,
-          DAY=49, SOL=51, ALIVE=58, GAMEOVER=59, STORM=61, POPCAP=74)
+          DAY=49, SOL=51, ALIVE=58, GAMEOVER=59, STORM=61, POPCAP=74, METEOR=86)
 
 STATE = dict(o2prod=200, o2use=188, pstore=3215, pcap=3240,
              stock=[412, 233, 0, 120, 40, 12, 8, 3, 0, 2, 0, 0, 0, 0],
@@ -43,6 +43,20 @@ STATE2 = dict(o2prod=12, o2use=190, pstore=0, pcap=3240,
               stock=[7, 0, 0, 600, 5, 0, 1, 0, 0, 0, 0, 0, 0, 0],
               alive=3, popcap=4, sol=100, day=0,
               pok=0, o2ok=1, storm=1, gameover=0)
+
+
+# Τρίτη (βήμα 52): οι άκρες που καμία από τις δύο δεν άγγιζε. Αριθμοί με
+# περισσότερα ψηφία από όσα χωρούν — ο πληθυσμός 100/148 σε δύο, το 1005 και
+# το 65535 σε τρία — μηδενική κατανάλωση και μηδενική χωρητικότητα (γεμάτες
+# μπάρες, όχι διαίρεση με μηδέν), νερό πάνω από το ταβάνι, και «LOW POWER».
+STATE3 = dict(o2prod=0, o2use=0, pstore=5, pcap=0,
+              stock=[650, 30, 0, 1005, 65535, 999, 100, 10, 0, 1, 0, 0, 0, 0],
+              alive=100, popcap=148, sol=255, day=1,
+              pok=2, o2ok=1, storm=0, gameover=0)
+# Τέταρτη και πέμπτη: λίγο φαγητό (κάτω από μία μερίδα ανά ζωντανό), και η
+# βροχή μετεωριτών, που μπαίνει μπροστά του.
+STATE4 = dict(STATE, stock=[412, 33, 0, 120, 40, 12, 8, 3, 0, 2, 0, 0, 0, 0])
+STATE5 = dict(STATE4, meteor=3)
 
 
 def econ_base():
@@ -70,8 +84,9 @@ def load(sym, g, st, tx=-21, ty=-13, hud=True):
     w16(g + EC["PCAP"], st["pcap"])
     for i, v in enumerate(st["stock"]):
         w16(g + EC["STOCK"] + i * 2, v)
-    for k in ("alive", "popcap", "sol", "day", "pok", "o2ok", "storm", "gameover"):
-        m.poke(g + EC[k.upper()], st[k])
+    for k in ("alive", "popcap", "sol", "day", "pok", "o2ok", "storm", "gameover",
+              "meteor"):
+        m.poke(g + EC[k.upper()], st.get(k, 0))
     return m
 
 
@@ -124,7 +139,9 @@ def main():
         print("OK σύνορο: το πέρασμα αντικειμένων σταματά στη γραμμή 160")
 
     # --- 2. το περιεχόμενο ----------------------------------------------
-    for name, st in (("κανονική", STATE), ("μηδενικά + συναγερμός", STATE2)):
+    for name, st in (("κανονική", STATE), ("μηδενικά + συναγερμός", STATE2),
+                     ("υπερχείλιση + LOW POWER", STATE3), ("λίγο φαγητό", STATE4),
+                     ("μετεωρίτες", STATE5)):
         m = load(sym, g, st)
         m.poke(sym["REP_N"], 1)
         run(m, sym, "START")

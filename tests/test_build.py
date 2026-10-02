@@ -139,9 +139,16 @@ def main():
     t0 = m.peek(sym["TICK_N"])
     m.key_down(KEY_RIGHT)
     m.run_frames(60)
-    t1 = m.peek(sym["TICK_N"])
     m.key_up(KEY_RIGHT)
-    m.run_frames(20)
+    # Ο emulator βγάζει το πλήκτρο από τη μήτρα στο ΤΕΛΟΣ του επόμενου frame:
+    # το kbd_key_up των chips μόνο το σημαδεύει, και το σβήνει το kbd_update που
+    # τρέχει μετά τους κύκλους του frame (chips/kbd.h, systems/cpc.h). Για ένα
+    # frame ακόμη λοιπόν ο βρόχος το διαβάζει πατημένο, και οι κύκλοι μετριούνται
+    # ως εκεί. Φάνηκε στο βήμα 52: το HUD έγινε γρηγορότερο, ένας κύκλος άρχισε
+    # να πέφτει μέσα σε εκείνο το frame, και τα βήματα βγήκαν κύκλοι + 2.
+    m.run_frames(1)
+    t1 = m.peek(sym["TICK_N"])
+    m.run_frames(19)
     cur = sb(m.peek(sym["CUR_HX"]))
     cam1 = sb(m.peek(sym["CAM_TX"]))
     ticks = (t1 - t0) & 0xFF

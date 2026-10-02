@@ -10,137 +10,61 @@
 ; τίποτα (ASSET-4). Κάθε σειρά χαρακτήρων αρχίζει σε γραμμή πολλαπλάσια του 8,
 ; οπότε και τα 8 pixel ενός γλύφου πέφτουν ΜΕΣΑ στην ίδια σειρά χαρακτήρων:
 ; η θέση p δεν αλλάζει, το δαχτυλίδι δεν μπορεί να σπάσει γλύφο, και το
-; προχώρημα γραμμής είναι ένα «d += 8».
+; προχώρημα γραμμής είναι ένα «+#800».
 ;
 ; ΟΛΕΣ οι 40 στήλες γράφονται πάντα, και γι' αυτό δεν υπάρχει καθάρισμα: το
-; κενό είναι ο χαρακτήρας 32 και κοστίζει όσο κάθε άλλος.
+; κενό είναι ένα κελί σαν όλα τα άλλα.
+;
+; ΜΙΚΡΟΤΕΡΟ, ΣΤΟ ΒΗΜΑ 52 (1.032 -> 642 bytes), και γρηγορότερο. Ενας δρόμος
+; για κάθε κελί (hud_char): χαρακτήρας, κενό και κελί μπάρας είναι όλα ένας
+; κωδικός. Οι οκτώ γραμμές ενός κελιού είναι βρόχος και όχι ξετύλιγμα — το
+; τέλος του το λέει το carry, όχι μετρητής. Οι αριθμοί βγαίνουν με αφαιρέσεις
+; δυνάμεων του 10 αντί για δεκαέξι βήματα διαίρεσης ανά ψηφίο. Η στήλη και η
+; σειρά δεν κρατιούνται πουθενά: κανείς δεν τις διάβαζε.
 
 HUD_TOP     equ PLAY_LINES          ; 160 — η πρώτη γραμμή του HUD
 HUD_ROWS    equ 5
+HUD_CACHED  equ 3                   ; σειρές 0..2 — βλ. hud_char
 PEN_FULL    equ 9                   ; έντονο πράσινο — η μπάρα γεμάτη
 PEN_EMPTY   equ 1                   ; μπλε — η μπάρα άδεια
-PEN_LOW     equ 8                   ; έντονο κόκκινο — κάτω από το ένα τρίτο
+PEN_LOW     equ 8                   ; έντονο κόκκινο — κάτω από το ένα τέταρτο
 BAR_CELLS   equ 6
 
+        assert  (G_hud_shadow & 255) == 0       ; σειρά*40 + στήλη στο L
+        assert  FONT_SIZE == 16                 ; hc_draw: 2 x κωδικός x 8
+        assert  BAR_CELLS == 6                  ; hud_bar: 6v = 2v + 4v
+
 ; ---------------------------------------------------------------------------
-; hud_at — DE = διεύθυνση οθόνης για (hud_col, hud_row).
+; hud_go — A = σειρά (0-4), στήλη 0. hud_goc — και C = στήλη (0-39).
+;
+; Οι δύο δείκτες βγαίνουν ΜΙΑ φορά εδώ και μετά προχωρούν μαζί, ένα κελί τη
+; φορά (hud_next): ο δείκτης οθόνης και ο δείκτης της κρυφής μνήμης. Το
+; scr_addr κόστιζε 230 T ανά γλύφο όσο ξαναβρισκόταν για κάθε κελί.
 ; ---------------------------------------------------------------------------
-hud_at:
-        ld      a,(hud_col)
-        add     a,a
-        ld      c,a
-        ld      a,(hud_row)
+hud_go:
+        ld      c,0
+hud_goc:
+        push    af
+        ld      b,a
+        ld      hl,0                    ; σειρές 3-4: χωρίς κρυφή μνήμη
+        cp      HUD_CACHED
+        jr      nc,hg_sp
+        ld      a,c
+        inc     b
+        jr      hg_t
+hg_row: add     a,40
+hg_t:   djnz    hg_row                  ; A = σειρά*40 + στήλη
+        ld      l,a
+        ld      h,G_hud_shadow / 256
+hg_sp:  ld      (hud_sp),hl
+        pop     af
         add     a,a
         add     a,a
         add     a,a
         add     a,HUD_TOP
-        jp      scr_addr
-
-; ---------------------------------------------------------------------------
-; hud_go — A = σειρά· στήλη 0, και ο δείκτης οθόνης υπολογίζεται ΜΙΑ φορά.
-;
-; Το scr_addr κόστιζε 230 T ανά γλύφο και ο γλύφος γράφει 16 bytes: πάνω από
-; το ένα τρίτο του χρόνου πήγαινε στο να ξαναβρεθεί μια διεύθυνση που απέχει
-; δύο bytes από την προηγούμενη.
-; ---------------------------------------------------------------------------
-hud_go:
-        ld      (hud_row),a
-        push    af
-        xor     a
-        ld      (hud_col),a
-        call    hud_at
+        sla     c                       ; δύο bytes ανά στήλη
+        call    scr_addr
         ld      (hud_de),de
-        ; Ο δείκτης της κρυφής μνήμης βγαίνει ΜΙΑ φορά ανά σειρά και προχωρά
-        ; μετά μαζί με τον δείκτη οθόνης. Οσο τον ξανάβγαζα ανά κελί, ο
-        ; πολλαπλασιασμός σειρά*40 κόστιζε περισσότερο από όσο γλίτωνε.
-        pop     af
-        cp      HUD_CACHED
-        jr      nc,hg_nocache
-        ld      l,a
-        ld      h,0
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl                   ; *8
-        ld      c,l
-        ld      b,h
-        add     hl,hl
-        add     hl,hl                   ; *32
-        add     hl,bc                   ; *40
-        ld      bc,G_hud_shadow
-        add     hl,bc
-        ld      (hud_sp),hl
-        ret
-hg_nocache:
-        ld      hl,0                    ; σειρές 3-4: χωρίς κρυφή μνήμη
-        ld      (hud_sp),hl
-        ret
-
-; hud_adv — ο δείκτης προχωράει B στήλες. Το `and #C7` είναι το δαχτυλίδι· η
-; αρχή μιας σειράς HUD έχει πάντα (y&7)==0, οπότε τα bits 3-5 του D είναι
-; μηδέν και η μάσκα δεν τα πειράζει.
-hud_adv:
-        ld      hl,hud_col
-        ld      a,(hl)
-        add     a,b
-        ld      (hl),a
-        ld      c,b                     ; το B σβήνεται παρακάτω
-        ld      b,0
-        ld      hl,(hud_sp)
-        add     hl,bc
-        ld      (hud_sp),hl
-        ld      hl,(hud_de)
-        ld      a,c
-        add     a,a                     ; δύο bytes ανά στήλη
-        ld      c,a
-        add     hl,bc
-        ld      a,h
-        and     #C7
-        ld      h,a
-        ld      (hud_de),hl
-        ret
-
-; ---------------------------------------------------------------------------
-; hud_seen — «αυτό το κελί έχει ήδη αυτό το περιεχόμενο;»
-;
-; ΤΟ ΚΕΡΔΟΣ ΤΟΥ ΒΗΜΑΤΟΣ 19. Μια πλήρης επανασχεδίαση HUD κόστιζε 50.918 us,
-; δηλαδή 2,55 frames, και γίνεται κάθε δεκαέξι: η προσομοίωση έπαιρνε 16 από
-; τα 19 frames (§9.1). Οι σειρές 0-2 όμως αλλάζουν τρία-τέσσερα κελιά τη φορά
-; — ένα ψηφίο αποθέματος, ένα κελί μπάρας. Τα υπόλοιπα 116 ξαναγράφονταν
-; πανομοιότυπα.
-;
-; Ενας κωδικός ανά κελί, 120 bytes στην τράπεζα 2: για γλύφο ο χαρακτήρας του
-; (32-127), για συμπαγές κελί το #80 + pen. Δεν συγκρούονται.
-;
-; ΟΙ ΣΕΙΡΕΣ 3-4 ΔΕΝ ΜΠΑΙΝΟΥΝ ΣΤΗΝ ΚΡΥΦΗ ΜΝΗΜΗ: ο πίνακας επιλογής φυλάγεται
-; ήδη πίσω από υπογραφή (§9.3). Εκεί ο δείκτης hud_sp είναι μηδέν.
-;
-; Μετρημένο μετά: 22.963 us ζεστό (1,15 frames) και 43.930 us κρύο, δηλαδή
-; μετά από βήμα κάμερας, που ακυρώνει και τα 120 κελιά. Το x1 ανέβηκε από
-; 0,84 σε 0,92 του ονομαστικού.
-;
-; In:  A = κωδικός.
-; Out: carry = «είναι ήδη εκεί, μην το γράψεις». A, BC, DE ανέπαφα.
-; ---------------------------------------------------------------------------
-HUD_CACHED  equ 3                   ; σειρές 0..2
-
-hud_seen:
-        push    hl
-        ld      hl,(hud_sp)
-        ld      c,a
-        ld      a,h
-        or      a                       ; 0 = σειρά εκτός κρυφής μνήμης
-        ld      a,c
-        jr      z,hs_write
-        cp      (hl)
-        jr      z,hs_same
-        ld      (hl),a
-hs_write:
-        pop     hl
-        or      a                       ; carry = 0: γράψ' το
-        ret
-hs_same:
-        pop     hl
-        scf
         ret
 
 ; ---------------------------------------------------------------------------
@@ -165,80 +89,6 @@ hud_inval:
         inc     (hl)
         ret
 
-hud_gen:    db 0
-
-; ---------------------------------------------------------------------------
-; hud_char — A = χαρακτήρας ASCII. Προχωράει τη στήλη.
-;
-; Ο βρόχος είναι ξετυλιγμένος και δεν καλεί ούτε scr_nextline ούτε έλεγχο
-; δαχτυλιδιού: ένας γλύφος είναι 8 γραμμές μέσα σε ΜΙΑ σειρά χαρακτήρων, άρα
-; μόνο το ψηλό byte κινείται και μόνο κατά 8.
-; ---------------------------------------------------------------------------
-hud_char:
-        call    hud_seen
-        jr      nc,hc_draw
-        ld      b,1
-        jp      hud_adv                 ; ίδιο κελί: μόνο προχώρημα
-hc_draw:
-        sub     FONT_FIRST
-        ld      l,a
-        ld      h,0
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl                   ; *FONT_SIZE
-        ld      de,G_font_gfx
-        add     hl,de
-        ld      de,(hud_de)
-        ; Η ΓΡΑΜΜΑΤΟΣΕΙΡΑ ΖΕΙ ΣΤΗΝ ΤΡΑΠΕΖΑ 7 από το βήμα 33 (§4.2), στη θέση της
-        ; δέσμευσης «audio» που δεν χρησιμοποιήθηκε ποτέ. Η οθόνη είναι στο
-        ; #C000, έξω από το παράθυρο, οπότε η αντιγραφή βλέπει και τα δύο.
-        ;
-        ; ΚΑΙ ΓΥΡΙΖΕΙ ΣΤΗΝ ΤΡΑΠΕΖΑ ΤΟΥ ΚΑΛΟΥΝΤΟΣ, ΟΧΙ ΠΑΝΤΑ ΣΤΗΝ 1: το hud_text7
-        ; διαβάζει το ΕΠΟΜΕΝΟ γράμμα του κειμένου του από την τράπεζα 7 αμέσως
-        ; μετά, και ένα «πίσω στην 1» εδώ θα του έδινε σκουπίδια από το DIST.
-        ld      bc,GA_PORT + PAGE_B7
-        out     (c),c
-        repeat  8
-        ld      a,(hl)
-        inc     hl
-        ld      (de),a
-        inc     de
-        ld      a,(hl)
-        inc     hl
-        ld      (de),a
-        dec     de
-        ld      a,d
-        add     a,8
-        ld      d,a
-        rend
-        ld      bc,(hud_pg)
-        out     (c),c
-        ld      b,1
-        jp      hud_adv
-
-hud_pg:     dw GA_PORT + PAGE_B1        ; πού γυρίζει το hc_draw
-
-; ---------------------------------------------------------------------------
-; hud_blank — B στήλες κενές.
-;
-; Περνά από το hud_cell και άρα από την κρυφή μνήμη. Ηταν χύμα γέμισμα οκτώ
-; γραμμών, δέκα φορές φθηνότερο ανά κελί — αλλά ένα κενό που ΔΕΝ περνά από την
-; κρυφή μνήμη την αφήνει να λέει ψέματα: το επόμενο κελί με τον ίδιο κωδικό
-; θα παραλειπόταν και το κενό θα έμενε στην οθόνη.
-; ---------------------------------------------------------------------------
-hud_blank:
-        ld      a,b
-        or      a
-        ret     z
-hbl_col:
-        push    bc
-        xor     a                       ; pen 0: δεκαέξι μηδενικά, ταυτόσημα
-        call    hud_cell                ; με το κενό της γραμματοσειράς
-        pop     bc
-        djnz    hbl_col
-        ret
-
 ; ---------------------------------------------------------------------------
 ; hud_text7 — HL = κείμενο στην ΤΡΑΠΕΖΑ 7 (§4.2, src/uitext.asm).
 ;
@@ -246,20 +96,23 @@ hbl_col:
 ; τελείωσε. Σελιδοποιεί την 7, τυπώνει, και ξαναβάζει την 1 — που είναι αυτό
 ; που βλέπει ο υπόλοιπος κώδικας του βρόχου. Η μόνη συμβολοσειρά που ΔΕΝ περνά
 ; από εδώ είναι το όνομα του καταλόγου (bd_name), που ζει στην τράπεζα 2.
+;
+; hud_page — BC = θύρα + τράπεζα: σελιδοποιεί, και ο γλύφος γυρίζει ΕΚΕΙ
+; (hud_pg) και όχι πάντα στην 1: το hud_text διαβάζει το ΕΠΟΜΕΝΟ γράμμα του
+; κειμένου του από την τράπεζα 7 αμέσως μετά.
 ; ---------------------------------------------------------------------------
 hud_text7:
         ld      bc,GA_PORT + PAGE_B7
-        ld      (hud_pg),bc             ; ο γλύφος γυρίζει εδώ, όχι στην 1
-        out     (c),c
+        call    hud_page
         call    hud_text
         ld      bc,GA_PORT + PAGE_B1
+hud_page:
         ld      (hud_pg),bc
         out     (c),c
         ret
 
-; ---------------------------------------------------------------------------
 ; hud_text — HL = κείμενο, τερματισμένο με 0, σε μνήμη που φαίνεται ήδη.
-; ---------------------------------------------------------------------------
+; Γυρίζει με το HL στο 0.
 hud_text:
         ld      a,(hl)
         or      a
@@ -271,222 +124,291 @@ hud_text:
         jr      hud_text
 
 ; ---------------------------------------------------------------------------
-; hud_num — HL = τιμή, B = ψηφία. Δεξιά στοίχιση, τα μπροστινά μηδενικά κενά.
+; hud_num — HL = τιμή, B = ψηφία (1-3). hud_numa — A = τιμή, ένα byte.
+;
+; Δεξιά στοίχιση, τα μπροστινά μηδενικά κενά, το τελευταίο ψηφίο πάντα ψηφίο.
+; Τιμή με περισσότερα ψηφία δείχνει τα B τελευταία, όπως όταν ήταν διαιρέσεις:
+; η πρώτη αφαίρεση, του 10^B, πετά ό,τι περισσεύει.
 ; ---------------------------------------------------------------------------
+hud_numa:
+        ld      l,a
+        ld      h,0
 hud_num:
-        ld      a,b
-        ld      (hn_n),a
-        ld      ix,hn_buf
-        ld      c,b
-hn_lp:
-        call    hud_div10
-        add     a,'0'
-        ld      (ix+0),a
-        inc     ix
-        dec     c
-        jr      nz,hn_lp
-        ; σβήσε τα μπροστινά μηδενικά — όχι όμως το τελευταίο ψηφίο, ώστε το
-        ; μηδέν να είναι «0» και όχι κενό
-        ld      a,(hn_n)
-        dec     a
-        jr      z,hn_show
-        ld      c,a
-hn_zap:
-        dec     ix
-        ld      a,(ix+0)
-        cp      '0'
-        jr      nz,hn_show
-        ld      (ix+0),' '
-        dec     c
-        jr      nz,hn_zap
-hn_show:
-        ld      ix,hn_buf
-        ld      a,(hn_n)
-        ld      c,a
-        ld      e,a
+        ex      de,hl                   ; DE = τιμή
+        push    de
+        ld      e,b
         ld      d,0
-        add     ix,de
+        ld      hl,hn_pow
+        add     hl,de
+        add     hl,de                   ; HL -> 10^B
+        pop     de
+        call    hn_div                  ; ό,τι ξεπερνά τα B ψηφία πέφτει
+        ld      c,' '                   ; τα μπροστινά μηδενικά: κενά
+        dec     b
+        jr      z,hn_last
+hn_lp:
+        call    hn_div
+        cp      '0'
+        jr      z,hn_zero
+        ld      c,'0'                   ; από εδώ και πέρα τα μηδενικά μετράνε
+        jr      hn_put
+hn_zero:
+        ld      a,c
+hn_put:
+        call    hn_out
+        djnz    hn_lp
+hn_last:
+        call    hn_div                  ; το τελευταίο: και το 0 ως «0»
 hn_out:
-        dec     ix
-        ld      a,(ix+0)
+        push    hl
+        push    de
         push    bc
         call    hud_char
         pop     bc
-        dec     c
-        jr      nz,hn_out
+        pop     de
+        pop     hl
         ret
 
-; hud_div10 — HL /= 10, A = υπόλοιπο.
-hud_div10:
-        xor     a
-        ld      b,16
-hd_lp:
-        add     hl,hl
-        rla
-        cp      10
-        jr      c,hd_no
-        sub     10
-        inc     l
-hd_no:
-        djnz    hd_lp
+; hn_div — HL -> δύναμη του 10, DE = τιμή. Out: A = το ψηφίο σε ASCII, DE = ό,τι
+; μένει, HL -> η επόμενη, μικρότερη δύναμη. Το B και το C μένουν.
+hn_div:
+        push    hl
+        ld      a,(hl)
+        inc     hl
+        ld      h,(hl)
+        ld      l,a
+        ex      de,hl                   ; HL = τιμή, DE = δύναμη
+        ld      a,'0' - 1
+        or      a
+hnd_lp: inc     a
+        sbc     hl,de
+        jr      nc,hnd_lp
+        add     hl,de
+        ex      de,hl
+        pop     hl
+        dec     hl
+        dec     hl
         ret
 
 ; ---------------------------------------------------------------------------
-; hud_bar — HL = τιμή, DE = μέγιστο, BAR_CELLS κελιά.
+; hd_flow — HL = ετικέτα (τράπεζα 7), BC = τιμή, DE = μέγιστο: η ετικέτα, η
+; μπάρα των BAR_CELLS κελιών, και ένα κενό.
 ;
 ; Οι ροές είναι μπάρες και τα αποθέματα αριθμοί, και αυτό δεν είναι διακόσμηση:
 ; στη ροή σημασία έχει το ΠΕΡΙΘΩΡΙΟ, στο απόθεμα η ΠΟΣΟΤΗΤΑ (§9.2).
+;
+; Το «μέγιστο» του οξυγόνου είναι η ΚΑΤΑΝΑΛΩΣΗ και μπορεί να είναι μηδέν.
+; Μηδενική κατανάλωση σημαίνει γεμάτη μπάρα, όχι διαίρεση με μηδέν.
 ; ---------------------------------------------------------------------------
+hd_flow:
+        push    de
+        push    bc
+        call    hud_text7
+        pop     hl
+        pop     de
+        ld      a,d
+        or      e
+        jr      nz,hud_bar
+        inc     de
+        ld      h,d
+        ld      l,e                     ; 1 από 1: γεμάτη
 hud_bar:
-        ld      (hb_max),de
-        ld      (hb_val),hl
-        ld      hl,0
-        ld      b,BAR_CELLS
-hb_m:
-        ld      de,(hb_val)
-        add     hl,de
-        djnz    hb_m
-        ld      (hb_v),hl               ; τιμή * κελιά
-        ld      hl,0
-        ld      (hb_acc),hl
-        ; χαμηλό; κάτω από το ένα τρίτο η μπάρα γίνεται κόκκινη
-        ld      hl,(hb_val)
-        add     hl,hl
-        add     hl,hl                   ; 4*τιμή
-        ld      de,(hb_max)
+        ; Κελί i γεμάτο όταν τιμή*6 >= i*μέγιστο. Το v μικραίνει κατά ένα
+        ; μέγιστο ανά κελί· στο πρώτο άδειο ξαναπαίρνει ό,τι έχασε, και αφού
+        ; τότε είναι κάτω από ένα μέγιστο, μένουν άδεια και όσα ακολουθούν.
+        add     hl,hl                   ; 2v
+        ld      b,h
+        ld      c,l
+        add     hl,hl                   ; 4v
+        push    hl
         or      a
-        sbc     hl,de
+        sbc     hl,de                   ; κάτω από το ένα τέταρτο: κόκκινη
         ld      a,PEN_FULL
         jr      nc,hb_pen
         ld      a,PEN_LOW
 hb_pen:
-        ld      (hb_full),a
+        pop     hl
+        add     hl,bc                   ; 6v
         ld      b,BAR_CELLS
 hb_cell:
-        push    bc
-        ld      hl,(hb_acc)
-        ld      de,(hb_max)
-        add     hl,de
-        ld      (hb_acc),hl
-        ex      de,hl
-        ld      hl,(hb_v)
+        push    af
         or      a
-        sbc     hl,de                   ; v - acc
-        ld      a,(hb_full)
-        jr      nc,hb_draw
+        sbc     hl,de
+        jr      nc,hb_full
+        add     hl,de
         ld      a,PEN_EMPTY
-hb_draw:
+hb_full:
+        push    hl
+        push    de
+        push    bc
         call    hud_cell
         pop     bc
+        pop     de
+        pop     hl
+        pop     af
         djnz    hb_cell
+        ; fall through: το κενό μετά τη μπάρα
+
+; ---------------------------------------------------------------------------
+; hud_space — ένα κενό κελί. hud_cell — ένα συμπαγές κελί στο pen A.
+; hud_char — A = κωδικός: χαρακτήρας 32-127, ή #80 + pen για συμπαγές κελί.
+;
+; Ενας κωδικός ανά κελί, γιατί η ΚΡΥΦΗ ΜΝΗΜΗ (G_hud_shadow, 120 bytes) κρατά
+; αυτόν: «αυτό το κελί έχει ήδη αυτό το περιεχόμενο;». Ηταν το κέρδος του
+; βήματος 19: μια πλήρης επανασχεδίαση HUD κόστιζε 50.918 us και γίνεται κάθε
+; δεκαέξι frames, ενώ οι σειρές 0-2 αλλάζουν τρία-τέσσερα κελιά τη φορά.
+;
+; ΟΙ ΣΕΙΡΕΣ 3-4 ΔΕΝ ΜΠΑΙΝΟΥΝ ΣΤΗΝ ΚΡΥΦΗ ΜΝΗΜΗ: ο πίνακας επιλογής φυλάγεται
+; ήδη πίσω από υπογραφή (§9.3). Εκεί το hud_sp έχει H = 0.
+;
+; Το κενό είναι pen 0: δεκαέξι μηδενικά, ταυτόσημα με το κενό της
+; γραμματοσειράς. Ηταν χύμα γέμισμα ως το βήμα 19, αλλά ένα κενό που ΔΕΝ περνά
+; από την κρυφή μνήμη την αφήνει να λέει ψέματα.
+;
+; Χαλάει AF, BC, DE, HL.
+; ---------------------------------------------------------------------------
+hud_space:
+        xor     a
+hud_cell:
+        or      #80
+hud_char:
+        ld      hl,(hud_sp)
+        inc     h
+        dec     h
+        jr      z,hc_draw               ; σειρά 3-4: πάντα
+        cp      (hl)
+        jr      z,hud_next              ; ήδη εκεί: μόνο προχώρημα
+        ld      (hl),a
+hc_draw:
+        add     a,a                     ; CY = συμπαγές, A = 2 x χαρακτήρας
+        jr      c,hc_solid
+        ld      l,a
+        ld      h,0
+        add     hl,hl
+        add     hl,hl
+        add     hl,hl                   ; 16 x χαρακτήρας
+        ld      de,G_font_gfx - FONT_FIRST * FONT_SIZE
+        add     hl,de
+        ex      de,hl                   ; DE = ο γλύφος
+        ld      hl,(hud_de)
+        ; Η ΓΡΑΜΜΑΤΟΣΕΙΡΑ ΖΕΙ ΣΤΗΝ ΤΡΑΠΕΖΑ 7 από το βήμα 33 (§4.2), στη θέση της
+        ; δέσμευσης «audio» που δεν χρησιμοποιήθηκε ποτέ. Η οθόνη είναι στο
+        ; #C000, έξω από το παράθυρο, οπότε η αντιγραφή βλέπει και τα δύο.
+        ld      bc,GA_PORT + PAGE_B7
+        out     (c),c
+        ld      bc,#0800
+        ; ΤΟ ΤΕΛΟΣ ΤΟΥ ΒΡΟΧΟΥ ΕΙΝΑΙ ΤΟ CARRY. Η σειρά αρχίζει με (y&7)==0, άρα
+        ; H = #C0-#C7· οκτώ φορές +#800 το φτάνουν στο #100-#107, και το carry
+        ; ανάβει ακριβώς στην όγδοη γραμμή. Η οθόνη ΠΡΕΠΕΙ να είναι στο #C000.
+        ; Το L είναι ζυγό (η κάμερα κουμπώνει σε tiles), οπότε το inc l δεν
+        ; ξεχειλίζει ποτέ.
+hc_line:
+        ld      a,(de)
+        inc     de
+        ld      (hl),a
+        inc     l
+        ld      a,(de)
+        inc     de
+        ld      (hl),a
+        dec     l
+        add     hl,bc
+        jr      nc,hc_line
+        ld      bc,(hud_pg)             ; πίσω στην τράπεζα του καλούντος
+        out     (c),c
+        ; fall through
+
+; hud_next — ένα κελί δεξιά, και οι δύο δείκτες. Το `res 3,h` είναι το
+; δαχτυλίδι: η αρχή μιας σειράς HUD έχει τα bits 3-5 του H μηδέν, και το
+; μόνο που ξεχειλίζει είναι το #C7FF -> #C800.
+hud_next:
+        ld      hl,(hud_sp)
+        inc     hl
+        ld      (hud_sp),hl
+        ld      hl,(hud_de)
+        inc     hl
+        inc     hl
+        res     3,h
+        ld      (hud_de),hl
+        ret
+
+; Το byte ενός συμπαγούς pen στο Mode 0 δεν είναι το pen: τα bits του pixel
+; είναι σκορπισμένα (7,3,5,1 για το αριστερό, 6,2,4,0 για το δεξί), οπότε
+; χρειάζεται πίνακας 16 θέσεων (hud_solid).
+hc_solid:
+        rrca                            ; A = pen
+        ld      e,a
+        ld      d,0
+        ld      hl,hud_solid
+        add     hl,de
+        ld      a,(hl)
+        ld      hl,(hud_de)
+        ld      bc,#0800
+hcs_line:
+        ld      (hl),a
+        inc     l
+        ld      (hl),a
+        dec     l
+        add     hl,bc
+        jr      nc,hcs_line             ; το ίδιο carry με το hc_line
+        jr      hud_next
+
+; hud_blank — B στήλες κενές· B = 0, καμία.
+hud_blank:
+        inc     b
+        jr      hbl_t
+hbl_lp: push    bc
+        call    hud_space
+        pop     bc
+hbl_t:  djnz    hbl_lp
         ret
 
 ; ---------------------------------------------------------------------------
-; hud_cell — ένα συμπαγές κελί 4x8 στο pen A.
-;
-; Το byte ενός συμπαγούς pen στο Mode 0 δεν είναι το pen: τα bits του pixel
-; είναι σκορπισμένα (7,3,5,1 για το αριστερό, 6,2,4,0 για το δεξί), οπότε
-; χρειάζεται πίνακας 16 θέσεων.
-; ---------------------------------------------------------------------------
-hud_cell:
-        ld      (hce_pen),a
-        or      #80                     ; κωδικός συμπαγούς: #80 + pen
-        call    hud_seen
-        ld      a,(hce_pen)             ; ΟΧΙ pop af: θα έσβηνε το carry
-        jr      nc,hce_draw
-        ld      b,1
-        jp      hud_adv
-hce_draw:
-        ld      l,a
-        ld      h,0
-        ld      de,hud_solid
-        add     hl,de
-        ld      a,(hl)
-        ld      de,(hud_de)
-        repeat  8
-        ld      (de),a
-        inc     de
-        ld      (de),a
-        dec     de
-        ld      b,a
-        ld      a,d
-        add     a,8
-        ld      d,a
-        ld      a,b
-        rend
-        ld      b,1
-        jp      hud_adv
-
-; ---------------------------------------------------------------------------
-; hud_draw — και οι πέντε σειρές. Ολο το HUD, κάθε φορά.
+; hud_draw — οι σειρές 0-2. Ολες, κάθε φορά· η κρυφή μνήμη κρατά ό,τι δεν
+; άλλαξε έξω από την οθόνη.
 ; ---------------------------------------------------------------------------
 hud_draw:
         ; --- σειρά 0: οι τέσσερις ροές, ως μπάρες ---
         xor     a
         call    hud_go
         ld      hl,txt_o2
-        call    hud_text7
-        ld      hl,(EC_O2PROD)
+        ld      bc,(EC_O2PROD)
         ld      de,(EC_O2USE)
-        call    hud_bar_safe
-        call    hud_space
+        call    hd_flow
         ld      hl,txt_pwr
-        call    hud_text7
-        ld      hl,(EC_PSTORE)
+        ld      bc,(EC_PSTORE)
         ld      de,(EC_PCAP)
-        call    hud_bar_safe
-        call    hud_space
+        call    hd_flow
         ld      hl,txt_h2o
-        call    hud_text7
-        ld      hl,(EC_STOCK + S_WATER*2)
+        ld      bc,(EC_STOCK + S_WATER*2)
         ld      de,EC_CAP
-        call    hud_bar
-        call    hud_space
+        call    hd_flow
         ld      hl,txt_fod
-        call    hud_text7
-        ld      hl,(EC_STOCK + S_FOOD*2)
+        ld      bc,(EC_STOCK + S_FOOD*2)
         ld      de,EC_CAP
-        call    hud_bar
-        call    hud_space
+        call    hd_flow
 
         ; --- σειρά 1: τα αποθέματα, ως αριθμοί ---
         ld      a,1
         call    hud_go
         ld      hl,stock_row
-        ld      (hd_ptr),hl
         ld      b,6
 hd_stock:
         push    bc
-        ld      hl,(hd_ptr)
-        ld      a,(hl)
+        call    hud_text                ; δύο γράμματα· HL -> το 0
         inc     hl
-        ld      a,(hl)                  ; δείκτης αποθέματος
-        add     a,a
-        ld      l,a
-        ld      h,0
-        ld      de,EC_STOCK
-        add     hl,de
+        ld      a,(hl)                  ; ο δείκτης αποθέματος
+        inc     hl
+        push    hl
+        call    ec_stock_ptr            ; DE -> απόθεμα
+        ex      de,hl
         ld      a,(hl)
         inc     hl
         ld      h,(hl)
         ld      l,a
-        ld      (hd_val),hl
-        ld      hl,(hd_ptr)
-        ld      a,(hl)
-        call    hud_char                ; πρώτο γράμμα
-        ld      hl,(hd_ptr)
-        inc     hl
-        inc     hl
-        ld      a,(hl)                  ; δεύτερο γράμμα
-        call    hud_char
-        ld      hl,(hd_val)
         ld      b,3
         call    hud_num
         call    hud_space
-        ld      hl,(hd_ptr)
-        ld      de,4
-        add     hl,de
-        ld      (hd_ptr),hl
+        pop     hl
         pop     bc
         djnz    hd_stock
         ld      b,4
@@ -498,24 +420,18 @@ hd_stock:
         ld      hl,txt_pop
         call    hud_text7
         ld      a,(EC_ALIVE)
-        ld      l,a
-        ld      h,0
         ld      b,2
-        call    hud_num
+        call    hud_numa
         ld      a,'/'
         call    hud_char
         ld      a,(EC_POPCAP)
-        ld      l,a
-        ld      h,0
         ld      b,2
-        call    hud_num
+        call    hud_numa
         ld      hl,txt_sol
         call    hud_text7
         ld      a,(EC_SOL)
-        ld      l,a
-        ld      h,0
         ld      b,3
-        call    hud_num
+        call    hud_numa
         call    hud_space
         ld      a,(EC_DAY)
         or      a
@@ -525,31 +441,13 @@ hd_stock:
 hd_night:
         call    hud_text7
         call    hud_space
-        call    hud_alert
+        ; fall through
 
         ; ΟΙ ΣΕΙΡΕΣ 3-4 ΔΕΝ ΑΓΓΙΖΟΝΤΑΙ ΕΔΩ. Τις κατέχει ο πίνακας επιλογής
         ; (§9.3), που ξέρει μόνος του πότε άλλαξε κάτι. Ως το βήμα 19 το
         ; hud_draw τις έσβηνε και τις ογδόντα σε κάθε κλήση και το ui_panel τις
         ; ξανάγραφε αμέσως μετά — 160 κελιά ανά τικ HUD, περισσότερα από τα 120
         ; που δείχνουν κάτι.
-        ret
-
-; hud_bar_safe — μπάρα όπου το «μέγιστο» είναι η ΚΑΤΑΝΑΛΩΣΗ και μπορεί να
-; είναι μηδέν. Μηδενική κατανάλωση σημαίνει γεμάτη μπάρα, όχι διαίρεση με μηδέν.
-hud_bar_safe:
-        ld      a,d
-        or      e
-        jp      nz,hud_bar
-        ld      de,1
-        ld      hl,1
-        jp      hud_bar
-
-hud_space:
-        ld      b,1
-        jp      hud_blank
-
-hud_spaces:
-        jp      hud_blank
 
 ; hud_alert — 20 χαρακτήρες. Η γραμμή πρέπει να λέει ΤΙ, όχι «προσοχή» (§9.2).
 hud_alert:
@@ -609,18 +507,13 @@ hd_say:
 ; hd_short — A = απόθεμα. CY αν έχει λιγότερο από έναν ζωντανό, δηλαδή
 ;            λιγότερο από μία μερίδα για τον καθένα. Χαλάει AF, BC, DE, HL.
 ;
-; Η αριθμητική είναι γραμμένη εδώ και δεν καλεί το ec_stock_ptr επίτηδες: το
-; hud.asm μπαίνει και στις σκαλωσιές των δοκιμών (tests/objtest.asm) που δεν
-; συμπεριλαμβάνουν οικονομία, και μια κλήση εκεί δεν συνδέεται.
+; Το ec_stock_ptr ζει στο src/stock.asm, που το συμπεριλαμβάνουν από το βήμα
+; 52 και οι σκαλωσιές των δοκιμών χωρίς οικονομία (tests/objtest.asm).
 hd_short:
-        ld      l,a
-        ld      h,0
-        add     hl,hl
-        ld      de,EC_STOCK
-        add     hl,de
-        ld      a,(hl)
+        call    ec_stock_ptr
+        ex      de,hl
+        ld      c,(hl)
         inc     hl
-        ld      c,a
         ld      a,(hl)
         or      a
         ret     nz                      ; πάνω από 255: άφθονο, χωρίς CY
@@ -629,34 +522,26 @@ hd_short:
         cp      (hl)
         ret
 
-; --- κείμενα ---------------------------------------------------------------
+; --- πίνακες ---------------------------------------------------------------
 
 ; δύο γράμματα και ο δείκτης αποθέματος, ανά στήλη της σειράς 1
 stock_row:
-        db      "F", S_METAL,  "E", 0
-        db      "B", S_BIOPL,  "I", 0
-        db      "P", S_PROC,   "R", 0
-        db      "S", S_SPARE,  "P", 0
-        db      "M", S_MEDI,   "E", 0
-        db      "B", S_BOT,    "O", 0
+        db      "FE", 0, S_METAL
+        db      "BI", 0, S_BIOPL
+        db      "PR", 0, S_PROC
+        db      "SP", 0, S_SPARE
+        db      "ME", 0, S_MEDI
+        db      "BO", 0, S_BOT
 
-; Το byte ενός συμπαγούς pen στο Mode 0, ανά pen.
+; Το byte ενός συμπαγούς pen στο Mode 0, ανά pen. Το διαβάζει και το ghost.asm.
 hud_solid:
         db      #00, #C0, #0C, #CC, #30, #F0, #3C, #FC
         db      #03, #C3, #0F, #CF, #33, #F3, #3F, #FF
 
+hn_pow: dw      1, 10, 100, 1000
+
 ; --- μεταβλητές ------------------------------------------------------------
-hce_pen:    db 0
-hud_col:    db 0
-hud_row:    db 0
-hn_n:       db 0
-hn_buf:     defs 6
-hb_val:     dw 0
-hb_max:     dw 0
-hb_v:       dw 0
-hb_acc:     dw 0
-hb_full:    db 0
-hd_ptr:     dw 0
-hd_val:     dw 0
-hud_de:     dw 0
-hud_sp:     dw 0     ; δείκτης μέσα στο G_hud_shadow, 0 = σειρά 3-4
+hud_gen:    db 0
+hud_pg:     dw GA_PORT + PAGE_B1        ; πού γυρίζει ο γλύφος
+hud_de:     dw 0                        ; το επόμενο κελί στην οθόνη
+hud_sp:     dw 0     ; και στο G_hud_shadow· H = 0 στις σειρές 3-4
