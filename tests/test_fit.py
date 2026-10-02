@@ -16,7 +16,13 @@
   ΑΛΛΑΖΕΙ    μηχανή με άλλη: πληρώνεται η νέα, τα μισά της παλιάς πίσω.
   ΟΧΙ        χωρίς υλικά το FIRE δεν αλλάζει τίποτα και το πλαίσιο είναι
              κόκκινο· κατάλυμα (δωμάτιο χωρίς μηχανές) δεν ανοίγει.
-  SPACE      μία επιλογή σε όλες τις υποδοχές, οκτώ αλλαγές μαζί στη λίστα.
+  SPACE      μία επιλογή σε όλες τις υποδοχές, οκτώ αλλαγές μαζί στη λίστα·
+             και με υλικά για τρεις: οι τρεις πρώτες, και ο ήχος της άρνησης.
+  ΔΕΙΧΝΕΙ    σε κάθε υποδοχή η επιλογή στέκεται σε ό,τι έχει ήδη μέσα (fit_pick)
+             — στο θερμοκήπιο, η κλάση του φυτού. ΑΡΝΗΤΙΚΟ: το fit_pick μία
+             θέση μετά. Το βήμα 55 βρήκε ότι κανένας έλεγχος δεν το έπιανε: το
+             pick() εδώ πατά πάνω-κάτω ΑΠΟ όπου κι αν σταθεί η επιλογή, οπότε
+             ένα λάθος fit_pick απλώς έκανε περισσότερα πατήματα.
   ΕΡΓΟΤΑΞΙΟ  θερμοκήπιο εξοπλισμένο ΠΡΙΝ τελειώσει, με καλλιέργειες ανά
              υποδοχή: τίποτα δεν ζωγραφίζεται πάνω στο εργοτάξιο, και τα φυτά
              φαίνονται όταν τελειώσει.
@@ -41,11 +47,13 @@ RM_GREEN, RM_FACTORY = 3, 4              # θέσεις στο rm_list, όχι R
 UI_LOOK, UI_FIT = 0, 5
 NO_MACH = 255
 PEN_NO, PEN_OK = 8, 9
+SFX_DENY, SFX_BUILD, SFX_N = 2, 3, 9      # src/sound.asm
+FT_CLS = 250                             # src/fit.asm: άμυλο, λαχανικά, βότανα, δέντρο
 # fit_cost (src/fit.asm): μέταλλο, βιοπλαστικό ανά μηχανή
 COST = {0: (8, 2), 1: (8, 2), 2: (8, 2), 3: (10, 4), 4: (10, 4), 5: (10, 4),
         6: (6, 2), 7: (8, 2), 8: (8, 2), 9: (8, 2), 10: (4, 2), 11: (4, 2)}
 STOCK = 500                              # κάτω από το ταβάνι 600: η επιστροφή
-                                         # κόβεται εκεί (fit_give)
+                                         # κόβεται εκεί (ec_add_stock)
 check = R.check
 
 
@@ -128,6 +136,46 @@ class Fit:
 
     def rec(self, d):
         return B.dome_rec(self.m, self.sym, d)
+
+    def sounds(self, act, *args):
+        """Οι ήχοι που ΞΕΚΙΝΗΣΑΝ όσο έτρεχε το act(*args). Το snd_play βάζει
+        τον δείκτη ενός καναλιού (sn_st) στο πρώτο βήμα του εφέ, sn_tab[k] + 2,
+        και μετά από ένα πάτημα το εφέ έχει ήδη σβήσει — γι' αυτό κοιτάζεται σε
+        κάθε βήμα του ρολογιού, και μόνο όσο κρατά το act."""
+        m, sym = self.m, self.sym
+        w = lambda a: m.peek(a) | (m.peek(a + 1) << 8)
+        start = {w(sym["SN_TAB"] + 2 * k) + 2: k for k in range(SFX_N)}
+        heard, raw = [], m.run_us
+        last = [w(sym["SN_ST"] + 4 * c) for c in range(3)]
+
+        def run_us(us):
+            raw(us)
+            for c in range(3):
+                a = w(sym["SN_ST"] + 4 * c)
+                if a != last[c]:
+                    last[c] = a
+                    if a in start:
+                        heard.append(start[a])
+        m.run_us = run_us
+        try:
+            act(*args)
+        finally:
+            m.run_us = raw
+        return heard
+
+
+def picks(F, node, slots, code=lambda v: v):
+    """Οι υποδοχές όπου το fit_pick ΔΕΝ στάθηκε σε ό,τι έχουν ήδη μέσα:
+    [(υποδοχή, περιεχόμενο, επιλογή)]. `code` = ο κωδικός της λίστας για ένα
+    περιεχόμενο (στο θερμοκήπιο, η κλάση του φυτού)."""
+    lst, bad = F.lst(), []
+    for s in slots:
+        F.slot(s)                            # κάθε βήμα καλεί το fit_pick
+        have, i = F.rec(node)[8 + s], F.peek("FIT_I")
+        got = lst[i] if i < len(lst) else f"θέση {i}"
+        if got != code(have):
+            bad.append((s, have, got))
+    return bad
 
 
 def truth(G, what, skip=()):
@@ -231,12 +279,15 @@ def factory(sym, g):
 
     # --- ΑΛΛΑΖΕΙ ----------------------------------------------------------
     fe0, bi0 = F.stocks()
-    F.put(0, 4)                              # σίδερο -> ρομπότ
+    F.slot(0)
+    F.pick(4)                                # σίδερο -> ρομπότ
+    heard = F.sounds(F.fire)
     fe1, bi1 = F.stocks()
     rec = F.rec(node)
-    check(rec[8] == 5 and (fe0 - fe1, bi0 - bi1) == (10 - 4, 4 - 1),
+    check(rec[8] == 5 and (fe0 - fe1, bi0 - bi1) == (10 - 4, 4 - 1)
+          and heard == [SFX_BUILD],
           f"σίδερο -> ρομπότ: υποδοχή 0 = {rec[8]}, μέταλλο -{fe0 - fe1}, "
-          f"βιοπλαστικό -{bi0 - bi1} (10/4 μείον τα μισά του 8/2)")
+          f"βιοπλαστικό -{bi0 - bi1} (10/4 μείον τα μισά του 8/2), ήχοι {heard}")
 
     # --- ΟΧΙ ----------------------------------------------------------------
     F.set_stocks(3, STOCK)
@@ -244,12 +295,12 @@ def factory(sym, g):
     F.pick(3)                                # όπλα, 10 μέταλλο
     # Το gh_pen κρατά το byte γεμίσματος, hud_solid[pen] (gh_setpen).
     pen, red = F.peek("GH_PEN"), F.peek("HUD_SOLID", PEN_NO)
-    F.fire()
+    heard = F.sounds(F.fire)
     rec = F.rec(node)
     check(rec[9] == 2 and F.stocks()[0] == 3 and pen == red
-          and red != F.peek("HUD_SOLID", PEN_OK),
+          and red != F.peek("HUD_SOLID", PEN_OK) and heard == [SFX_DENY],
           f"με 3 μέταλλο τα όπλα δεν μπαίνουν: υποδοχή 1 = {rec[9]}, μέταλλο "
-          f"{F.stocks()[0]}, πλαίσιο #{pen:02X} (κόκκινο #{red:02X})")
+          f"{F.stocks()[0]}, πλαίσιο #{pen:02X} (κόκκινο #{red:02X}), ήχοι {heard}")
     F.set_stocks(STOCK, STOCK)
 
     # --- SPACE ----------------------------------------------------------------
@@ -261,6 +312,40 @@ def factory(sym, g):
           f"SPACE: σίδερο σε όλες — {rec[8:16]}, ο κέρσορας έμεινε στην "
           f"υποδοχή {F.peek('FIT_S')}")
     truth(G, "μετά το SPACE")
+
+    # --- SPACE με υλικά για τρεις: από την πρώτη, όσες φτάνουν -------------
+    # 25 μέταλλο, όπλα 10 το ένα και 4 πίσω από κάθε σίδερο: 19, 13, 7, και
+    # η τέταρτη δεν πληρώνεται. Οι άλλες μένουν όπως ήταν, και ο ήχος λέει
+    # «όχι όλες» — ΜΟΝΟ η άρνηση.
+    F.set_stocks(25, STOCK)
+    F.pick(3)
+    heard = F.sounds(F.key, KEY_SPACE)
+    G.run(400_000)
+    rec = F.rec(node)
+    check(rec[8:16] == [3] * 3 + [1] * 5 and F.stocks()[0] == 7
+          and heard == [SFX_DENY],
+          f"SPACE με 25 μέταλλο: {rec[8:16]}, μέταλλο {F.stocks()[0]}, ήχοι "
+          f"{heard} (όπλα στις τρεις πρώτες, 7 μένουν, η άρνηση)")
+    F.set_stocks(STOCK, STOCK)
+
+    # --- ΔΕΙΧΝΕΙ: η επιλογή στέκεται σε ό,τι έχει η υποδοχή ------------------
+    bad = picks(F, node, (3, 2, 7, 0))
+    check(not bad, f"σε κάθε υποδοχή η επιλογή δείχνει ό,τι έχει μέσα"
+                   + (f" — ΟΧΙ: {bad}" if bad else ""))
+    # ΑΡΝΗΤΙΚΟ: το `sub` που κάνει τη διεύθυνση του cpir θέση, ένα λιγότερο —
+    # η επιλογή στέκεται μία θέση μετά.
+    at = next(sym["FIT_PICK"] + k for k in range(64)
+              if F.peek("FIT_PICK", k) == 0xD6
+              and F.peek("FIT_PICK", k + 2) == 0x32
+              and F.peek("FIT_PICK", k + 3) == sym["FIT_I"] & 0xFF
+              and F.peek("FIT_PICK", k + 4) == sym["FIT_I"] >> 8)
+    sub = G.m.peek(at + 1)
+    G.m.poke(at + 1, (sub - 1) & 0xFF)
+    bad = picks(F, node, (3, 2, 7, 0))
+    G.m.poke(at + 1, sub)
+    check(bool(bad), f"ΑΡΝΗΤΙΚΟ: με το fit_pick μία θέση μετά, ο έλεγχος το "
+                     f"πιάνει — {bad or 'ΔΕΝ ΠΙΑΣΤΗΚΕ'}")
+    F.slot(1)
     F.look()
     G.go(on)
 
@@ -294,6 +379,11 @@ def greenhouse(sym, g):
           f"καλλιέργειες ανά υποδοχή: {rec[8:12]} (άμυλο, άμυλο, λαχανικά, "
           f"δέντρο), μέταλλο -{fe0 - F.stocks()[0]}")
     truth(G, "εξοπλισμός πάνω σε εργοτάξιο: τίποτα δεν ζωγραφίστηκε")
+    # Η κλάση από την ποικιλία (rooms.asm): 0-4 άμυλο, 5-9 λαχανικά, 10, 11.
+    cls = lambda v: FT_CLS + (0 if v < 5 else 1 if v < 10 else v - 8)
+    bad = picks(F, node, (3, 2, 0), code=cls)
+    check(not bad, f"και η επιλογή στέκεται στην κλάση του φυτού κάθε υποδοχής"
+                   + (f" — ΟΧΙ: {bad}" if bad else ""))
     F.slot(0)
     F.pick(1)                                # ΜΙΚΤΟ σε όλες
     F.key(KEY_SPACE)

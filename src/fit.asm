@@ -29,6 +29,8 @@ MACH_HP     equ 200                     ; καινούργια μηχανή (ό�
         assert  D_ROOM == D_SIZE + 1 && D_STATE == D_SIZE + 2
         assert  DS_BUILDING == 1 && DS_ACTIVE == 2
         assert  A_UP + 1 == A_DOWN && A_LEFT + 1 == A_RIGHT
+        assert  FT_MIX == FT_CLS + 4 && FT_EMPTY == FT_MIX + 1
+        assert  PEN_NO == PEN_OK ^ 1            ; fit_show: xor με το A του bd_afford
 
 ; ---------------------------------------------------------------------------
 ; fit_enter — από το LOOK: ο θόλος κάτω από τον κέρσορα, αν δέχεται κάτι.
@@ -40,25 +42,46 @@ fit_enter:
         ld      (fit_d),a
         ld      a,D_SIZE
         call    fit_fld
-        ld      a,(hl)
-        ld      (fit_sz),a
+        ld      e,(hl)                  ; E = μέγεθος
         inc     hl
         ld      a,(hl)
         ld      (fit_rm),a
+        ld      d,a                     ; D = δωμάτιο
         inc     hl
         ld      a,(hl)                  ; D_STATE
-        call    uid_out
+        call    uid_out                 ; κρατά το DE, όπως και το ob_addu
         ; ΚΑΙ ΣΤΟ ΕΡΓΟΤΑΞΙΟ, όπως στο Planetbase: οι μηχανές μπαίνουν από τώρα
         ; και φαίνονται όταν τελειώσει ο θόλος (dh_built).
         dec     a                       ; εργοτάξιο 0, χτισμένος 1
         cp      2
         jp      nc,uip_deny
-        ld      a,(fit_sz)
+        ld      a,e
         ld      hl,G_machine_count
         call    ob_addu
         ld      a,(hl)
         ld      (fit_n),a
-        call    fit_list
+        ; --- fit_lst = ΑΔΕΙΟ και ό,τι δέχεται το δωμάτιο σε αυτό το μέγεθος,
+        ; με την κύρια μηχανή πρώτη (rm_build). Το ΑΔΕΙΟ αντιγράφεται μαζί:
+        ; είναι το πρώτο byte του fl_green και το byte πριν από το rm_buf.
+        ld      a,d
+        ld      hl,fl_green
+        ld      c,5
+        cp      R_GREENHS
+        jr      z,fl_copy
+        ld      hl,bd_param             ; το rm_build διαβάζει το μέγεθος από
+        ld      b,(hl)                  ; εκεί, και ο κατάλογος το θέλει πίσω
+        ld      (hl),e
+        call    rm_build                ; κρατά τα BC, DE, HL
+        ld      (hl),b
+        ld      c,a
+        ld      hl,rm_buf - 1
+fl_copy:
+        ld      de,fit_lst
+        inc     c
+        ld      a,c
+        ld      (fit_c),a
+        ld      b,0
+        ldir
         cp      2
         jp      c,uip_deny              ; δωμάτιο χωρίς μηχανές: τίποτα να μπει
         xor     a
@@ -70,40 +93,7 @@ fit_enter:
         ld      a,UI_FIT
         jp      ui_goto
 
-; fit_list — fit_lst = ΑΔΕΙΟ και ό,τι δέχεται το δωμάτιο σε αυτό το μέγεθος,
-; με την κύρια μηχανή πρώτη (rm_build). Out: A = (fit_c) = πόσα.
-fit_list:
-        ld      hl,fit_lst
-        ld      (hl),FT_EMPTY
-        inc     hl
-        ex      de,hl                   ; DE -> fit_lst + 1
-        ld      a,(fit_rm)
-        ld      hl,fl_green
-        ld      c,5
-        cp      R_GREENHS
-        jr      z,fl_copy
-        ld      hl,bd_param             ; το rm_build διαβάζει το μέγεθος από
-        ld      b,(hl)                  ; εκεί, και ο κατάλογος το θέλει πίσω
-        ld      c,a
-        ld      a,(fit_sz)
-        ld      (hl),a
-        ld      a,c
-        call    rm_build                ; κρατά τα BC, DE, HL
-        ld      (hl),b
-        ld      c,a
-        ld      hl,rm_buf
-fl_copy:
-        ld      a,c
-        inc     a
-        ld      (fit_c),a
-        ld      b,0
-        inc     c
-        dec     c
-        ret     z
-        ldir
-        ret
-
-fl_green:   db FT_MIX, FT_CLS, FT_CLS+1, FT_CLS+2, FT_CLS+3
+fl_green:   db FT_EMPTY, FT_MIX, FT_CLS, FT_CLS+1, FT_CLS+2, FT_CLS+3
 
 ; ---------------------------------------------------------------------------
 ; uist_fit — ένα καρέ εισόδου στον εξοπλισμό.
@@ -115,27 +105,22 @@ uist_fit:
         xor     a                       ; UI_LOOK
         jp      ui_goto
 uf_lr:
-        ld      hl,fit_s
-        ld      a,(fit_n)
-        ld      c,a
+        ld      hl,fit_n
+        ld      c,(hl)
+        inc     hl                      ; fit_s
         call    ui_lr
         jr      z,uf_ud
         call    fit_pick                ; δείξε ό,τι έχει η νέα υποδοχή
         jr      uf_click
 uf_ud:
-        ld      hl,fit_i
-        ld      a,(fit_c)
-        ld      c,a
+        ld      hl,fit_c
+        ld      c,(hl)
+        dec     hl                      ; fit_i
         call    ui_ud
         jr      z,uf_fire
 uf_click:
-        call    ui_click
-uf_redo:
-        ; Η ΥΠΟΓΡΑΦΗ ΤΟΥ ΠΙΝΑΚΑ (ui_sig) δεν ξέρει τίποτα από υποδοχές και
-        ; επιλογές — μόνο το ui_state, που εδώ δεν αλλάζει.
-        call    ui_dirty
-        call    ui_hide                 ; το πλαίσιο αλλάζει θέση ή χρώμα
-        jp      ui_show
+        ld      a,SFX_MENU
+        jr      uf_snd
 uf_fire:
         ld      a,A_FIRE
         call    in_hit
@@ -148,10 +133,9 @@ uf_all:
         ret     z
         ; ΟΛΕΣ ΟΙ ΥΠΟΔΟΧΕΣ, από την πρώτη. Οσες δεν πληρώνονται μένουν όπως
         ; ήταν, και ο ήχος της άρνησης λέει «όχι όλες».
-        ld      a,(fit_s)
-        push    af
-        ld      a,(fit_n)
-        ld      b,a
+        ld      hl,(fit_n)              ; L = fit_n, H = fit_s (ο κέρσορας)
+        push    hl
+        ld      b,l
         ld      c,0                     ; πόσες δεν πληρώθηκαν
 ufa_lp:
         push    bc
@@ -164,17 +148,21 @@ ufa_lp:
         inc     c
 ufa_ok:
         djnz    ufa_lp
-        pop     af
-        ld      (fit_s),a
+        pop     hl
+        ld      (fit_n),hl
         ld      a,c
         or      a
 uf_paid:
         ld      a,SFX_BUILD
         jr      z,uf_snd
-        ld      a,SFX_DENY              ; δεν φτάνουν τα υλικά
+        dec     a                       ; SFX_DENY: δεν φτάνουν τα υλικά
 uf_snd:
         call    snd_play
-        jr      uf_redo
+        ; Η ΥΠΟΓΡΑΦΗ ΤΟΥ ΠΙΝΑΚΑ (ui_sig) δεν ξέρει τίποτα από υποδοχές και
+        ; επιλογές — μόνο το ui_state, που εδώ δεν αλλάζει.
+        call    ui_dirty
+        call    ui_hide                 ; το πλαίσιο αλλάζει θέση ή χρώμα
+        jp      ui_show
 
 ; ---------------------------------------------------------------------------
 ; fit_set — η υποδοχή fit_s παίρνει το fit_lst[fit_i].
@@ -185,65 +173,70 @@ uf_snd:
 ; άλλη πράξη από το χτίσιμο.
 ; ---------------------------------------------------------------------------
 fit_set:
-        call    fit_new
-        ld      (fit_nw),a
-        call    fit_slot
-        ld      a,(hl)
-        call    uid_out
-        ld      (fit_old),a
-        ld      hl,fit_nw
-        cp      (hl)
+        call    fit_want
         ret     z                       ; ίδιο: τίποτα να γίνει
-        ld      a,(hl)
-        call    fit_price
-        call    bd_afford
+        call    bd_afford               ; κρατά το BC, όπως και το bd_stock_pay
         ret     nz
         call    bd_stock_pay
-        ld      a,(fit_old)             ; ΤΑ ΜΙΣΑ ΠΙΣΩ για ό,τι βγήκε
-        call    fit_price
-        ld      hl,(bd_metal)           ; L = μέταλλο, H = βιοπλαστικό
-        srl     l
-        srl     h
-        push    hl
-        ld      e,l
-        ld      d,0
-        ld      a,S_METAL
-        call    ec_add_stock            ; με ταβάνι (src/stock.asm)
-        pop     de
-        ld      e,d
-        ld      d,0
-        ld      a,S_BIOPL
-        call    ec_add_stock
+        push    bc                      ; B = το παλιό, για τα μισά πίσω
         ; --- η υποδοχή ---
         call    fit_slot
-        ld      a,(fit_nw)
-        ld      (hl),a
+        pop     bc
+        push    bc
+        ld      (hl),c
         ld      de,D_HEALTH - D_MACH
         add     hl,de
-        ld      (hl),0                  ; άδεια υποδοχή: καμία υγεία
-        inc     a
-        jr      z,fs_hp
-        ld      (hl),MACH_HP
-fs_hp:
+        ld      a,c
+        cp      NO_MACH
+        sbc     a,a                     ; FF μηχανή, 0 άδεια υποδοχή
+        and     MACH_HP
+        ld      (hl),a
         ld      a,D_STATE
         call    fit_fld
         ld      a,(hl)
         call    uid_out
         cp      DS_ACTIVE
-        jr      nz,fs_out               ; εργοτάξιο: τις ζωγραφίζει το dh_built
-        ld      a,(fit_d)
-        ld      b,a
-        ld      a,(fit_s)
-        ld      c,a
+        jr      nz,fs_give              ; εργοτάξιο: τις ζωγραφίζει το dh_built
+        ld      bc,(fit_s)              ; C = υποδοχή, B = θόλος
         ld      a,DK_MACH
         call    dirty_push
-fs_out:
+fs_give:
+        pop     af                      ; ΤΑ ΜΙΣΑ ΠΙΣΩ για ό,τι βγήκε
+        call    fit_price
+        ld      hl,(bd_metal)           ; L = μέταλλο, H = βιοπλαστικό
+        push    hl
+        ld      e,l
+        ld      a,S_METAL
+        call    fs_half
+        pop     de
+        ld      e,d
+        ld      a,S_BIOPL
+fs_half:
+        srl     e
+        ld      d,0
+        call    ec_add_stock            ; με ταβάνι (src/stock.asm)
         xor     a                       ; Z
+        ret
+
+; fit_want — ό,τι θα έμπαινε στην υποδοχή fit_s (fit_new), και η τιμή του στο
+; bd_metal, bd_biop (fit_price), που τη δείχνει και ο πίνακας.
+; Out: C = το νέο, B = ό,τι έχει τώρα η υποδοχή, Z = ίδια.
+fit_want:
+        call    fit_new
+        push    af
+        call    fit_price
+        call    fit_slot
+        ld      a,(hl)
+        call    uid_out
+        pop     bc
+        ld      c,b
+        ld      b,a
+        cp      c
         ret
 
 ; fit_price — A = περιεχόμενο υποδοχής -> bd_metal, bd_biop: η τιμή του.
 ; Ετσι το bd_afford, το bd_stock_pay και ο πίνακας (uip_item) δουλεύουν
-; όπως για ό,τι άλλο χτίζεται.
+; όπως για ό,τι άλλο χτίζεται. Χαλάει C, DE, HL.
 fit_price:
         ld      hl,0
         cp      NO_MACH
@@ -254,36 +247,48 @@ fit_price:
         ld      hl,PLANT_FE
         jr      z,fpr_st
         ld      a,c
-        add     a,a
         ld      hl,fit_cost
         call    ob_addu
         ld      a,(hl)
-        inc     hl
-        ld      h,(hl)
-        ld      l,a
+        and     FC_BI - 1
+        ld      e,a                     ; E = μέταλλο
+        xor     (hl)
+        rlca
+        rlca
+        rlca
+        ld      d,a                     ; D = βιοπλαστικό
+        ex      de,hl
 fpr_st:
         ld      (bd_metal),hl           ; bd_metal, bd_biop διπλανά
         ret
 
 ; Μέταλλο, βιοπλαστικό ανά μηχανή, με τη σειρά του MACH_TYPES. Οι τρεις
 ; ακριβές είναι οι τρεις που βγάζουν προϊόν για εμπόριο ή άμυνα· τα έπιπλα
-; του ιατρείου είναι έπιπλα.
+; του ιατρείου είναι έπιπλα. ΕΝΑ BYTE η μηχανή, μέταλλο + 32 x βιοπλαστικό:
+; το μέταλλο ως 31, το βιοπλαστικό ως 7 (το test_fit ελέγχει τις τιμές).
+FC_BI       equ 32
 fit_cost:
-        db  8, 2                        ; οξυγόνο
-        db  8, 2                        ; μέταλλο
-        db  8, 2                        ; βιοπλαστικό
-        db 10, 4                        ; όπλα
-        db 10, 4                        ; επεξεργαστές
-        db 10, 4                        ; ρομπότ
-        db  6, 2                        ; γεύματα
-        db  8, 2                        ; ανταλλακτικά
-        db  8, 2                        ; φάρμακα
-        db  8, 2                        ; κρέας εργαστηρίου
-        db  4, 2                        ; κρεβάτια
-        db  4, 2                        ; ντουλάπι φαρμάκων
+        db  8 + 2*FC_BI                 ; οξυγόνο
+        db  8 + 2*FC_BI                 ; μέταλλο
+        db  8 + 2*FC_BI                 ; βιοπλαστικό
+        db 10 + 4*FC_BI                 ; όπλα
+        db 10 + 4*FC_BI                 ; επεξεργαστές
+        db 10 + 4*FC_BI                 ; ρομπότ
+        db  6 + 2*FC_BI                 ; γεύματα
+        db  8 + 2*FC_BI                 ; ανταλλακτικά
+        db  8 + 2*FC_BI                 ; φάρμακα
+        db  8 + 2*FC_BI                 ; κρέας εργαστηρίου
+        db  4 + 2*FC_BI                 ; κρεβάτια
+        db  4 + 2*FC_BI                 ; ντουλάπι φαρμάκων
 
 ; fit_new — A = ό,τι γράφεται στην υποδοχή fit_s για το fit_lst[fit_i]: η
-; μηχανή, η ποικιλία του φυτού, ή NO_MACH.
+; μηχανή, η ποικιλία του φυτού, ή NO_MACH. Χαλάει BC, HL.
+;
+; Η ΠΟΙΚΙΛΙΑ: η πρώτη της κλάσης, και στο άμυλο και στα λαχανικά, που έχουν
+; από πέντε, συν την υποδοχή mod 5 — ώστε ένα χωράφι με άμυλο να μην είναι
+; οκτώ φορές το ίδιο sprite. Η πρώτη κάθε κλάσης είναι τα τέσσερα πρώτα του
+; rm_plants, που ξεκινά την εναλλαγή του από εκεί. Το ΜΙΚΤΟ: το rm_plants
+; στη θέση της υποδοχής, η παλιά αυτόματη μίξη.
 fit_new:
         ld      a,(fit_i)
         call    fit_code
@@ -291,34 +296,27 @@ fit_new:
         ret     c                       ; μηχανή: ο ίδιος ο αριθμός της
         cp      FT_EMPTY
         ret     z
-        ld      c,a
+        sub     FT_CLS
+        ld      c,a                     ; C = κλάση 0-3, ή 4 το ΜΙΚΤΟ
         ld      a,(fit_s)
-        ld      hl,rm_plants            ; ΜΙΚΤΟ: η παλιά μίξη, ανά υποδοχή
         ld      b,a
+        bit     2,c
+        jr      nz,fn_at                ; ΜΙΚΤΟ: η θέση στο rm_plants = υποδοχή
+        ld      a,c
+fn_at:
+        ld      hl,rm_plants
         call    ob_addu
         ld      a,c
-        cp      FT_MIX
-        ld      a,(hl)
-        ret     z
-        ld      a,c
-        sub     FT_CLS                  ; 0 άμυλο, 1 λαχανικά, 2 βότανα, 3 δέντρο
-        ld      e,a
-        ld      hl,fw_base
-        call    ob_addu
-        ld      a,e
-        cp      2
-        ld      a,(hl)
-        ret     nc                      ; βότανα, δέντρο: μία ποικιλία το καθένα
-        ld      c,a                     ; άμυλο, λαχανικά: πέντε, ανά υποδοχή
+        and     6                       ; βότανα, δέντρο, ΜΙΚΤΟ: συν τίποτα
+        ld      a,0
+        jr      nz,fn_add
         ld      a,b
         cp      5
-        jr      c,fw_add
+        jr      c,fn_add
         sub     5
-fw_add:
-        add     a,c
+fn_add:
+        add     a,(hl)
         ret
-
-fw_base:    db 0, 5, 10, 11             ; η πρώτη ποικιλία κάθε κλάσης (plant_class)
 
 ; fit_code — A = θέση στη λίστα -> A = ο κωδικός της (fit_lst[A]).
 fit_code:
@@ -345,21 +343,15 @@ fit_pick:
         ld      a,(hl)
         add     a,FT_CLS
 fp_find:
-        ld      c,a
+        ld      hl,fit_c
+        ld      c,(hl)
         ld      b,0
-fp_lp:
-        ld      a,b
-        call    fit_code
-        cp      c
-        jr      z,fp_hit
-        inc     b
-        ld      a,(fit_c)
-        cp      b
-        jr      nz,fp_lp
-        ret                             ; δεν είναι στη λίστα (δεν θα έπρεπε)
-fp_hit:
-        ld      a,b
-        ld      (fit_i),a
+        inc     hl                      ; fit_lst
+        cpir
+        ret     nz                      ; δεν είναι στη λίστα (δεν θα έπρεπε)
+        ld      a,l                     ; το L του fit_lst + θέση + 1, και η
+        sub     (fit_lst + 1) & 255     ; διαφορά των L είναι σωστή και αν
+        ld      (fit_i),a               ; η λίστα περνά όριο σελίδας
         ret
 
 ; fit_slot — HL -> η υποδοχή fit_s του fit_d, με την τράπεζα 6 μέσα.
@@ -399,22 +391,11 @@ fit_show:
         ld      (gh_by),hl
         ld      hl,(MACH_H + 4)*256 + MACH_W + 2
         ld      (gh_bw),hl              ; gh_bw, gh_bh διπλανά
-        call    fit_new
-        ld      c,a
-        push    bc
-        call    fit_price               ; και για τον πίνακα: uip_item, ui_sig
-        pop     bc
-        ld      a,(fit_s)
-        ld      hl,d_rec + D_MACH
-        call    ob_addu
-        ld      a,(hl)
-        cp      c
+        call    fit_want                ; και η τιμή, για τον πίνακα
         ld      a,PEN_CUR
-        jr      z,fsh_pen
-        call    bd_afford
-        ld      a,PEN_OK
-        jr      z,fsh_pen
-        ld      a,PEN_NO
+        jr      z,fsh_pen               ; ήδη μέσα
+        call    bd_afford               ; A = 0 πληρώνεται, 1 όχι
+        xor     PEN_OK
 fsh_pen:
         call    gh_setpen
         call    gh_box
@@ -455,17 +436,17 @@ fit_row4:
         call    hud_blank
         ld      hl,t_f_keys
         call    hud_text7
-        ld      b,40 - 39
-        call    hud_blank
+        call    hud_space               ; 39 στήλες ως εδώ, η 40ή κενή
         jp      uip_spd
 
-fit_d:      db 0                        ; ο θόλος
-fit_s:      db 0                        ; η υποδοχή
+fit_rm:     db 0
 fit_n:      db 0                        ; πόσες υποδοχές έχει
+fit_s:      db 0                        ; η υποδοχή
+fit_d:      db 0                        ; ο θόλος
 fit_i:      db 0                        ; η επιλογή, θέση στο fit_lst
 fit_c:      db 0                        ; πόσες επιλογές
-fit_rm:     db 0
-fit_sz:     db 0
-fit_nw:     db 0
-fit_old:    db 0
 fit_lst:    defs FIT_MAX
+        ; ld hl,(fit_n) / ld bc,(fit_s) / ld hl,fit_n: ld c,(hl): inc hl ·
+        ; ld hl,fit_c: ld c,(hl): dec hl για το fit_i, inc hl για το fit_lst
+        assert  fit_s == fit_n + 1 && fit_d == fit_s + 1
+        assert  fit_c == fit_i + 1 && fit_lst == fit_c + 1
