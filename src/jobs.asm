@@ -24,6 +24,12 @@ JOB_ASSIGN  equ 4
 JOB_LOOK    equ 32                  ; πράκτορες που εξετάζονται ανά επίσκεψη
 F_WORKING   equ 32
 
+        assert  D_INTEG == D_STATE + 1 && D_OPS == D_STATE + 3
+        assert  D_ROOM == D_MACH - 5 && D_HEALTH == D_MACH + 8
+        assert  (MAX_DOME & (MAX_DOME - 1)) == 0    ; and αντί για σύγκριση
+        assert  (G_machine_count & 255) <= 256 - 3
+        assert  (G_mach_op & 255) <= 256 - 12
+
 jobs_tick:
         call    jb_reap
         call    jb_arrive
@@ -45,9 +51,9 @@ jr_lp:
         inc     hl
         inc     hl
         ld      a,(hl)                  ; ο πράκτορας
-        cp      255
-        jr      z,jr_pop
         ld      e,a
+        inc     a
+        jr      z,jr_pop                ; αδιάθετη
         ld      d,AG_PG                 ; flags
         ld      a,(de)
         and     F_ALIVE
@@ -55,9 +61,7 @@ jr_lp:
         set     7,e                     ; το task είναι στο ΠΑΝΩ μισό
         ld      d,AG_PG + 3
         ld      a,(de)
-        ld      e,a
-        ld      a,c
-        cp      e
+        cp      c
         jr      z,jr_pop
 jr_free:
         ld      (hl),255
@@ -72,6 +76,10 @@ jr_next:
 
 ; ---------------------------------------------------------------------------
 ; 2. όποιος έφτασε, πιάνει δουλειά
+;
+; Η εγγραφή της εργασίας μένει στη στοίβα όλο τον γύρο. Οι τρεις τρόποι να
+; τελειώσει — χειριστής, επισκευή, κατασκευή — καταλήγουν στο ίδιο ja_done·
+; ως το βήμα 46 ήταν τρία αντίγραφα του.
 ; ---------------------------------------------------------------------------
 jb_arrive:
         ld      hl,G_job_tbl
@@ -81,156 +89,38 @@ ja_lp:
         push    hl
         ld      a,(hl)
         cp      NO_JOB
-        jp      z,ja_next
+        jr      z,ja_next
         inc     hl
         ld      c,(hl)                  ; C = κόμβος
         inc     hl
         ld      a,(hl)                  ; ο πράκτορας
-        cp      255
-        jp      z,ja_next
         ld      e,a
+        inc     a
+        jr      z,ja_next               ; αδιάθετη
+        ld      a,e
         ld      (jb_ag),a
         ld      d,AG_PG + 1             ; node
         ld      a,(de)
         cp      c
-        jp      nz,ja_next              ; δεν έφτασε ακόμη
-        ld      d,AG_PG + 2
-        ld      a,e
-        add     a,128                   ; edge στο πάνω μισό
-        ld      e,a
+        jr      nz,ja_next              ; δεν έφτασε ακόμη
+        set     7,e
+        inc     d                       ; AG_PG + 2: το edge, στο πάνω μισό
         ld      a,(de)
-        cp      255
-        jp      nz,ja_next              ; ακόμη στον σωλήνα
-
-        ; --- κατασκευή; τότε ο πράκτορας δουλεύει και μένει ---
+        inc     a
+        jr      nz,ja_next              ; ακόμη στον σωλήνα
         pop     hl
         push    hl
         ld      a,(hl)
         cp      J_BUILD
-        jp      z,ja_build
-        ; --- επισκευή; τότε ο μηχανικός φτάνει, αλλάζει το εξάρτημα, φεύγει ---
+        jr      z,ja_build              ; ο πράκτορας δουλεύει και μένει
         cp      J_REPAIR
-        jp      nz,ja_operate
-        ld      a,c
-        ld      (jb_d),a
-        call    jb_broken
-        cp      255
-        jr      z,ja_fail
-        ld      (jb_slot),a
-        ld      a,S_SPARE               ; χρειάζεται ένα ανταλλακτικό
-        ld      c,1
-        call    ec_have
-        jr      c,ja_fail
-        ld      a,c
-        call    ec_sub                  ; src/econ.asm
-        ld      a,(jb_d)
-        call    jb_dome_ptr
-        ld      de,D_HEALTH
-        add     hl,de
-        ld      a,(jb_slot)
-        ld      e,a
-        ld      d,0
-        add     hl,de
-        ld      (hl),200                ; ξαναδουλεύει
-        call    ja_cleartask
-        pop     hl
-        push    hl
-        ld      (hl),NO_JOB
-        jp      ja_next
-ja_fail:
-        ; τζάμπα δρόμος: η εργασία μένει ανοιχτή για τον επόμενο
-        call    ja_cleartask
-        pop     hl
-        push    hl
-        inc     hl
-        inc     hl
-        ld      (hl),255
-        jp      ja_next
-; ---------------------------------------------------------------------------
-; ja_build — ο πράκτορας δουλεύει στο εργοτάξιο (§6.9 βήμα 3). C = ο κόμβος.
-;
-; Η ΠΡΟΟΔΟΣ ΕΙΝΑΙ Η ΑΚΕΡΑΙΟΤΗΤΑ. Το §6.9 λέει «η πρόοδος είναι ένα byte» και η
-; εγγραφή έχει ήδη ένα: το bd_commit γράφει ακεραιότητα 0, και η κατασκευή την
-; ανεβάζει ως το 255 — οπότε ένα μισοχτισμένο κτίριο είναι το ίδιο πράγμα με
-; ένα μισοκατεστραμμένο, που είναι σωστό και γλιτώνει ένα byte ανά κόμβο.
-;
-; Το D_STATE και το D_INTEG είναι στα ίδια offsets με το ST_STATE και το
-; ST_INTEG, οπότε θόλος και δομή περνούν από τον ίδιο κώδικα.
-BUILD_STEP  equ 32                  ; οκτώ επισκέψεις = ~2,6 δευτερόλεπτα
-
-ja_build:
-        ld      a,c
-        cp      MAX_DOME
-        jr      c,jab_dome
-        sub     MAX_DOME
-        ld      l,a
-        ld      h,0
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl                   ; *STRUCT_REC
-        ld      de,G_struct_tbl
-        add     hl,de
-        jr      jab_rec
-jab_dome:
-        call    jb_dome_ptr
-jab_rec:
-        push    hl
-        ld      de,D_INTEG
-        add     hl,de
-        ld      a,(hl)
-        add     a,BUILD_STEP
-        jr      nc,jab_st
-        ld      a,255
-jab_st:
-        ld      (hl),a
-        pop     hl
-        cp      255
-        jp      nz,ja_next              ; ακόμη χτίζεται· η εργασία μένει
-        ld      de,D_STATE
-        add     hl,de
-        ld      (hl),DS_ACTIVE
-        ; ΤΟ ΚΤΙΡΙΟ ΠΡΕΠΕΙ ΝΑ ΦΑΝΕΙ — και η σκηνή μαθαίνει ΠΟΙΟ. Ως το βήμα 34
-        ; ήταν μια σημαία, και ο βρόχος ξαναζωγράφιζε ολόκληρο το κάδρο γιατί
-        ; δεν ήξερε τι άλλαξε: 0,36-0,92 s παγωμένη οθόνη ανά κτίριο (§6.9).
-        ld      b,c
-        ld      a,DK_BUILT
-        call    wh_push
-        ld      a,1
-        ; ΚΑΙ ΤΟ ΙΣΟΖΥΓΙΟ ΞΑΝΑΜΕΤΡΑΕΙ ΑΜΕΣΩΣ. Ο κύκλος ροής είναι 64
-        ; περιστροφές (~20 δευτερόλεπτα): χωρίς αυτό, το πρώτο ηλιακό πάνελ
-        ; του παίκτη έβγαζε ρεύμα και το HUD συνέχιζε να γράφει NO POWER ως
-        ; να έρθει η σειρά του κύκλου. Οτι αλλάζει την αποικία, ξαναμετριέται.
-        ld      (ec_fdiv),a
-        call    ja_cleartask
-        pop     hl
-        push    hl
-        ld      (hl),NO_JOB
-        jp      ja_next
-
-ja_cleartask:
-        ld      a,(jb_ag)
-        ld      e,a
-        set     7,e
-        ld      d,AG_PG + 3
-        ld      a,NO_TASK
-        ld      (de),a
-        ret
-
-ja_operate:
+        jr      z,ja_repair             ; φτάνει, αλλάζει το εξάρτημα, φεύγει
         ; --- ο θόλος αποκτά χειριστή ---
         ld      a,c
         cp      MAX_DOME
         jr      nc,ja_flags             ; δομή, όχι θόλος: δεν έχει ops
-        ld      h,0
-        ld      l,a
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl
-        ld      d,h
-        ld      e,l
-        add     hl,hl
-        add     hl,de                   ; *24
-        ld      de,G_dome_tbl + D_OPS
+        call    jb_dome_ptr
+        ld      de,D_OPS
         add     hl,de
         inc     (hl)
 ja_flags:
@@ -240,22 +130,96 @@ ja_flags:
         ld      a,(de)
         or      F_WORKING
         ld      (de),a
-        ld      a,(jb_ag)
-        ld      e,a
-        set     7,e                     ; το task, όχι το progress
-        ld      d,AG_PG + 3
-        ld      a,NO_TASK
-        ld      (de),a
+ja_done:                                ; η εργασία τελείωσε
+        call    ja_cleartask
         pop     hl
         push    hl
-        ld      (hl),NO_JOB             ; η εργασία τελείωσε
+        ld      (hl),NO_JOB
 ja_next:
         pop     hl
         ld      de,JOB_REC
         add     hl,de
         pop     bc
-        dec     b
-        jp      nz,ja_lp
+        djnz    ja_lp
+        ret
+
+; --- επισκευή: C = ο θόλος ---
+; Το jb_broken αφήνει τον IX πάνω στην υποδοχή που βρήκε, και η υγεία είναι
+; οκτώ bytes πιο κάτω· ως το βήμα 46 η υποδοχή περνούσε από μεταβλητή και η
+; διεύθυνση ξαναφτιαχνόταν από την αρχή.
+ja_repair:
+        ld      a,c
+        ld      (jb_d),a
+        call    jb_broken
+        inc     a
+        jr      z,ja_fail
+        ld      a,S_SPARE               ; χρειάζεται ένα ανταλλακτικό
+        ld      c,1
+        call    ec_have
+        jr      c,ja_fail
+        ld      a,c
+        call    ec_sub                  ; src/econ.asm
+        ld      (ix+D_HEALTH-D_MACH),200 ; ξαναδουλεύει
+        jr      ja_done
+ja_fail:
+        ; τζάμπα δρόμος: η εργασία μένει ανοιχτή για τον επόμενο
+        call    ja_cleartask
+        pop     hl
+        push    hl
+        inc     hl
+        inc     hl
+        ld      (hl),255
+        jr      ja_next
+
+; ---------------------------------------------------------------------------
+; ja_build — ο πράκτορας δουλεύει στο εργοτάξιο (§6.9 βήμα 3). C = ο κόμβος.
+;
+; Η ΠΡΟΟΔΟΣ ΕΙΝΑΙ Η ΑΚΕΡΑΙΟΤΗΤΑ. Το §6.9 λέει «η πρόοδος είναι ένα byte» και η
+; εγγραφή έχει ήδη ένα: το bd_commit γράφει ακεραιότητα 0, και η κατασκευή την
+; ανεβάζει ως το 255 — οπότε ένα μισοχτισμένο κτίριο είναι το ίδιο πράγμα με
+; ένα μισοκατεστραμμένο, που είναι σωστό και γλιτώνει ένα byte ανά κόμβο.
+;
+; Το D_STATE και το D_INTEG είναι στα ίδια offsets με το ST_STATE και το
+; ST_INTEG, οπότε θόλος και δομή περνούν από τον ίδιο κώδικα — και από το
+; ίδιο mt_rec του μετεωρίτη για την εγγραφή.
+BUILD_STEP  equ 32                  ; οκτώ επισκέψεις = ~2,6 δευτερόλεπτα
+
+ja_build:
+        ld      a,c
+        call    mt_rec                  ; HL = εγγραφή (src/meteor.asm)
+        ld      de,D_INTEG
+        add     hl,de
+        ld      a,(hl)
+        add     a,BUILD_STEP
+        jr      nc,jab_st
+        ld      a,255
+jab_st:
+        ld      (hl),a
+        inc     a
+        jr      nz,ja_next              ; ακόμη χτίζεται· η εργασία μένει
+        dec     hl                      ; D_STATE
+        ld      (hl),DS_ACTIVE
+        ; ΤΟ ΚΤΙΡΙΟ ΠΡΕΠΕΙ ΝΑ ΦΑΝΕΙ — και η σκηνή μαθαίνει ΠΟΙΟ. Ως το βήμα 34
+        ; ήταν μια σημαία, και ο βρόχος ξαναζωγράφιζε ολόκληρο το κάδρο γιατί
+        ; δεν ήξερε τι άλλαξε: 0,36-0,92 s παγωμένη οθόνη ανά κτίριο (§6.9).
+        ld      b,c
+        ld      a,DK_BUILT
+        call    wh_push
+        ; ΚΑΙ ΤΟ ΙΣΟΖΥΓΙΟ ΞΑΝΑΜΕΤΡΑΕΙ ΑΜΕΣΩΣ. Ο κύκλος ροής είναι 64
+        ; περιστροφές (~20 δευτερόλεπτα): χωρίς αυτό, το πρώτο ηλιακό πάνελ
+        ; του παίκτη έβγαζε ρεύμα και το HUD συνέχιζε να γράφει NO POWER ως
+        ; να έρθει η σειρά του κύκλου. Οτι αλλάζει την αποικία, ξαναμετριέται.
+        ld      a,1
+        ld      (ec_fdiv),a
+        jr      ja_done
+
+ja_cleartask:
+        ld      a,(jb_ag)
+        ld      e,a
+        set     7,e
+        ld      d,AG_PG + 3
+        ld      a,NO_TASK
+        ld      (de),a
         ret
 
 ; ---------------------------------------------------------------------------
@@ -268,10 +232,7 @@ jp_lp:
         ld      a,(EC_JDOME)
         ld      (jb_d),a
         inc     a
-        cp      MAX_DOME
-        jr      c,jp_st
-        xor     a
-jp_st:
+        and     MAX_DOME - 1
         ld      (EC_JDOME),a
         call    jp_one
         pop     bc
@@ -284,70 +245,62 @@ jp_one:
         ld      a,J_REPAIR
         ld      (jb_kind2),a
         call    jb_broken
-        cp      255
+        inc     a
         jr      nz,jp_have
         ld      a,J_OPERATE
         ld      (jb_kind2),a
-        call    jb_need
-        ld      (jb_want),a
+        call    jb_need                 ; HL -> D_STATE του θόλου
         or      a
         ret     z
-        ld      a,(jb_d)
-        call    jb_dome_ptr
-        ld      de,D_OPS
-        add     hl,de
-        ld      a,(hl)
-        ld      hl,jb_want
+        dec     a
+        inc     hl
+        inc     hl
+        inc     hl                      ; D_OPS
         cp      (hl)
-        ret     nc                      ; έχει ήδη αρκετούς
+        ret     c                       ; έχει ήδη αρκετούς: θέλει <= έχει
 jp_have:
 
         ; ΕΝΑ πέρασμα: βρίσκει και το διπλότυπο και την πρώτη ελεύθερη θέση.
         ; Δύο ξεχωριστές σαρώσεις των 32 ήταν η μισή δουλειά της δημοσίευσης.
-        ld      hl,G_job_tbl
-        ld      b,MAX_JOB
+        ; Η ελεύθερη στο DE, όχι σε μεταβλητή με push / pop σε κάθε εγγραφή.
         ld      a,(jb_d)
         ld      c,a
-        ld      de,0
-        ld      (jp_slot),de            ; 0 = δεν βρέθηκε ελεύθερη
+        ld      hl,G_job_tbl
+        ld      b,MAX_JOB
+        ld      de,0                    ; 0 = δεν βρέθηκε ελεύθερη
 jp_dup:
         ld      a,(hl)
         cp      NO_JOB
-        jr      nz,jp_used
-        push    hl
-        ld      hl,(jp_slot)
-        ld      a,h
-        or      l
-        pop     hl
-        jr      nz,jp_dup_n             ; έχουμε ήδη μία ελεύθερη
-        ld      (jp_slot),hl
-        jr      jp_dup_n
-jp_used:
-        push    hl
-        ld      hl,jb_kind2
+        jr      z,jp_free
+        ld      a,(jb_kind2)
         cp      (hl)
-        pop     hl
         jr      nz,jp_dup_n
         inc     hl
         ld      a,(hl)
         dec     hl
         cp      c
         ret     z                       ; υπάρχει ήδη — δεν ξαναδημοσιεύουμε
+        jr      jp_dup_n
+jp_free:
+        ld      a,d
+        or      e
+        jr      nz,jp_dup_n             ; έχουμε ήδη μία ελεύθερη
+        ld      d,h
+        ld      e,l
 jp_dup_n:
-        ld      de,JOB_REC
-        add     hl,de
+        repeat  JOB_REC
+        inc     hl
+        rend
         djnz    jp_dup
 
-        ld      hl,(jp_slot)
+        ex      de,hl
         ld      a,h
         or      l
         ret     z                       ; ο πίνακας γέμισε
-jp_write:
         ld      a,(jb_kind2)
         ld      (hl),a
         inc     hl
-        ld      a,(jb_d)
-        ld      (hl),a
+        ld      (hl),c                  ; ο θόλος
         inc     hl
         ld      (hl),255                ; αδιάθετη
         inc     hl
@@ -357,25 +310,18 @@ jp_write:
         ; κόσμο και το κυλικείο του παίκτη έμενε αστελέχωτο για πάντα —
         ; μετρημένο, 147 δείγματα στη σειρά με την εργασία του αδιάθετη, ενώ
         ; το θερμοκήπιο δίπλα του στοίβαζε 250 άμυλο που κανείς δεν μαγείρευε.
-        ld      a,(jb_kind2)
-        cp      J_OPERATE
-        jr      nz,jpw_flat
-        push    hl
-        ld      a,(jb_d)
-        call    jb_dome_ptr
-        ld      de,D_ROOM
-        add     hl,de
-        ld      a,(hl)
-        ld      hl,room_prio
-        jr      jpw_look
-jpw_flat:
+        ; Το δωμάτιο το κράτησε το jb_need.
         push    hl
         ld      hl,job_prio
+        cp      J_OPERATE
+        jr      nz,jpw_look
+        ld      a,(jb_room)
+        ld      hl,room_prio
 jpw_look:
         add     a,l
         ld      l,a
-        ld      a,0
         adc     a,h
+        sub     l
         ld      h,a
         ld      a,(hl)
         pop     hl
@@ -384,152 +330,104 @@ jpw_look:
         ld      (hl),0
         ret
 
-; jb_broken — (jb_d) = θόλος. A = η πρώτη σταματημένη υποδοχή, ή 255.
-jb_broken:
+; jb_slots — (jb_d) = θόλος. Z αν είναι χτισμένος, και τότε HL -> D_STATE,
+; IX -> υποδοχή 0, B = πόσες υποδοχές έχει το μέγεθός του, A = το δωμάτιο.
+; NZ αν δεν είναι. Χαλάει DE.
+;
+; Ο ΙΧ ΠΕΡΠΑΤΑΕΙ ΤΙΣ ΥΠΟΔΟΧΕΣ, και η υγεία είναι πάντα στο (ix+8): ως το βήμα
+; 46 κάθε υποδοχή ήθελε push / add / pop για να τη φτάσει, και το «χτισμένος;
+; πόσες υποδοχές;» ήταν γραμμένο χωριστά στο jb_broken και στο jb_need.
+jb_slots:
         ld      a,(jb_d)
         call    jb_dome_ptr
-        push    hl
         ld      de,D_STATE
         add     hl,de
         ld      a,(hl)
-        pop     hl
         cp      DS_ACTIVE
-        jr      nz,jbr_no
+        ret     nz
         push    hl
-        ld      de,D_SIZE
-        add     hl,de
-        ld      a,(hl)
-        ld      hl,G_machine_count
-        add     a,l
-        ld      l,a
-        ld      a,0
-        adc     a,h
-        ld      h,a
-        ld      b,(hl)
-        pop     hl
-        ld      de,D_MACH
-        add     hl,de
+        pop     ix
+        ld      a,(ix+D_SIZE-D_STATE)
+        add     a,G_machine_count & 255
+        ld      e,a
+        ld      d,G_machine_count / 256
+        ld      a,(de)
+        ld      b,a
+        ld      de,D_MACH - D_STATE
+        add     ix,de
+        ld      a,(ix+D_ROOM-D_MACH)
+        cp      a                       ; Z: το add a,n πιο πάνω το είχε χαλάσει
+        ret
+
+; jb_broken — (jb_d) = θόλος. A = η πρώτη σταματημένη υποδοχή, και IX ->
+; αυτήν· ή A = 255.
+jb_broken:
+        call    jb_slots
+        jr      nz,jbr_no
         ld      c,0
 jbr_lp:
-        ld      a,(hl)
-        cp      NO_MACH
-        jr      z,jbr_n
-        push    hl
-        ld      de,D_HEALTH - D_MACH
-        add     hl,de
-        ld      a,(hl)
-        pop     hl
+        ld      a,(ix+0)
+        inc     a
+        jr      z,jbr_n                 ; NO_MACH
+        ld      a,(ix+D_HEALTH-D_MACH)
         or      a
-        jr      nz,jbr_n
-        ld      a,c                     ; βρέθηκε
-        ret
+        ld      a,c
+        ret     z                       ; βρέθηκε
 jbr_n:
-        inc     hl
+        inc     ix
         inc     c
         djnz    jbr_lp
 jbr_no:
         ld      a,255
         ret
 
-; jb_need — A/(jb_d) = θόλος -> A = πόσες μηχανές θέλουν χειριστή
+; jb_need — (jb_d) = θόλος -> A = πόσες μηχανές του θέλουν χειριστή, και
+; (jb_room) = το δωμάτιο, HL -> D_STATE αν είναι χτισμένος.
 jb_need:
-        ld      a,(jb_d)
-        call    jb_dome_ptr
-        push    hl
-        ld      de,D_STATE
-        add     hl,de
-        ld      a,(hl)
-        pop     hl
-        cp      DS_ACTIVE
-        jr      z,jn_go
-        xor     a
-        ret
-jn_go:
-        push    hl                      ; θερμοκήπιο; τότε ΕΝΑΣ φτάνει
-        ld      de,D_ROOM
-        add     hl,de
-        ld      a,(hl)
-        pop     hl
+        call    jb_slots
+        jr      nz,jn_zero
+        ld      (jb_room),a
+        ld      c,0
         cp      R_GREENHS
-        ld      a,0
-        jr      nz,jn_ng
-        inc     a
-        ld      (jb_green),a
-        ; Ζητάει έναν, όχι έναν ανά γλάστρα: το ec_run_plant ποτίζει όλο τον
-        ; θόλο με τον πρώτο. Οσο ζητούσε τέσσερις, ο πίνακας εργασιών έστελνε
-        ; τέσσερις — και το κυλικείο περίμενε μαγείρα.
-        jp      jn_one
-jn_ng:
-        ld      (jb_green),a
-        push    hl
-        ld      de,D_SIZE
-        add     hl,de
-        ld      a,(hl)
-        ld      hl,G_machine_count
-        add     a,l
-        ld      l,a
-        ld      a,0
-        adc     a,h
-        ld      h,a
-        ld      b,(hl)                  ; πλήθος υποδοχών
-        pop     hl
-        ld      de,D_MACH
-        add     hl,de
-        ld      c,0                     ; μετρητής
+        jr      z,jn_green
 jn_lp:
-        ld      a,(hl)
+        ld      a,(ix+0)
         cp      NO_MACH
         jr      z,jn_next
-        push    hl
-        ld      de,D_HEALTH - D_MACH
-        add     hl,de
-        ld      e,(hl)
-        pop     hl
-        inc     e
-        dec     e
+        ld      e,a
+        ld      a,(ix+D_HEALTH-D_MACH)
+        or      a
         jr      z,jn_next               ; χαλασμένη
-        push    hl
-        ld      hl,jb_green
-        ld      e,(hl)
-        ld      hl,G_mach_op
-        add     a,l
-        ld      l,a
-        ld      a,0
-        adc     a,h
-        ld      h,a
-        ld      a,(hl)
-        or      e                       ; στο θερμοκήπιο, όλα μετράνε
-        pop     hl
+        ld      a,e
+        add     a,G_mach_op & 255
+        ld      e,a
+        ld      d,G_mach_op / 256
+        ld      a,(de)
         or      a
         jr      z,jn_next
         inc     c
 jn_next:
-        inc     hl
+        inc     ix
         djnz    jn_lp
         ld      a,c
         ret
 
-; Το θερμοκήπιο: ένας χειριστής αν έχει έστω ένα ζωντανό φυτό.
-jn_one:
-        ld      de,D_MACH
-        add     hl,de
-        ld      b,D_HEALTH - D_MACH     ; οκτώ· πέρα από το μέγεθος είναι NO_MACH
-jn_o1:
-        ld      a,(hl)
-        cp      NO_MACH
-        jr      z,jn_o2
-        push    hl
-        ld      de,D_HEALTH - D_MACH
-        add     hl,de
-        ld      a,(hl)
-        pop     hl
+; Το θερμοκήπιο: ΕΝΑΣ χειριστής, αν έχει έστω ένα ζωντανό φυτό. Ζητάει έναν,
+; όχι έναν ανά γλάστρα: το ec_run_plant ποτίζει όλο τον θόλο με τον πρώτο.
+; Οσο ζητούσε τέσσερις, ο πίνακας εργασιών έστελνε τέσσερις — και το
+; κυλικείο περίμενε μαγείρα.
+jn_green:
+        ld      a,(ix+0)
+        inc     a
+        jr      z,jng_n
+        ld      a,(ix+D_HEALTH-D_MACH)
         or      a
-        jr      z,jn_o2
         ld      a,1
-        ret
-jn_o2:
-        inc     hl
-        djnz    jn_o1
+        ret     nz
+jng_n:
+        inc     ix
+        djnz    jn_green
+jn_zero:
         xor     a
         ret
 
@@ -548,12 +446,6 @@ jb_dome_ptr:
         add     hl,de
         ret
 
-jb_ag:      db 0
-jb_d:       db 0
-jb_want:    db 0
-jb_kind2:   db 0
-jb_green:   db 0
-jb_slot:    db 0
 job_prio:   db 5,3,2,4,6,8,9
 
 ; Προτεραιότητα OPERATE ανά δωμάτιο (§6.7). Πρώτα ό,τι κρατά ανθρώπους στη
@@ -575,22 +467,18 @@ jba_any:
         ld      a,(hl)
         cp      NO_JOB
         jr      z,jba_an
-        push    hl
         inc     hl
         inc     hl
         ld      a,(hl)
-        pop     hl
-        cp      255
+        dec     hl
+        dec     hl
+        inc     a
         jr      z,jba_go                ; βρέθηκε αδιάθετη
 jba_an:
         ld      de,JOB_REC
         add     hl,de
         djnz    jba_any
-        ld      a,(EC_JAGENT)           ; καμία: ο δείκτης προχωράει, τέλος
-        add     a,JOB_LOOK
-        and     127
-        ld      (EC_JAGENT),a
-        ret
+        jr      jas_done                ; καμία: ο δείκτης προχωράει, τέλος
 jba_go:
         ld      a,(EC_JAGENT)
         ld      (jb_i),a
@@ -606,45 +494,36 @@ jas_lp:
         ld      a,(jb_i)
         ld      e,a
         ld      d,AG_PG
-        ld      a,(de)
-        ld      c,a
-        and     F_ALIVE
-        jr      z,jas_next
-        ld      a,c
-        and     F_WORKING
-        jr      nz,jas_next
-
-        ld      a,(jb_i)
-        ld      e,a
+        ld      a,(de)                  ; flags
+        and     F_ALIVE + F_WORKING
+        cp      F_ALIVE
+        jr      nz,jas_next             ; νεκρός, ή δουλεύει ήδη
         set     7,e
         ld      d,AG_PG + 3             ; task
         ld      a,(de)
-        cp      NO_TASK
+        inc     a                       ; NO_TASK
         jr      nz,jas_next
-
-        ; bit του ρόλου
-        ld      a,(jb_i)
-        ld      e,a
-        set     7,e
-        ld      d,AG_PG                 ; role
+        ld      d,AG_PG                 ; role, στο πάνω μισό
         ld      a,(de)
         and     7
         ld      b,a
-        ld      a,1
         inc     b
+        ld      a,#80
 jas_rb:
-        dec     b
-        jr      z,jas_rbd
-        add     a,a
-        jr      jas_rb
-jas_rbd:
+        rlca
+        djnz    jas_rb                  ; A = 1 << ρόλος
         ld      (jb_rolebit),a
-
-        ld      a,(jb_i)
-        ld      e,a
-        ld      d,AG_PG + 1             ; node
+        res     7,e
+        inc     d                       ; AG_PG + 1: node
         ld      a,(de)
-        ld      (jb_node),a
+        ; Η ΓΡΑΜΜΗ ΤΟΥ DIST μία φορά ανά πράκτορα: #4000 + 128 * κόμβος. Ως το
+        ; βήμα 46 υπολογιζόταν ξανά για καθεμία από τις 32 εργασίες.
+        ld      h,a
+        ld      l,0
+        srl     h
+        rr      l
+        set     6,h
+        ld      (jb_row),hl
 
         call    jb_best
         cp      NO_JOB
@@ -670,20 +549,17 @@ jas_done:
         ret
 
 ; ---------------------------------------------------------------------------
-; jb_best — η καλύτερη ανοιχτή εργασία για τον (jb_i). A = δείκτης ή 255.
+; jb_best — η καλύτερη ανοιχτή εργασία για τον (jb_i). A = δείκτης ή NO_JOB.
 ;
 ; Η τράπεζα 1 μπαίνει ΜΙΑ φορά για όλη τη σάρωση των 32 εργασιών, όχι μία ανά
-; ανάγνωση: ο πίνακας εργασιών είναι στην τράπεζα 2 και φαίνεται πάντα.
+; ανάγνωση: ο πίνακας εργασιών είναι στην τράπεζα 2 και φαίνεται πάντα. Ο
+; δείκτης της εργασίας είναι MAX_JOB - B, όχι δική του μεταβλητή.
 ; ---------------------------------------------------------------------------
 jb_best:
-        ld      a,NO_JOB
-        ld      (jb_bj),a
-        xor     a
-        ld      (jb_bp),a
+        ld      hl,NO_JOB               ; jb_bj = NO_JOB, jb_bp = 0
+        ld      (jb_bj),hl
         ld      a,255
         ld      (jb_bd),a
-        xor     a
-        ld      (jb_j),a
 
         ld      bc,GA_PORT + PAGE_B1
         out     (c),c
@@ -701,7 +577,7 @@ jbb_lp:
         ld      e,(hl)                  ; E = κόμβος εργασίας
         inc     hl
         ld      a,(hl)
-        cp      255
+        inc     a
         jr      nz,jbb_next             ; ήδη ανατεθειμένη
         inc     hl
         ld      d,(hl)                  ; D = προτεραιότητα
@@ -710,24 +586,17 @@ jbb_lp:
         ld      a,c
         add     a,l
         ld      l,a
-        ld      a,0
         adc     a,h
+        sub     l
         ld      h,a
-        ld      a,(hl)
-        ld      hl,jb_rolebit
+        ld      a,(jb_rolebit)
         and     (hl)
         jr      z,jbb_next              ; λάθος ρόλος
 
-        ; DIST[κόμβος πράκτορα][κόμβος εργασίας]
-        ld      a,(jb_node)
-        ld      h,a
-        ld      l,0
-        srl     h
-        rr      l
+        ld      hl,(jb_row)             ; DIST[κόμβος πράκτορα][κόμβος εργασίας]
         ld      a,l
         add     a,e
         ld      l,a
-        set     6,h
         ld      c,(hl)                  ; C = απόσταση
 
         ld      hl,jb_bp
@@ -736,23 +605,20 @@ jbb_lp:
         jr      c,jbb_next
         jr      nz,jbb_better
         ld      a,c
-        ld      hl,jb_bd
+        inc     hl                      ; jb_bd
         cp      (hl)
         jr      nc,jbb_next
 jbb_better:
-        ld      a,d
-        ld      (jb_bp),a
-        ld      a,c
-        ld      (jb_bd),a
-        ld      a,(jb_j)
+        ld      h,c
+        ld      l,d
+        ld      (jb_bp),hl              ; jb_bp = D, jb_bd = C
+        ld      a,MAX_JOB
+        sub     b
         ld      (jb_bj),a
 jbb_next:
         pop     hl
         ld      de,JOB_REC
         add     hl,de
-        ld      a,(jb_j)
-        inc     a
-        ld      (jb_j),a
         pop     bc
         djnz    jbb_lp
 
@@ -762,45 +628,45 @@ jbb_next:
         ret
 
 ; ---------------------------------------------------------------------------
-; jb_take — ο (jb_i) παίρνει την εργασία A.
+; jb_take — ο (jb_i) παίρνει την εργασία A. Χαλάει B.
 ; ---------------------------------------------------------------------------
 jb_take:
-        push    af
-        ld      h,0
+        ld      c,a                     ; C = j
         ld      l,a
-        ld      d,h
-        ld      e,l
-        add     hl,hl
-        add     hl,hl                   ; *4
-        add     hl,de                   ; *5
+        add     a,a
+        add     a,a
+        add     a,l                     ; 5j: ως 155, χωράει σε byte
+        ld      l,a
+        ld      h,0
         ld      de,G_job_tbl
         add     hl,de
         inc     hl
-        ld      c,(hl)                  ; κόμβος της εργασίας
+        ld      b,(hl)                  ; B = κόμβος της εργασίας
         inc     hl
         ld      a,(jb_i)
         ld      (hl),a                  ; job.agent = i
-
         ld      e,a
         set     7,e
         ld      d,AG_PG + 3
-        pop     af
-        ld      (de),a                  ; agent.task = j
-
-        ld      a,(jb_i)
-        ld      e,a
-        ld      d,AG_PG + 2
         ld      a,c
+        ld      (de),a                  ; agent.task = j
+        res     7,e
+        dec     d                       ; AG_PG + 2
+        ld      a,b
         ld      (de),a                  ; agent.dest = κόμβος
         ret
 
 job_roles:  db #22,#05,#41,#81,#02,#08,#10
-jp_slot:    dw 0
+jb_ag:      db 0
+jb_d:       db 0
+jb_kind2:   db 0
+jb_room:    db 0                    ; το δωμάτιο του jb_need, για την προτεραιότητα
 jb_i:       db 0
-jb_j:       db 0
 jb_done:    db 0
-jb_node:    db 0
 jb_rolebit: db 0
-jb_bj:      db 0
+jb_row:     dw 0                    ; η γραμμή του DIST για τον (jb_i)
+jb_bj:      db 0                    ; jb_bj, jb_bp, jb_bd διπλανά
 jb_bp:      db 0
 jb_bd:      db 0
+        assert  jb_bp == jb_bj + 1 && jb_bd == jb_bp + 1
+        assert  JOB_REC * (MAX_JOB - 1) <= 255  ; jb_take: το 5j χωράει σε byte
