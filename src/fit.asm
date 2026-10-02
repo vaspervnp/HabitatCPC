@@ -205,12 +205,15 @@ fit_set:
         srl     l
         srl     h
         push    hl
-        ld      a,l
-        ld      hl,EC_STOCK + S_METAL*2
-        call    fit_give
-        pop     af                      ; A = H
-        ld      hl,EC_STOCK + S_BIOPL*2
-        call    fit_give
+        ld      e,l
+        ld      d,0
+        ld      a,S_METAL
+        call    ec_add_stock            ; με ταβάνι (src/stock.asm)
+        pop     de
+        ld      e,d
+        ld      d,0
+        ld      a,S_BIOPL
+        call    ec_add_stock
         ; --- η υποδοχή ---
         call    fit_slot
         ld      a,(fit_nw)
@@ -236,29 +239,6 @@ fs_hp:
         call    dirty_push
 fs_out:
         xor     a                       ; Z
-        ret
-
-; fit_give — (HL) += A, 16 bit, με ταβάνι EC_CAP όπως το ec_add_stock (που
-; δεν υπάρχει στο tests/uitest.asm).
-fit_give:
-        ld      e,(hl)
-        inc     hl
-        ld      d,(hl)
-        ex      de,hl                   ; HL = απόθεμα, DE -> το πάνω byte του
-        call    ob_addu
-        push    de
-        ld      de,EC_CAP
-        or      a
-        sbc     hl,de
-        add     hl,de                   ; CY αν κάτω από το ταβάνι
-        pop     de
-        jr      c,fg_st
-        ld      hl,EC_CAP
-fg_st:
-        ex      de,hl
-        ld      (hl),d
-        dec     hl
-        ld      (hl),e
         ret
 
 ; fit_price — A = περιεχόμενο υποδοχής -> bd_metal, bd_biop: η τιμή του.

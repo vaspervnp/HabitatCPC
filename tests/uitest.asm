@@ -232,6 +232,7 @@ goto_st:    db 0
         include "../src/input.asm"
         include "../src/build.asm"
         include "../src/jobpost.asm"
+        include "../src/stock.asm"
         include "../src/terrain.asm"
         include "../src/graph.asm"
         include "../src/route.asm"

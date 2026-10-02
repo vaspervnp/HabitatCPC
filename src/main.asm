@@ -226,6 +226,7 @@ ml_hud:
         include "econ.asm"
         include "jobs.asm"
         include "jobpost.asm"            ; κοινό με το build.asm (βήμα 38)
+        include "stock.asm"              ; κοινό με το fit.asm (βήμα 46)
         include "needs.asm"
         include "ship.asm"
         include "wheel.asm"

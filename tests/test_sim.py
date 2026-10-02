@@ -434,8 +434,16 @@ def main():
     if ordinal():
         return 1
 
+    # --- κάθε κλάδος του ισοζυγίου, Z80 απέναντι στην αναφορά (βήμα 46) ---
+    if flow_branches(sym, g, nexthop, sim0):
+        return 1
+
     # --- η βροχή μετεωριτών (§6.10, src/meteor.asm) ---
     if meteors(sym, g, nexthop, sim0):
+        return 1
+
+    # --- κάθε ζαριά της θέσης 15, στημένη (βήμα 46) ---
+    if event_branches(sym, g, nexthop, sim0):
         return 1
 
     # --- κόστος ανά θέση, μετρημένο ΚΑΤΕΥΘΕΙΑΝ ---
@@ -520,6 +528,164 @@ def ordinal():
     return 0
 
 
+# Οι κλάδοι του ισοζυγίου. Το κοινό τρέξιμο περνά από όποιον κλάδο τύχει (στο
+# τέλος του: 90 παραγωγή, 28 χρήση), και κανείς δεν έλεγχε ποιους — ενώ το
+# βήμα 46 ξανάγραψε το έλλειμμα, το ρίξιμο φορτίου και το μπλακάουτ. Εδώ
+# στήνεται ο καθένας.
+# Δομές: ηλιακός L, ανεμογεννήτριες S/M/L, συλλέκτης M, αντλία S, ορυχείο. Με
+# άνεμο 2 η παραγωγή είναι 18 + (2 + 8 + 18) = 46 τη μέρα, η ζήτηση
+# μηχανές + 1 + 8, το ταβάνι 160.
+#         όνομα                    μηχ  ζωή  μπατ  άνεμ μέρα θύελ
+FLOW_CASES = (
+    ("πλεόνασμα",                   5,   4, 100,   2,  1,  0),
+    ("πλεόνασμα ως το ταβάνι",      5,   4, 150,   2,  1,  0),
+    ("παραγωγή ίση με ζήτηση",     37,   4, 100,   2,  1,  0),
+    ("έλλειμμα, η μπαταρία φτάνει", 60,   4, 100,   2,  1,  0),
+    ("μπαταρία ΑΚΡΙΒΩΣ έλλειμμα + ρεζέρβα", 60, 4, 55, 2, 1, 0),
+    ("μία μονάδα κάτω: ρίχνει φορτίο, φορτίζει", 60, 4, 54, 2, 1, 0),
+    ("νύχτα: η ζωή από τη μπαταρία", 60,  20, 100,   1,  0,  0),
+    ("νύχτα, άδεια μπαταρία: μπλακάουτ", 60, 20, 5,   1,  0,  0),
+    ("θύελλα τη μέρα",             10,   4, 100,   2,  1, 20),
+    ("άπνοια",                     10,   4, 100,   0,  1,  0),
+    ("ανεμοθύελλα: 3 + 12 + 27",   10,   4, 100,   3,  0,  0),
+)
+
+
+def flow_branches(sym, g, nexthop, sim0, patch=(), quiet=False):
+    """Μία πυροδότηση του econ_flow ανά περίπτωση, και ΟΛΟ το econ_state
+    απέναντι στο flow_balance της αναφοράς. Επιστρέφει πόσες διέφεραν."""
+    from cpc import CPC
+    kinds = ((EC.K_SOLAR, 2), (EC.K_TURBINE, 0), (EC.K_TURBINE, 1),
+             (EC.K_TURBINE, 2), (EC.K_COLLECTOR, 1), (EC.K_EXTRACTOR, 0),
+             (EC.K_MINE, 0))
+    bad = []
+    for name, mach, ess, store, wind, day, storm in FLOW_CASES:
+        sim = fresh(g, nexthop, sim0)
+        e = sim.e
+        e.struct = bytearray(EC.MAX_STRUCT * EC.STRUCT_REC)
+        for k, (kind, size) in enumerate(kinds):
+            b = k * EC.STRUCT_REC
+            e.struct[b + EC.ST_KIND], e.struct[b + EC.ST_SIZE] = kind, size
+            e.struct[b + EC.ST_STATE], e.struct[b + EC.ST_INTEG] = EC.DS_ACTIVE, 255
+        e.n_struct = len(kinds)
+        e.mach_power, e.ess_power, e.power_store = mach, ess, store
+        e.wind, e.day, e.storm = wind, day, storm
+        e.flow_div = 1
+
+        m = CPC()
+        m.run_frames(60)
+        assert m.quickload(SNA, start=False), "quickload απέτυχε"
+        m.write_ram(STAGE_AG, sim.a.to_bytes())
+        m.write_ram(STAGE_OCC, bytes(sim.occ) + bytes(128))
+        m.write_ram(STAGE_DOME, bytes(e.dome))
+        m.write_ram(STAGE_STR, bytes(e.struct))
+        m.write_ram(sym["G_ECON_STATE"], EC.to_bytes(e))
+        enter(m, sym, "LOAD_STATE")
+        for at, v in patch:
+            m.poke(at, v)
+        m.poke(sym["EC_FDIV"], 1)
+        code = [0xF3, 0x31, 0x00, 0x01,                  # di / ld sp,#0100
+                0x01, 0xC6, 0x7F, 0xED, 0x49,            # τράπεζα 6
+                0xCD, sym["ECON_FLOW"] & 0xFF, sym["ECON_FLOW"] >> 8,
+                0x3E, 0x5A, 0x32, sym["DONE_FLAG"] & 0xFF, sym["DONE_FLAG"] >> 8,
+                0x18, 0xFE]
+        m.write_ram(0xE000, bytes(code))
+        m.poke(sym["DONE_FLAG"], 0)
+        m.set_pc(0xE000)
+        for _ in range(50):
+            if m.peek(sym["DONE_FLAG"]) == 0x5A:
+                break
+            m.run_frames(1)
+        got = m.read_ram(sym["G_ECON_STATE"], EC.ECON_BYTES)
+
+        alive = sum(1 for i in range(128) if sim.a.flags[i] & E.F_ALIVE)
+        EC.flow_balance(e, alive)
+        want = EC.to_bytes(e)
+        if got != want:
+            diff = [k for k in range(len(want)) if got[k] != want[k]]
+            bad.append(name)
+            if not quiet:
+                print(f"ΑΠΟΤΥΧΙΑ ισοζύγιο «{name}»: bytes {diff[:6]} — Z80 "
+                      f"{[got[k] for k in diff[:6]]}, αναφορά "
+                      f"{[want[k] for k in diff[:6]]}")
+    if quiet:
+        return len(bad)
+    if bad:
+        return 1
+    # ΑΡΝΗΤΙΚΟ: η ρεζέρβα κομμένη (τα `add hl,hl` του repeat σε nop) — οι
+    # δύο περιπτώσεις του ορίου πρέπει να το δουν.
+    at = sym["EF_BALANCE"]
+    k = next(k for k in range(96)
+             if [m.peek(at + k + j) for j in range(3)] == [0x29] * EC.RESERVE_SH)
+    nbad = flow_branches(sym, g, nexthop, sim0, quiet=True,
+                         patch=[(at + k + j, 0) for j in range(EC.RESERVE_SH)])
+    if not nbad:
+        print("ΑΠΟΤΥΧΙΑ: ΑΡΝΗΤΙΚΟ — χωρίς ρεζέρβα οι κλάδοι του ισοζυγίου "
+              "βγαίνουν ίδιοι: η δοκιμή δεν έχει δόντια")
+        return 1
+    print(f"OK ισοζύγιο: {len(FLOW_CASES)} περιπτώσεις — πλεόνασμα, ταβάνι, "
+          f"έλλειμμα και τα όριά του, ρίξιμο φορτίου, μπλακάουτ, θύελλα, άνεμος "
+          f"0-3 — ίδια bytes στον Z80 και στην αναφορά. ΑΡΝΗΤΙΚΟ: χωρίς "
+          f"ρεζέρβα διαφέρουν {nbad}")
+    return 0
+
+
+def event_branches(sym, g, nexthop, sim0):
+    """Η γεννήτρια στημένη ώστε η ΠΡΩΤΗ ζαριά της θέσης 15 να ρίξει ό,τι
+    σπάνια ρίχνει: έκλαμψη (1/2048 ανά περιστροφή), βλάβη (1/128), θύελλα,
+    επισκέπτες. Το κοινό τρέξιμο είναι 40 περιστροφές και τα βλέπει, αν τα
+    δει, από τύχη — και το βήμα 46 έκανε την έκλαμψη βρόχο από πίνακα."""
+    base = fresh(g, nexthop, sim0)
+    spread(base.e)
+    EC.rooms_rebuild(base.e, base.pc)
+    base.e.storm = 0
+
+    def rolls(x):
+        r1 = EC.lfsr(x)
+        r2 = EC.lfsr(r1)
+        return r1, r2, EC.lfsr(r2)
+
+    def broken_by(x):
+        """Πόσες γερές μηχανές θα σταματούσε η έκλαμψη του r3."""
+        e = fresh(g, nexthop, base).e
+        r3 = rolls(x)[2]
+        before = sum(1 for v in e.dome if v)
+        for v in (r3 + 37, (r3 >> 3) + 101, (r3 >> 1) + 173):
+            EC.break_one(e, v)
+        return before - sum(1 for v in e.dome if v)
+
+    cases = (
+        ("έκλαμψη", lambda r1, r2, r3: r3 >> 8 == 0 and r3 & 0xC0 == 0),
+        ("βλάβη", lambda r1, r2, r3: r3 & 0x7F == 0 and r3 >> 8),
+        ("θύελλα", lambda r1, r2, r3: r2 >> 8 == 0 and r2 & 0x80 == 0),
+        ("επισκέπτες", lambda r1, r2, r3: r2 & 0x7FF == 0),
+    )
+    flare_x = None
+    for name, hit in cases:
+        xs = [x for x in range(1, 65536) if hit(*rolls(x))]
+        if name == "έκλαμψη":
+            x = flare_x = max(xs, key=broken_by)
+        else:
+            x = xs[0]
+        st = fresh(g, nexthop, base)
+        st.e.rnd = x
+        if same(sym, g, nexthop, st, 20, f"ζαριά: {name}") is None:
+            return 1
+    n = broken_by(flare_x)
+    # ΑΡΝΗΤΙΚΟ: η πρώτη μετατόπιση της έκλαμψης 37 -> 38 στον πίνακα.
+    st = fresh(g, nexthop, base)
+    st.e.rnd = flare_x
+    if n == 0 or same(sym, g, nexthop, st, 20, "", quiet=True,
+                      patch=[(sym["EV_FL_TAB"] + 1, 38)]) is not None:
+        print(f"ΑΠΟΤΥΧΙΑ ζαριά: η έκλαμψη σταμάτησε {n} μηχανές, και με "
+              f"πειραγμένο πίνακα ο Z80 βγαίνει ακόμη ίδιος")
+        return 1
+    print(f"OK ζαριές:   έκλαμψη ({n} μηχανές σταμάτησαν), βλάβη, θύελλα, "
+          f"επισκέπτες — ίδια bytes στον Z80 και στην αναφορά. ΑΡΝΗΤΙΚΟ: με "
+          f"37 -> 38 στον πίνακα της έκλαμψης διαφέρουν")
+    return 0
+
+
 def spread(e):
     """Τα κτίρια σε πλέγμα. Η αποικία της αναφοράς τα έχει ΟΛΑ στο (0,0) —
     η οικονομία δεν ρωτά πού είναι — και ο μετεωρίτης θα έβρισκε πάντα τον
@@ -536,10 +702,11 @@ def spread(e):
             e.struct[b + EC.ST_CY] = (2 * (-15 + (k // 6) * 10) + 1) & 0xFF
 
 
-def same(sym, g, nexthop, start, ticks, what):
+def same(sym, g, nexthop, start, ticks, what, patch=(), quiet=False):
     """Z80 και αναφορά από την ίδια κατάσταση: ΟΛΑ τα bytes ίδια. Επιστρέφει
     την αναφορά στο τέλος, ή None αν διαφέρουν."""
-    got = run_z80(sym, g, fresh(g, nexthop, start), ticks, rt_n=EC.MAX_DOME + EC.MAX_STRUCT)
+    got = run_z80(sym, g, fresh(g, nexthop, start), ticks,
+                  rt_n=EC.MAX_DOME + EC.MAX_STRUCT, patch=patch)
     sim = fresh(g, nexthop, start)
     for _ in range(ticks):
         sim.tick()
@@ -549,8 +716,9 @@ def same(sym, g, nexthop, start, ticks, what):
                     ("οικονομία", 5), ("εργασίες", 6)):
         if got[i] != want[i]:
             bad = [k for k in range(len(want[i])) if got[i][k] != want[i][k]]
-            print(f"ΑΠΟΤΥΧΙΑ {what}: {name} — {len(bad)} bytes, πρώτα "
-                  f"{[(k, got[i][k], want[i][k]) for k in bad[:4]]}")
+            if not quiet:
+                print(f"ΑΠΟΤΥΧΙΑ {what}: {name} — {len(bad)} bytes, πρώτα "
+                      f"{[(k, got[i][k], want[i][k]) for k in bad[:4]]}")
             return None
     return sim
 

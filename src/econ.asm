@@ -99,93 +99,73 @@ epr_store:
         ret
 
 ; --- ένας θόλος ------------------------------------------------------------
-; Ο δείκτης περπατάει· δεν ξαναϋπολογίζεται. Η πρώτη γραφή ξανάφτιαχνε τη
-; διεύθυνση της εγγραφής για κάθε πεδίο και κόστιζε 7.488 us τη θέση.
+; Τα πεδία από τον IX, οι υποδοχές από το HL που περπατάει. Η πρώτη γραφή
+; ξανάφτιαχνε τη διεύθυνση της εγγραφής για κάθε πεδίο και κόστιζε 7.488 us
+; τη θέση.
+;
+; Η ΥΓΕΙΑ ΚΟΙΤΑΖΕΤΑΙ ΕΔΩ, ΜΙΑ ΦΟΡΑ: ως το βήμα 45 την κοίταζαν χωριστά η
+; μηχανή και το φυτό, με τα ίδια δέκα bytes.
 ec_run_dome:
         ld      a,(EC_PDOME)
-        ld      h,0
-        ld      l,a
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl                   ; *8
-        ld      d,h
-        ld      e,l
-        add     hl,hl                   ; *16
-        add     hl,de                   ; *24
-        ld      de,G_dome_tbl
-        add     hl,de                   ; HL = εγγραφή θόλου
-
+        call    jb_dome_ptr             ; HL = εγγραφή (src/jobs.asm)
         ld      de,D_STATE
         add     hl,de
         ld      a,(hl)
         cp      DS_ACTIVE
-        ret     nz
-        ld      de,D_ROOM - D_STATE
-        add     hl,de
-        ld      a,(hl)
-        cp      R_GREENHS
-        ld      a,0
-        jr      nz,erd_ng
-        inc     a
-erd_ng:
-        ld      (ed_green),a
-        ld      de,D_OPS - D_ROOM
-        add     hl,de
-        ld      a,(hl)
-        ld      (ed_ops),a              ; HL = base + D_OPS
-        push    hl
-        ld      de,D_SIZE - D_OPS       ; πίσω στο μέγεθος
-        add     hl,de
-        ld      a,(hl)
-        pop     hl
-        ld      de,G_machine_count
-        push    hl
-        ld      l,a
-        ld      h,0
-        add     hl,de
-        ld      b,(hl)                  ; B = πόσες υποδοχές
-        pop     hl
-        ld      de,D_MACH - D_OPS
-        add     hl,de                   ; HL = base + D_MACH
-
+        ret     nz                      ; ΠΡΙΝ από τον IX: οι περισσότερες
+        push    hl                      ; θέσεις είναι άδειες, και το push /
+        pop     ix                      ; pop ix είναι 25 T-states η καθεμία
+        ld      a,(ix+D_OPS-D_STATE)
+        ld      (ed_ops),a
+        ld      a,(ix+D_ROOM-D_STATE)
+        sub     R_GREENHS
+        ld      (ed_green),a            ; 0 = θερμοκήπιο
+        ld      a,(ix+D_SIZE-D_STATE)
+        add     a,G_machine_count & 255
+        ld      e,a
+        ld      d,G_machine_count / 256
+        ld      a,(de)
+        ld      b,a                     ; B = πόσες υποδοχές
+        ld      de,D_MACH - D_STATE
+        add     hl,de                   ; HL -> υποδοχή 0
         xor     a
         ld      (ed_k),a                ; καμία μηχανή με χειριστή ακόμη
 erd_lp:
         ld      a,(hl)
         cp      NO_MACH
         jr      z,erd_next
-        push    bc
         push    hl
-        ld      b,a
-        ld      a,(ed_green)
-        or      a
-        ld      a,b
-        jr      z,erd_mach
-        call    ec_run_plant            ; A = φυτό, HL -> υποδοχή
-        jr      erd_back
-erd_mach:
-        call    ec_run_mach             ; A = μηχανή, HL -> υποδοχή
-erd_back:
-        pop     hl
+        push    bc
+        ld      de,D_HEALTH - D_MACH
+        add     hl,de
+        inc     (hl)
+        dec     (hl)                    ; υγεία 0: χαλασμένη μηχανή, μαραμένο φυτό
+        call    nz,ec_run_one
         pop     bc
+        pop     hl
 erd_next:
         inc     hl
         djnz    erd_lp
         ret
 
+        assert  (G_machine_count & 255) <= 256 - 3  ; τρία μεγέθη, μία σελίδα
+        assert  (G_plant_class & 255) <= 256 - 12   ; δώδεκα φυτά, μία σελίδα
+        assert  MF_OPERATOR == 1 && MF_FLOW == 2    ; bit 0 και bit 1
+
+; ec_run_one — A = μηχανή ή φυτό: το δωμάτιο λέει ποιο από τα δύο κάθεται στην
+; υποδοχή (§6.5).
+ec_run_one:
+        ld      c,a
+        ld      a,(ed_green)
+        or      a
+        ld      a,c
+        jr      nz,ec_run_mach
+        ; fall through
+
 ; --- ένα φυτό --------------------------------------------------------------
-; Ιδια υποδοχή, άλλο νόημα: το είδος δωματίου λέει αν εκεί κάθεται μηχανή ή
-; φυτό. Νερό και ρεύμα μέσα, χλωρίδα έξω (§6.5).
+; Νερό και ρεύμα μέσα, χλωρίδα έξω (§6.5).
 ec_run_plant:
         ld      (ed_m),a
-        push    hl
-        ld      de,D_HEALTH - D_MACH
-        add     hl,de
-        ld      e,(hl)
-        pop     hl
-        inc     e
-        dec     e
-        ret     z                       ; μαραμένο
 
         ; ΕΝΑΣ ΒΙΟΛΟΓΟΣ ΠΟΤΙΖΕΙ ΟΛΟ ΤΟ ΘΕΡΜΟΚΗΠΙΟ. Ο κανόνας ήταν ο ίδιος με τις
         ; μηχανές — μία υποδοχή, ένας χειριστής — και σήμαινε ότι ένα μεσαίο
@@ -200,84 +180,55 @@ ec_run_plant:
 
         ld      a,S_WATER               ; ένα νερό
         ld      c,1
-        call    ec_have
+        call    ec_have                 ; DE = &νερό
         ret     c
 
-        push    de                      ; ΖΗΤΑΕΙ το ρεύμα του — και το ζητά
-        ld      de,1                    ; είτε το πάρει είτε όχι· βλ. ec_run_mach
-        ld      hl,EC_ACCP
-        call    ec_add16
-        pop     de
+        ld      hl,(EC_ACCP)            ; ΖΗΤΑΕΙ το ρεύμα του — και το ζητά
+        inc     hl                      ; είτε το πάρει είτε όχι· βλ. ec_run_mach
+        ld      (EC_ACCP),hl
         ld      a,(EC_POK)
         cp      P_ALL
         ret     nz                      ; ο κήπος δεν είναι υποστήριξη ζωής
+        ld      a,c
+        call    ec_sub                  ; το νερό
 
-        ld      a,(de)
-        sub     1
-        ld      (de),a
-        inc     de
-        ld      a,(de)
-        sbc     a,0
-        ld      (de),a
-
-        ld      a,(ed_m)                ; η κατηγορία του φυτού
-        ld      hl,G_plant_class
-        add     a,l
+        ld      a,(ed_m)                ; η κατηγορία του φυτού, 0-3
+        add     a,G_plant_class & 255
         ld      l,a
-        ld      a,0
-        adc     a,h
-        ld      h,a
+        ld      h,G_plant_class / 256
         ld      a,(hl)
-        and     3
         add     a,a                     ; *2 στον πίνακα εξόδου
         ld      hl,plant_out
         add     a,l
         ld      l,a
-        ld      a,0
         adc     a,h
+        sub     l
         ld      h,a
-        ld      a,(hl)                  ; απόθεμα, 255 = τίποτα (δέντρο)
+        ld      a,(hl)                  ; απόθεμα, NO_STOCK = τίποτα (δέντρο)
         inc     hl
         ld      e,(hl)
         ld      d,0
         cp      NO_STOCK
         ret     z
-        call    ec_mark
-        jp      ec_add_stock
+        jp      ec_make
 
 plant_out:  db S_STARCH,3, S_VEG,2, S_MEDPLANT,2, NO_STOCK,0
 
 ; --- μία μηχανή ------------------------------------------------------------
-; A = τύπος μηχανής, HL = δείκτης στην υποδοχή (η υγεία είναι 8 πιο κάτω).
+; A = τύπος μηχανής. IX = η συνταγή, G_recipes + 10*A: το 10*A χωράει σε byte
+; (δώδεκα μηχανές), και ο υπολογισμός γίνεται στο A.
 ec_run_mach:
-        push    hl
-        ld      de,D_HEALTH - D_MACH
-        add     hl,de
-        ld      e,(hl)                  ; υγεία
-        pop     hl
-        inc     e
-        dec     e
-        ret     z                       ; χαλασμένη
-
-        ; IX = συνταγή = G_recipes + m*10
-        ld      h,0
-        ld      l,a
-        ld      d,h
-        ld      e,l
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl                   ; *8
-        add     hl,de
-        add     hl,de                   ; *10
-        ld      de,G_recipes
-        add     hl,de
-        push    hl
-        pop     ix
-
-        ld      a,(ix+9)                ; σημαίες
-        ld      (ed_flags),a
-        and     MF_OPERATOR
-        jr      z,erm_power
+        ld      e,a
+        add     a,a
+        add     a,a
+        add     a,e
+        add     a,a                     ; *10
+        ld      e,a
+        ld      d,0
+        ld      ix,G_recipes
+        add     ix,de
+        bit     0,(ix+9)                ; MF_OPERATOR
+        jr      z,erm_ins
         ; Η k-ΟΣΤΗ ΜΗΧΑΝΗ ΠΟΥ ΘΕΛΕΙ ΧΕΙΡΙΣΤΗ τρέχει αν ο θόλος έχει k, όποια
         ; υποδοχή κι αν πιάνει. Ως το βήμα 44 μετρούσε η ΥΠΟΔΟΧΗ (slot < ops),
         ; που δούλευε μόνο επειδή το γέμισμα έβαζε τις μηχανές από την 0 και
@@ -289,54 +240,26 @@ ec_run_mach:
         ld      hl,ed_ops
         cp      (hl)
         ret     nc                      ; δεν φτάνουν οι χειριστές ως αυτήν
-erm_power:
-        ; --- οι τρεις είσοδοι, ξετυλιγμένες ---
-        ; Ο βρόχος με IY και υπολογισμό μετατόπισης κόστιζε 280 T-states ανά
-        ; είσοδο. Με σταθερές μετατοπίσεις IX και πρόωρη έξοδο στην πρώτη που
-        ; λείπει, η συνηθισμένη περίπτωση — «δεν φτάνει» — βγαίνει αμέσως.
+erm_ins:
+        ; --- οι τρεις είσοδοι, με πρόωρη έξοδο στην πρώτη που λείπει ---
+        ; Ενας βρόχος με IY και υπολογισμό μετατόπισης κόστιζε 280 T-states ανά
+        ; είσοδο. Οι σταθερές μετατοπίσεις του IX μένουν· από το βήμα 46 τα
+        ; τρία αντίγραφα του ελέγχου είναι ένα (erm_in), για 27 T-states ανά
+        ; είσοδο.
+        ld      hl,ed_in
         ld      a,(ix+0)
-        cp      NO_STOCK
-        jr      z,erm_n1
         ld      c,(ix+1)
-        call    ec_have
+        call    erm_in
         ret     c
-        ld      (ed_p1),de
-        ld      a,c
-        ld      (ed_q1),a
-        jr      erm_i2
-erm_n1:
-        ld      hl,0
-        ld      (ed_p1),hl
-erm_i2:
         ld      a,(ix+2)
-        cp      NO_STOCK
-        jr      z,erm_n2
         ld      c,(ix+3)
-        call    ec_have
+        call    erm_in
         ret     c
-        ld      (ed_p2),de
-        ld      a,c
-        ld      (ed_q2),a
-        jr      erm_i3
-erm_n2:
-        ld      hl,0
-        ld      (ed_p2),hl
-erm_i3:
         ld      a,(ix+4)
-        cp      NO_STOCK
-        jr      z,erm_n3
         ld      c,(ix+5)
-        call    ec_have
+        call    erm_in
         ret     c
-        ld      (ed_p3),de
-        ld      a,c
-        ld      (ed_q3),a
-        jr      erm_run
-erm_n3:
-        ld      hl,0
-        ld      (ed_p3),hl
 
-erm_run:
         ; ΤΟ ΡΕΥΜΑ ΜΕΤΡΑΕΙ ΩΣ ΖΗΤΗΣΗ, ΟΧΙ ΩΣ ΚΑΤΑΝΑΛΩΣΗ. Οσο το mach_power
         ; ήταν «ό,τι κάηκε», ένα μπλακάουτ μηδένιζε τη ζήτηση του επόμενου
         ; σαρώματος, το ισοζύγιο έβρισκε 0 >= 0 και το ρεύμα ξαναγύριζε: η
@@ -347,94 +270,64 @@ erm_run:
         ld      e,(ix+8)
         ld      d,0
         ld      hl,EC_ACCP
-        call    ec_add16
+        call    ec_add16                ; κρατά το DE
         ; Η ΥΠΟΣΤΗΡΙΞΗ ΖΩΗΣ ΜΕΤΡΙΕΤΑΙ ΚΑΙ ΧΩΡΙΣΤΑ: το ισοζύγιο πρέπει να ξέρει
         ; πόσο ρεύμα κρατά την αποικία ζωντανή, για να μπορεί να αφήσει τα
         ; υπόλοιπα να σταματήσουν.
-        ld      a,(ed_flags)
-        and     MF_FLOW
-        jr      z,erm_pok
-        ld      e,(ix+8)
-        ld      d,0
+        bit     1,(ix+9)                ; MF_FLOW
         ld      hl,EC_ACCE
-        call    ec_add16
-erm_pok:
+        call    nz,ec_add16
         ld      a,(EC_POK)
         cp      P_ALL
         jr      z,erm_take
         or      a
         ret     z                       ; μπλακάουτ: ζήτησε, δεν πήρε
-        ld      a,(ed_flags)            ; P_ESS: μόνο η υποστήριξη ζωής
-        and     MF_FLOW
+        bit     1,(ix+9)                ; P_ESS: μόνο η υποστήριξη ζωής
         ret     z
 erm_take:
         ; --- αφαίρεση, με τους δείκτες που ήδη έχουμε ---
-        ld      de,(ed_p1)
-        ld      a,(ed_q1)
-        call    ec_sub
-        ld      de,(ed_p2)
-        ld      a,(ed_q2)
-        call    ec_sub
-        ld      de,(ed_p3)
-        ld      a,(ed_q3)
-        call    ec_sub
+        ld      hl,ed_in
+        ld      b,3
+erm_tk:
+        ld      e,(hl)
+        inc     hl
+        ld      d,(hl)
+        inc     hl
+        ld      a,(hl)
+        inc     hl
+        call    ec_sub                  ; κρατά τα B, HL
+        djnz    erm_tk
 
-        ld      a,(ed_flags)
-        and     MF_FLOW
-        jr      z,erm_stock
         ld      e,(ix+7)
         ld      d,0
+        bit     1,(ix+9)
         ld      hl,EC_ACCO2
-        jp      ec_add16
-erm_stock:
+        jp      nz,ec_add16             ; το οξυγόνο είναι ροή, όχι απόθεμα
         ld      a,(ix+6)                ; δείκτης αποθέματος
         cp      NO_STOCK
-        ret     z
-        call    ec_mark                 ; φτιάχτηκε ΕΔΩ (§10.2)
-        ld      e,(ix+7)
-        ld      d,0
-        jp      ec_add_stock
+        ret     z                       ; τα κρεβάτια δεν παράγουν τίποτα
+        jp      ec_make                 ; φτιάχτηκε ΕΔΩ (§10.2)
 
-; ec_mark — A = δείκτης αποθέματος. Σημειώνει ότι βγήκε από την αποικία.
-ec_mark:
-        push    af
-        push    bc
-        push    de
-        push    hl
-        ld      b,a
-        ld      hl,1
-        inc     b
-ecm_sh:
-        dec     b
-        jr      z,ecm_or
-        add     hl,hl
-        jr      ecm_sh
-ecm_or:
-        ld      de,(EC_PRODM)
-        ld      a,h
-        or      d
-        ld      h,a
-        ld      a,l
-        or      e
-        ld      l,a
-        ld      (EC_PRODM),hl
-        pop     hl
-        pop     de
-        pop     bc
-        pop     af
+; erm_in — μία είσοδος: A = απόθεμα (NO_STOCK = καμία), C = ποσότητα, HL -> η
+; θέση της στο ed_in. CY αν δεν φτάνει· αλλιώς γράφει (δείκτης, ποσότητα) και
+; HL += 3. Χωρίς είσοδο ο δείκτης είναι 0, και το ec_sub τον προσπερνά.
+erm_in:
+        ld      de,0
+        cp      NO_STOCK                ; Z και NC αν δεν υπάρχει είσοδος
+        call    nz,ec_have              ; DE = &stock, CY αν δεν φτάνει
+        ret     c
+        ld      (hl),e
+        inc     hl
+        ld      (hl),d
+        inc     hl
+        ld      (hl),c
+        inc     hl
         ret
 
 ; ec_have — A = δείκτης αποθέματος, C = ποσότητα.
-;           Επιστρέφει DE = &stock[A], Cy=1 αν ΔΕΝ φτάνει.
+;           Επιστρέφει DE = &stock[A], Cy=1 αν ΔΕΝ φτάνει. Το C και το HL μένουν.
 ec_have:
-        push    hl
-        ld      l,a
-        ld      h,0
-        add     hl,hl
-        ld      de,EC_STOCK
-        add     hl,de
-        ex      de,hl
-        pop     hl
+        call    ec_stock_ptr            ; src/stock.asm
         ld      a,(de)
         sub     c
         inc     de
@@ -443,7 +336,7 @@ ec_have:
         dec     de
         ret
 
-; ec_sub — DE = &stock (ή 0 = καμία είσοδος), A = ποσότητα.
+; ec_sub — DE = &stock (ή 0 = καμία είσοδος), A = ποσότητα. Κρατά B, HL.
 ec_sub:
         ld      c,a
         ld      a,d
@@ -458,52 +351,7 @@ ec_sub:
         ld      (de),a
         ret
 
-; ec_add_stock — A = δείκτης, DE = ποσότητα (16-bit: οι αντλίες ξεπερνούν
-; εύκολα το 255). Με ταβάνι EC_CAP.
-ec_add_stock:
-        push    de
-        call    ec_stock_ptr
-        ex      de,hl                   ; HL = &stock
-        pop     bc                      ; BC = ποσότητα
-        ld      e,(hl)
-        inc     hl
-        ld      d,(hl)
-        dec     hl
-        ld      a,e
-        add     a,c
-        ld      e,a
-        ld      a,d
-        adc     a,b
-        ld      d,a
-        ; DE > EC_CAP ;
-        ld      a,d
-        cp      EC_CAP / 256
-        jr      c,ec_as_st
-        jr      nz,ec_as_cap
-        ld      a,e
-        cp      EC_CAP & 255
-        jr      c,ec_as_st
-ec_as_cap:
-        ld      de,EC_CAP
-ec_as_st:
-        ld      (hl),e
-        inc     hl
-        ld      (hl),d
-        ret
-
-; ec_stock_ptr — A = δείκτης -> DE = &stock[A]. Το HL μένει ανέπαφο.
-ec_stock_ptr:
-        push    hl
-        ld      l,a
-        ld      h,0
-        add     hl,hl
-        ld      de,EC_STOCK
-        add     hl,de
-        ex      de,hl
-        pop     hl
-        ret
-
-; ec_add16 — (HL) += DE
+; ec_add16 — (HL) += DE. Κρατά το DE.
 ec_add16:
         ld      a,(hl)
         add     a,e
@@ -514,17 +362,11 @@ ec_add16:
         ld      (hl),a
         ret
 
-ed_p1:      dw 0                    ; οι τρεις δείκτες εισόδου, και οι ποσότητες
-ed_q1:      db 0
-ed_p2:      dw 0
-ed_q2:      db 0
-ed_p3:      dw 0
-ed_q3:      db 0
+ed_in:      defs 9                  ; τρεις είσοδοι: δείκτης (2), ποσότητα (1)
 ed_ops:     db 0
 ed_k:       db 0                    ; πόσες με χειριστή πέρασαν σε αυτόν τον θόλο
 ed_m:       db 0
-ed_flags:   db 0
-ed_green:   db 0
+ed_green:   db 0                    ; 0 = θερμοκήπιο
 
 ; ---------------------------------------------------------------------------
 ; econ_flow — θέση 12: παραγωγή απέναντι σε κατανάλωση, και η μπαταρία.
@@ -532,6 +374,11 @@ ed_green:   db 0
 ; Σαρώνει τις 64 δομές. Η κατανάλωση των ΜΗΧΑΝΩΝ δεν ξανασαρώνεται εδώ — τη
 ; μάζεψε η παραγωγή στο τελευταίο της σάρωμα. Αλλιώς αυτή η θέση θα κοίταζε
 ; 64 θόλους x 8 υποδοχές κάθε περιστροφή, για έναν αριθμό που ήδη υπάρχει.
+;
+; Η ΠΑΡΑΓΩΓΗ, ΤΟ ΤΑΒΑΝΙ ΚΑΙ Η ΖΗΤΗΣΗ μαζεύονται ΚΑΤΕΥΘΕΙΑΝ στα EC_PPROD,
+; EC_PCAP, EC_PUSE: ο κύκλος τρέχει ολόκληρος σε μία κλήση, και κανείς δεν τα
+; διαβάζει στη μέση του. Ως το βήμα 45 μαζεύονταν σε τρία ιδιωτικά αντίγραφα
+; και αντιγράφονταν στο τέλος.
 ; ---------------------------------------------------------------------------
 econ_flow:
         ; Η ΜΕΤΡΗΣΗ ΤΩΝ ΖΩΝΤΑΝΩΝ ΓΙΝΕΤΑΙ ΚΑΘΕ ΠΕΡΙΣΤΡΟΦΗ — είναι η συνθήκη
@@ -542,19 +389,17 @@ econ_flow:
         ld      (hl),FLOW_DIV
 
         ld      hl,0
-        ld      (ef_prod),hl
-        ld      (ef_cap),hl
+        ld      (EC_PCAP),hl
+        ld      (EC_PPROD),hl
         ld      (ef_wat),hl
         ld      (ef_ore),hl
         ld      hl,(EC_MPOWER)
-        ld      (ef_use),hl
+        ld      (EC_PUSE),hl
 
-        ld      hl,G_struct_tbl
-        ld      (ef_p),hl
-        ld      a,MAX_STRUCT
-        ld      (ef_cnt),a
+        ld      ix,G_struct_tbl
+        ld      b,MAX_STRUCT
 ef_lp:
-        ld      ix,(ef_p)
+        push    bc
         ld      a,(ix+ST_STATE)
         cp      DS_ACTIVE
         jr      nz,ef_next
@@ -570,31 +415,41 @@ ef_lp:
         cp      K_EXTRACT
         jr      z,ef_extr
         cp      K_MINE
-        jp      z,ef_mine
+        jr      nz,ef_next
+        ld      e,8                     ; MINE_POWER
+        ld      c,2                     ; MINE_OUT
+        ld      hl,ef_ore
+; ef_pump — E = ρεύμα, C = προϊόν, HL -> πού πάει: αντλία και ορυχείο, που
+; ως το βήμα 45 ήταν γραμμένα το καθένα μόνο του.
+ef_pump:
+        push    hl
+        ld      d,0
+        ld      hl,EC_PUSE
+        call    ec_add16
+        pop     hl
+        ld      e,c
+ef_addn:
+        call    ec_add16                ; (HL) += DE, και η επόμενη δομή
 ef_next:
-        ld      hl,(ef_p)
+        pop     bc
         ld      de,STRUCT_REC
-        add     hl,de
-        ld      (ef_p),hl
-        ld      hl,ef_cnt
-        dec     (hl)
-        jr      nz,ef_lp
-        jp      ef_battery
+        add     ix,de
+        djnz    ef_lp
+        jr      ef_balance
 
 ef_solar:
         ld      a,(EC_STORM)            ; η σκόνη σκεπάζει τα πάνελ (§6.10)
         or      a
-        jp      nz,ef_next
+        jr      nz,ef_next
         ld      a,(EC_DAY)
         or      a
-        jp      z,ef_next
+        jr      z,ef_next
         ld      hl,tab_solar
         add     hl,bc
         ld      e,(hl)
         ld      d,0
-        ld      hl,ef_prod
-        call    ec_add16
-        jp      ef_next
+        ld      hl,EC_PPROD
+        jr      ef_addn
 
 ef_turb:
         ; παραγωγή = βάση * άνεμος / 3, ακέραια — όπως η αναφορά
@@ -608,20 +463,14 @@ ef_turb:
         xor     a
 ef_t_mul:
         add     a,c
-        djnz    ef_t_mul
-        ld      c,0
+        djnz    ef_t_mul                ; ως 27 * 3 = 81: χωράει σε byte
+        ld      de,-1                   ; E = πηλίκο, και το D γίνεται 0
 ef_t_div:
-        cp      3
-        jr      c,ef_t_done
+        inc     de
         sub     3
-        inc     c
-        jr      ef_t_div
-ef_t_done:
-        ld      e,c
-        ld      d,0
-        ld      hl,ef_prod
-        call    ec_add16
-        jr      ef_next
+        jr      nc,ef_t_div
+        ld      hl,EC_PPROD
+        jr      ef_addn
 
 ef_coll:
         sla     c                       ; 16-bit πίνακας
@@ -630,64 +479,27 @@ ef_coll:
         ld      e,(hl)
         inc     hl
         ld      d,(hl)
-        ld      hl,ef_cap
-        call    ec_add16
-        jr      ef_next
+        ld      hl,EC_PCAP
+        jr      ef_addn
 
 ef_extr:
-        push    bc
-        ld      hl,tab_extr_pw
-        add     hl,bc
-        ld      e,(hl)
-        ld      d,0
-        ld      hl,ef_use
-        call    ec_add16
-        pop     bc
         ld      hl,tab_extr_out
         add     hl,bc
-        ld      e,(hl)
-        ld      d,0
+        ld      a,(hl)                  ; νερό
+        ld      hl,tab_extr_pw
+        add     hl,bc
+        ld      e,(hl)                  ; ρεύμα
+        ld      c,a
         ld      hl,ef_wat
-        call    ec_add16
-        jp      ef_next
+        jr      ef_pump
 
-ef_mine:
-        ld      de,8                    ; MINE_POWER
-        ld      hl,ef_use
-        call    ec_add16
-        ld      de,2                    ; MINE_OUT
-        ld      hl,ef_ore
-        call    ec_add16
-        jp      ef_next
-
-ef_battery:
-        ld      hl,(ef_prod)
-        ld      (EC_PPROD),hl
-        ld      hl,(ef_cap)
-        ld      (EC_PCAP),hl
-        ld      hl,(ef_use)
-        ld      (EC_PUSE),hl
-
-        ld      hl,(ef_prod)
-        ld      de,(ef_use)
+ef_balance:
+        ; --- το ισοζύγιο ---
+        ld      hl,(EC_PPROD)
+        ld      de,(EC_PUSE)
         or      a
         sbc     hl,de
-        jr      c,ef_deficit
-        ; πλεόνασμα: φορτίζει, ως το ταβάνι
-        ld      de,(EC_PSTORE)
-        add     hl,de
-        ld      de,(ef_cap)
-        push    hl
-        or      a
-        sbc     hl,de
-        pop     hl
-        jr      c,ef_ch_st
-        ld      hl,(ef_cap)
-ef_ch_st:
-        ld      (EC_PSTORE),hl
-        ld      a,P_ALL
-        ld      (EC_POK),a
-        jp      ef_pumps
+        jr      nc,ef_surplus
 
 ; --- η παραγωγή δεν φτάνει: ποιος σταματά πρώτος (§6.5) --------------------
 ; Η μπαταρία δανείζεται στις μηχανές ΜΟΝΟ όσο μένει πίσω ό,τι θέλει η
@@ -695,100 +507,78 @@ ef_ch_st:
 ; «πρώτα οι μηχανές, μετά το οξυγόνο» δεν σημαίνει τίποτα: οι μηχανές
 ; αδειάζουν τη μπαταρία στους δύο πρώτους κύκλους της νύχτας και το οξυγόνο
 ; σβήνει ούτως ή άλλως — που είναι ακριβώς αυτό που μετρήθηκε στο βήμα 31.
-ef_deficit:
-        ld      hl,(ef_use)
-        ld      de,(ef_prod)
-        or      a
-        sbc     hl,de                   ; HL = έλλειμμα
-        ld      (ef_short),hl
+;
+; ΜΕ ΤΟ ΕΛΛΕΙΜΜΑ ΑΡΝΗΤΙΚΟ, όπως βγήκε: μπαταρία + (παραγωγή - ζήτηση) με
+; κρατούμενο σημαίνει «η μπαταρία το σηκώνει», και το υπόλοιπο συγκρίνεται με
+; τη ρεζέρβα. Ως το βήμα 45 το έλλειμμα ξαναϋπολογιζόταν θετικό, μπαινόταν σε
+; μεταβλητή και αφαιρούνταν δύο φορές.
+        ld      de,(EC_PSTORE)
+        add     hl,de                   ; HL = μπαταρία - έλλειμμα, CY αν φτάνει
+        jr      nc,ef_shed
+        push    hl
         ld      hl,(EC_EPOWER)
         repeat  RESERVE_SH
         add     hl,hl                   ; x RESERVE_CYC
         rend
-        ld      de,(ef_short)
-        add     hl,de
-        ex      de,hl                   ; DE = έλλειμμα + ρεζέρβα
-        ld      hl,(EC_PSTORE)
+        ex      de,hl                   ; DE = ρεζέρβα
+        pop     hl
         or      a
         sbc     hl,de
+        add     hl,de                   ; CY αν θα έμενε κάτω από τη ρεζέρβα
         jr      c,ef_shed
-        ld      hl,(EC_PSTORE)          ; η μπαταρία σηκώνει και τα δύο
-        ld      de,(ef_short)
-        or      a
-        sbc     hl,de
-        ld      (EC_PSTORE),hl
-        ld      a,P_ALL
-        ld      (EC_POK),a
-        jp      ef_pumps
+        ld      (EC_PSTORE),hl          ; η μπαταρία σηκώνει και τα δύο
+        jr      ef_all
 
 ; --- ρίχνει φορτίο: αντλίες, ορυχεία, εργοστάσια και κήποι σταματούν -------
 ef_shed:
-        ld      hl,(ef_prod)
+        ld      hl,(EC_PPROD)
         ld      de,(EC_EPOWER)
         or      a
         sbc     hl,de
         jr      c,ef_shed_dr
-        ld      de,(EC_PSTORE)          ; ό,τι περισσεύει, φορτίζει
-        add     hl,de
-        ld      de,(ef_cap)
-        push    hl
-        or      a
-        sbc     hl,de
-        pop     hl
-        jr      c,ef_shed_st
-        ld      hl,(ef_cap)
-ef_shed_st:
-        ld      (EC_PSTORE),hl
-        jr      ef_shed_ok
+        call    ef_charge               ; ό,τι περισσεύει, φορτίζει
+        jr      ef_ess
 ef_shed_dr:
-        ld      hl,(EC_EPOWER)          ; από τη μπαταρία, αν φτάνει
-        ld      de,(ef_prod)
-        or      a
-        sbc     hl,de
-        ex      de,hl
-        ld      hl,(EC_PSTORE)
-        or      a
-        sbc     hl,de
-        jr      c,ef_blackout
+        ld      de,(EC_PSTORE)          ; από τη μπαταρία, αν φτάνει
+        add     hl,de
+        jr      nc,ef_blackout
         ld      (EC_PSTORE),hl
-ef_shed_ok:
+ef_ess:
         ld      a,P_ESS
-        ld      (EC_POK),a
-        jr      ef_o2                   ; οι αντλίες είναι από τα φορτία που
+        jr      ef_setp                 ; οι αντλίες είναι από τα φορτία που
                                         ; έπεσαν: αντλούν την επόμενη μέρα
 ef_blackout:
-        ld      hl,0
-        ld      (EC_PSTORE),hl
         xor     a                       ; P_NONE
-        ld      (EC_POK),a
-        jr      ef_o2                   ; χωρίς ρεύμα δεν αντλεί κανείς
+        ld      h,a
+        ld      l,a
+        ld      (EC_PSTORE),hl
+        jr      ef_setp                 ; χωρίς ρεύμα δεν αντλεί κανείς
 
-ef_pumps:
+ef_surplus:
+        call    ef_charge               ; πλεόνασμα: φορτίζει, ως το ταβάνι
+ef_all:
+        ld      a,P_ALL
+ef_setp:
+        ld      (EC_POK),a
+        cp      P_ALL
+        jr      nz,ef_o2
+
         ; Το νερό και το μετάλλευμα βγαίνουν από ΔΟΜΕΣ, όχι από μηχανές
         ; θόλου — αλλά βγαίνουν εδώ, και το §10.2 τα θέλει.
         ;
         ; Στον ΙΔΙΟ κύκλο με τις μηχανές (βλ. FLOW_DIV): αλλιώς μία αντλία θα
         ; γέμιζε την αποικία νερό εξήντα τέσσερις φορές πιο γρήγορα απ' όσο το
         ; πίνει η μηχανή οξυγόνου.
-        ld      hl,(ef_wat)
-        ld      a,h
-        or      l
-        jr      z,ef_pump2
-        ld      a,S_WATER
-        call    ec_mark
         ld      de,(ef_wat)
+        ld      a,d
+        or      e
         ld      a,S_WATER
-        call    ec_add_stock
-ef_pump2:
-        ld      hl,(ef_ore)
-        ld      a,h
-        or      l
-        jr      z,ef_o2
-        ld      a,S_ORE
-        call    ec_mark
+        call    nz,ec_make
         ld      de,(ef_ore)
+        ld      a,d
+        or      e
         ld      a,S_ORE
-        call    ec_add_stock
+        call    nz,ec_make
 
 ef_o2:
         ld      hl,G_agent_fields       ; η σελίδα των flags
@@ -807,7 +597,7 @@ ef_cnt_n:
         ld      (EC_ALIVE),a
         or      a
         jr      nz,ef_alive
-        ld      a,1
+        inc     a
         ld      (EC_GAMEOVER),a         ; κανείς ζωντανός: τέλος (§10.3)
 ef_alive:
         ld      l,c
@@ -818,11 +608,24 @@ ef_alive:
         ld      hl,(EC_O2PROD)
         or      a
         sbc     hl,de
-        ld      a,0
-        jr      c,ef_o2_st
+        sbc     a,a                     ; -1 αν δεν φτάνει
         inc     a
-ef_o2_st:
         ld      (EC_O2OK),a
+        ret
+
+; ef_charge — HL = πλεόνασμα: η μπαταρία το παίρνει, ως το ταβάνι. Ως το βήμα
+; 45 γραμμένο δύο φορές, για την αποικία και για το φορτίο που έπεσε.
+ef_charge:
+        ld      de,(EC_PSTORE)
+        add     hl,de
+        ld      de,(EC_PCAP)
+        or      a
+        sbc     hl,de
+        add     hl,de                   ; CY αν κάτω από το ταβάνι
+        jr      c,efc_st
+        ex      de,hl
+efc_st:
+        ld      (EC_PSTORE),hl
         ret
 
 ; ---------------------------------------------------------------------------
@@ -838,49 +641,41 @@ econ_events:
         ld      de,(EC_SOLLEN)
         or      a
         sbc     hl,de
-        jr      nc,ev_newsol
-        add     hl,de
-        xor     a
+        sbc     a,a
+        inc     a                       ; 1 = νέο sol
         ld      (ev_newday),a
+        jr      nz,ev_newsol
+        add     hl,de
         jr      ev_store
 ev_newsol:
         ld      a,(EC_SOL)
         inc     a
         ld      (EC_SOL),a
-        ld      a,1
-        ld      (ev_newday),a
 ev_store:
         ld      (EC_FRAME),hl
         ld      de,(EC_DAYLEN)
         or      a
         sbc     hl,de
-        ld      a,0
-        jr      nc,ev_night
-        inc     a
-ev_night:
+        sbc     a,a
+        and     1                       ; 1 = μέρα
         ld      (EC_DAY),a
 
-        ld      a,(EC_GLOOM)            ; το πένθος περνάει, αργά
+        ld      hl,EC_GLOOM             ; το πένθος περνάει, αργά
+        ld      a,(hl)
         or      a
         jr      z,ev_roll
-        dec     a
-        ld      (EC_GLOOM),a
+        dec     (hl)
 
         ; Τρεις ζαριές, ΠΑΝΤΑ. Μια ζαριά υπό όρους θα έκανε την ακολουθία να
         ; εξαρτάται από το αποτέλεσμα της προηγούμενης, και η αναπαραγωγή θα
-        ; γινόταν δουλειά.
+        ; γινόταν δουλειά. Ο άνεμος διαβάζει την πρώτη αμέσως: δεν πειράζει
+        ; τη γεννήτρια, άρα ούτε τη σειρά. Τη θέλει και ο μετεωρίτης (mt_tick).
 ev_roll:
-        call    ev_rnd
+        call    ev_rnd                  ; --- άνεμος: η πρώτη ---
         ld      (ev_r1),hl
-        call    ev_rnd
-        ld      (ev_r2),hl
-        call    ev_rnd
-        ld      (ev_r3),hl
-
-        ld      hl,(ev_r1)              ; --- άνεμος ---
         ld      a,l
         and     15
-        jr      nz,ev_storm
+        jr      nz,ev_r23
         ld      a,l
         rrca
         rrca
@@ -888,13 +683,17 @@ ev_roll:
         rrca
         and     3
         ld      (EC_WIND),a
+ev_r23:
+        call    ev_rnd
+        ld      (ev_r2),hl
+        call    ev_rnd
+        ld      (ev_r3),hl
 
-ev_storm:                               ; --- αμμοθύελλα ---
-        ld      a,(EC_STORM)
+        ld      hl,EC_STORM             ; --- αμμοθύελλα ---
+        ld      a,(hl)
         or      a
         jr      z,ev_st_new
-        dec     a
-        ld      (EC_STORM),a
+        dec     (hl)
         jr      ev_fault
 ev_st_new:
         ; Τα ΨΗΛΑ bits του δεύτερου. Ο Galois ολισθαίνει δεξιά, άρα δύο
@@ -903,30 +702,28 @@ ev_st_new:
         ; 1/512 ΑΝΑ ΠΕΡΙΣΤΡΟΦΗ, ΟΧΙ 1/128: επί STORM_LEN περιστροφές η παλιά
         ; ζαριά κρατούσε τα πάνελ σκεπασμένα το ΕΝΑ ΤΕΤΑΡΤΟ του sol, πάνω από
         ; τη νύχτα. Τώρα 6%. Μετρημένο στο tools/balance.py.
-        ld      hl,(ev_r2)
-        ld      a,h
+        ld      a,(ev_r2 + 1)
         or      a
         jr      nz,ev_fault
-        ld      a,l
-        and     #80
-        jr      nz,ev_fault
-        ld      a,STORM_LEN
-        ld      (EC_STORM),a
+        ld      a,(ev_r2)
+        rla                             ; το bit 7
+        jr      c,ev_fault
+        ld      (hl),STORM_LEN
 
 ev_fault:                               ; --- απλή βλάβη: χαμηλά του τρίτου ---
         ; 1/128, ΟΧΙ 1/32. Με 1/32 η μοναδική μηχανή οξυγόνου του §10.1
         ; σταματούσε κάθε 1,3 sol: τα τέσσερα ανταλλακτικά τελείωναν σε τρία
         ; sols, και η επόμενη βλάβη ήταν ασφυξία — καμία μηχανή δεν φτιάχνει
         ; ανταλλακτικά στην αρχική αποικία.
-        ld      hl,(ev_r3)
-        ld      a,l
-        and     #7F
-        jr      nz,ev_visit
+        ;
         ; Ο ΔΕΙΚΤΗΣ ΑΠΟ ΤΑ BITS ΠΟΥ ΠΕΡΙΣΣΕΨΑΝ. Με δείκτη το ev_r2 — την
         ; προηγούμενη ρίψη του ίδιου Galois, που το #B400 δεν της αγγίζει το
         ; χαμηλό byte — το r2 % 64 ήταν ΠΑΝΤΑ 0: κάθε βλάβη έπεφτε στον θόλο 0,
         ; τη μοναδική γεννήτρια οξυγόνου.
         ld      hl,(ev_r3)
+        ld      a,l
+        and     #7F
+        jr      nz,ev_visit
         ld      b,7
         call    ev_shr
         call    ec_break
@@ -952,30 +749,38 @@ ev_flare:                               ; --- έκλαμψη: ψηλά του ί
         ld      hl,(ev_r3)
         ld      a,h
         or      a
-        jr      nz,ev_fl_no
+        jr      nz,ev_after
         ld      a,l
         and     #C0
-        jr      z,ev_fl_go
-ev_fl_no:
-        jp      ev_after
-ev_fl_go:
+        jr      nz,ev_after
+        ; Τρεις μηχανές, από τρεις ολισθήσεις του ίδιου αριθμού. Από πίνακα
+        ; από το βήμα 46· ως τότε τρία αντίγραφα του ίδιου κώδικα.
+        ld      hl,ev_fl_tab
+ev_fl_lp:
+        ld      b,(hl)                  ; ολίσθηση
+        inc     hl
+        ld      e,(hl)                  ; και μετατόπιση
+        inc     hl
+        push    hl
         ld      hl,(ev_r3)
-        ld      de,37
-        add     hl,de
-        call    ec_break
-        ld      hl,(ev_r3)
-        ld      b,3
         call    ev_shr
-        ld      de,101
+        ld      d,0
         add     hl,de
         call    ec_break
-        ld      hl,(ev_r3)
-        ld      b,1
-        call    ev_shr
-        ld      de,173
-        add     hl,de
-        call    ec_break
-        jp      ev_after
+        pop     hl
+        ld      a,l
+        cp      ev_fl_end & 255         ; έξι bytes: το L μόνο του αρκεί
+        jr      nz,ev_fl_lp
+
+ev_after:
+        call    mt_tick                 ; η βροχή μετεωριτών (src/meteor.asm)
+        ld      a,(ev_newday)
+        or      a
+        call    nz,sol_rollover
+        jp      ship_tick
+
+ev_fl_tab:  db 0,37, 3,101, 1,173
+ev_fl_end:
 
 ; ev_rnd — Galois, ίδιος με τη γεννήτρια κόσμου, ΞΕΧΩΡΙΣΤΗ κατάσταση.
 ev_rnd:
@@ -1028,56 +833,26 @@ ec_break_d:
         ld      a,(eb_d)
         call    jb_dome_ptr
         push    hl
-        ld      de,D_STATE
-        add     hl,de
-        ld      a,(hl)
-        pop     hl
+        pop     ix
+        ld      a,(ix+D_STATE)
         cp      DS_ACTIVE
         ret     nz
-
-        push    hl
-        ld      de,D_SIZE
-        add     hl,de
-        ld      a,(hl)
-        ld      hl,G_machine_count
-        add     a,l
+        ld      a,(ix+D_SIZE)
+        add     a,G_machine_count & 255
         ld      l,a
-        ld      a,0
-        adc     a,h
-        ld      h,a
+        ld      h,G_machine_count / 256
         ld      a,(hl)
         dec     a                       ; 1/4/8 -> μάσκα
-        ld      c,a
-        pop     hl
-        ld      a,(eb_s)
-        and     c
+        ld      hl,eb_s
+        and     (hl)
         ld      e,a
         ld      d,0
-
-        push    hl
-        ld      bc,D_MACH
-        add     hl,bc
-        add     hl,de
-        ld      a,(hl)
-        pop     hl
+        add     ix,de                   ; IX -> η υποδοχή, μέσα στην εγγραφή
+        ld      a,(ix+D_MACH)
         cp      NO_MACH
         ret     z
-
-        ld      bc,D_HEALTH
-        add     hl,bc
-        add     hl,de
-        ld      a,(hl)
-        or      a
-        ret     z                       ; ήδη σταματημένη
-        ld      (hl),0
+        ld      (ix+D_HEALTH),0         ; ήδη σταματημένη: το ίδιο μηδέν
         ret
-
-ev_after:
-        call    mt_tick                 ; η βροχή μετεωριτών (src/meteor.asm)
-        ld      a,(ev_newday)
-        or      a
-        call    nz,sol_rollover
-        jp      ship_tick
 
 ev_newday:  db 0
 ev_r1:      dw 0
@@ -1097,13 +872,7 @@ tab_coll:       dw 40,160,360
 tab_extr_pw:    db 1,3,6
 tab_extr_out:   db 1,2,5
 
-ef_p:       dw 0
-ef_prod:    dw 0
-ef_cap:     dw 0
-ef_use:     dw 0
 ef_wat:     dw 0
-ef_short:   dw 0
 ef_ore:     dw 0
 ec_pdiv:    db 1
 ec_fdiv:    db 1
-ef_cnt:     db 0

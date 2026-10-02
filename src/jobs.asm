@@ -121,13 +121,8 @@ ja_lp:
         ld      c,1
         call    ec_have
         jr      c,ja_fail
-        ld      a,(de)
-        sub     1
-        ld      (de),a
-        inc     de
-        ld      a,(de)
-        sbc     a,0
-        ld      (de),a
+        ld      a,c
+        call    ec_sub                  ; src/econ.asm
         ld      a,(jb_d)
         call    jb_dome_ptr
         ld      de,D_HEALTH
