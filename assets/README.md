@@ -6,7 +6,7 @@
 | | |
 |---|---|
 | Πηγή | repo `CPCArt`, φάκελος `planetbase/` |
-| Έκδοση | `034eab3` |
+| Έκδοση | `c0c6cd3` |
 | Συγχρονίστηκε | 2026-10-02 |
 
 ```bash
@@ -21,7 +21,8 @@
 | `sprites.asm` | πηγαίος κώδικας RASM — αυτό κάνεις include |
 | `sprites.bin` | τα ίδια bytes σε raw binary, αν προτιμάς φόρτωση από δίσκο |
 | `sprites_map.txt` | offset και μέγεθος κάθε sprite μέσα στο `.bin` |
-| `palette.gpl` | τα 16 pens σε μορφή GIMP (ανοίγει και στο Aseprite) — η θέση στη λίστα είναι ο αριθμός του pen· τιμές του desert, το έδαφος των άλλων πλανητών στα σχόλια |
+| `palette.gpl` | τα 16 pens σε μορφή GIMP (ανοίγει και στο Aseprite) — η θέση στη λίστα είναι ο αριθμός του pen· τιμές του desert, όπως το `palette_fw` |
+| `palette_ice.gpl`, `palette_storm.gpl`, `palette_barren.gpl` | το ίδιο για τους άλλους τρεις πλανήτες — αλλάζουν μόνο τα pens του εδάφους (7, 11, 12, 14) |
 | `aseprite/` | τα spritemaps (`.aseprite`) και οι εξαγωγές τους (`_sheet.png`, `_sheet.json`) |
 | `preview/` | `scene.png` (θόλος, διάδρομος και αεροθάλαμος σε έδαφος), `planet_*.png`, `composite_*.png`, `sheet.png` |
 

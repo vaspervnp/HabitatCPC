@@ -1,0 +1,42 @@
+GIMP Palette
+Name: Habitat CPC Mode 0 (ice)
+Columns: 8
+#
+# ΠΑΡΑΓΕΤΑΙ από το CPCArt/planetbase/tools/make_sprites.py, από το
+# tools/palette.py — μην το διορθώνεις με το χέρι.
+#
+# Τα 16 pens του Mode 0 με τη σειρά: η θέση στη λίστα είναι ο αριθμός
+# του pen. RGB = τα χρώματα του firmware (0, 128, 255 ανά κανάλι), τα
+# ίδια με των προεπισκοπήσεων.
+# Τιμές του πλανήτη ice (πάγος και χιόνι): το palette_fw, με τα pens 7, 11, 12, 14
+# από τη σειρά 1 του planet_pens.
+# Ένα αρχείο ανά πλανήτη: palette.gpl, palette_ice.gpl, palette_storm.gpl, palette_barren.gpl.
+#
+# Pen 0 είναι το διαφανές. Τα 0-6 είναι καρφωμένα (μάσκες, θόλοι,
+# διάδρομοι). Τα 7, 11, 12, 14 είναι του ΕΔΑΦΟΥΣ και αλλάζουν ανά πλανήτη·
+# εικονίδια, μηχανές και φυτά δεν τα αγγίζουν — δικά τους είναι τα
+# 8, 9, 10, 13, 15, συν όσα από τα 1-6 διαβάζονται σωστά.
+#
+# Το έδαφος ανά πλανήτη (αριθμός firmware και όνομα):
+#           pen 7               pen 11              pen 12              pen 14
+#   desert  15 Orange           3 Red               25 Pastel yellow    10 Cyan
+#   ice     14 Pastel blue      2 Bright blue       20 Bright cyan      22 Pastel green
+#   storm   12 Yellow           9 Green             21 Lime             19 Sea green
+#   barren  10 Cyan             4 Magenta           14 Pastel blue      2 Bright blue
+#
+  0   0   0	pen 0 Black (fw 0) — μαύρο / διαφανές
+  0   0 128	pen 1 Blue (fw 1) — σκιές, σώμα νερού
+  0 128 255	pen 2 Sky blue (fw 11) — δάπεδο θόλου
+128 255 255	pen 3 Pastel cyan (fw 23) — περίγραμμα θόλου
+128 128 128	pen 4 White (fw 13) — δάπεδο διαδρόμου
+255 255 255	pen 5 Bright white (fw 26) — περίγραμμα διαδρόμου
+255 255   0	pen 6 Bright yellow (fw 24) — άποικοι, εικονίδια
+128 128 255	pen 7 Pastel blue (fw 14) — ΕΔΑΦΟΣ — βάση
+255   0   0	pen 8 Bright red (fw 6) — συναγερμός / εικονίδια
+  0 255   0	pen 9 Bright green (fw 18) — εικονίδια (θερμοκήπιο)
+  0 128 128	pen 10 Cyan (fw 10) — εικονίδια
+  0   0 255	pen 11 Bright blue (fw 2) — ΕΔΑΦΟΣ — σκούρο
+  0 255 255	pen 12 Bright cyan (fw 20) — ΕΔΑΦΟΣ — φωτεινό
+128   0   0	pen 13 Red (fw 3) — εικονίδια
+128 255 128	pen 14 Pastel green (fw 22) — ΕΔΑΦΟΣ — νερό / πάγος
+255 128 128	pen 15 Pink (fw 16) — εικονίδια

@@ -55,7 +55,7 @@ cp "$SRC"/sprites/* "$DST/aseprite/"
 cp "$SRC"/build/sprites/sprites.asm \
    "$SRC"/build/sprites/sprites.bin \
    "$SRC"/build/sprites/sprites_map.txt \
-   "$SRC"/build/sprites/palette.gpl "$DST/"
+   "$SRC"/build/sprites/palette*.gpl "$DST/"
 cp "$SRC"/SPRITES.md "$DST/"
 # Τα ~260 μεμονωμένα PNG ανά sprite δεν αντιγράφονται: πλεονασμός με τα _sheet.png.
 cp "$SRC"/build/sprites/preview/composite*.png \
@@ -119,7 +119,8 @@ cat > "$DST/README.md" <<MD
 | \`sprites.asm\` | πηγαίος κώδικας RASM — αυτό κάνεις include |
 | \`sprites.bin\` | τα ίδια bytes σε raw binary, αν προτιμάς φόρτωση από δίσκο |
 | \`sprites_map.txt\` | offset και μέγεθος κάθε sprite μέσα στο \`.bin\` |
-| \`palette.gpl\` | τα 16 pens σε μορφή GIMP (ανοίγει και στο Aseprite) — η θέση στη λίστα είναι ο αριθμός του pen· τιμές του desert, το έδαφος των άλλων πλανητών στα σχόλια |
+| \`palette.gpl\` | τα 16 pens σε μορφή GIMP (ανοίγει και στο Aseprite) — η θέση στη λίστα είναι ο αριθμός του pen· τιμές του desert, όπως το \`palette_fw\` |
+| \`palette_ice.gpl\`, \`palette_storm.gpl\`, \`palette_barren.gpl\` | το ίδιο για τους άλλους τρεις πλανήτες — αλλάζουν μόνο τα pens του εδάφους (7, 11, 12, 14) |
 | \`aseprite/\` | τα spritemaps (\`.aseprite\`) και οι εξαγωγές τους (\`_sheet.png\`, \`_sheet.json\`) |
 | \`preview/\` | \`scene.png\` (θόλος, διάδρομος και αεροθάλαμος σε έδαφος), \`planet_*.png\`, \`composite_*.png\`, \`sheet.png\` |
 
