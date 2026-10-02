@@ -149,7 +149,7 @@ erd_ng:
         add     hl,de                   ; HL = base + D_MACH
 
         xor     a
-        ld      (ed_slot),a
+        ld      (ed_k),a                ; καμία μηχανή με χειριστή ακόμη
 erd_lp:
         ld      a,(hl)
         cp      NO_MACH
@@ -170,9 +170,6 @@ erd_back:
         pop     bc
 erd_next:
         inc     hl
-        ld      a,(ed_slot)
-        inc     a
-        ld      (ed_slot),a
         djnz    erd_lp
         ret
 
@@ -281,10 +278,17 @@ ec_run_mach:
         ld      (ed_flags),a
         and     MF_OPERATOR
         jr      z,erm_power
-        ld      a,(ed_slot)
+        ; Η k-ΟΣΤΗ ΜΗΧΑΝΗ ΠΟΥ ΘΕΛΕΙ ΧΕΙΡΙΣΤΗ τρέχει αν ο θόλος έχει k, όποια
+        ; υποδοχή κι αν πιάνει. Ως το βήμα 44 μετρούσε η ΥΠΟΔΟΧΗ (slot < ops),
+        ; που δούλευε μόνο επειδή το γέμισμα έβαζε τις μηχανές από την 0 και
+        ; κάτω: με εξοπλισμό ανά υποδοχή, ένα μεταλλουργείο στην υποδοχή 5 κι
+        ; ένας χειριστής δεν θα έτρεχε ποτέ. Το jb_need μετράει ακριβώς αυτές.
+        ld      hl,ed_k
+        ld      a,(hl)
+        inc     (hl)
         ld      hl,ed_ops
         cp      (hl)
-        ret     nc                      ; αυτή η υποδοχή δεν έχει χειριστή
+        ret     nc                      ; δεν φτάνουν οι χειριστές ως αυτήν
 erm_power:
         ; --- οι τρεις είσοδοι, ξετυλιγμένες ---
         ; Ο βρόχος με IY και υπολογισμό μετατόπισης κόστιζε 280 T-states ανά
@@ -516,9 +520,8 @@ ed_p2:      dw 0
 ed_q2:      db 0
 ed_p3:      dw 0
 ed_q3:      db 0
-ed_n:       db 0
 ed_ops:     db 0
-ed_slot:    db 0
+ed_k:       db 0                    ; πόσες με χειριστή πέρασαν σε αυτόν τον θόλο
 ed_m:       db 0
 ed_flags:   db 0
 ed_green:   db 0

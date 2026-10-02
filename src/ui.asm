@@ -6,6 +6,7 @@
 ;   MENU   ο κατάλογος του §9.3, μια γραμμή· αριστερά/δεξιά αλλάζει είδος
 ;   PLACE  το φάντασμα ακολουθεί τον κέρσορα, με τα άκυρα tiles σημαδεμένα
 ;   LINK   δύο θόλοι, και η διαδρομή του διαδρόμου ανάμεσά τους σαν φάντασμα
+;   FIT    ο εξοπλισμός ενός θόλου, υποδοχή-υποδοχή (src/fit.asm)
 ;
 ; Η ΣΕΙΡΑ ΜΕΣΑ ΣΕ ΕΝΑ ΒΗΜΑ ΕΙΝΑΙ ΔΕΣΜΕΥΤΙΚΗ: πρώτα σβήνει το φάντασμα, μετά
 ; κινείται ο κέρσορας, μετά (αν χρειάζεται) σκρολάρει η κάμερα, και τελευταίο
@@ -79,6 +80,8 @@ uit_state:
         jp      z,uist_place
         cp      UI_LINK
         jp      z,uist_link
+        cp      UI_FIT
+        jp      z,uist_fit
         ifdef HAS_DISC
         cp      UI_SLOT
         jp      z,uist_slot
@@ -112,6 +115,9 @@ usv_none:
         jp      ui_ship
 ush_none:
         endif
+        ld      a,A_FIRE                ; πάνω σε θόλο: ο εξοπλισμός του
+        call    in_hit
+        jp      nz,fit_enter
         ld      a,A_MENU
         call    in_hit
         ret     z
@@ -408,17 +414,24 @@ ui_goto_h:
         jp      ui_show
 
 ; ui_lr — δεξιά / αριστερά, κυκλικά. HL -> η τιμή, C = πόσες τιμές.
+; ui_ud — το ίδιο με κάτω / πάνω (ο εξοπλισμός, src/fit.asm).
 ; Out: Z = κανένα από τα δύο· αλλιώς NZ, και η τιμή άλλαξε.
 ; Ως το βήμα 44 γραμμένο δύο φορές, για τη θέση δίσκου και για τον κατάλογο.
+ui_ud:
+        ld      d,A_DOWN
+        jr      uilr_k
 ui_lr:
+        ld      d,A_RIGHT               ; το «πίσω» είναι πάντα το προηγούμενο
+uilr_k:                                 ; πλήκτρο (assert στο fit.asm)
         push    hl
         ld      e,1                     ; το in_hit κρατά τα C, DE
-        ld      a,A_RIGHT
+        ld      a,d
         call    in_hit
         jr      nz,uilr_go
         ld      e,c
         dec     e                       ; -1 ≡ πόσες - 1
-        ld      a,A_LEFT
+        ld      a,d
+        dec     a
         call    in_hit
 uilr_go:
         pop     hl
@@ -838,6 +851,8 @@ ui_show:
         ld      a,(ui_bad)
         jr      uis_okno
 uis_np:
+        cp      UI_FIT
+        jp      z,fit_show              ; πλαίσιο γύρω από υποδοχή, όχι tile
         cp      UI_PLACE
         ld      a,PEN_CUR
         jr      nz,uis_set
@@ -993,7 +1008,7 @@ uipc_go:
         jr      nz,uip_notlook
         ld      hl,t_look
         call    hud_text7
-        ld      b,40-19
+        ld      b,35-32                 ; ως τον δείκτη ταχύτητας (uip_spd)
         call    hud_blank
         jp      uip_row4
 uip_notlook:
@@ -1044,6 +1059,9 @@ uipi_go:
         call    hud_char
         ld      b,1
         call    hud_blank
+        ld      a,(ui_state)
+        cp      UI_FIT
+        jp      z,fit_name              ; η μηχανή στη θέση του ονόματος
         ; ΓΙΑ ΘΟΛΟ ΤΟ ΟΝΟΜΑ ΕΙΝΑΙ ΤΟ ΔΩΜΑΤΙΟ, και το μέγεθος ένα γράμμα από
         ; πίσω: «OXYGEN     S» λέει και τα δύο σε μία λέξη λιγότερη από
         ; «DOME S». Τα υπόλοιπα του καταλόγου κρατούν το όνομά τους, που ζει
@@ -1095,16 +1113,22 @@ uip_row4:
         jr      z,uip_ln
         cp      UI_PLACE
         jr      z,uip_st
+        cp      UI_FIT
+        jp      z,fit_row4
         ifdef HAS_DISC
         cp      UI_SLOT
         ld      hl,t_slkeys
         jr      z,uip_say
         endif
+        ; ΜΕΝΟΥΝ LOOK ΚΑΙ MENU. Στο LOOK η σειρά 4 έλεγε «FIRE=PLACE» ως το
+        ; βήμα 44, όταν το FIRE εκεί δεν έκανε τίποτα· από το 45 ανοίγει τον
+        ; εξοπλισμό, και το λέει η σειρά 3.
+        or      a
+        ld      b,40
+        jr      z,uip_blk
         ld      hl,t_keys
         ld      b,40-20                 ; το t_keys είναι 20 χαρακτήρες, όχι 24:
-        ld      a,(ui_state)            ; οι τέσσερις τελευταίες στήλες έμεναν
-        cp      UI_MENU
-        jr      nz,uip_ks
+                                        ; οι τέσσερις τελευταίες στήλες έμεναν
         ld      a,(bd_kind)
         or      a                       ; σε θόλο, το πάνω-κάτω κάνει κάτι
         jr      nz,uip_ks
@@ -1114,6 +1138,7 @@ uip_ks:
         push    bc
         call    hud_text7
         pop     bc
+uip_blk:
         call    hud_blank
         jr      uip_spd
 uip_st:

@@ -220,6 +220,7 @@ ml_hud:
         include "input.asm"
         include "graph.asm"
         include "ui.asm"
+        include "fit.asm"               ; βήμα 45: ο εξοπλισμός, μία κατάσταση του ui
         include "rooms.asm"
         include "entity.asm"
         include "econ.asm"

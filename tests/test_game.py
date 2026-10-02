@@ -262,10 +262,45 @@ def main():
     fire()                               # -> τοποθέτηση
     m.set_joystick_type(0)
     m.run_frames(30)
-    check(w16(g + 3 * 2) == metal0 - 20,
+    # ΤΟ ΚΕΛΥΦΟΣ ΜΟΝΟ (βήμα 45): 12. Η γεννήτρια μπαίνει από τον εξοπλισμό.
+    check(w16(g + 3 * 2) == metal0 - 12,
           f"πληρώθηκε ο θόλος στο {at}: μέταλλο {metal0} -> {w16(g + 3 * 2)} "
           f"(ui_bad={m.peek(sym['UI_BAD'])}, κέρσορας "
           f"{sb(m.peek(sym['CUR_HX']))},{sb(m.peek(sym['CUR_HY']))})")
+
+    # --- 5β. Ο ΕΞΟΠΛΙΣΜΟΣ (src/fit.asm, βήμα 45) --------------------------
+    # Ο θόλος μπήκε ΑΔΕΙΟΣ, όπως στο Planetbase. Με τα πλήκτρα του παίκτη:
+    # ESC ως το LOOK, FIRE πάνω στο εργοτάξιο, FIRE για τη γεννήτρια. Χωρίς
+    # αυτό ο θόλος τελειώνει και δεν παράγει τίποτα — το επόμενο check το
+    # λέει.
+    import balance as B
+    node = m.peek(sym["BD_NODE"])
+    m.set_joystick_type(1)
+    for _ in range(2):                   # PLACE -> MENU -> LOOK
+        m.joystick(0x20)
+        m.run_frames(4)
+        m.joystick(0)
+        m.run_frames(10)
+    fire()                               # -> FIT
+    r3, r4 = hud(3), hud(4)
+    check(m.peek(sym["UI_STATE"]) == 5 and m.peek(sym["FIT_D"]) == node,
+          f"το FIRE πάνω στο εργοτάξιο άνοιξε τον εξοπλισμό του (κατάσταση "
+          f"{m.peek(sym['UI_STATE'])}, θόλος {m.peek(sym['FIT_D'])}/{node})")
+    check(r3.startswith("< OXYGEN       >  FE  8  BI  2")
+          and r4.startswith("SLOT 1/1  UP/DN=PICK FIRE=FIT SPACE=ALL"),
+          f"και ο πίνακας λέει τι και πόσο:\n   |{r3}|\n   |{r4}|")
+    metal0 = w16(g + 3 * 2)
+    fire()                               # -> η γεννήτρια μπαίνει
+    rec = B.dome_rec(m, sym, node)
+    check(w16(g + 3 * 2) == metal0 - 8 and rec[8] == 0 and rec[16] == 200,
+          f"η γεννήτρια μπήκε και πληρώθηκε: μέταλλο {metal0} -> "
+          f"{w16(g + 3 * 2)}, υποδοχή 0 = {rec[8]}, υγεία {rec[16]}")
+    m.joystick(0x20)                     # -> LOOK
+    m.run_frames(4)
+    m.joystick(0)
+    m.run_frames(10)
+    m.set_joystick_type(0)
+    check(m.peek(sym["UI_STATE"]) == 0, "και το ESC γυρίζει στο LOOK")
     # Η ΕΡΓΑΣΙΑ BUILD ΕΙΝΑΙ Η ΑΠΑΝΤΗΣΗ: φεύγει από τον πίνακα μόνο όταν η
     # ακεραιότητα φτάσει 255 και ο θόλος γίνει DS_ACTIVE (§6.9). Η ζήτηση
     # ρεύματος δεν κάνει για σημάδι — τα κρεβάτια θέλουν χειριστή και ο
@@ -357,7 +392,7 @@ def main():
     fire()                               # -> τοποθέτηση
     m.set_joystick_type(0)
     m.run_frames(30)
-    check(w16(g + 3 * 2) == metal0 - 20,
+    check(w16(g + 3 * 2) == metal0 - 12,
           f"πληρώθηκε η αίθουσα ελέγχου στο {at2}: μέταλλο {metal0} -> "
           f"{w16(g + 3 * 2)} (ui_bad={m.peek(sym['UI_BAD'])})")
     got = 0

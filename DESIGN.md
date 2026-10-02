@@ -334,13 +334,13 @@ must always be reachable is in bank 0 (`&0000–&3FFF`) or bank 2 (`&8000–&BFF
 
 | Block | Bank | Contents | Bytes | Slack |
 |---|---|---|---|---|
-| `&0000–&3FFF` | 0 | engine code, ISR, blit kernels, UI | 16,384 | **1,228** |
+| `&0000–&3FFF` | 0 | engine code, ISR, blit kernels, UI | 16,384 | **478** |
 | window | 1 | **distance matrix** `DIST[96][128]` 12,288 · room icons `m` and `l` 3,936 | 16,384 | 160 |
 | window | 4 | **world plane** 128×128×1 byte | 16,384 | 0 |
 | window | 5 | **next-hop matrix** `NEXTHOP[96][128]` 12,288 · **object index** ≤ 960 ([§8.4](#84-object-pass-and-draw-order)) | 16,384 | 3,136 |
 | window | 6 | `flip_mode0` 256 · dome+ring `nw` quadrants 7,424 · slot figures 3,456 · entity tables 4,832 ([§6.1](#61-entities)) · figure cache 512 | 16,356 | 28 |
-| window | 7 | external structures 11,264 · plants 1,584 · `plant_ptr` 24 · text 1,024 · **font 1,536** (was the `audio` reservation, milestone 33) | 15,432 | 952 |
-| `&8000–&BFFF` | 2 | graphics, flat 9,592 (font gone to bank 7) · ghost undo log 1,160 · code 5,524 ([§4.3](#43-bank-2-flat-again)) | 16,276 | **108** |
+| window | 7 | external structures 11,264 · plants 1,584 · `plant_ptr` 24 · text 1,024 (1,017 used) · **font 1,536** (was the `audio` reservation, milestone 33) | 15,432 | 952, 7 of them in the text block |
+| `&8000–&BFFF` | 2 | graphics, flat 9,592 (font gone to bank 7) · ghost undo log 1,160 · code 5,518 ([§4.3](#43-bank-2-flat-again)) | 16,270 | **114** |
 | `&C000–&FFFF` | 3 | play-area screen | 16,384 | 0 |
 
 Every bank is spoken for. The two matrices in banks 1 and 5 are the clearest answer
@@ -523,7 +523,9 @@ The 440 bytes paid for moving the cold half of the object index up into bank 2
 code area from 15 to 108. Milestone 42 spent 220 of the 428 on redrawing an emptied
 ring slot properly ([§8.5](#85-the-dirty-list)), which left 208; milestone 43 took
 737 back by shrinking the object pass ([§8.4](#84-object-pass-and-draw-order)), and
-milestone 44 another 283 out of the interface the same way: **1,228**.
+milestone 44 another 283 out of the interface the same way: **1,228**. Milestone 45
+spent 750 of it on fitting a dome slot by slot
+([§6.5](#a-room-says-what-fits-the-player-says-what-goes-in)): **478**.
 
 A first attempt at the same measurement said the log runs to 1,600 with nothing but
 the cursor on screen. That was the *measurement* breaking the thing it measured:
@@ -1472,10 +1474,10 @@ for [§10.2](#102-milestones).
 
 #### The slot order is the room's order, not the table's
 
-**A machine runs only if its slot index is below the dome's operator count**
-([§6.6](#66-needs)) — one person inside turns slot 0 and nothing else — so the order
-the slots are filled in *is* what the room produces, and filling them in the numeric
-order of `room_machines` left that to the asset table. The Lab accepts `processors`,
+**Until milestone 45 a machine ran only if its slot index was below the dome's
+operator count** ([§6.6](#66-needs)) — one person inside turned slot 0 and nothing
+else — so the order the slots were filled in *was* what the room produced, and filling
+them in the numeric order of `room_machines` left that to the asset table. The Lab accepts `processors`,
 `medical` and `vitromeat`; numerically processors comes first, which Control makes
 anyway, so **no Lab ever produced vitromeat**. The greenhouse was worse: `plant_class`
 numbers plants 0–4 Starch and 5–9 Vegetables, so a medium greenhouse planted four
@@ -1500,6 +1502,18 @@ Two tables in `src/rooms.asm` fix it, and both say the same thing:
 
 `tests/test_build.py` calls `rm_build` directly and asserts both orders, with the
 numeric order as the negative control.
+
+**Since milestone 45 the slots are the player's** ([below](#a-room-says-what-fits-the-player-says-what-goes-in)),
+and a player who puts one iron machine in slot 3 would, under that rule, have needed
+four people in the dome to turn it. So the rule counts *machines* now: **the k-th
+machine that wants an operator runs when the dome has k**, whatever slot it sits in
+(`ed_k` in `src/econ.asm`, `k` in `tools/econ.py`). The two tables still earn their
+place — `rm_pref`'s machine heads the fitting list and is its default, and
+`rm_plants` is the greenhouse's MIXED crop. `tests/test_sim.py` checks the rule on the
+reference: two iron machines in slots 3 and 6 make 0 / 1 / 2 / 2 Metal with 0–3
+operators, where the old rule makes 0 / 0 / 0 / 0. Z80 against reference over sparse
+slots is the shared run's job — the populated colony leaves one slot in five empty,
+with random operator counts.
 
 `machine_rules` in the asset data already constrains placement: `mach_oxygen` is
 `bit0` only, meaning **oxygen generators fit only in small domes**. That is honoured as
@@ -1541,21 +1555,63 @@ These numbers are a starting point for tuning, not a balance claim — and three
 them turned out to be unlivable the first time the whole loop ran
 ([§6.6](#66-needs)).
 
-#### A room comes with its machines
+#### A room says what fits, the player says what goes in
 
-The player picks a room ([§9.3](#93-build-flow)); the dome fills its own slots. Two
-asset tables already say everything needed: `room_machines[room]` is a 12-bit mask of
-what belongs in that room, `machine_rules[machine]` a 3-bit mask of the dome sizes it
-fits. The commit walks the mask, keeps what fits, and deals the survivors **round
-robin** into the slots — so a large Factory comes out with iron, bioplastic, weapons,
-robots, spares and then repeats, rather than eight of the same machine. A greenhouse
-takes the twelve plants the same way, which is what mixes starch, vegetables,
-medicinal and a morale tree in one dome.
+This section was called *A room comes with its machines* until milestone 45: the
+commit walked `room_machines`, kept what `machine_rules` let into that size, and dealt
+the survivors **round robin** into the slots, and the dome's price covered them. A
+large Factory came out with iron, bioplastic, weapons, robots, spares and iron again,
+and there was no way to ask for eight iron machines when the colony was short of
+metal (§15 carried it as a risk).
 
-The machines are **not costed separately**; the dome's price by size covers what is
-inside it. Per-machine pricing needs a per-slot screen to spend it on, and that is the
-same screen that would let the player ask for eight iron machines instead of the
-spread. Until it exists, a room is a decision and its contents are a consequence.
+**Now, as in Planetbase, a dome is built empty and fitted slot by slot** — the
+fitting screen, `UI_FIT` in `src/fit.asm` ([§9.3](#93-build-flow)):
+
+- **`FIRE` on a dome in `LOOK`** opens it. Left/right picks a slot, which gets a box
+  round it on the dome; up/down picks what goes in — `EMPTY`, or what `rm_build`
+  allows in that room at that size, the room's main machine first and preselected.
+  `FIRE` installs, `SPACE` installs the same thing into every slot as far as the
+  materials go, `ESC` goes back. The panel says `< METAL    >  FE  8  BI  2` and
+  `SLOT 2/8  UP/DN=PICK FIRE=FIT SPACE=ALL`; the box is green when the choice can be
+  paid, red when it cannot, pink when it is already there.
+- **A construction site can be fitted too.** The slots are written at once and drawn
+  when the dome finishes (`dh_built` draws the machines); nothing is drawn onto a
+  site, so `DK_MACH` is pushed only for a finished dome.
+- **Every machine is paid for separately**, through the same `bd_afford` and
+  `bd_stock_pay` as everything else that is built. Taking one out gives **half** its
+  price back (rounded down, and not past the 600 cap). A replacement pays for the new
+  machine *first* and then refunds the old, so its materials must be in store —
+  as in Planetbase, where dismantling is its own act.
+- **The greenhouse chooses a crop, not a variety:** Starch, Vegetables, Herbs, Tree —
+  and MIXED. The variety follows the slot (the class's first plant, plus the slot
+  mod 5 for the two five-variety crops) so a starch field is not eight copies of one
+  sprite; MIXED is `rm_plants`, the old automatic mix, slot by slot.
+- **A room still cannot change** after placement, and a room with no machines
+  (Quarters, Storage, Lounge) does not open.
+
+| | Metal | Bioplastic |
+|---|---|---|
+| Dome shell S / M / L | 12 / 24 / 40 | 8 / 14 / 24 |
+| Oxygen, iron, bioplastic, spares, medical, vitromeat | 8 | 2 |
+| Weapons, processors, robots | 10 | 4 |
+| Food (`mach_food`) | 6 | 2 |
+| Beds, medicine cabinet | 4 | 2 |
+| A plant | 2 | 0 |
+
+**A small dome with its one machine costs what it did, 20 / 10**, so the opening of
+[§10.1](#101-start-state) is unchanged. Medium and large domes cost what they are
+filled with: a large Factory full is 104 / 40 against 70 / 35 before, and an empty
+one is 40 / 24.
+
+**Taking a machine out needs a redraw nothing else did.** A machine is an opaque
+6×22 sprite, so installing or replacing one is a blit over the old; an empty slot has
+no sprite to blit. `dh_mach` sends an emptied slot to `dhv_rect` — the vacated ring
+slot of milestone 42 ([§8.5](#85-the-dirty-list)), generalised from 2×8 to any
+rectangle: the ground under the slot, then every object clipped to it. It is charged
+`DHS_VAC_US` on top of the `DK_MACH` price, so nothing else follows it in that frame;
+the worst loop round of the `FIRE` that empties a slot measured 40 ms.
+
+`tests/test_fit.py` drives all of it with the keys, in the real binary.
 
 **A greenhouse keeps plants in the same slots another dome keeps machines.** Same
 field, different meaning, and the room type says which. `plant_class` decides the
@@ -1564,7 +1620,7 @@ morale.
 
 **One biologist waters the whole garden.** This section used to say a greenhouse posts
 as many `Operate` jobs as it has plants, and it did — the plant rule was the machine
-rule, one slot one operator. A machine turns only while its slot index is below the
+rule, one slot one operator. A machine turned only while its slot index was below the
 dome's operator count, so a medium greenhouse with one biologist grew **slot 0 and
 nothing else**: 286 Starch and *zero* Vegetables while `mach_food` needs both. Four
 plants meant four people, which is the entire opening colony, for one dome. A
@@ -2637,7 +2693,19 @@ the full pass, by construction. It costs what reaching every object over the
 slot costs, ~25 blit attempts to write sixteen bytes, and it says so: it adds
 `DHS_VAC_US` = 18,000 to `dt_spent` so that nothing else shares its frame.
 `tests/test_slot.py` empties every visible occupied slot at the five object-test
-cameras and compares each with a full redraw, byte for byte.
+cameras and compares each with a full redraw, byte for byte. Since milestone 45 it is
+`dhv_rect`, any rectangle, and the fitting's emptied machine slot (6×22) goes through
+it too.
+
+**And it must give the clip back on every way out.** It narrows `clip_x` to the
+slot's columns before it knows whether the rows are on screen; until milestone 45 a
+slot visible across but off the top or bottom returned there with `ret z`, and left
+the clip a two-byte column. Every later item of the list then drew into that column —
+nothing. It took a dome finishing in view after such a vacancy to show: the fitting's
+`test_link.py` runs, which give the builders time, found a large factory with neither
+its room icon nor any of its eight machines. The exit is `jp z,ob_clip_full` now;
+`test_slot.py` reads the clip after all 200 vacancies of its five cameras, visible or
+not, and with the jump aimed at a bare `ret`, four leave it narrowed.
 
 **All five estimates were low, by 2× to 21×, and for one reason.** The blit is
 not the cost. Reaching it is: page the bank, read the 24-byte dome record,
@@ -2732,7 +2800,7 @@ a joystick alternative, read in one pass over the PSG keyboard matrix.
 | Input | Action |
 |---|---|
 | Cursors / joystick | move the build cursor; camera follows at the viewport edge. In the menu, left/right picks the item and up/down the room ([§9.3](#93-build-flow)) |
-| Fire / `COPY` | select, confirm, place |
+| Fire / `COPY` | select, confirm, place; in `LOOK`, on a dome, open its fitting ([§6.5](#a-room-says-what-fits-the-player-says-what-goes-in)) |
 | `ESC` | cancel, back |
 | `SPACE` | open the build menu |
 | `1`…`4` | speed: pause, normal, fast, very fast — the wheel advances 0 / 1 / 2 / 4 slots per frame |
@@ -2901,7 +2969,9 @@ Quarters, Greenhouse, Factory, Lab, Medbay, Control, Storage, Lounge.
 A screen that picks a room *after* placement would need its own interface state, its
 own ghost and its own notion of "which dome are you pointing at"; the second axis of
 a menu that exists costs none of those. What it gives up is changing a room later,
-which nothing else in the game needs yet.
+which nothing else in the game needs yet. **Milestone 45 built that screen for the
+contents** — `FIT`, below — and it cost exactly those three things: a state, a box
+round a slot for a ghost, and `ui_dome` for the pointing. The room stays a menu axis.
 
 **Two structures also ask something of the ground under them.** The water extractor
 wants a lake and the mine wants an ore vein, within two tiles of the footprint
@@ -3005,7 +3075,16 @@ purpose, two items under the ghost in one tick.
 
 Three states, not four: `LOOK`, `MENU`, `PLACE` — and `LINK`, which the corridor
 needs because a corridor has two ends rather than a footprint
-([§9.4](#94-corridor-routing)).
+([§9.4](#94-corridor-routing)). And since milestone 45 **`FIT`**, a dome's fitting
+([§6.5](#a-room-says-what-fits-the-player-says-what-goes-in)), which lives in its own
+file, `src/fit.asm`, and borrows the rest: `ui_lr` for the slot and `ui_ud` — the same
+code with down/up — for the choice; `ui_dome` for the dome under the cursor; the
+catalogue's price row (`uip_item`, with the machine's name where the item's goes) and
+`bd_afford`/`bd_stock_pay`, because a machine's price is written to `bd_metal` and
+`bd_biop` like any item's. `FIRE` in `LOOK` opens it, so the `LOOK` row says
+`LOOK SPACE=BUILD FIRE=FIT C=SHIP`, and the second row — which said `FIRE=PLACE ESC=BACK`
+in `LOOK`, where neither did anything — is blank there. Asking for `FIRE` in `LOOK`
+costs the cursor step 47 µs: 4,945 → **4,992 µs** (`tests/test_route.py`).
 
 **Smaller at milestone 44, doing the same.** `src/ui.asm` went from 2,224 bytes to
 1,941 by writing things once: "left/right, wrapping" for the save slot and the build
@@ -3320,7 +3399,10 @@ within 30 tiles of the centre; in this seed they are 4 and 7 tiles out, which is
 screen of scrolling.
 
 **Measured, at ×4, eight sols, with nobody touching the controls afterwards**
-(`tools/balance.py`, which builds through the real menu and then watches):
+(`tools/balance.py`, which builds through the real menu and then watches; since
+milestone 45 it also fits every dome it builds through the fitting screen, round
+robin over the room's list — what the dome used to do by itself — and the opening's
+lines come out byte for byte as at milestone 44):
 
 | The player builds | First death | Of what |
 |---|---|---|
@@ -3331,8 +3413,8 @@ screen of scrolling.
 | panel + extractor | **none in 8 sols** | Water reaches 247, Food is gone by sol 6 |
 | panel + collector + extractor | **none in 8 sols** | Food gone by sol 7 and still nobody dead — Water 373 and climbing, battery full |
 | panel + extractor + small **Factory** | **none in 8 sols** | Ore 60 → 0 by sol 4, Metal 18 → **48**; Food gone by sol 6 and nobody dead by sol 8 |
-| greenhouse + lab + canteen (with the materials given) | **none in 8 sols** | **The first colony that feeds itself**: Food 46 → **68** by sol 6 and 60 at sol 8, four colonists eating out of it the whole way. Water is the new tight one — 71 → 5, because every pot drinks |
-| the same, plus two colonist ships — **twelve people** | **none in 8 sols** | Food dips to 0 around sol 5 and climbs back to 26 by sol 8: one chain feeds twelve, but with nothing to spare and no second canteen |
+| greenhouse + lab + canteen (with the materials given) | **none in 8 sols** | **The first colony that feeds itself**: Food 46 → **68** by sol 6 and 60 at sol 8, four colonists eating out of it the whole way. Water is the new tight one — 71 → 5, because every pot drinks. At milestone 45, with the domes fitted through the new screen: Food 41 → **61** by sol 4 and 50 at sol 8, Water 63 → 5, nobody dead |
+| the same, plus two colonist ships — **twelve people** | **sol 6** | **Re-measured at milestone 45, and identical at 44** — the first death falls on the same frame, 24,426, in both builds. Water is gone by sol 2 and Food by sol 5. This row used to read "none in 8 sols; Food dips to 0 around sol 5 and climbs back to 26"; when that stopped being true was not tracked, which is the argument for re-running the table at each milestone that touches the economy |
 
 Every line that solves water used to end at the same wall: **Food**, which needs a
 greenhouse and a `mach_food`, which needs a dome that can be given a room. Rooms are
@@ -3602,12 +3684,12 @@ game lives in seven places at once — see [§13.1](#131-three-ways-a-loader-doe
 | `LOADER.BIN` | `&9000` | 533 | the loader, plus the 40-byte endgame it copies to `&3FC0` |
 | `BANK6.BIN` | bank 6 | 16,384 | quadrants, figures, entity tables |
 | `BANK7.BIN` | bank 7 | 16,384 | structures, plants, and the reserved holes |
-| `TEXT.BIN` | bank 7, over the hole | 487 | every string the game prints ([§4.2](#42-the-eight-banks)) |
+| `TEXT.BIN` | bank 7, over the hole | 1,017 | every string the game prints ([§4.2](#42-the-eight-banks)) |
 | `BANK1.BIN` | `&7000` | 4,096 | room icons above the distance matrix |
 | `PAGE2.BIN` | bank 5, then `&8000` | 11,264 | bank 2's graphics and tables |
-| `GAME2.BIN` | bank 5, then `PAGE2_CODE` | 3,334 | bank 2's code — the address comes from the symbol table, not from a constant in the build script, because it moved once and the script did not |
+| `GAME2.BIN` | bank 5, then `PAGE2_CODE` | 5,518 | bank 2's code — the address comes from the symbol table, not from a constant in the build script, because it moved once and the script did not |
 | `GEN.BIN` | `&8000` | 3,072 | the world generator: runs once, returns |
-| `GAME.BIN` | `&0100` | 15,422 | the game |
+| `GAME.BIN` | `&0100` | 15,330 | the game (sizes as of milestone 45 — `ls build/`, not this table, is the authority) |
 
 **Measured: 31 s from `ENTER` to the colony** — 13.5 s of that is the generator
 ([§5.9](#59-cost--measured)), the rest is 68 KB off the floppy. The border changes
@@ -3637,9 +3719,10 @@ tests in this document runnable rather than aspirational:
 | HUD | content against a reference, boundary against a marker, cost against a limit (`test_hud.py`) |
 | Sound | every effect tick by tick against a Python reference, read back from the AY's own registers; priority; the shared PPI with the keyboard; cost (`test_sound.py`) |
 | Dirty list | equivalence: the same mutation through the list and through a full redraw (`test_dirty.py`) — the mutation moves an **agent**, not the renderer's figure cache, because the cache is now rebuilt from the agents |
-| An emptied ring slot | every visible occupied slot at the five cameras of `test_object.py` — 20 of them — emptied through the list and compared with a full redraw, byte for byte; with `dhs_vacate`'s call taken out, 12 differ. Two emptied in one tick: one comes out, one waits; with its 18,000 µs charge patched to 0, both come out. Cost against a 25 ms limit (`test_slot.py`) |
+| An emptied ring slot | every visible occupied slot at the five cameras of `test_object.py` — 20 of them — emptied through the list and compared with a full redraw, byte for byte; with `dhs_vacate`'s call taken out, 12 differ. The clip whole again after every one of the 200 vacancies, visible or not; with the restore aimed at a bare `ret`, 4 leave it narrowed. Two emptied in one tick: one comes out, one waits; with its 18,000 µs charge patched to 0, both come out. Cost against a 25 ms limit (`test_slot.py`) |
 | Input | every action, keyboard and joystick, one edge per press (`test_input.py`) |
-| Build mode | cursor, ghost-leaves-no-trace, the panel rows after a camera step (marked with `#AA` first, so a cell nobody rewrote is visible), validation, placement, payment (`test_build.py`) |
+| Build mode | cursor, ghost-leaves-no-trace, the panel rows after a camera step (marked with `#AA` first, so a cell nobody rewrote is visible), validation, placement, payment, and the dome placed **empty** (`test_build.py`) |
+| Fitting | in the real binary, with the keys: a finished large Factory fitted slot by slot — the record, the payment per `fit_cost`, the screen equal to a full redraw; a slot emptied — `NO_MACH`, half back, the slot's bytes changed, the canary alive, the screen exact, worst round 40 ms — and with `dh_mach`'s jump to `dhv_rect` patched out, the machine stays on screen and the comparison fails; a replacement; a refusal with 3 Metal (nothing changes, the box red); `SPACE` into all eight; Quarters refusing to open. A greenhouse site fitted crop by crop before it finishes — nothing drawn onto the site — and MIXED, then the plants appearing when it is done (`test_fit.py`). The operator rule over sparse slots in `test_sim.py`, the FIT panel and an oxygen generator fitted to the site in `test_game.py` |
 | Corridor routing | independent Python router compared on every pair of domes, then the *picture* compared at both kinds of bend (`test_route.py`) |
 | The whole game | `src/main.asm` booted: start state, the economy moving inside the loop, a building placed and **finished**, and the HUD following it with no input; after 14,000 frames the screen equals a full redraw with **zero** wrong bytes, and ring slots must have emptied on the way, or the equality proved nothing (`test_game.py`) |
 | Building without a freeze | a large Factory, a solar panel and a corridor placed and finished in the real binary: a **canary** byte far from the building must survive (a full redraw repaints it), the screen must match a full redraw of the same state — exactly, outside the canary, since milestone 42 — and the worst frame is measured on a clock that does not lose it at a seam. The large dome must appear in exactly eight frames, one row each, and the ghost must be back after it. The ghost is left over the finishing dome and then moved, once with the lift cut out as a negative control; the red large-dome ghost must fill the undo log **exactly**, 1,160 bytes, and with the limit one byte lower it loses its last mark (`test_reveal.py`); a corridor **with a bend** is compared against a full redraw in `test_route.py` |
@@ -3809,7 +3892,7 @@ gap.
 | ~~The flow-balance wheel slot re-scans 64 structures every revolution~~ | ~~Medium~~ | **Resolved, and not for speed.** 7,887 µs for numbers that change slowly — but the reason it moved was [§6.5](#65-economy)'s clock: a battery that charges 750 times a sol is not a battery. The scan, the battery and the pumps now run once per 64 revolutions (`FLOW_DIV`), the living are still counted every revolution, and a finished building kicks the balance so the panel the player just paid for shows up at once. |
 | ~~Nothing the player does exists: no build mode, no input, no HUD, nothing drawn since milestone 5~~ | ~~High~~ | **Resolved.** The colony is drawn, the camera scrolls, the dirty list keeps it honest, the HUD reports — and the player now moves a cursor, opens a menu, places a dome and routes a corridor between two of them ([§9.1](#91-controls), [§9.3](#93-build-flow), [§9.4](#94-corridor-routing), [§6.9](#69-construction)). |
 | ~~The two halves have never been assembled into one binary~~ | ~~Medium~~ | **Assembled, and it did not fit: 20,571 bytes wanted 16,128.** Resolved by moving the generator out, cutting `MAX_NODES` to 96 and putting code in bank 2 ([§4.2](#42-the-eight-banks)). It also turned up duplicate constants in three files and, worse, [§7.4](#74-one-convention-per-half-and-they-disagreed)'s paging disagreement. |
-| **Memory is the binding constraint from here on** | High | **1,228 bytes free in bank 0, 108 in bank 2's code area, 28 in bank 6, 952 in bank 7 (194 of the `text` block)** — after milestone 44 shrank the interface, after milestone 43 shrank the object pass by a fifth, after milestone 42 redrew an emptied ring slot as the full pass would, after milestone 41 cut the ghost's log to its worst case and moved the index's build up, after milestone 39 indexed the object pass, after milestone 38 brought the meteors, after milestone 37 drew diagonal corridors a row at a time, after milestone 36 joined them to the colony, after milestone 35 put the milestone-2 blit kernels, which only their own tests still call, behind `HAS_QUADS`, after milestone 34 spent 279 and 118 on building without a freeze, and after milestone 33, which found two reservations nobody had ever read (`ui_cursor` 256 in bank 2, `audio` 2,048 in bank 7), moved the font into the second, and let `newgame.asm` and `fdc.asm` follow `save.asm` into bank 2 ([§4.3](#43-bank-2-flat-again)). Bank 0's ceiling is `&3EC0`, where the tests' own scaffolding runs, and the loader's two scratch areas are checks now too. Bank 6's *156* was wrong by 128 — `tools/pack.py` has been printing **28** all along, which is what happens to a figure copied into a document instead of read out of the build. The ledger: 26–29 spent 671; 30 handed back 560; 31 spent 152 and took 192 back from the test floor; 32 spent 144; 33 handed back 957 and cost 29 in paging; 34 spent 279 in bank 0 (the ghost's swap and bounding box, `view_rect`, the `DK_BUILT` handler) and put its cold half — the two post-placement redraws — in bank 2 for 118; 35 spent 200 in bank 0 (the row-by-row reveal, the one-pass mirror, the ghost's rectangles) and 82 in bank 2, and took 268 back from `blit_quads` and `flip_span`, whose only callers left are `tests/blittest.asm` and `tests/packtest.asm`; 36 spent 23 in bank 0 (the door scan looking one record ahead) and 59 in bank 2 (`crk_in`, and B's door in `cr_redraw`); 37 spent 113 in bank 0 (the `DK_CROW` handler, `dt_ghost_rect`, `view_add`, the budget's carry) and 183 in bank 2 (pushing the rows, a walk that visits each tile once); 38 spent 64 in bank 0 (the shared Galois step, `ec_break_d`, the Build-job poster moved out of `build.asm`, the boom and the HUD line, two bytes for `ship_crew`'s exits) and 431 in bank 2 (`meteor.asm`, 48 of it the scan that keeps an impact at 3 ms, less the poster `build.asm` gave up), and moved the loader's code scratch to `&6800` ([§4.3](#43-bank-2-flat-again)); 39 spent 538 in bank 0 on the object index — the walk, `oi_build` and its measuring hooks, the class bits — and took 1 back in bank 2 ([§8.4](#84-object-pass-and-draw-order)), the most any milestone has spent on one thing, for 47 ms off every scroll step and every redraw of a strip. Bank 2's 23 went to 15 at milestone 40, for the climbing turn. **41 spent the last soft reserve**: the ghost's log went from 1,600 to the 1,160 its worst ghost needs — computed, and checked to fit whole ([§4.2](#42-the-eight-banks)) — and the 440 bytes took the object index's build up from bank 0 (`src/objindex.asm`, 347 bytes; the structure sort stayed below, because the whole file did not fit): bank 0 88 → **428**, bank 2's code area 15 → **108**. 42 spent 220 of it in bank 0: `dhs_vacate` (the terrain under an emptied slot and the object pass over it, both clipped to its 2×8, and its own charge to the budget) and `tile_src`, split out of `tile_one` so the two share the terrain lookup — 428 → 208. **43 took 737 back**, all of it by writing the same thing fewer times: `object.asm` 3,130 → 2,490, and its clip's register interface 76 out of `dirty.asm` and 21 out of `ghost.asm` — 208 → 945 ([§8.4](#84-object-pass-and-draw-order)). **44 took 283 more out of `ui.asm`** (2,224 → 1,941), by the same means: one routine for "left/right, cyclic" where the save slot and the build menu each had their own, one for "change state around the ghost", one for a ghost mark at a world tile (the route's tiles and the bad tiles of a footprint had one each), and coordinate pairs read and written as words — 945 → **1,228** ([§9.3](#93-build-flow)). It would have been 295: a table-driven `ui_sig` was 12 bytes smaller and 139 µs slower on every cursor step, and went back. There is no slack left in the log; the next room in bank 2 has to come from code. `tools/mapsize.py` says *who* is spending bank 0. The reserves that remain, in order: the rest of bank 7 (952, data only), the tests' 320-byte floor once the probes take their address from `ZZ_BANK0_END`, the 864-byte `s` room-icon set, and the same treatment for `econ.asm` (1,555), `jobs.asm` (1,094) and `hud.asm` (1,032), which no milestone has yet read for size. Bank 2's code area at 108 and bank 6 at 28 are the tight ones. |
+| **Memory is the binding constraint from here on** | High | **478 bytes free in bank 0, 114 in bank 2's code area, 28 in bank 6, 952 in bank 7 (7 of the `text` block)** — after milestone 45 fitted domes slot by slot, after milestone 44 shrank the interface, after milestone 43 shrank the object pass by a fifth, after milestone 42 redrew an emptied ring slot as the full pass would, after milestone 41 cut the ghost's log to its worst case and moved the index's build up, after milestone 39 indexed the object pass, after milestone 38 brought the meteors, after milestone 37 drew diagonal corridors a row at a time, after milestone 36 joined them to the colony, after milestone 35 put the milestone-2 blit kernels, which only their own tests still call, behind `HAS_QUADS`, after milestone 34 spent 279 and 118 on building without a freeze, and after milestone 33, which found two reservations nobody had ever read (`ui_cursor` 256 in bank 2, `audio` 2,048 in bank 7), moved the font into the second, and let `newgame.asm` and `fdc.asm` follow `save.asm` into bank 2 ([§4.3](#43-bank-2-flat-again)). Bank 0's ceiling is `&3EC0`, where the tests' own scaffolding runs, and the loader's two scratch areas are checks now too. Bank 6's *156* was wrong by 128 — `tools/pack.py` has been printing **28** all along, which is what happens to a figure copied into a document instead of read out of the build. The ledger: 26–29 spent 671; 30 handed back 560; 31 spent 152 and took 192 back from the test floor; 32 spent 144; 33 handed back 957 and cost 29 in paging; 34 spent 279 in bank 0 (the ghost's swap and bounding box, `view_rect`, the `DK_BUILT` handler) and put its cold half — the two post-placement redraws — in bank 2 for 118; 35 spent 200 in bank 0 (the row-by-row reveal, the one-pass mirror, the ghost's rectangles) and 82 in bank 2, and took 268 back from `blit_quads` and `flip_span`, whose only callers left are `tests/blittest.asm` and `tests/packtest.asm`; 36 spent 23 in bank 0 (the door scan looking one record ahead) and 59 in bank 2 (`crk_in`, and B's door in `cr_redraw`); 37 spent 113 in bank 0 (the `DK_CROW` handler, `dt_ghost_rect`, `view_add`, the budget's carry) and 183 in bank 2 (pushing the rows, a walk that visits each tile once); 38 spent 64 in bank 0 (the shared Galois step, `ec_break_d`, the Build-job poster moved out of `build.asm`, the boom and the HUD line, two bytes for `ship_crew`'s exits) and 431 in bank 2 (`meteor.asm`, 48 of it the scan that keeps an impact at 3 ms, less the poster `build.asm` gave up), and moved the loader's code scratch to `&6800` ([§4.3](#43-bank-2-flat-again)); 39 spent 538 in bank 0 on the object index — the walk, `oi_build` and its measuring hooks, the class bits — and took 1 back in bank 2 ([§8.4](#84-object-pass-and-draw-order)), the most any milestone has spent on one thing, for 47 ms off every scroll step and every redraw of a strip. Bank 2's 23 went to 15 at milestone 40, for the climbing turn. **41 spent the last soft reserve**: the ghost's log went from 1,600 to the 1,160 its worst ghost needs — computed, and checked to fit whole ([§4.2](#42-the-eight-banks)) — and the 440 bytes took the object index's build up from bank 0 (`src/objindex.asm`, 347 bytes; the structure sort stayed below, because the whole file did not fit): bank 0 88 → **428**, bank 2's code area 15 → **108**. 42 spent 220 of it in bank 0: `dhs_vacate` (the terrain under an emptied slot and the object pass over it, both clipped to its 2×8, and its own charge to the budget) and `tile_src`, split out of `tile_one` so the two share the terrain lookup — 428 → 208. **43 took 737 back**, all of it by writing the same thing fewer times: `object.asm` 3,130 → 2,490, and its clip's register interface 76 out of `dirty.asm` and 21 out of `ghost.asm` — 208 → 945 ([§8.4](#84-object-pass-and-draw-order)). **44 took 283 more out of `ui.asm`** (2,224 → 1,941), by the same means: one routine for "left/right, cyclic" where the save slot and the build menu each had their own, one for "change state around the ghost", one for a ghost mark at a world tile (the route's tiles and the bad tiles of a footprint had one each), and coordinate pairs read and written as words — 945 → **1,228** ([§9.3](#93-build-flow)). It would have been 295: a table-driven `ui_sig` was 12 bytes smaller and 139 µs slower on every cursor step, and went back. **45 spent 750 in bank 0 on the fitting**: `src/fit.asm` 757, `ui.asm` 34 for its hooks and `ui_ud`, `dirty.asm` 40 for `dhv_rect`, the emptied machine slot and the clip's restore, less `rooms.asm`'s `rm_fitout` (75) and 6 out of `econ.asm`; bank 2's code area got 6 back from `bd_commit`'s call — 1,228 → **478**, 108 → **114**. The fitting's names and keys took 187 of the text block's 194. There is no slack left in the log; the next room in bank 2 has to come from code. `tools/mapsize.py` says *who* is spending bank 0. The reserves that remain, in order: the rest of bank 7 (952, data only), the tests' 320-byte floor once the probes take their address from `ZZ_BANK0_END`, the 864-byte `s` room-icon set, and the same treatment for `econ.asm` (1,549), `jobs.asm` (1,094) and `hud.asm` (1,032), which no milestone has yet read for size. Bank 2's code area at 108 and bank 6 at 28 are the tight ones. |
 | ~~Nothing finishes what the player starts~~ | ~~High~~ | **Built.** A Build job is picked up, the agent routes to the site, works it 32 points a visit, and at 255 the building turns `DS_ACTIVE` and is drawn ([§6.9](#69-construction)). `tests/test_game.py` walks the whole chain: place a solar panel with 30 Metal, and about six seconds later the HUD says `ALL SYSTEMS OK` with no key pressed in between. |
 | ~~A completed building stalls the game for 0.8 s~~ | ~~Medium~~ | **Resolved at milestone 34 — and it was 360–920 ms, not 0.8 s.** The site is already on screen from placement; what completion changes is the room icon and the machines, so the Build job pushes one dirty record (`DK_BUILT`) and the handler draws those two things — a structure, nothing at all ([§6.9](#69-construction)). The completion frame of a large Factory is **120 ms** (100 at milestone 34), 60 of them lifting the ghost the player left on it; a solar panel's is an ordinary 40 ms HUD tick. The freeze did not go away entirely, though — it was always at **placement** too, and that is the next row. |
 | ~~Placing a large dome still freezes the game for 0.86 s~~ | ~~Medium~~ | **Resolved at milestone 35 with the eight-chunk reveal of [§6.9](#69-construction), at placement.** A dome goes into the dirty list one tile row at a time and each row draws only that dome; the ghost waits for the last row. Worst frame of a large Factory's placement: 998 → 859 → **140 ms**; solar panel 439 → 220 → **120**; straight corridor 260 → **120**. The levers this row named were all taken: the reveal, a one-pass mirror (`blt_mask_flip`: the whole large site 450 → 351 ms, a full redraw of the view 839 → 679), and marks without clips on a log of rectangles (red ghost 263 → 57 ms). |
@@ -3835,7 +3918,7 @@ gap.
 | ~~Water is the next thing to run out~~ | ~~Medium~~ | **Measured, and no rate needed touching.** This row asked for one thing — *measure a two-extractor colony before changing any number* — and the answer is flat: with one pump the same food colony goes **83 → 0 by sol 4** and then hovers between 0 and 6, with the oxygen generator running dry alongside it; with a second pump it goes **85 → 288 and keeps climbing**. Demand is 4 pots + `mach_vitromeat` 2 + `mach_oxygen` 1 = 7 a cycle against one large pump's 5, and the second pump turns a 2-a-cycle deficit into a 3-a-cycle surplus. The lever was already in the player's hands; the HUD's `LOW ON WATER` is how they learn to reach for it. What the second pump *costs* is the next row. |
 | ~~A second pump buys water with oxygen, after dark~~ | ~~Medium~~ | **Resolved at milestone 32, and the ordering was already written down.** [§6.5](#65-economy)'s failure column said *machines stop, then oxygen stops* and `power_ok` was one flag, so the blackout that stopped the pumps stopped life support in the same revolution — 13 of 80 samples dark, oxygen production 20 → 0, the worst bar at 208. There are three levels now (`P_ALL` / `P_ESS` / `P_NONE`) and the battery lends to the machines only while eight cycles of life support stay behind it. Same colony after: **0 of 80 dark, oxygen never leaves 20, the worst bar 251**, at the honest price of pumps that stop at dusk — water climbs 63 → 147 over the window instead of 63 → 153. The HUD says `LOW POWER` while the load is shed, and a shed sol is not an all-green sol. |
 | ~~The map is scenery: the lake and the ore vein mean nothing~~ | ~~Medium~~ | **Resolved at milestone 31.** `extractor (on water)` and `mine (on ore)` had been in [§6.5](#65-economy)'s chain table from the first draft and nothing read them: a pump built in the middle of the desert pumped. Now the footprint must sit within two tiles of the material — measured, not chosen: the mine is impossible at one tile, because rock always rings a mountain — and the panel names what is missing. `tests/test_map.py` holds it, negative control included: with the rule stubbed out, the two "says no" checks fail and everything else still passes. |
-| **A machine cannot be chosen, only its room** | Medium | The slots are dealt round robin from what the room allows — **slot 0 deliberately** ([§6.5](#65-economy)), the rest in order — so a large Factory is one of each rather than eight of what the colony is short of, and there is no way to ask for the eight. The screen that fixes it is the same one that would let machines be costed individually ([§6.5](#65-economy)) — and the same one that would let a built dome change its room. Nothing is blocked by this; the colony is simply less sharp than the player. |
+| ~~A machine cannot be chosen, only its room~~ | ~~Medium~~ | **Resolved at milestone 45, as in Planetbase.** A dome is built empty and fitted slot by slot from what its room allows (`FIT`, `src/fit.asm`), each machine paid for separately and half refunded when taken out ([§6.5](#a-room-says-what-fits-the-player-says-what-goes-in)). The operator rule had to change with it — it counted slots, and a lone machine in slot 3 would have needed four people. A built dome still cannot change its *room*. |
 | ~~The colony can spend its starting metal and never make more~~ | ~~High~~ | **Resolved and measured at milestone 27.** Two changes: the start state carries **60 Ore, 75 Metal, 45 Bioplastic**, and only pressurised structures cost Bioplastic ([§9.3](#93-build-flow)) — the old catalogue priced everything in both, so the colony's 30 Bioplastic ran out four buildings in and the only thing that makes more is behind two domes that cost it. A panel, an extractor and a small Factory now cost 57 Metal of the 75, and `tools/balance.py` measures the chain running: **60 Ore → 30 Metal by sol 4, 18 → 48**, which buys the 30-Metal mine that keeps the Factory fed ([§10.1](#101-start-state)). The opening is no longer the whole game's budget. |
 | Balance | ~~Certain~~ Medium | Every number in [§6.5](#65-economy) was a first guess; the ones on the path a player actually walks are now **measured** rather than guessed, by `tools/balance.py` — which runs the real binary at ×4 for eight sols and prints the curve — and held by `tests/test_balance.py`. What measurement turned up was not mis-tuned numbers but three structural faults: the economy had no clock, power counted consumption instead of demand, and the start colony's quarters were a second oxygen generator ([§10.1](#101-start-state)). The rates past the first two buildings — the whole machine chain — are still guesses, and stay guesses until a dome can be given a room. |
 

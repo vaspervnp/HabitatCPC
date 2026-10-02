@@ -236,6 +236,7 @@ goto_st:    db 0
         include "../src/graph.asm"
         include "../src/route.asm"
         include "../src/ui.asm"
+        include "../src/fit.asm"
         include "../src/rooms.asm"
         include "../src/hw.asm"
         include "../src/sound.asm"

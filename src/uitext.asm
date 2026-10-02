@@ -52,7 +52,7 @@ x_t_pause:    db "PAUSE",0
 x_t_x1:       db "  x1 ",0
 x_t_x2:       db "  x2 ",0
 x_t_x4:       db "  x4 ",0
-x_t_look:     db "LOOK  SPACE=BUILD  C=SHIP",0
+x_t_look:     db "LOOK SPACE=BUILD FIRE=FIT C=SHIP",0
 x_t_keys:     db "FIRE=PLACE ESC=BACK ",0
 x_t_ok:       db "READY  FIRE TO BUILD",0
 x_t_block:    db "BLOCKED             ",0
@@ -81,6 +81,16 @@ x_t_ship:     db "COLONIST SHIP CALLED",0
 x_t_shipno:   db "A SHIP IS ALREADY DUE",0
 x_t_noctl:    db "NEED A CONTROL ROOM",0
 x_t_nopad:    db "NEED A LANDING PAD",0
+
+; Ο εξοπλισμός (src/fit.asm). ΟΚΤΩ bytes το όνομα, συνεχόμενα και με τη σειρά
+; του MACH_TYPES και μετά των κωδικών 250-255: το fit_name τα βρίσκει με x8.
+x_t_f_names:  db "OXYGEN ",0, "METAL  ",0, "PLASTIC",0, "WEAPONS",0
+              db "CHIPS  ",0, "ROBOTS ",0, "MEALS  ",0, "SPARES ",0
+              db "DRUGS  ",0, "MEAT   ",0, "BEDS   ",0, "CABINET",0
+              db "STARCH ",0, "VEGGIES",0, "HERBS  ",0, "TREE   ",0
+              db "MIXED  ",0, "EMPTY  ",0
+x_t_f_slot:   db "SLOT ",0
+x_t_f_keys:   db "UP/DN=PICK FIRE=FIT SPACE=ALL",0
 
 zz_text_end:
 
@@ -141,11 +151,15 @@ t_ship    equ x_t_ship - TEXT_IMG + G_text
 t_shipno  equ x_t_shipno - TEXT_IMG + G_text
 t_noctl   equ x_t_noctl - TEXT_IMG + G_text
 t_nopad   equ x_t_nopad - TEXT_IMG + G_text
+t_f_names equ x_t_f_names - TEXT_IMG + G_text
+t_f_slot  equ x_t_f_slot - TEXT_IMG + G_text
+t_f_keys  equ x_t_f_keys - TEXT_IMG + G_text
 
         ; Το κενό είναι 1.024 bytes και τελειώνει εκεί που αρχίζει το επόμενο
         ; πράγμα της τράπεζας 7. Χωρίς αυτόν τον έλεγχο, ένα κείμενο παραπάνω θα
         ; έγραφε πάνω σε δεδομένα — αθόρυβα, και μόνο στην οθόνη θα φαινόταν.
         assert  zz_text_end - TEXT_IMG <= TEXT_MAX
+        assert  x_t_f_slot - x_t_f_names == 18 * 8   ; fit_name: x8
 
         ; ΚΑΙ ΣΤΟΝ ΔΙΣΚΟ: η BANK7.BIN φτιάχνεται από το tools/pack.py, που δεν
         ; ξέρει τι λέει το παιχνίδι. Τα κείμενα πάνε ως δικό τους αρχείο και ο

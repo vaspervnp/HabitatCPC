@@ -292,6 +292,16 @@ def dome(sym, g, cut_ghost=False, short=False):
     G.run(4_000_000, until=lambda: G.m.peek(sym["RV_PEND"]) == 0
           and G.m.peek(sym["UI_OWED"]) == 0)
     node = G.m.peek(sym["BD_NODE"])
+    # ΟΙ ΟΚΤΩ ΜΗΧΑΝΕΣ, πάνω στο εργοτάξιο. Ως το βήμα 44 τις έγραφε το
+    # bd_commit· από το 45 ο θόλος μπαίνει άδειος και τις διαλέγει ο παίκτης
+    # (src/fit.asm, tests/test_fit.py). Γράφονται εδώ όπως θα τις έγραφε ο
+    # εξοπλισμός πάνω στο εργοτάξιο — χωρίς DK_MACH — γιατί χωρίς αυτές η
+    # ολοκλήρωση ζωγραφίζει μόνο το εικονίδιο, και ο χειρότερος γύρος της και
+    # το αρνητικό του φαντάσματος θα μετρούσαν το μισό.
+    b6 = G.bank(6)
+    for s_, mach in enumerate((1, 2, 3, 5, 7, 1, 2, 3)):
+        b6[DOME_TBL + node * 24 + 8 + s_] = mach
+        b6[DOME_TBL + node * 24 + 16 + s_] = 200
     bands = sum(1 for a, b in zip(G.pend, G.pend[1:]) if b < a)
     most = max((a - b for a, b in zip(G.pend, G.pend[1:])), default=0)
     placed = G.worst()

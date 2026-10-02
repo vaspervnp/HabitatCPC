@@ -269,6 +269,7 @@ def run_dome(e, d, plant_class=None):
     n = MACHINE_COUNT[e.dome[base + D_SIZE]]
     ops = e.dome[base + D_OPS]
     green = e.dome[base + D_ROOM] == R_GREENHOUSE
+    k = 0                                       # μηχανές με χειριστή ως εδώ
     for s in range(n):
         if green:
             p = e.dome[base + D_MACH + s]
@@ -284,8 +285,12 @@ def run_dome(e, d, plant_class=None):
         if e.dome[base + D_HEALTH + s] == 0:        # χαλασμένη
             continue
         r = RECIPE[m]
-        if (r[9] & MF_OPERATOR) and s >= ops:       # χωρίς χειριστή
-            continue
+        if r[9] & MF_OPERATOR:
+            # Η k-οστή που θέλει χειριστή τρέχει αν ο θόλος έχει k, όποια
+            # υποδοχή κι αν πιάνει (βήμα 45· ως τότε s >= ops, src/econ.asm).
+            k += 1
+            if k > ops:
+                continue
         ins = ((r[0], r[1]), (r[2], r[3]), (r[4], r[5]))
         if any(st != NO_STOCK and e.stock[st] < q for st, q in ins):
             continue                                # λείπει είσοδος: δεν καίει

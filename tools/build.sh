@@ -45,6 +45,7 @@ python3 tests/test_build.py
 python3 tests/test_route.py
 python3 tests/test_game.py
 python3 tests/test_reveal.py
+python3 tests/test_fit.py
 python3 tests/test_link.py
 python3 tests/test_meteor.py
 python3 tests/test_needs.py

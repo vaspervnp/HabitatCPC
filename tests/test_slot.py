@@ -17,6 +17,11 @@
               λέει μόνο του στον dirty_tick: τίποτε άλλο στο ίδιο καρέ.
               ΑΡΝΗΤΙΚΟ: χωρίς αυτό, δύο αδειάσματα στο ίδιο καρέ.
   ΚΟΣΤΟΣ      Μετρημένο για κάθε θέση, ορατή ή όχι.
+  CLIP        Μετά από ΚΑΘΕ άδειασμα, ορατό ή όχι, το clip είναι πάλι όλο το
+              κάδρο. Ως το βήμα 45 μια θέση ορατή οριζόντια και κρυφή κάθετα
+              άφηνε το clip_x στενεμένο στη στήλη της, και ο επόμενος
+              χειριστής ζωγράφιζε μέσα σε δύο bytes. ΑΡΝΗΤΙΚΟ: το
+              `jp z,ob_clip_full` να πηγαίνει σε σκέτο `ret`.
 """
 import os, sys
 
@@ -115,12 +120,26 @@ def vacate_all(sym, patch=()):
             before = r.snap()
             r.leave(i)
             us = r.slot(d, s)
+            clip = tuple(r.m.peek(sym[n]) for n in
+                         ("CLIP_X0", "CLIP_X1", "CLIP_Y0", "CLIP_Y1"))
             got = r.snap()
             ref = r.full()
             changed = sum(1 for a, b in zip(before, got) if a != b)
             bad = sum(1 for a, b in zip(got, ref) if a != b)
-            out.append(((tx, ty), d, s, changed, bad, us))
+            out.append(((tx, ty), d, s, changed, bad, us, clip))
     return out
+
+
+FULL = (0, SCR_W, 0, PLAY)
+
+
+def find_jpz(r, at, target, n=96):
+    """Η διεύθυνση του JP Z,target μέσα στα n bytes από το at."""
+    for k in range(n):
+        if (r.m.peek(at + k) == 0xCA and r.m.peek(at + k + 1) == target & 0xFF
+                and r.m.peek(at + k + 2) == target >> 8):
+            return at + k
+    raise SystemExit("δεν βρέθηκε το JP Z,ob_clip_full στο dhv_rect")
 
 
 def find_call(r, at, target, n=64):
@@ -175,6 +194,20 @@ def main():
           f"{len(seen)} ορατές θέσεις άδειασαν από τη λίστα, σε {len(T.CAMERAS)} "
           f"κάμερες: η οθόνη είναι η πλήρης σχεδίαση σε όλες"
           + (f" — λάθος {[(x[0], x[1], x[2], x[4]) for x in wrong[:4]]}" if wrong else ""))
+
+    leak = [x for x in res if x[6] != FULL]
+    check(not leak, f"το clip είναι όλο το κάδρο μετά από καθένα από τα "
+                    f"{len(res)} αδειάσματα, ορατά ή όχι"
+                    + (f" — έμεινε {[(x[1], x[2], x[6]) for x in leak[:3]]}"
+                       if leak else ""))
+    r = Run(sym, T.CAMERAS[0][:2])
+    jz = find_jpz(r, sym["DHV_RECT"], sym["OB_CLIP_FULL"])
+    neg = vacate_all(sym, patch=[(jz + 1, sym["DT_NO"] & 0xFF),
+                                 (jz + 2, sym["DT_NO"] >> 8)])
+    nleak = [x for x in neg if x[6] != FULL]
+    check(nleak, f"ΑΡΝΗΤΙΚΟ: με σκέτο ret στη θέση του ob_clip_full, "
+                 f"{len(nleak)} αδειάσματα αφήνουν το clip στενεμένο "
+                 f"({nleak[0][6] if nleak else '—'})")
 
     # --- ΑΡΝΗΤΙΚΟ: το CALL Z,dhs_vacate σε NOP ---
     r = Run(sym, T.CAMERAS[0][:2])

@@ -186,13 +186,15 @@ def pick_spot(item, spots, k, res):
     return spots[k], k + 1
 
 
-def build(m, sym, item, g_metal, at=None, room=None, place=True):
+def build(m, sym, item, g_metal, at=None, room=None, place=True, fit=True):
     """Ο,τι κάνει το tests/test_game.py: κατάλογος, θέση, FIRE.
 
     `item` = σειρά στον κατάλογο του src/build.asm (0-2 θόλοι, 4 = SOLAR,
     7 = EXTRACTOR, 8 = MINE), `room` = σειρά στον κατάλογο δωματίων του
     src/rooms.asm για θόλο (0 = OXYGEN, 3 = GREENHOUSE, 4 = FACTORY).
     `at` = (cur_hx, cur_hy) σε μισά tiles, από το clear_spots().
+    `fit` = και ο εξοπλισμός του θόλου (fit_dome), όπως γέμιζε μόνος του ως
+    το βήμα 44.
     """
     from cpc import KEY_SPACE, KEY_RIGHT, KEY_DOWN, JOY_FIRE
 
@@ -274,7 +276,94 @@ def build(m, sym, item, g_metal, at=None, room=None, place=True):
     if metal1 == metal0:
         print(f"  ΠΡΟΣΟΧΗ: το κτίσμα {item} ΔΕΝ μπήκε (μέταλλο {metal0}, "
               f"ui_bad={m.peek(sym['UI_BAD'])})", flush=True)
+    elif fit and room is not None:
+        fit_dome(m, sym)
     return metal1 != metal0
+
+
+FIT_STATE, FIT_GREEN = 5, 5              # UI_FIT, R_GREENHS
+
+
+def fit_dome(m, sym, how=None):
+    """Ο εξοπλισμός (src/fit.asm) του θόλου κάτω από τον κέρσορα, με τα
+    πλήκτρα του παίκτη: ESC ως το LOOK, FIRE, και μετά υποδοχή-υποδοχή.
+
+    Χωρίς `how`, ό,τι έκανε μόνος του ο θόλος ως το βήμα 44: οι υποδοχές
+    κυκλικά πάνω στη λίστα του δωματίου (rm_build), και στο θερμοκήπιο το
+    ΜΙΚΤΟ σε όλες. `how` = λίστα θέσεων στη λίστα του εξοπλισμού, μία ανά
+    υποδοχή (0 = ΑΔΕΙΟ). Επιστρέφει πόσες υποδοχές έχουν μηχανή, ή None αν ο
+    θόλος δεν δέχεται τίποτα.
+    """
+    from cpc import KEY_DOWN, KEY_UP, KEY_RIGHT, KEY_SPACE, JOY_FIRE
+
+    def tap(key):
+        m.key_down(key)
+        m.run_frames(5)
+        m.key_up(key)
+        m.run_frames(8)
+
+    def stick(mask):
+        m.set_joystick_type(1)
+        m.joystick(mask)
+        m.run_frames(4)
+        m.joystick(0)
+        m.run_frames(10)
+        m.set_joystick_type(0)
+
+    def pick(want):
+        # ΜΕ ΕΠΑΛΗΘΕΥΣΗ, όπως ο κατάλογος: ένα χαμένο πάτημα είναι μια
+        # μηχανή άλλη από αυτήν που νομίζει το σενάριο.
+        c = m.peek(sym["FIT_C"])
+        for _ in range(2 * c):
+            d = (want - m.peek(sym["FIT_I"])) % c
+            if not d:
+                break
+            tap(KEY_DOWN if d <= c // 2 else KEY_UP)
+        assert m.peek(sym["FIT_I"]) == want, (
+            f"η επιλογή δεν κλείδωσε: fit_i={m.peek(sym['FIT_I'])} αντί {want}")
+
+    for _ in range(2):                   # PLACE -> MENU -> LOOK
+        if m.peek(sym["UI_STATE"]) == 0:
+            break
+        stick(0x20)
+    stick(JOY_FIRE)
+    if m.peek(sym["UI_STATE"]) != FIT_STATE:
+        return None                      # δωμάτιο χωρίς μηχανές
+    n, c = m.peek(sym["FIT_N"]), m.peek(sym["FIT_C"])
+    if how is None:
+        how = ([1] * n if m.peek(sym["FIT_RM"]) == FIT_GREEN
+               else [1 + k % (c - 1) for k in range(n)])
+    if len(set(how)) == 1:
+        pick(how[0])
+        tap(KEY_SPACE)                   # σε όλες, με ένα πάτημα
+    else:
+        for k, want in enumerate(how):
+            assert m.peek(sym["FIT_S"]) == k, (
+                f"η υποδοχή δεν κλείδωσε: fit_s={m.peek(sym['FIT_S'])} αντί {k}")
+            pick(want)
+            stick(JOY_FIRE)
+            tap(KEY_RIGHT)
+    d = m.peek(sym["FIT_D"])
+    stick(0x20)                          # -> LOOK
+    m.run_frames(4)
+    rec = dome_rec(m, sym, d)
+    full = sum(1 for v in rec[8:8 + n] if v != 255)
+    if full < n:
+        print(f"  ΠΡΟΣΟΧΗ: ο εξοπλισμός του θόλου {d} έμεινε {full}/{n} "
+              f"(υλικά;)", flush=True)
+    return full
+
+
+def dome_rec(m, sym, d):
+    """Η εγγραφή του θόλου `d` (24 bytes), από την τράπεζα 6."""
+    import cpc
+    tbl = None
+    for line in open(os.path.join(ROOT, "build", "layout.asm"), encoding="utf-8"):
+        if line.startswith("G_dome_tbl"):
+            tbl = int(line.split("#")[1].split()[0], 16)
+    b6 = cpc._lib.cpcemu_ram_ptr(m._h, 6)
+    off = tbl - 0x4000 + d * 24
+    return [b6[off + k] for k in range(24)]
 
 
 def run(name, sym, g, snapshot, sols=8, items=(), speed=4):
