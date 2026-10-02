@@ -88,6 +88,24 @@
     "spriteSourceSize": { "x": 0, "y": 0, "w": 12, "h": 22 },
     "sourceSize": { "w": 12, "h": 22 },
     "duration": 100
+   },
+   {
+    "filename": "planetbase_machines_cpc_mode0 10.aseprite",
+    "frame": { "x": 120, "y": 0, "w": 12, "h": 22 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 12, "h": 22 },
+    "sourceSize": { "w": 12, "h": 22 },
+    "duration": 100
+   },
+   {
+    "filename": "planetbase_machines_cpc_mode0 11.aseprite",
+    "frame": { "x": 132, "y": 0, "w": 12, "h": 22 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 12, "h": 22 },
+    "sourceSize": { "w": 12, "h": 22 },
+    "duration": 100
    }
  ],
  "meta": {
@@ -95,7 +113,7 @@
   "version": "1.3.18.5-dev",
   "image": "planetbase_machines_cpc_mode0_sheet.png",
   "format": "I8",
-  "size": { "w": 120, "h": 22 },
+  "size": { "w": 144, "h": 22 },
   "scale": "1",
   "frameTags": [
    { "name": "mach_oxygen", "from": 0, "to": 0, "direction": "forward", "color": "#000000ff" },
@@ -107,7 +125,9 @@
    { "name": "mach_food", "from": 6, "to": 6, "direction": "forward", "color": "#000000ff" },
    { "name": "mach_spares", "from": 7, "to": 7, "direction": "forward", "color": "#000000ff" },
    { "name": "mach_medical", "from": 8, "to": 8, "direction": "forward", "color": "#000000ff" },
-   { "name": "mach_vitromeat", "from": 9, "to": 9, "direction": "forward", "color": "#000000ff" }
+   { "name": "mach_vitromeat", "from": 9, "to": 9, "direction": "forward", "color": "#000000ff" },
+   { "name": "mach_beds", "from": 10, "to": 10, "direction": "forward", "color": "#000000ff" },
+   { "name": "mach_medstore", "from": 11, "to": 11, "direction": "forward", "color": "#000000ff" }
   ],
   "layers": [
    { "name": "machines", "opacity": 255, "blendMode": "normal" }

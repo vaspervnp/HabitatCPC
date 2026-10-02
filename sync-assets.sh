@@ -34,7 +34,10 @@ BIN="$SRC/build/sprites/sprites.bin"
 [ -f "$BIN" ] || { echo "λείπει το $BIN — τρέξε με --regen" >&2; exit 1; }
 
 # Αν πειράχτηκαν τα εργαλεία μετά το τελευταίο build, το αντίγραφο θα ήταν παλιό.
-if [ -n "$(find "$SRC/tools" -type f -newer "$BIN" -print -quit 2>/dev/null)" ]; then
+# Όχι το __pycache__: το γράφει η Python όποτε τρέξει ένα εργαλείο (π.χ. το
+# check_aseprite.py μετά το build), χωρίς να έχει αλλάξει τίποτα.
+if [ -n "$(find "$SRC/tools" -type f -newer "$BIN" -not -path '*/__pycache__/*' \
+           -print -quit 2>/dev/null)" ]; then
   echo "ΠΡΟΣΟΧΗ: τα tools/ είναι νεότερα από το build. Τρέξε με --regen." >&2
   exit 1
 fi
