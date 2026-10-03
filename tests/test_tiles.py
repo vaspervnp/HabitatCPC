@@ -7,8 +7,22 @@
 Οι θέσεις κάμερας διαλέχτηκαν για να σπάσουν πράγματα, όχι για να δείχνουν
 όμορφες: η γωνία του κόσμου βγάζει τους γείτονες εκτός ορίων, που είναι η μόνη
 περίπτωση όπου η μηχανή δεν κάνει απλή αριθμητική.
+
+ΤΡΙΑ ΚΕΝΑ, από τα σκόπιμα λάθη του βήματος 56 — όλα παλαιότερα από αυτό:
+  * Η «αντίθετη γωνία» ήταν η (44, 53), που με δέκα σειρές σταματά στο y = 62:
+    η τελευταία σειρά του κόσμου δεν ζωγραφιζόταν ποτέ, και ένα ta_same που
+    έβγαζε το #7Fxx εκτός κόσμου περνούσε. Ούτε η (44, 54) το πιάνει: ο κόσμος
+    της δοκιμής δεν έχει εκεί autotiled έδαφος δίπλα σε άλλη οικογένεια.
+    Γράφεται λοιπόν μια λίμνη στις σειρές 61-63.
+  * Ο κόσμος της δοκιμής δεν έχει πουθενά βουνό που να αγγίζει νερό, δηλαδή
+    δύο autotiled οικογένειες που διαφέρουν κατά 1 (3 και 4). Μια σύγκριση
+    οικογενειών που έλεγε «ίσες» και για διαφορά 1 περνούσε. Εδώ γράφονται
+    βουνά στην ακτή της λίμνης — στον κόσμο του εξομοιωτή ΚΑΙ στης αναφοράς.
+  * Το cam_p ήταν πάντα 0, οπότε καμία σειρά δεν περνούσε το τέλος του
+    δαχτυλιδιού των 2.048 bytes: το «#C8 -> #C0» ανάμεσα σε δύο tiles δεν το
+    έλεγχε κανείς, ούτε πριν (and #C7) ούτε μετά.
 """
-import os, subprocess, sys
+import copy, os, subprocess, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -25,10 +39,16 @@ REPS = 10                    # πρέπει να ταιριάζει με το ti
 VIEW_TW, VIEW_TH = 20, 10
 
 CAMERAS = [
-    (-10, -5,  "λίμνη με βαθύ κέντρο και βουνό με φλέβα"),
-    (-64, -64, "ΓΩΝΙΑ ΚΟΣΜΟΥ — οι γείτονες βγαίνουν εκτός και στους δύο άξονες"),
-    (44,  53,  "αντίθετη γωνία — το τελευταίο ορατό tile είναι το +63,+63"),
-    (-16,  4,  "κρατήρας και θεμέλια — κλάσεις με 2 παραλλαγές, όχι 4"),
+    (-10, -5,  "λίμνη με βαθύ κέντρο και βουνό με φλέβα", {}),
+    (-64, -64, "ΓΩΝΙΑ ΚΟΣΜΟΥ — οι γείτονες βγαίνουν εκτός και στους δύο άξονες", {}),
+    (44,  54,  "αντίθετη γωνία — το τελευταίο ορατό tile είναι το +63,+63", {}),
+    (-16,  4,  "κρατήρας και θεμέλια — κλάσεις με 2 παραλλαγές, όχι 4", {}),
+    (44,  54,  "ΛΙΜΝΗ ΣΤΗ ΝΟΤΙΑ ΑΚΡΗ — autotile στις σειρές 62-63, στο #7Fxx",
+     {"lake": (50, 61, 4, 3)}),
+    (-10, -5,  "ΒΟΥΝΟ ΣΤΗΝ ΑΚΤΗ — autotiled οικογένειες που διαφέρουν κατά 1",
+     {"shore": True}),
+    (-10, -5,  "ΤΟ ΔΑΧΤΥΛΙΔΙ — cam_p 2008, κάθε σειρά τυλίγει στη στήλη 10",
+     {"cam_p": 2008}),
 ]
 
 
@@ -73,6 +93,17 @@ def reference(plane, cam_tx, cam_ty, smap, blob, variants):
     return c
 
 
+def shore(plane, cam_tx, cam_ty):
+    """Τα tiles του κάδρου που δεν είναι νερό αλλά αγγίζουν νερό: εκεί μπαίνει
+    βουνό, ένα δαχτυλίδι γύρω από τη λίμνη — βουνό με βουνό ΚΑΙ βουνό με νερό."""
+    wet = lambda tx, ty: world.FAMILY[world.cls_of(plane.get(tx, ty))] == world.WATER
+    return [(tx, ty)
+            for ty in range(cam_ty, cam_ty + VIEW_TH)
+            for tx in range(cam_tx, cam_tx + VIEW_TW)
+            if not wet(tx, ty) and any(wet(tx + dx, ty + dy) for dx, dy in
+                                       ((1, 0), (-1, 0), (0, 1), (0, -1)))]
+
+
 def main():
     sym = build()
     smap, blob = load_map(), load_bin()
@@ -83,12 +114,32 @@ def main():
     fails = 0
     frames_used = None
 
-    for cam_tx, cam_ty, why in CAMERAS:
+    import cpc
+    for cam_tx, cam_ty, why, opts in CAMERAS:
         m = CPC()
         m.run_frames(60)
         assert m.quickload(SNA, start=False), "quickload απέτυχε"
         m.poke(sym["CAM_TX"], cam_tx & 0xFF)
         m.poke(sym["CAM_TY"], cam_ty & 0xFF)
+        p = opts.get("cam_p", 0)
+        m.poke(sym["CAM_P"], p & 0xFF)
+        m.poke(sym["CAM_P"] + 1, p >> 8)
+        pl = plane
+        if opts.get("shore") or opts.get("lake"):
+            # ΣΤΟΥΣ ΔΥΟ ΚΟΣΜΟΥΣ: του εξομοιωτή (τράπεζα 4) και της αναφοράς.
+            pl = copy.deepcopy(plane)
+            b4 = cpc._lib.cpcemu_ram_ptr(m._h, 4)
+            if opts.get("shore"):
+                spots, cls = shore(pl, cam_tx, cam_ty), world.MOUNTAIN
+                assert len(spots) >= 3, f"μόνο {len(spots)} σημεία ακτής στο κάδρο"
+                why += f" ({len(spots)} βουνά)"
+            else:
+                x0, y0, w, h = opts["lake"]
+                spots = [(x0 + i, y0 + j) for j in range(h) for i in range(w)]
+                cls = world.WATER
+            for tx, ty in spots:
+                pl.set(tx, ty, world.byte(cls))
+                b4[world.index(tx, ty)] = world.byte(cls)
         m.set_pc(sym["START"])
 
         n = 0
@@ -101,11 +152,13 @@ def main():
             frames_used = n
 
         ram = m.read_ram(0xC000, 0x4000)
-        ref = reference(plane, cam_tx, cam_ty, smap, blob, variants)
+        ref = reference(pl, cam_tx, cam_ty, smap, blob, variants)
         bad = []
         for y in range(SCR_H):
-            off = (y & 7) * 0x800 + (y >> 3) * SCR_W
-            got, want = ram[off:off + SCR_W], bytes(ref.buf[y * SCR_W:(y + 1) * SCR_W])
+            base = (y & 7) * 0x800
+            got = bytes(ram[base + (((y >> 3) * SCR_W + x + p) & 0x7FF)]
+                        for x in range(SCR_W))
+            want = bytes(ref.buf[y * SCR_W:(y + 1) * SCR_W])
             if got != want:
                 bad += [(x, y) for x in range(SCR_W) if got[x] != want[x]]
 
@@ -116,11 +169,11 @@ def main():
             print(f"ΑΠΟΤΥΧΙΑ {tag}: {len(bad)} bytes σε {len(tiles)} tiles — {why}")
             for tcol, trow in tiles[:6]:
                 tx, ty = cam_tx + tcol, cam_ty + trow
-                b = plane.get(tx, ty)
+                b = pl.get(tx, ty)
                 print(f"    tile ({tx:>4},{ty:>4}) κλάση "
                       f"{world.CLASS_NAMES[world.cls_of(b)]:<10} "
-                      f"παραλλαγή {plane.variant(tx, ty, variants):>2} "
-                      f"autotile {plane.autotile(tx, ty):>2}")
+                      f"παραλλαγή {pl.variant(tx, ty, variants):>2} "
+                      f"autotile {pl.autotile(tx, ty):>2}")
         else:
             print(f"OK {tag}  {why}")
             # Το DONE_FLAG ανεβαίνει όταν γραφτεί και το ΤΕΛΕΥΤΑΙΟ tile· το
@@ -128,9 +181,13 @@ def main():
             # Δύο ακόμη καρέ (ο βρόχος κρέμεται), και το PNG είναι η RAM που
             # μόλις ελέγχθηκε — αλλιώς άλλαζε με κάθε αλλαγή στον χρονισμό
             # (βήμα 42: το tile_src, και το κάτω δεξιά tile στο (-10,-5)).
-            m.run_frames(2)
-            m.screenshot(os.path.join(HERE, "golden",
-                                      f"tiles_{cam_tx}_{cam_ty}.png"), aspect=True)
+            # Οι δύο τελευταίες ξαναζωγραφίζουν το (-10,-5): δικό τους PNG
+            # θα έγραφε πάνω στο κανονικό, και το δαχτυλίδι φαίνεται μόνο με
+            # το offset του CRTC, που εδώ δεν στήνεται.
+            if not opts:
+                m.run_frames(2)
+                m.screenshot(os.path.join(HERE, "golden",
+                                          f"tiles_{cam_tx}_{cam_ty}.png"), aspect=True)
 
     # --- κόστος ---
     tiles = VIEW_TW * VIEW_TH
@@ -139,15 +196,16 @@ def main():
           f"-> {us/1000:.1f} ms ανά πλήρες κάδρο = {us/tiles:.0f} us ανά tile")
     print(f"  πλήρες κάδρο {us/19968:.1f} frames · μία στήλη "
           f"{us/tiles*VIEW_TH/1000:.1f} ms · μία σειρά {us/tiles*VIEW_TW/1000:.1f} ms")
-    # Το DESIGN §2.2 καταγράφει 929 us μετρημένα. Αν αυτό αλλάξει — προς τα πάνω
-    # ή προς τα κάτω — το έγγραφο θέλει ενημέρωση, όχι σιωπή.
+    # Το DESIGN §2.2 καταγράφει 889 us μετρημένα (968 ως το βήμα 55). Αν αυτό
+    # αλλάξει — προς τα πάνω ή προς τα κάτω — το έγγραφο θέλει ενημέρωση, όχι
+    # σιωπή.
     per = us / tiles
-    if not 880 <= per <= 980:
-        print(f"  ΑΠΟΤΥΧΙΑ: το DESIGN §2.2 λέει 929 us ανά tile, μετρήθηκαν {per:.0f}."
+    if not 840 <= per <= 940:
+        print(f"  ΑΠΟΤΥΧΙΑ: το DESIGN §2.2 λέει 889 us ανά tile, μετρήθηκαν {per:.0f}."
               f"\n  Αν η αλλαγή είναι σκόπιμη, ενημέρωσε το §2.2 και αυτό το όριο.")
         fails += 1
     else:
-        print(f"  (το DESIGN §2.2 καταγράφει 929 us ανά tile — συμφωνεί)")
+        print(f"  (το DESIGN §2.2 καταγράφει 889 us ανά tile — συμφωνεί)")
     return 1 if fails else 0
 
 

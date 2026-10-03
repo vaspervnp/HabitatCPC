@@ -13,28 +13,36 @@ WORLD_W     equ 128
 VIEW_TW     equ 20             ; tiles οριζόντια στο κάδρο
 VIEW_TH     equ 10             ; tiles κάθετα
 
+        assert  WORLD_BASE == #4000             ; tile_addr, ta_same
+        assert  TILE_SZ == 64 && ORE_OVL_SZ == 128
+        ; ΜΙΑ ΣΕΛΙΔΑ ο καθένας (pack.py): το H είναι σταθερό, και η αναζήτηση
+        ; θέλει μόνο το L — ανά tile, 200 φορές το κάδρο.
+        assert  (G_tile_variants & 255) + 8 <= 256 && (G_tile_ptr & 255) + 16 <= 256
+        assert  (G_ore_overlay & 255) == 0
+
 ; ---------------------------------------------------------------------------
 ; tile_addr — διεύθυνση στο επίπεδο κόσμου για (tx, ty).
 ; In :  B = tx, C = ty  (προσημασμένα, -64..+63)
-; Out:  HL = WORLD_BASE + ((ty+64)*128) + (tx+64)
+; Out:  HL = WORLD_BASE + ((ty+64)*128) + (tx+64). Χαλάει μόνο το AF.
 ;
 ; Το *128 δεν θέλει πολλαπλασιασμό: v = ty+64 είναι 0..127, οπότε το γινόμενο
 ; είναι v<<7 — ψηλό byte v>>1, χαμηλό (v&1)<<7.
+;
+; ΕΞΩ ΑΠΟ ΤΟΝ ΚΟΣΜΟ (η κάμερα φτάνει μία στήλη πέρα από την άκρη) το tx+64
+; έχει το bit 7, και το (v&1)<<7 μπαίνει με OR, όχι με πρόσθεση: το ίδιο
+; σκουπίδι με πριν από το βήμα 56, για να βγαίνει η ίδια εικόνα.
 ; ---------------------------------------------------------------------------
 tile_addr:
+        ld      a,b
+        add     a,64
+        ld      l,a                 ; tx+64
         ld      a,c
         add     a,64
         srl     a                   ; v>>1, το κρατούμενο είναι το v&1
-        ld      h,a
-        ld      a,0
-        rra                         ; κρατούμενο -> bit 7
-        ld      l,a
-        ld      a,b
-        add     a,64                ; 0..127, χωράει στα bits 0-6
-        or      l
-        ld      l,a
-        ld      a,h
-        add     a,WORLD_BASE/256
+        jr      nc,ta_even
+        set     7,l
+ta_even:
+        add     a,WORLD_BASE >> 8
         ld      h,a
         ret
 
@@ -43,79 +51,70 @@ tile_addr:
 ; ορατό tile.
 ;
 ; tile_draw_rect — μόνο ένα ορθογώνιο από tiles του κάδρου: (td_c0, td_r0) και
-; (td_nc, td_nr). Αυτό είναι όλο το σκρολάρισμα — μία στήλη ή μία σειρά.
+; (td_nc, td_nr). Αυτό είναι όλο το σκρολάρισμα — μία στήλη ή μία σειρά. Τα
+; td_* μένουν όπως ήταν: το dh_occupied τα διαβάζει μετά.
 ; ---------------------------------------------------------------------------
 tile_draw_all:
-        xor     a
-        ld      (td_c0),a
-        ld      (td_r0),a
-        ld      a,VIEW_TW
-        ld      (td_nc),a
-        ld      a,VIEW_TH
-        ld      (td_nr),a
+        ld      hl,0*256 + VIEW_TW
+        ld      (td_nc),hl              ; td_nc, td_c0
+        ld      hl,VIEW_TH*256 + 0
+        ld      (td_r0),hl              ; td_r0, td_nr
 
 tile_draw_rect:
-        ld      a,(td_nr)
+        ld      hl,(td_r0)              ; L = td_r0, H = td_nr
+        ld      a,h
         or      a
         ret     z
-        ld      (td_left),a
-        ld      hl,td_r0
-        ld      a,(cam_ty)
-        add     a,(hl)
-        ld      (td_ty),a
-        ld      a,(td_r0)
-        ld      (td_row),a
+        ld      (td_row),hl             ; td_row, td_left
 
 td_next_row:
         ; --- δείκτης κόσμου και διεύθυνση οθόνης για την αρχή της σειράς ---
-        ld      hl,td_c0
-        ld      a,(cam_tx)
-        add     a,(hl)
+        ld      de,(td_c0)              ; E = στήλη, D = σειρά του κάδρου
+        ld      hl,(cam_tx)             ; L = cam_tx, H = cam_ty
+        ld      a,e
+        add     a,l
         ld      b,a
-        ld      a,(td_ty)
+        ld      a,d
+        add     a,h
         ld      c,a
-        call    tile_addr
+        call    tile_addr               ; κρατά τα BC, DE
         ld      (t_wptr),hl
-        ld      a,(td_c0)
-        add     a,a
-        add     a,a                 ; col*4 bytes
-        ld      c,a
-        ld      a,(td_row)
+        ld      a,e
         add     a,a
         add     a,a
+        ld      c,a                     ; στήλη*4 bytes
+        ld      a,d
         add     a,a
-        add     a,a                 ; row*16 γραμμές
+        add     a,a
+        add     a,a
+        add     a,a                     ; σειρά*16 γραμμές
         call    scr_addr
         ld      (t_sptr),de
 
         ld      a,(td_nc)
-        ld      (td_col),a
+        ld      b,a
 td_next_col:
+        push    bc
         call    tile_one
         ld      hl,(t_wptr)
-        inc     hl
-        ld      (t_wptr),hl
-        ld      hl,(t_sptr)
-        ld      de,TILE_W
-        add     hl,de
-        ld      a,h
-        and     #C7                 ; το δαχτυλίδι: p mod 2048 (screen.asm)
-        ld      h,a
-        ld      (t_sptr),hl
-        ld      a,(td_col)
-        dec     a
-        ld      (td_col),a
-        jr      nz,td_next_col
+        inc     hl                      ; 16 bit: μια σειρά που αρχίζει ΕΞΩ από
+        ld      (t_wptr),hl             ; τον κόσμο κουβαλά κρατούμενο (σκουπίδι)
+        ld      hl,t_sptr
+        ld      a,(hl)
+        add     a,TILE_W
+        ld      (hl),a
+        jr      nc,td_same
+        inc     hl                      ; το H είναι #C0-#C7 (σειρά tile = γραμμή
+        inc     (hl)                    ; 0 της σειράς χαρακτήρων), οπότε το
+        res     3,(hl)                  ; δαχτυλίδι p mod 2048 είναι #C8 -> #C0
+td_same:
+        pop     bc
+        djnz    td_next_col
 
-        ld      a,(td_ty)
-        inc     a
-        ld      (td_ty),a
-        ld      a,(td_row)
-        inc     a
-        ld      (td_row),a
-        ld      a,(td_left)
-        dec     a
-        ld      (td_left),a
+        ld      hl,td_row
+        inc     (hl)
+        inc     hl                      ; td_left
+        dec     (hl)
         jr      nz,td_next_row
         ret
 
@@ -129,29 +128,17 @@ tile_one:
 
         ; --- φλέβα: μόνο σε βουνό με τον πόρο αναμμένο ---
         ld      a,(t_cls)
-        cp      3                   ; MOUNTAIN
+        cp      3                       ; MOUNTAIN
         ret     nz
         ld      a,(t_cur)
-        and     8                   ; bit πόρου
+        bit     3,a                     ; bit πόρου
         ret     z
-        ld      a,(t_cur)
-        rlca
-        rlca
-        and     1                   ; decor & 1 -> 2 παραλλαγές
+        add     a,a                     ; decor & 1 (bit 6) -> bit 7
+        and     #80                     ; 2 παραλλαγές, x ORE_OVL_SZ
         ld      l,a
-        ld      h,0
-        add     hl,hl               ; *2
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl               ; *128 = ORE_OVL_SZ
-        ld      de,G_ore_overlay
-        add     hl,de
+        ld      h,G_ore_overlay >> 8
         ld      de,(t_sptr)
-        ld      b,TILE_W
-        ld      c,TILE_H
+        ld      bc,TILE_W*256 + TILE_H
         jp      blit_mask
 
 ; tile_src — το sprite του tile στο (t_wptr): κλάση, παραλλαγή ή autotile.
@@ -162,13 +149,13 @@ tile_src:
         ld      hl,(t_wptr)
         ld      a,(hl)
         ld      (t_cur),a
+        ld      b,a
         and     7
         ld      (t_cls),a
         ; πόσες παραλλαγές έχει η κλάση;
-        ld      e,a
-        ld      d,0
-        ld      hl,G_tile_variants
-        add     hl,de
+        add     a,G_tile_variants & 255
+        ld      l,a
+        ld      h,G_tile_variants >> 8
         ld      a,(hl)
         cp      16
         jr      z,to_auto
@@ -177,86 +164,75 @@ tile_src:
         ; κλάσης — ο crater και το foundation έχουν μόνο 2 (SPRITES.md §3).
         dec     a
         ld      e,a
-        ld      a,(t_cur)
+        ld      a,b
         rlca
-        rlca                        ; decor στα bits 0-1
+        rlca                            ; decor στα bits 0-1
         and     3
         and     e
         jr      to_have_var
 to_auto:
-        call    tile_autotile       ; -> A = μάσκα 0..15
+        call    tile_autotile           ; -> A = μάσκα 0..15
 to_have_var:
         ; --- πηγή = tile_ptr[class] + variant*TILE_SZ ---
-        ld      l,a
-        ld      h,0
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl               ; *64
-        ex      de,hl               ; DE = variant*64
+        rrca
+        rrca                            ; v1 v0 0 0 0 0 v3 v2
+        ld      d,a
+        and     #C0
+        ld      e,a
+        xor     d
+        ld      d,a                     ; DE = variant*64
         ld      a,(t_cls)
         add     a,a
+        add     a,G_tile_ptr & 255
         ld      l,a
-        ld      h,0
-        ld      bc,G_tile_ptr
-        add     hl,bc
+        ld      h,G_tile_ptr >> 8
         ld      a,(hl)
-        inc     hl
+        inc     l
         ld      h,(hl)
-        ld      l,a                 ; HL = tile_ptr[class]
-        add     hl,de               ; + variant*64
+        ld      l,a                     ; HL = tile_ptr[class]
+        add     hl,de                   ; + variant*64
         ret
 
 ; ---------------------------------------------------------------------------
 ; tile_autotile — μάσκα γειτόνων για το tile στο (t_wptr).
 ; bit0 = N, bit1 = E, bit2 = S, bit3 = W· μπαίνει όταν ο γείτονας είναι ΙΔΙΑΣ
-; ΟΙΚΟΓΕΝΕΙΑΣ. Το βαθύ νερό μετράει ως νερό, αλλιώς κάθε λίμνη αποκτά ακτή
-; γύρω από το βαθύ της κομμάτι (SPRITES.md §3).
+; ΟΙΚΟΓΕΝΕΙΑΣ. Μόνο ΕΝΑ ζευγάρι μοιράζεται οικογένεια: το βαθύ νερό (5)
+; μετράει ως νερό (4), αλλιώς κάθε λίμνη αποκτά ακτή γύρω από το βαθύ της
+; κομμάτι (SPRITES.md §3).
 ; Out: A = 0..15
+;
+; Οι γείτονες με τη σειρά W, S, E, N: ο δείκτης περπατά από τον έναν στον
+; άλλον, και κάθε κρατούμενο μπαίνει από δεξιά στο B — το W καταλήγει bit 3.
 ; ---------------------------------------------------------------------------
 tile_autotile:
         ld      a,(t_cls)
-        call    tile_family
-        ld      (t_fam),a
-
-        ld      hl,(t_wptr)
-        ld      de,0-WORLD_W
-        add     hl,de
-        call    ta_same             ; N
-        rra                         ; κρατούμενο -> bit 7 ...
-        ld      b,a                 ; ... το μαζεύουμε ανάποδα και γυρίζουμε
-
-        ld      hl,(t_wptr)
-        inc     hl
-        call    ta_same             ; E
-        ld      a,b
-        rra
-        ld      b,a
-
-        ld      hl,(t_wptr)
-        ld      de,WORLD_W
-        add     hl,de
-        call    ta_same             ; S
-        ld      a,b
-        rra
-        ld      b,a
-
+        cp      5
+        jr      nz,tat_fam
+        dec     a
+tat_fam:
+        ld      c,a                     ; C = η οικογένεια
         ld      hl,(t_wptr)
         dec     hl
-        call    ta_same             ; W
+        call    ta_same                 ; W
+        rl      b
+        ld      de,WORLD_W + 1
+        add     hl,de
+        call    ta_same                 ; S
+        rl      b
+        ld      de,1 - WORLD_W
+        add     hl,de
+        call    ta_same                 ; E
+        rl      b
+        ld      de,-WORLD_W - 1
+        add     hl,de
+        call    ta_same                 ; N
         ld      a,b
-        rra
-        ; τα τέσσερα bits κάθονται στα 7..4· κατέβασέ τα
-        rlca
-        rlca
-        rlca
-        rlca
+        rla
         and     15
         ret
 
-; ta_same — κρατούμενο = 1 αν το (HL) είναι ίδιας οικογένειας με το t_fam.
+; ta_same — κρατούμενο = 1 αν το (HL) είναι ίδιας οικογένειας με το C. Κρατά
+; όλους τους καταχωρητές εκτός από το AF.
 ;
 ; Ο γείτονας μπορεί να πέσει ΕΞΩ από το επίπεδο: στη γραμμή -64 ο βορράς είναι
 ; κάτω από το #4000, στο tile (-64,-64) η δύση είναι το #3FFF — δηλαδή ο ΚΩΔΙΚΑΣ
@@ -266,33 +242,20 @@ tile_autotile:
 ; ζωγραφιστεί ακτή στην άκρη του κόσμου.
 ta_same:
         ld      a,h
-        cp      WORLD_BASE/256
-        jr      c,ta_yes            ; κάτω από το παράθυρο
-        cp      (WORLD_BASE+#4000)/256
-        jr      nc,ta_yes           ; πάνω από το παράθυρο
+        sub     WORLD_BASE >> 8
+        cp      #40
+        jr      nc,ta_yes               ; έξω από το παράθυρο #4000-#7FFF
         ld      a,(hl)
         and     7
-        cp      5                   ; tile_family, ξετυλιγμένο: καλείται 4 φορές
-        jr      nz,ta_cmp           ; ανά tile, και το call+ret κόστιζε όσο ο
-        dec     a                   ; ίδιος ο έλεγχος
+        cp      5                       ; η οικογένεια, ξετυλιγμένη: καλείται
+        jr      nz,ta_cmp               ; 4 φορές ανά tile
+        dec     a
 ta_cmp:
-        ld      hl,t_fam
-        cp      (hl)
-        jr      z,ta_yes
-        or      a                   ; καθάρισε το κρατούμενο
+        sub     c
+        sub     1                       ; κρατούμενο μόνο από το 0: ίσα
         ret
 ta_yes:
         scf
-        ret
-
-; tile_family — A = κλάση -> A = οικογένεια.
-; Μόνο ΕΝΑ ζευγάρι μοιράζεται οικογένεια: το βαθύ νερό (5) μετράει ως νερό (4),
-; αλλιώς κάθε λίμνη αποκτά ακτή γύρω από το βαθύ της κομμάτι (SPRITES.md §3).
-; Πίνακας οκτώ θέσεων θα κόστιζε και lookup και έναν δείκτη· τρεις εντολές όχι.
-tile_family:
-        cp      5
-        ret     nz
-        dec     a
         ret
 
 ; ---------------------------------------------------------------------------
@@ -310,10 +273,14 @@ tile_family:
 ; Μια πρώτη εκδοχή κρατούσε μόνο το E σε ixl και το επανέφερε· το D έμενε
 ; αυξημένο και μετά από 16 γραμμές η διεύθυνση έγραφε μέσα στον κώδικα και
 ; στη στοίβα. Σώσε ΟΛΟΚΛΗΡΟ το DE — 21 T-states που δεν διαπραγματεύονται.
+;
+; Η 8η γραμμή δεν προσθέτει το #800 που θα αφαιρούσε αμέσως το πέρασμα στη
+; δεύτερη σειρά, και η 16η ούτε σώζει το DE ούτε προχωρά: κανείς δεν το
+; διαβάζει μετά (βήμα 56, 66 T-states ανά tile).
 ; ---------------------------------------------------------------------------
 blit_tile:
         ld      bc,64               ; μετρητής του ldi· κανείς δεν τον κοιτά
-        repeat  8
+        repeat  7
         push    de                  ; ΟΛΟΚΛΗΡΟ το DE, όχι μόνο το E
         ldi
         ldi
@@ -324,18 +291,21 @@ blit_tile:
         add     a,8                 ; +#800 = επόμενη γραμμή της ίδιας σειράς
         ld      d,a
         rend
-        ; πέρασμα στη δεύτερη σειρά χαρακτήρων: -#4000 +#50
-        ld      a,d
-        sub     #40
-        ld      d,a
+        push    de
+        ldi
+        ldi
+        ldi
+        ldi
+        pop     de                  ; D = D0 + 7*8
+        ; πέρασμα στη δεύτερη σειρά χαρακτήρων: +#50, και το D πίσω στο D0
         ld      a,e
         add     a,SCR_W
         ld      e,a
         ld      a,d
-        adc     a,0
+        adc     a,-7*8
         and     #C7                 ; και εδώ το δαχτυλίδι — μία εντολή ανά tile
         ld      d,a
-        repeat  8
+        repeat  7
         push    de
         ldi
         ldi
@@ -346,21 +316,25 @@ blit_tile:
         add     a,8
         ld      d,a
         rend
+        ldi
+        ldi
+        ldi
+        ldi
         ret
 
 ; --- μεταβλητές ------------------------------------------------------------
 cam_tx:     db 0                ; πάνω-αριστερά ορατό tile, προσημασμένο
 cam_ty:     db 0
-td_ty:      db 0
-td_row:     db 0
-td_col:     db 0
-td_c0:      db 0                ; το ορθογώνιο μέσα στο κάδρο, σε tiles
+td_nc:      db VIEW_TW          ; το ορθογώνιο μέσα στο κάδρο, σε tiles
+td_c0:      db 0
+td_row:     db 0                ; η σειρά που ζωγραφίζεται τώρα
+td_left:    db 0                ; και πόσες μένουν
 td_r0:      db 0
-td_nc:      db VIEW_TW
 td_nr:      db VIEW_TH
-td_left:    db 0
+        assert  cam_ty == cam_tx + 1
+        assert  td_c0 == td_nc + 1 && td_row == td_c0 + 1 && td_left == td_row + 1
+        assert  td_nr == td_r0 + 1
 t_wptr:     dw 0
 t_sptr:     dw 0
 t_cur:      db 0                ; το world byte του τρέχοντος tile
 t_cls:      db 0
-t_fam:      db 0
