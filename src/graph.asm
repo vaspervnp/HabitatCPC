@@ -29,6 +29,7 @@ NODE_DEG    equ G_rt_nodes              ; [0..127]
 RT_QUEUE    equ G_rt_nodes + 128        ; [128..255]
 
 RT_UNREACH  equ 255
+RT_RESET    equ 109                     ; 112 + 14k µs έναντι 1.644 του ldir
 RT_NODES    equ MAX_NODE                ; 96 — δες const.asm
 
 ; ---------------------------------------------------------------------------
@@ -55,7 +56,8 @@ rt_mark:
 rt_begin:
         xor     a
         ld      (rt_src),a
-        ld      (rt_phase),a
+        ld      hl,128                  ; tail = 128 + 0: «δεν ξέρω τι έχει η
+        ld      (rt_tail),hl            ; σειρά», και φάση 0 (rt_open)
         ret
 
 ; ---------------------------------------------------------------------------
@@ -72,7 +74,7 @@ rt_slice:
 rts_open:
         call    rt_open
         dec     b
-        ret     z                       ; Cy=0 από το or a ή το xor a
+        ret     z                       ; Cy=0 από το rt_open
 rts_expand:
         call    rt_node
         jr      nc,rts_more             ; η ουρά είχε ακόμη κόμβο
@@ -97,6 +99,14 @@ rts_more:
 ; ---------------------------------------------------------------------------
 ; rt_open — καθαρίζει τη σειρά και βάζει την πηγή στην ουρά.
 ;
+; ΚΑΘΑΡΙΖΕΙ ΜΟΝΟ ΟΣΑ ΕΓΡΑΨΕ Η ΠΡΟΗΓΟΥΜΕΝΗ ΠΗΓΗ. Η BFS γράφει dist και next
+; μόνο σε όσους κόμβους βάζει στην ουρά, άρα η σειρά είναι 255 παντού εκτός
+; από τα queue[0..k) — και αυτό ισχύει και στη μέση μιας πηγής. Μια μοναχική
+; πηγή (k = 1) ανοίγει έτσι σε μερικά µs αντί για 1,6 ms, και μια νέα αποικία
+; είναι ως επί το πλείστον μοναχικές πηγές: το rt_n είναι πάντα 96 (βήμα 63).
+; Το ldir μένει για k = 0, που το rt_begin σημαίνει «άγνωστη σειρά» (νέο
+; παιχνίδι, φόρτωμα), και για k > RT_RESET, όπου είναι φθηνότερο.
+;
 ; Οι δείκτες της ουράς κρατιούνται ως 128 + k, δηλαδή είναι ήδη το κάτω byte
 ; της θέσης στο RT_QUEUE. Το rt_phase γίνεται NODEPG: έτσι η λέξη
 ; (rt_tail, rt_phase) είναι η διεύθυνση της ουράς και το rt_node τη φορτώνει
@@ -106,13 +116,31 @@ rts_more:
 rt_open:
         push    bc                      ; το ldir τρώει το BC — και μαζί του τον
         ld      hl,G_rt_row             ; προϋπολογισμό της φέτας
-        ld      (hl),RT_UNREACH
+        ld      c,RT_UNREACH
+        ld      a,(rt_tail)
+        add     a,127                   ; k - 1, και 255 για το k = 0
+        cp      RT_RESET
+        jr      nc,rto_all
+        inc     a
+        ld      b,a                     ; k
+        ld      de,RT_QUEUE
+rto_lp:
+        ld      a,(de)                  ; v
+        inc     e
+        ld      l,a
+        ld      (hl),c                  ; dist[v]
+        set     7,l
+        ld      (hl),c                  ; next[v]
+        djnz    rto_lp
+        jr      rto_src
+rto_all:
+        ld      (hl),c
         ld      d,h
         ld      e,l
         inc     de
         ld      bc,255
         ldir                            ; 256 bytes σε 255· το H μένει ROWPG
-
+rto_src:
         ld      a,(rt_src)
         ld      l,a
         ld      (hl),0                  ; dist[src] = 0
@@ -123,6 +151,7 @@ rt_open:
         ld      (rt_head),hl            ; head = 0, tail = 1
         ld      a,NODEPG
         ld      (rt_phase),a
+        or      a                       ; Cy=0: με αυτό γυρίζει το rt_slice
         pop     bc
         ret
 

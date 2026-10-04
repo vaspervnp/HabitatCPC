@@ -141,8 +141,11 @@ def slices_check(sym, patch=()):
 def restart(sym, ga, gb, bsz, k, patch=()):
     """Ο ga κομμένος σε φέτες των bsz· μετά από k φέτες ο γράφος γίνεται gb και
     έρχεται rt_mark, και οι φέτες συνεχίζουν ως το τέλος. Γυρίζει (DIST, NEXTHOP
-    ως το hw του gb, rt_dirty, (rt_src, rt_phase) τη στιγμή του rt_mark)."""
-    import ctypes
+    ως το hw του gb, rt_dirty, (rt_src, rt_phase) τη στιγμή του rt_mark).
+
+    Πριν από το rt_mark η σειρά και η ουρά γεμίζουν σκουπίδια, όπως τις αφήνει
+    ένα φόρτωμα: το μπλοκ της αποθήκευσης τις καλύπτει, το rt_tail όχι (βήμα 63)."""
+    import ctypes, random
     import cpc
     m = cpc.CPC()
     m.run_frames(60)
@@ -160,6 +163,9 @@ def restart(sym, ga, gb, bsz, k, patch=()):
             for _ in range(k):
                 assert not probe(m, [0x06, bsz] + fn("RT_SLICE")) & 1, "τελείωσε νωρίς"
             at = (m.peek(sym["RT_SRC"]), m.peek(sym["RT_PHASE"]))
+            rnd = random.Random(k)
+            m.write_ram(sym["G_RT_ROW"], bytes(rnd.randrange(256) for _ in range(256)))
+            m.write_ram(sym["G_RT_NODES"] + 128, bytes(rnd.randrange(128) for _ in range(128)))
             probe(m, fn("RT_MARK"))
             dirty = m.peek(sym["RT_DIRTY"])
     n = 0
@@ -288,8 +294,9 @@ def main():
     if why:
         print(f"ΑΠΟΤΥΧΙΑ: rt_mark στη μέση της ανοικοδόμησης — {why}")
         return 1
-    print("OK rt_mark  στη μέση πηγής, μετά από κλείσιμο, μετά από άνοιγμα: ο νέος "
-          "γράφος ολόκληρος, και το rt_dirty σηκωμένο")
+    print("OK rt_mark  στη μέση πηγής, μετά από κλείσιμο, μετά από άνοιγμα, με τη σειρά "
+          "και την ουρά όπως τις αφήνει ένα φόρτωμα: ο νέος γράφος ολόκληρος, και το "
+          "rt_dirty σηκωμένο")
 
     # --- αρνητικά: οι δύο έλεγχοι πιάνουν αυτό που λένε ---
     sl, op, bg = sym["RT_SLICE"], sym["RT_OPEN"], sym["RT_BEGIN"]
@@ -311,6 +318,13 @@ def main():
         return 1
     print("OK ΑΡΝΗΤΙΚΟ: με το rt_begin να μη μηδενίζει το rt_src, οι πρώτες σειρές "
           "μένουν του παλιού γράφου")
+    k = next((k for k in range(16) if list(m.read_ram(bg + k, 3)) == [0x21, 128, 0]), None)
+    if k is None or restart_check(sym, [(bg + k + 1, 129)]) is None:            # ld hl,128
+        print("ΑΠΟΤΥΧΙΑ: ΑΡΝΗΤΙΚΟ — με το rt_begin να μη λέει «άγνωστη σειρά», το "
+              "rt_mark μετά από φόρτωμα πέρασε")
+        return 1
+    print("OK ΑΡΝΗΤΙΚΟ: με το rt_begin να μη λέει «άγνωστη σειρά», ό,τι άφησε το "
+          "φόρτωμα στη σειρά μένει")
 
     # --- κόστος: η χειρότερη περίπτωση ΚΑΙ η πραγματική ---
     print("\nκόστος πλήρους ανοικοδόμησης (CPU, όχι απλωμένο σε frames):")
