@@ -1100,7 +1100,10 @@ def sol_rollover(e, a, F_ALIVE, F_WORKING, NEED_LOW):
         if a.flags[i] & F_ALIVE and a.role[i] >= 5 and (a.flags[i] & F_WORKING):
             bots += 1
 
-    e.green_sols = e.green_sols + 1 if green else 0
+    # ΚΑΙ ΤΑ ΤΡΙΑ ΣΤΑΜΑΤΟΥΝ ΣΤΟ 255, όπως στον Z80. Ως το βήμα 57 το πράσινο
+    # σερί δεν σταματούσε: το 256 δεν χωρούσε στο to_bytes και η αναφορά
+    # έσκαγε — κανένα τεστ δεν είχε φτάσει 255 πράσινα sols.
+    e.green_sols = min(255, e.green_sols + 1) if green else 0
     e.no_death_sols = 0 if e.deaths_sol else min(255, e.no_death_sols + 1)
     e.deaths_sol = 0
     e.no_trade_sols = 0 if e.traded else min(255, e.no_trade_sols + 1)

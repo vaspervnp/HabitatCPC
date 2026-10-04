@@ -450,6 +450,10 @@ def main():
     if need_branches(sym, g, nexthop, sim0):
         return 1
 
+    # --- πλοία, σερί και ορόσημα στα όριά τους (βήμα 57) ---
+    if ship_branches(sym, g, nexthop, sim0):
+        return 1
+
     # --- κόστος ανά θέση, μετρημένο ΚΑΤΕΥΘΕΙΑΝ ---
     # Ο τροχός καρφώνεται σε μία θέση και τρέχει PIN_TICKS φορές. Η παλιότερη
     # μέθοδος — τρέξε τα πάντα, μετά σβήσε ένα, κράτα τη διαφορά — έπαψε να
@@ -747,6 +751,117 @@ def need_branches(sym, g, nexthop, sim0):
     print(f"OK ανάγκες:  {len(NEED_CASES)} περιπτώσεις σε {len(alive)} άποικους — "
           f"{hurt} χτυπήθηκαν, {died} πέθαναν, {healed} γιατρεύτηκαν — ίδια bytes "
           f"στον Z80 και στην αναφορά. ΑΡΝΗΤΙΚΟ: χωρίς το bit του οξυγόνου διαφέρουν")
+    return 0
+
+
+def _sol(e):
+    """Η επόμενη περιστροφή κλείνει το sol."""
+    e.frame = e.sollen - 16
+
+
+def _green(e):
+    e.o2_ok, e.power_ok = 1, EC.POWER_ALL
+    e.stock[EC.S_WATER], e.stock[EC.S_FOOD] = 50, 50
+
+
+def _bots(n, role):
+    def f(e, a):
+        _sol(e)
+        e.milestones = 0
+        for i in range(128):
+            a.flags[i] &= ~E.F_WORKING
+        for i in range(n):
+            a.flags[i], a.role[i] = E.F_ALIVE | E.F_WORKING, role
+    return f
+
+
+def _crew(room):
+    """Πλοίο αποίκων που προσγειώνεται τώρα, με ταβάνι ζωντανοί + room. Το
+    e.alive το μετρά μόνο η θέση 12, οπότε εδώ μετριέται με το χέρι."""
+    def f(e, a):
+        e.alive = sum(1 for i in range(128) if a.flags[i] & E.F_ALIVE)
+        e.ship_state, e.ship_kind, e.ship_eta = EC.SHIP_INCOMING, EC.SK_COLONIST, 0
+        e.pop_cap = e.alive + room
+    return f
+
+
+def _visit_roll():
+    """Ο σπόρος που ρίχνει επισκέπτες στην πρώτη ζαριά (event_branches)."""
+    return next(x for x in range(1, 65536) if EC.lfsr(EC.lfsr(x)) & 0x7FF == 0)
+
+
+# (όνομα, περιστροφές, στήσιμο) — βήμα 57. Κάθε μία είναι ένα κενό που βρήκαν
+# τα σκόπιμα λάθη του βήματος: ο κώδικας άλλαζε, και ούτε το κοινό τρέξιμο
+# ούτε το tests/test_game.py το έβλεπαν.
+SHIP_CASES = (
+    # Ο ΕΛΕΓΧΟΣ ΤΗΣ ΠΙΣΤΑΣ στο ship_call: το C τον κάνει μόνο του πριν το
+    # καλέσει, οπότε μόνο οι επισκέπτες της ζαριάς φτάνουν εδώ χωρίς πίστα.
+    ("επισκέπτες από τη ζαριά, χωρίς πίστα", 3,
+     lambda e, a: (setattr(e, "pad_node", 255), setattr(e, "ship_state", 0),
+                   setattr(e, "rnd", _visit_roll()))),
+    ("επισκέπτες με τροφή 5, ηθικό ως το 255", 2,
+     lambda e, a: (setattr(e, "ship_state", EC.SHIP_INCOMING),
+                   setattr(e, "ship_kind", EC.SK_VISITOR), setattr(e, "ship_eta", 0),
+                   e.stock.__setitem__(EC.S_FOOD, 5),
+                   [a.morale.__setitem__(i, (i * 37) & 0xFF) for i in range(128)])),
+    ("άποικοι, ταβάνι για δύο", 2, _crew(2)),
+    ("άποικοι, ταβάνι ήδη ξεπερασμένο", 2, _crew(-1)),
+    ("τρία σερί στο 255", 1,
+     lambda e, a: (_sol(e), _green(e), setattr(e, "green_sols", 255),
+                   setattr(e, "no_death_sols", 255), setattr(e, "deaths_sol", 0),
+                   setattr(e, "no_trade_sols", 255), setattr(e, "traded", 0))),
+    ("οκτώ ρομπότ με ρόλο 4", 1, _bots(8, 4)),
+    ("οκτώ ρομπότ με ρόλο 5: αυτοματισμός", 1, _bots(8, 5)),
+    ("μέταλλο και βιοπλαστικό, όχι ανταλλακτικά", 1,
+     lambda e, a: (_sol(e), setattr(e, "prod_mask", 0x18), setattr(e, "milestones", 0))),
+    ("εννιά από τα δέκα αγαθά", 1,
+     lambda e, a: (_sol(e), setattr(e, "prod_mask", 0x1FF), setattr(e, "no_trade_sols", 9),
+                   setattr(e, "milestones", 0))),
+    ("habitat: ανεξάρτητοι, όχι βιομήχανοι", 1,
+     lambda e, a: (_sol(e), setattr(e, "alive", 80), setattr(e, "no_death_sols", 4),
+                   setattr(e, "deaths_sol", 0), setattr(e, "milestones", 4),
+                   setattr(e, "prod_mask", 0))),
+    ("habitat: βιομήχανοι, όχι ανεξάρτητοι", 1,
+     lambda e, a: (_sol(e), setattr(e, "alive", 80), setattr(e, "no_death_sols", 9),
+                   setattr(e, "deaths_sol", 0), setattr(e, "milestones", 2),
+                   setattr(e, "prod_mask", 0x58))),
+)
+
+
+def ship_branches(sym, g, nexthop, sim0):
+    """Η θέση 15 καρφωμένη: κάθε SHIP_CASES από την ίδια κατάσταση, στον Z80
+    και στην αναφορά (slot15), και όλα τα bytes ίδια."""
+    keys = lambda z: (z.a.to_bytes(), bytes(z.e.dome), bytes(z.e.struct),
+                      EC.to_bytes(z.e), bytes(z.e.job))
+
+    def z80(st, n, patch=()):
+        got = run_z80(sym, g, fresh(g, nexthop, st), n, pin=15,
+                      rt_n=EC.MAX_DOME + EC.MAX_STRUCT, patch=patch)
+        return (got[0], got[3], got[4], got[5], got[6])
+
+    starts = {}
+    for name, n, setup in SHIP_CASES:
+        st = fresh(g, nexthop, sim0)
+        setup(st.e, st.a)
+        want = fresh(g, nexthop, st)
+        slot15(want, n)
+        if z80(st, n) != keys(want):
+            print(f"ΑΠΟΤΥΧΙΑ πλοία και sol: «{name}» — ο Z80 διαφέρει από την αναφορά")
+            return 1
+        starts[name] = (st, n, keys(want))
+    # ΑΡΝΗΤΙΚΟ: ο αυτοματισμός από 9 ρομπότ (cp 8 -> cp 9 στο sol_rollover).
+    at = sym["SOL_ROLLOVER"]
+    code = run_peek(sym, at, 256)
+    k = next(k for k in range(254) if code[k:k + 3] == [0xFE, 0x08, 0x38])
+    st, n, want = starts["οκτώ ρομπότ με ρόλο 5: αυτοματισμός"]
+    if z80(st, n, patch=[(at + k + 1, 9)]) == want:
+        print("ΑΠΟΤΥΧΙΑ πλοία και sol: ΑΡΝΗΤΙΚΟ — με τον αυτοματισμό από 9 "
+              "ρομπότ ο Z80 βγαίνει ίδιος με την αναφορά")
+        return 1
+    print(f"OK πλοία και sol: {len(SHIP_CASES)} περιπτώσεις στα όρια — πίστα, τροφή "
+          f"και ηθικό επισκεπτών, ταβάνι, σερί στο 255, ρομπότ, οι δύο μάσκες, "
+          f"habitat — ίδια bytes στον Z80 και στην αναφορά. ΑΡΝΗΤΙΚΟ: με "
+          f"αυτοματισμό από 9 ρομπότ διαφέρουν")
     return 0
 
 

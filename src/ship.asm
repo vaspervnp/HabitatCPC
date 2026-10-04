@@ -22,11 +22,27 @@ VIS_MORALE  equ 24
 POP_PER_CTL equ 48
 ; το R_CONTROL είναι στο const.asm
 
-M_FOOTHOLD  equ 1
-M_INDUSTRY  equ 2
-M_INDEPEND  equ 4
-M_AUTOMAT   equ 8
-M_HABITAT   equ 16
+; τα πέντε ορόσημα του §10.2: το bit μέσα στο EC_MILE
+MB_FOOTHOLD equ 0
+MB_INDUSTRY equ 1
+MB_INDEPEND equ 2
+MB_AUTOMAT  equ 3
+MB_HABITAT  equ 4
+
+; ΤΑ ΑΓΑΘΑ ΤΩΝ ΟΡΟΣΗΜΩΝ ως μάσκες του EC_PRODM, που έχει ένα bit ανά απόθεμα
+; (ec_make). Βιομηχανία: μέταλλο, βιοπλαστικό, ανταλλακτικά. Ανεξαρτησία: τα
+; δέκα αγαθά του §6.5, αποθέματα 0-9 — όλο το κάτω byte και δύο bits του πάνω.
+; Ως το βήμα 57 δύο λίστες και ένας βρόχος που έφτιαχνε το bit κάθε φορά.
+IND_MASK    equ (1 << S_METAL) | (1 << S_BIOPL) | (1 << S_SPARE)
+DEP_MASK    equ (1 << 10) - 1
+        assert  IND_MASK < 256 && (DEP_MASK & 255) == 255
+
+        assert  EC_SHKIND == EC_SHSTATE + 1
+        assert  EC_NODEATH == EC_DEATHS + 1 && EC_GREENS == EC_NODEATH + 1
+        assert  EC_NOTRADE == EC_GREENS + 1 && EC_TRADED == EC_NOTRADE + 1
+        assert  SHIP_LANDED == 2 * SHIP_INCOM && ((2 * SHIP_LANDED) & 3) == SHIP_NONE
+        assert  SK_COLONIST == 0 && VIS_FOOD < 256
+        assert  (G_agent_fields & 255) == 0     ; AG_PG: η σελίδα των σημαιών
 
 ; ---------------------------------------------------------------------------
 ; ship_call — A = είδος. Επιστρέφει Cy=1 αν ξεκίνησε.
@@ -37,18 +53,17 @@ ship_call:
         or      a
         jr      nz,sc_no
         ld      a,(EC_PADNODE)
-        cp      255
-        jr      z,sc_no                 ; χωρίς πίστα, κανένα πλοίο
-        ld      a,b
-        ld      (EC_SHKIND),a
-        ld      a,SHIP_INCOM
-        ld      (EC_SHSTATE),a
+        inc     a
+        jr      z,sc_no                 ; 255: χωρίς πίστα, κανένα πλοίο
+        ld      h,b
+        ld      l,SHIP_INCOM
+        ld      (EC_SHSTATE),hl         ; EC_SHSTATE, EC_SHKIND
         ld      hl,SHIP_TRIP
         ld      (EC_SHETA),hl
         scf
         ret
 sc_no:
-        or      a
+        or      a                       ; και από τους δύο δρόμους: CY = 0
         ret
 
 ; ---------------------------------------------------------------------------
@@ -66,61 +81,44 @@ ship_tick:
         ld      (EC_SHETA),hl
         ret
 st_here:
-        ld      a,(EC_SHSTATE)
-        cp      SHIP_INCOM
-        jr      z,st_land
-        xor     a                       ; έφυγε
-        ld      (EC_SHSTATE),a
-        ret
-st_land:
-        ld      a,SHIP_LANDED
-        ld      (EC_SHSTATE),a
+        ld      hl,EC_SHSTATE
+        ld      a,(hl)
+        add     a,a                     ; ΕΡΧΕΤΑΙ -> ΠΡΟΣΓΕΙΩΜΕΝΟ, και
+        and     3                       ; ΠΡΟΣΓΕΙΩΜΕΝΟ -> ΤΙΠΟΤΑ: έφυγε
+        ld      (hl),a
+        ret     z
         ld      a,SFX_SHIP
         call    snd_ping
         ld      hl,SHIP_STAY
         ld      (EC_SHETA),hl
         ld      a,(EC_SHKIND)
-        cp      SK_COLONIST
-        jp      z,ship_crew
+        or      a                       ; SK_COLONIST
+        jr      z,ship_crew
         cp      SK_VISITOR
         ret     nz
         ; --- επισκέπτες: τρώνε και ανεβάζουν το ηθικό ---
-        ld      a,S_FOOD
-        call    ec_stock_ptr            ; DE = &stock
-        ld      a,(de)
-        ld      l,a
-        inc     de
-        ld      a,(de)
-        ld      h,a
-        dec     de
+        ld      hl,(EC_STOCK + 2*S_FOOD)
         ld      bc,VIS_FOOD
         or      a
         sbc     hl,bc
         jr      nc,sv_pay
-        ld      hl,0                    ; ό,τι είχαμε
+        ld      h,b                     ; ό,τι είχαμε: 0
+        ld      l,b
 sv_pay:
-        ld      a,l
-        ld      (de),a
-        inc     de
-        ld      a,h
-        ld      (de),a
-
+        ld      (EC_STOCK + 2*S_FOOD),hl
         ld      hl,G_agent_fields       ; σελίδα flags
         ld      b,128
-        ld      c,0
 sv_lp:
         ld      a,(hl)
         and     F_ALIVE
         jr      z,sv_n
         push    hl
-        ld      a,l
         ld      h,AG_PG + 6
-        ld      l,a
         set     7,l                     ; ηθικό
         ld      a,(hl)
         add     a,VIS_MORALE
         jr      nc,sv_st
-        ld      a,255
+        sbc     a,a                     ; 255
 sv_st:
         ld      (hl),a
         pop     hl
@@ -132,25 +130,21 @@ sv_n:
 ; --- καινούργιοι άποικοι στην πίστα ----------------------------------------
 ship_crew:
         ld      a,(EC_PADNODE)
-        ld      (sh_node),a
-        ld      b,128
-        ld      c,0                     ; πόσοι μπήκαν
+        ld      (sb_tab),a              ; κόμβος και προορισμός: η πίστα
+        ld      (sb_tab + 2),a
+        ld      bc,128*256 + SHIP_NCREW ; B = θέσεις, C = όσοι χωράνε ακόμη
         ld      hl,G_agent_fields
 sk_lp:
-        ; ΚΑΘΕ ΕΞΟΔΟΣ ΑΠΟ ΤΟ sk_full. Ως το βήμα 38 το πλήρες πλήρωμα και το
-        ; ταβάνι ακριβώς γεμάτο έβγαιναν με RET, και οι τέσσερις καινούργιοι
+        ; ΤΟ EC_ALIVE ΜΕΤΡΑΕΙ ΚΑΘΕ ΓΕΝΝΗΣΗ ΑΜΕΣΩΣ, οπότε κάθε έξοδος το βρίσκει
+        ; σωστό. Ως το βήμα 38 το πλήρες πλήρωμα και το ταβάνι ακριβώς γεμάτο
+        ; έβγαιναν με RET πριν από την πρόσθεση, και οι τέσσερις καινούργιοι
         ; δεν μετρούσαν στο EC_ALIVE ως την επόμενη μέτρηση της θέσης 12. Το
         ; έδειξε ο τροχός καρφωμένος στη θέση 15 (tests/test_sim.py, άκρες).
-        ld      a,c
-        cp      SHIP_NCREW
-        jr      nc,sk_full
-        ld      a,(EC_ALIVE)
-        add     a,c
-        ld      e,a
         ld      a,(EC_POPCAP)
+        ld      e,a
+        ld      a,(EC_ALIVE)
         cp      e
-        jr      z,sk_full
-        jr      c,sk_full
+        ret     nc                      ; το ταβάνι
         ld      a,(hl)
         and     F_ALIVE
         jr      nz,sk_n
@@ -158,60 +152,46 @@ sk_lp:
         push    bc
         ld      a,l
         call    sh_born
+        ld      hl,EC_ALIVE
+        inc     (hl)
         pop     bc
         pop     hl
-        inc     c
+        dec     c
+        ret     z                       ; όλο το πλήρωμα
 sk_n:
         inc     l
         djnz    sk_lp
-sk_full:
-        ld      a,(EC_ALIVE)
-        add     a,c
-        ld      (EC_ALIVE),a
         ret
 
-; sh_born — A = ταυτότητα. Γεννιέται στην πίστα, με γεμάτες μπάρες.
+; sh_born — A = ταυτότητα. Γεννιέται στην πίστα, με γεμάτες μπάρες: σημαίες
+; και ρόλος στη σελίδα AG_PG, και οι σελίδες +1..+6 από το sb_tab, κάτω μισό
+; και πάνω μισό (set 7,l) η καθεμία.
 sh_born:
         ld      l,a
         ld      h,AG_PG
         ld      (hl),F_ALIVE
-        ld      a,l
         and     7
-        push    hl
         set     7,l
         ld      (hl),a                  ; ρόλος
-        pop     hl
-        ld      h,AG_PG + 1
-        ld      a,(sh_node)
-        ld      (hl),a                  ; κόμβος
-        set     7,l
-        ld      (hl),255                ; χωρίς θέση δαχτυλιδιού
+        ld      de,sb_tab
+        ld      b,6
+sb_lp:
+        inc     h
         res     7,l
-        ld      h,AG_PG + 2
-        ld      (hl),a                  ; προορισμός = εδώ
+        ld      a,(de)
+        ld      (hl),a
+        inc     de
         set     7,l
-        ld      (hl),255                ; χωρίς ακμή
-        res     7,l
-        ld      h,AG_PG + 3
-        ld      (hl),0                  ; πρόοδος
-        set     7,l
-        ld      (hl),255                ; χωρίς εργασία
-        res     7,l
-        ld      h,AG_PG + 4
-        ld      (hl),200
-        set     7,l
-        ld      (hl),200
-        res     7,l
-        ld      h,AG_PG + 5
-        ld      (hl),200
-        set     7,l
-        ld      (hl),200
-        res     7,l
-        ld      h,AG_PG + 6
-        ld      (hl),200
-        set     7,l
-        ld      (hl),160
+        ld      a,(de)
+        ld      (hl),a
+        inc     de
+        djnz    sb_lp
         ret
+
+; κόμβος, θέση δακτυλιδιού · προορισμός, ακμή · πρόοδος, εργασία · οξυγόνο,
+; νερό · τροφή, ύπνος · υγεία, ηθικό. Τον κόμβο και τον προορισμό τους γράφει
+; το ship_crew.
+sb_tab:     db 0, 255, 0, 255, 0, 255, 200, 200, 200, 200, 200, 160
 
 ; ---------------------------------------------------------------------------
 ; sol_rollover — μία φορά ανά sol: τα σερί, και μετά τα ορόσημα (§10.2).
@@ -223,189 +203,109 @@ sol_rollover:
         ; «όλα πράσινα» είναι η ένδειξη της ΑΠΟΙΚΙΑΣ, όχι η μπάρα κάθε ατόμου
         ld      a,(EC_O2OK)
         or      a
-        jr      z,sr_notgreen
+        jr      z,sr_grey
         ld      a,(EC_POK)
         cp      P_ALL                   ; P_ESS δεν είναι πράσινο sol: οι
-        jr      nz,sr_notgreen          ; μηχανές της αποικίας σταμάτησαν
+        jr      nz,sr_green             ; μηχανές της αποικίας σταμάτησαν
         ld      hl,(EC_STOCK + 2*S_WATER)
         ld      a,h
         or      l
-        jr      z,sr_notgreen
+        jr      z,sr_grey
         ld      hl,(EC_STOCK + 2*S_FOOD)
         ld      a,h
         or      l
-        jr      z,sr_notgreen
-        ld      a,(EC_GREENS)
-        inc     a
-        jr      nz,sr_gst
-        dec     a
-sr_gst:
-        ld      (EC_GREENS),a
-        jr      sr_deaths
-sr_notgreen:
-        xor     a
-        ld      (EC_GREENS),a
-
-sr_deaths:
-        ld      a,(EC_DEATHS)
+        jr      z,sr_grey
+        xor     a                       ; Z: πράσινο
+        jr      sr_green
+sr_grey:
+        or      1                       ; NZ: το σερί σπάει
+sr_green:
+        ld      hl,EC_GREENS
+        call    sr_streak
+        ; --- θάνατοι και εμπόριο του sol: σπάνε το δικό τους σερί, και
+        ; μηδενίζονται για το επόμενο ---
+        ld      hl,EC_DEATHS
+        ld      a,(hl)
+        ld      (hl),0
         or      a
-        jr      z,sr_nodeath
-        xor     a
-        ld      (EC_NODEATH),a
-        jr      sr_dclr
-sr_nodeath:
-        ld      a,(EC_NODEATH)
-        inc     a
-        jr      nz,sr_nst
-        dec     a
-sr_nst:
-        ld      (EC_NODEATH),a
-sr_dclr:
-        xor     a
-        ld      (EC_DEATHS),a
-
-        ld      a,(EC_TRADED)
+        inc     hl                      ; EC_NODEATH
+        call    sr_streak
+        ld      hl,EC_TRADED
+        ld      a,(hl)
+        ld      (hl),0
         or      a
-        jr      z,sr_notrade
-        xor     a
-        ld      (EC_NOTRADE),a
-        jr      sr_tclr
-sr_notrade:
-        ld      a,(EC_NOTRADE)
-        inc     a
-        jr      nz,sr_tst
-        dec     a
-sr_tst:
-        ld      (EC_NOTRADE),a
-sr_tclr:
-        xor     a
-        ld      (EC_TRADED),a
+        dec     hl                      ; EC_NOTRADE
+        call    sr_streak
 
-        ; --- πόσα ρομπότ δουλεύουν ---
+        ; --- πόσα ρομπότ δουλεύουν: ζωντανά, στη θέση εργασίας, ρόλος 5+ ---
         ld      hl,G_agent_fields
-        ld      b,128
-        ld      c,0
+        ld      bc,128*256 + 0
 sr_bots:
         ld      a,(hl)
-        and     F_ALIVE
-        jr      z,sr_bn
-        ld      a,(hl)
-        and     F_WORKING
-        jr      z,sr_bn
-        push    hl
-        ld      a,l
-        ld      h,AG_PG
-        ld      l,a
+        and     F_ALIVE + F_WORKING
+        cp      F_ALIVE + F_WORKING
+        jr      nz,sr_bn
         set     7,l
         ld      a,(hl)                  ; ρόλος
-        pop     hl
+        res     7,l
         cp      5
         jr      c,sr_bn
         inc     c
 sr_bn:
         inc     l
         djnz    sr_bots
+
+        ; --- τα ορόσημα, κατευθείαν στο EC_MILE, και δεν σβήνουν ποτέ ---
+        ld      hl,EC_MILE
         ld      a,c
-        ld      (sh_bots),a
-
-        ; --- τα ορόσημα, και δεν σβήνουν ποτέ ---
-        ; Ο συσσωρευτής ζει στη ΜΝΗΜΗ και όχι στο B: το sh_allmade χρησιμοποιεί
-        ; το B ως μετρητή ολίσθησης, και η πρώτη γραφή έχτιζε τις σημαίες πάνω
-        ; σε ό,τι είχε αφήσει εκείνο.
-        ld      a,(EC_MILE)
-        ld      (sh_mile),a
-
+        cp      8
+        jr      c,sr_m1
+        set     MB_AUTOMAT,(hl)
+sr_m1:
         ld      a,(EC_ALIVE)
         cp      10
         jr      c,sr_m2
         ld      a,(EC_GREENS)
         or      a
         jr      z,sr_m2
-        ld      a,M_FOOTHOLD
-        call    sh_set
+        set     MB_FOOTHOLD,(hl)
 sr_m2:
-        ld      hl,ind_stocks           ; μέταλλο, βιοπλαστικό, ανταλλακτικά
-        ld      c,3
-        call    sh_allmade
-        jr      nc,sr_m3
-        ld      a,M_INDUSTRY
-        call    sh_set
+        ld      a,(EC_PRODM)
+        and     IND_MASK
+        cp      IND_MASK
+        jr      nz,sr_m3
+        set     MB_INDUSTRY,(hl)
 sr_m3:
-        ld      hl,dep_stocks           ; και τα δέκα αγαθά
-        ld      c,10
-        call    sh_allmade
-        jr      nc,sr_m4
+        ld      de,(EC_PRODM)
+        ld      a,d
+        or      255 - (DEP_MASK >> 8)   ; τα αγαθά 8, 9 — τα άλλα bits ένα
+        and     e                       ; και τα 0-7
+        inc     a                       ; όλα ένα: 255 -> 0
+        jr      nz,sr_m4
         ld      a,(EC_NOTRADE)
         cp      5
         jr      c,sr_m4
-        ld      a,M_INDEPEND
-        call    sh_set
+        set     MB_INDEPEND,(hl)
 sr_m4:
-        ld      a,(sh_bots)
-        cp      8
-        jr      c,sr_m5
-        ld      a,M_AUTOMAT
-        call    sh_set
-sr_m5:
-        ld      a,(sh_mile)
-        and     M_INDEPEND
-        jr      z,sr_done
+        bit     MB_INDEPEND,(hl)        ; και αυτού του sol
+        ret     z
         ld      a,(EC_ALIVE)
         cp      80
-        jr      c,sr_done
+        ret     c
         ld      a,(EC_NODEATH)
         cp      5
-        jr      c,sr_done
-        ld      a,M_HABITAT
-        call    sh_set
-sr_done:
-        ld      a,(sh_mile)
-        ld      (EC_MILE),a
+        ret     c
+        set     MB_HABITAT,(hl)
         ret
 
-; sh_set — A = σημαία ορόσημου
-sh_set:
-        ld      hl,sh_mile
-        or      (hl)
+; sr_streak — το σερί στο (HL): Z συνεχίζει (+1, ως το 255), NZ σπάει (0).
+sr_streak:
+        ld      a,0
+        jr      nz,srs_st
+        ld      a,(hl)
+        inc     a
+        jr      nz,srs_st
+        dec     a
+srs_st:
         ld      (hl),a
         ret
-
-; sh_allmade — HL = λίστα δεικτών, C = πλήθος. Cy=1 αν όλα φτιάχτηκαν εδώ.
-sh_allmade:
-        ld      de,(EC_PRODM)
-sa_lp:
-        ld      a,(hl)
-        inc     hl
-        push    hl
-        push    de
-        ld      b,a
-        ld      hl,1
-        inc     b
-sa_sh:
-        dec     b
-        jr      z,sa_test
-        add     hl,hl
-        jr      sa_sh
-sa_test:
-        ld      a,h
-        and     d
-        ld      b,a
-        ld      a,l
-        and     e
-        or      b
-        pop     de
-        pop     hl
-        jr      z,sa_no
-        dec     c
-        jr      nz,sa_lp
-        scf
-        ret
-sa_no:
-        or      a
-        ret
-
-ind_stocks: db 3,4,6                    ; μέταλλο, βιοπλαστικό, ανταλλακτικά
-dep_stocks: db 0,1,2,3,4,5,6,7,8,9
-sh_node:    db 0
-sh_bots:    db 0
-sh_mile:    db 0
