@@ -21,28 +21,31 @@ PLAY_PAGE   equ 3
 ; ---------------------------------------------------------------------------
 ; view_cam — ξαναϋπολογίζει cam_off / cam_p από το (cam_tx, cam_ty) και
 ; γράφει τα R12/R13. Καμία επανασχεδίαση: αυτό είναι όλο το σκρολάρισμα.
+;
+; cam_off = 2 * ((tx+64) + (ty+64)*40), mod 1024. Μέσα στο mod 512 της
+; παρένθεσης το (ty+64)*40 είναι 8 * (5*ty mod 64): το +64 του ty φεύγει
+; (5*64*8 = 5*512), και το 5*ty χωράει σε ένα byte. Το +64 του tx ΜΕΝΕΙ, σε
+; 8 bit όπως ήταν: η κάμερα φτάνει ως το -66, και το -65 + 64 είναι 255.
 ; ---------------------------------------------------------------------------
 view_cam:
+        ld      a,(cam_ty)
+        ld      c,a
+        add     a,a
+        add     a,a
+        add     a,c                     ; 5 * ty
+        ld      l,a
+        ld      h,0
+        add     hl,hl
+        add     hl,hl
+        add     hl,hl                   ; * 8
         ld      a,(cam_tx)
         add     a,64
+        add     a,l
         ld      l,a
-        ld      h,0
-        add     hl,hl                   ; (tx+64)*2
-        ex      de,hl
-        ld      a,(cam_ty)
-        add     a,64
-        ld      l,a
-        ld      h,0
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl                   ; *16
-        ld      b,h
-        ld      c,l
-        add     hl,hl                   ; *32
-        add     hl,hl                   ; *64
-        add     hl,bc                   ; *80
-        add     hl,de
+        adc     a,h
+        sub     l
+        ld      h,a                     ; + (tx+64)
+        add     hl,hl                   ; σε λέξεις
         ld      a,h
         and     3
         ld      h,a                     ; & #3FF
@@ -52,28 +55,20 @@ view_cam:
         ; Το δαχτυλίδι γύρισε: τα bytes του HUD δεν είναι πια εκεί που τα
         ; άφησε η κρυφή μνήμη του (§9.2), κι ας μην κουνήθηκε στην οθόνη.
         call    hud_inval
-        ; --- R12 / R13 ---
+        ; --- R12 / R13: επιλογή στο #BC, τιμή στο #BD — το κάτω byte της
+        ; θύρας ο CRTC δεν το κοιτά, οπότε η τιμή βγαίνει με out (c),r ---
         ld      hl,(cam_off)
-        ld      a,h
-        or      PLAY_PAGE*16
-        ld      b,a
-        ld      c,l
-        push    bc
         ld      bc,CRTC_SEL + 12
         out     (c),c
-        pop     bc
-        push    bc
-        ld      a,b
-        ld      bc,CRTC_VAL
-        ld      c,a
+        ld      a,h
+        or      PLAY_PAGE*16
+        inc     b                       ; CRTC_VAL
+        out     (c),a
+        dec     b
+        inc     c                       ; R13
         out     (c),c
-        ld      bc,CRTC_SEL + 13
-        out     (c),c
-        pop     bc
-        ld      a,c
-        ld      bc,CRTC_VAL
-        ld      c,a
-        out     (c),c
+        inc     b
+        out     (c),l
         ret
 
 ; ---------------------------------------------------------------------------
@@ -89,77 +84,72 @@ view_cam:
 view_scroll:
         and     3
         ld      l,a
-        ld      h,0
-        ld      d,h
-        ld      e,l
-        add     hl,hl
-        add     hl,de
-        add     hl,hl                   ; dir*6
-        ld      de,vs_tab
-        add     hl,de
-        ld      a,(cam_tx)
+        add     a,a
+        add     a,l
+        add     a,a                     ; dir * 6
+        ld      hl,vs_tab
+        add     a,l
+        ld      l,a
+        adc     a,h
+        sub     l
+        ld      h,a
+        ld      de,cam_tx
+        ld      a,(de)
         add     a,(hl)
-        ld      (cam_tx),a
+        ld      (de),a
         inc     hl
-        ld      a,(cam_ty)
+        inc     de                      ; cam_ty
+        ld      a,(de)
         add     a,(hl)
-        ld      (cam_ty),a
+        ld      (de),a
         inc     hl
-        ld      a,(hl)
-        ld      (td_c0),a
-        inc     hl
-        ld      a,(hl)
-        ld      (td_r0),a
-        inc     hl
-        ld      a,(hl)
-        ld      (td_nc),a
-        inc     hl
-        ld      a,(hl)
-        ld      (td_nr),a
+        ld      de,td_nc
+        ldi
+        ldi                             ; td_nc, td_c0
+        ld      de,td_r0
+        ldi
+        ldi                             ; td_r0, td_nr
         call    view_cliprect
         call    view_cam
-        ld      bc,GA_PORT + PAGE_B4
-        out     (c),c
-        call    tile_draw_rect
-        ld      bc,GA_PORT + PAGE_B1
-        out     (c),c
-        call    ob_draw_all
-        jp      ob_clip_full
+        call    vr_paint
+        jr      vr_objs
 
 ; view_cliprect — το παράθυρο σχεδίασης από το ορθογώνιο tiles (td_c0..td_nr).
 view_cliprect:
-        ld      a,(td_c0)
+        ld      hl,(td_nc)              ; L = nc, H = c0
+        ld      a,h
         add     a,a
         add     a,a
-        ld      (clip_x0),a
-        ld      c,a
-        ld      a,(td_nc)
+        ld      e,a                     ; x0 = 4 * c0
+        ld      a,l
+        add     a,h
         add     a,a
         add     a,a
-        add     a,c
-        ld      (clip_x1),a
-        ld      a,(td_r0)
-        add     a,a
-        add     a,a
-        add     a,a
-        add     a,a
-        ld      (clip_y0),a
-        ld      c,a
-        ld      a,(td_nr)
+        ld      d,a                     ; x1 = 4 * (c0 + nc)
+        ld      (clip_x0),de
+        ld      hl,(td_r0)              ; L = r0, H = nr
+        ld      a,l
         add     a,a
         add     a,a
         add     a,a
         add     a,a
-        add     a,c
-        ld      (clip_y1),a
+        ld      e,a                     ; y0 = 16 * r0
+        ld      a,l
+        add     a,h
+        add     a,a
+        add     a,a
+        add     a,a
+        add     a,a
+        ld      d,a                     ; y1 = 16 * (r0 + nr)
+        ld      (clip_y0),de
         ret
 
-; dtx, dty, c0, r0, nc, nr — ανά κατεύθυνση
+; dtx, dty, nc, c0, r0, nr — ανά κατεύθυνση, με τη σειρά των td_*
 vs_tab:
-        db      0,-1,  0,0,          VIEW_TW,1         ; βορράς
-        db      1, 0,  VIEW_TW-1,0,  1,VIEW_TH         ; ανατολή
-        db      0, 1,  0,VIEW_TH-1,  VIEW_TW,1         ; νότος
-        db     -1, 0,  0,0,          1,VIEW_TH         ; δύση
+        db      0,-1,  VIEW_TW,0,          0,1                 ; βορράς
+        db      1, 0,  1,VIEW_TW-1,        0,VIEW_TH           ; ανατολή
+        db      0, 1,  VIEW_TW,0,          VIEW_TH-1,1         ; νότος
+        db     -1, 0,  1,0,                0,VIEW_TH           ; δύση
 
 ; ---------------------------------------------------------------------------
 ; view_draw — έδαφος και μετά αντικείμενα, μέσα στο τρέχον clip.
@@ -191,6 +181,7 @@ view_draw:
 view_rect:
         call    vr_tiles
         ret     z                       ; ολόκληρο έξω από το κάδρο
+vr_objs:
         call    ob_draw_all
         jp      ob_clip_full
 
@@ -210,8 +201,7 @@ view_rect:
 view_add:
         call    vr_clip
         ret     z
-        call    ob_draw_all
-        jp      ob_clip_full
+        jr      vr_objs
 
 ; vr_tiles — το έδαφος του ορθογωνίου (vr_*), με το clip στημένο πάνω του για
 ; ό,τι ζωγραφιστεί μετά. Z = εκτός κάδρου: δεν έγινε τίποτα, το clip μένει.
@@ -233,36 +223,26 @@ vr_paint:
 ; χειριστής μιας σειράς διαδρόμου (dh_crow) πρέπει να ξέρει ΠΟΥ θα ζωγραφίσει
 ; πριν ζωγραφίσει, για να σηκώσει από εκεί το φάντασμα. Z = εκτός κάδρου.
 vr_clip:
-        ld      a,(vr_tx)
-        ld      hl,cam_tx
-        sub     (hl)
-        ld      (dk_c0),a
-        ld      a,(vr_ty)
-        ld      hl,cam_ty
-        sub     (hl)
-        ld      (dk_r0),a
-        ld      hl,dk_c0
         ld      a,(vr_w)
         ld      c,a
         ld      b,VIEW_TW
-        call    dk_clamp
-        ld      a,b
-        or      a
+        ld      a,(vr_tx)
+        ld      hl,cam_tx
+        sub     (hl)
+        call    dk_clamp                ; κρατά το HL
         ret     z
-        ld      (td_nc),a
-        ld      a,c
-        ld      (td_c0),a
-        ld      hl,dk_r0
+        ld      e,b
+        ld      d,c
+        ld      (td_nc),de              ; td_nc, td_c0
         ld      a,(vr_h)
         ld      c,a
         ld      b,VIEW_TH
+        ld      a,(vr_ty)
+        inc     hl                      ; cam_ty
+        sub     (hl)
         call    dk_clamp
-        ld      a,b
-        or      a
         ret     z
-        ld      (td_nr),a
-        ld      a,c
-        ld      (td_r0),a
+        ld      (td_r0),bc              ; td_r0, td_nr
         call    view_cliprect
         or      1
         ret
@@ -273,6 +253,10 @@ vr_w:       db 0
 vr_h:       db 0
         ; διπλανά: το dirty.asm (dh_site, dh_crow, dh_tile) τα γράφει ανά δύο
         assert  vr_ty == vr_tx + 1 && vr_h == vr_w + 1
+        ; ζεύγη ως λέξεις και ldi: view_scroll, view_cliprect, vr_clip
+        assert  cam_ty == cam_tx + 1 && td_c0 == td_nc + 1 && td_nr == td_r0 + 1
+        assert  clip_x1 == clip_x0 + 1 && clip_y0 == clip_x0 + 2 && clip_y1 == clip_x0 + 3
+        assert  CRTC_VAL == CRTC_SEL + 256
 
 ; --- μεταβλητές ------------------------------------------------------------
 cam_off:    dw 0                ; λέξεις offset του CRTC (0..1023)

@@ -503,11 +503,11 @@ dho_out:
         out     (c),c                   ; οι σημαίες μένουν
         ret
 
-; dk_clamp — (HL) = αρχή, C = μήκος, B = όριο κάδρου. Το μήκος ήταν πάντα 3
+; dk_clamp — A = αρχή, C = μήκος, B = όριο κάδρου. Το μήκος ήταν πάντα 3
 ; ως το βήμα 34· το view_rect το θέλει όσο το κτίριο ή ο διάδρομος.
-; Out: C = αρχή κομμένη, B = πλήθος (0 = εκτός κάδρου).
+; Out: NZ, C = αρχή κομμένη, B = πλήθος· Z = εκτός κάδρου (και μήκος 0).
+; Κρατά το HL.
 dk_clamp:
-        ld      a,(hl)
         bit     7,a
         jr      z,dkc_pos
         ; αρνητική αρχή: κόψε από μπροστά
@@ -532,9 +532,11 @@ dkc_pos:
 dkc_ok:
         ld      b,c
         ld      c,d
+        inc     b
+        dec     b                       ; Z: μήκος μηδέν, εκτός κάδρου όπως πριν
         ret
 dkc_out:
-        ld      bc,0
+        xor     a                       ; Z: οι δρόμοι προς τα εδώ δεν το εγγυώνται
         ret
 
 dirty_jmp:
@@ -701,8 +703,6 @@ dt_hid:     db 0                    ; το dt_ghost έβγαλε το φάντα
 rv_pend:    db 0                    ; σειρές εργοταξίου που περιμένουν (DK_SITE)
 dhv_w:      db 0                        ; dhv_w, dhv_h διπλανά
 dhv_h:      db 0
-dk_c0:      db 0                        ; του vr_clip (view.asm)
-dk_r0:      db 0
 
         assert  dirty_num == dirty_head + 1 && dirty_over == dirty_num + 1
         assert  dt_b == dt_a + 1 && dhv_h == dhv_w + 1
