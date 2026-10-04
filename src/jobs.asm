@@ -23,6 +23,7 @@ JOB_SCAN    equ 4
 JOB_ASSIGN  equ 4
 JOB_LOOK    equ 32                  ; πράκτορες που εξετάζονται ανά επίσκεψη
 F_WORKING   equ 32
+        assert  F_WORKING == 1 << 5     ; entity.asm: bit/res 5
 
         assert  D_INTEG == D_STATE + 1 && D_OPS == D_STATE + 3
         assert  D_ROOM == D_MACH - 5 && D_HEALTH == D_MACH + 8

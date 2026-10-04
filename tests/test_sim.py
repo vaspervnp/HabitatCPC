@@ -9,7 +9,7 @@
   ΣΥΝΕΠΕΙΑ    οι μάσκες θέσεων συμφωνούν με το πού στέκεται ο καθένας.
   ΚΟΣΤΟΣ      us ανά θέση τροχού, απέναντι στα 1.800 us του §7.2.
 """
-import os, subprocess, sys
+import ctypes, os, random, subprocess, sys, types
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -454,6 +454,10 @@ def main():
     if ship_branches(sym, g, nexthop, sim0):
         return 1
 
+    # --- η κίνηση στα όριά της (βήμα 59) ---
+    if move_check(sym, sim0):
+        return 1
+
     # --- κόστος ανά θέση, μετρημένο ΚΑΤΕΥΘΕΙΑΝ ---
     # Ο τροχός καρφώνεται σε μία θέση και τρέχει PIN_TICKS φορές. Η παλιότερη
     # μέθοδος — τρέξε τα πάντα, μετά σβήσε ένα, κράτα τη διαφορά — έπαψε να
@@ -862,6 +866,188 @@ def ship_branches(sym, g, nexthop, sim0):
           f"και ηθικό επισκεπτών, ταβάνι, σερί στο 255, ρομπότ, οι δύο μάσκες, "
           f"habitat — ίδια bytes στον Z80 και στην αναφορά. ΑΡΝΗΤΙΚΟ: με "
           f"αυτοματισμό από 9 ρομπότ διαφέρουν")
+    return 0
+
+
+def move_graph():
+    """Ο γράφος της αποικίας και ό,τι δεν έχει: δομές (64-71) κρεμασμένες σε
+    θόλους και μία σε άλλη δομή, ένα ζευγάρι 90-91 που δεν φτάνει πουθενά, ο
+    92 μόνος του. Ο θόλος 7 και ο 3 αλλάζουν ΜΕΤΑ τη δρομολόγηση (MOVE_STALE)."""
+    g = G.GRAPHS["colony"]()
+    g.n = g.hw = 93
+    for k, s in enumerate(range(64, 72)):
+        g.link(k * 5 % 48, s)
+    g.link(64, 65)
+    g.link(90, 91)
+    return g
+
+
+# Μετά τη δρομολόγηση: ο θόλος 7 χωρίς ακμές, ο 3 με έναν γείτονα που το
+# NEXTHOP δεν ξέρει. Και τα δύο «δεν συμβαίνουν» — και τα δύο έχουν κλάδο.
+MOVE_STALE = ((G.ADJ_SIZE + 7, 0), (3 * G.MAXDEG, 92))     # (θέση στο adj+deg, τιμή)
+MOVE_SLICES = ((0, 128), (0, 128), (120, 16), (5, 0), (64, 64), (0, 128), (127, 1),
+               (0, 128), (33, 40))
+MOVE_REC = 0x3100                       # ο καταγραφέας του wh_push, πάνω από τον κώδικα
+
+
+def move_state(rnd, g):
+    """Πράκτορες σε κάθε κλάδο: νεκροί, σε ακμή με πρόοδο στο όριο της άφιξης,
+    στάσιμοι στον προορισμό, με προορισμό προσιτό ή απρόσιτο, εργαζόμενοι, με
+    και χωρίς θέση· μάσκες κατοχής άδειες, γεμάτες, μισές."""
+    nodes = [n for n in range(g.hw) if g.deg[n]] + [92, 7]  # ο 7: deg 0 μετά το MOVE_STALE
+    a = E.Agents()
+    for i in range(128):
+        alive = rnd.random() < 0.85
+        a.flags[i] = (rnd.randrange(256) | E.F_ALIVE) if alive else \
+            (rnd.randrange(256) & ~E.F_ALIVE & 0xFF)
+        n = rnd.choice(nodes)
+        a.node[i], a.role[i] = n, rnd.randrange(8)
+        speed = E.ROLE_SPEED[a.role[i]]
+        if g.deg[n] and rnd.random() < 0.45:
+            a.edge[i] = rnd.randrange(g.deg[n])
+            a.progress[i] = rnd.choice([0, 255 - speed, 256 - speed, 255, 100])
+        else:
+            a.edge[i], a.progress[i] = E.NO_EDGE, rnd.randrange(256)
+        r = rnd.random()
+        a.dest[i] = (n if r < 0.35 else rnd.choice(nodes) if r < 0.8 else
+                     rnd.choice([92, 90, 91, 7, 3]))
+        a.slot[i] = rnd.randrange(8) if rnd.random() < 0.6 else E.NO_SLOT
+        a.task[i] = rnd.randrange(256)
+    # Και όσα η τύχη μπορεί να μη φέρει, σε κάθε κατάσταση: στον 3 με προορισμό
+    # τον γείτονα που ξέχασε το MOVE_STALE, στον 7 χωρίς ακμές, στον 92 που δεν
+    # φτάνει πουθενά, και εργαζόμενος που φεύγει από δομή.
+    col = G.GRAPHS["colony"]()
+    for i, (n, d) in zip((1, 2, 3, 4), ((3, col.adj[3 * G.MAXDEG]), (7, col.adj[7 * G.MAXDEG]),
+                                        (92, 0), (64, 0))):
+        a.flags[i] |= E.F_ALIVE | E.F_WORKING
+        a.node[i], a.dest[i], a.edge[i] = n, d, E.NO_EDGE
+    occ = bytearray(rnd.choice([0, 0xFF, 0x7F, 0xFE, 0x55, rnd.randrange(256)])
+                    for _ in range(G.MAXNODE))
+    dome = bytearray(rnd.randrange(256) for _ in range(EC.MAX_DOME * EC.DOME_REC))
+    for d in range(EC.MAX_DOME):
+        dome[d * EC.DOME_REC + EC.D_OPS] |= 1           # η αναφορά δεν πάει κάτω από 0
+    return a, occ, dome
+
+
+def move_ref(a, occ, dome, g, nexthop, first, count):
+    """Η αναφορά, πράκτορα προς πράκτορα — και οι wh_push που πρέπει να βγουν:
+    όποιος άφησε θέση θόλου, όποιος πήρε θέση θόλου."""
+    e, out = types.SimpleNamespace(dome=dome), []
+    for k in range(count):
+        i = (first + k) % 128
+        node, slot, edge = a.node[i], a.slot[i], a.edge[i]
+        E.move_one(a, i, g, nexthop, occ, e)
+        if edge == E.NO_EDGE and a.edge[i] != E.NO_EDGE:
+            if slot != E.NO_SLOT and node < EC.MAX_DOME:
+                out += [0, node, slot]
+        elif edge != E.NO_EDGE and a.edge[i] == E.NO_EDGE:
+            if a.slot[i] != E.NO_SLOT and a.node[i] < EC.MAX_DOME:
+                out += [0, a.node[i], a.slot[i]]
+    return out
+
+
+def move_branches(sym, sim0, n=12, patch=(), quiet=False):
+    """Το ent_move_slice απευθείας, σε φτιαγμένες καταστάσεις, απέναντι στο
+    tools/entity.py: πεδία, κατοχή, πίνακας θόλων και οι wh_push μετά από ΚΑΘΕ
+    φέτα. Γυρίζει την πρώτη διαφορά ή None."""
+    import cpc
+    from cpc import CPC
+    g = move_graph()
+    _, nexthop = G.all_pairs(g)
+    for at, v in MOVE_STALE:
+        (g.adj if at < G.ADJ_SIZE else g.deg)[at % G.ADJ_SIZE] = v
+    rnd = random.Random(59)
+    rec = MOVE_REC + 0x80
+    hook = bytes([0x57, 0x2A, rec & 255, rec >> 8, 0x72, 0x23, 0x70, 0x23, 0x71, 0x23,
+                  0x22, rec & 255, rec >> 8,             # γράφει A, B, C
+                  0x3E, 0xA5, 0x16, 0x5A, 0x21, 0xAD, 0xDE, 0xB7, 0xC9])   # και χαλάει ό,τι το dirty_push
+    for sc in range(n):
+        a, occ, dome = move_state(rnd, g)
+        m = CPC()
+        m.run_frames(60)
+        assert m.quickload(SNA, start=False), "quickload απέτυχε"
+        g0 = move_graph()
+        m.write_ram(sym["G_NODE_ADJ"], bytes(g0.adj))
+        m.write_ram(sym["G_RT_NODES"], bytes(g0.deg))
+        m.poke(sym["RT_N"], g0.hw)
+        enter(m, sym, "BUILD_ROUTES")
+        for at, v in MOVE_STALE:
+            m.poke((sym["G_NODE_ADJ"] if at < G.ADJ_SIZE else sym["G_RT_NODES"])
+                   + at % G.ADJ_SIZE, v)
+        m.write_ram(STAGE_AG, a.to_bytes())
+        m.write_ram(STAGE_OCC, bytes(occ) + bytes(128))
+        m.write_ram(STAGE_DOME, bytes(dome))
+        m.write_ram(STAGE_STR, bytes(sim0.e.struct))
+        m.write_ram(sym["G_ECON_STATE"], EC.to_bytes(sim0.e))
+        m.write_ram(sym["G_JOB_TBL"], bytes(sim0.e.job))
+        m.write_ram(sym["G_ROOM_N"], bytes(sim0.e.room_n))
+        m.write_ram(sym["G_ROOM_LIST"], bytes(sim0.e.room_list))
+        enter(m, sym, "LOAD_STATE")
+        m.write_ram(MOVE_REC, hook)
+        m.poke(sym["WH_HOOK"], MOVE_REC & 255)
+        m.poke(sym["WH_HOOK"] + 1, MOVE_REC >> 8)
+        for at, v in patch:
+            m.poke(at, v)
+        bank6 = lambda: ctypes.string_at(cpc._lib.cpcemu_ram_ptr(m._h, 6), 0x4000)
+        spans = [(sym[n] - 0x4000, k) for n, k in (("G_AGENT_FIELDS", 2048),
+                 ("G_NODE_OCC", G.MAXNODE), ("G_DOME_TBL", len(dome)))]
+        rest = lambda b: b"".join(b[s + k:e] for (s, k), (e, _) in
+                                  zip([(0, 0)] + spans, spans + [(0x4000, 0)]))
+        rest0 = rest(bank6())
+        for first, count in MOVE_SLICES:
+            want = move_ref(a, occ, dome, g, nexthop, first, count)
+            m.write_ram(rec, bytes([(rec + 2) & 255, (rec + 2) >> 8]))
+            # di · ld sp · ld bc,#7FC6: out (c),c (τράπεζα 6) · ld bc · call ·
+            # ld a,#5A: ld (σημαία),a · jr $
+            flag = rec - 1
+            m.poke(flag, 0)
+            code = bytes([0xF3, 0x31, 0x00, 0x30, 0x01, 0xC6, 0x7F, 0xED, 0x49,
+                          0x01, first, count, 0xCD, sym["ENT_MOVE_SLICE"] & 255,
+                          sym["ENT_MOVE_SLICE"] >> 8, 0x3E, 0x5A, 0x32, flag & 255,
+                          flag >> 8, 0x18, 0xFE])
+            m.run_code(0x3000, code, frames=12)
+            assert m.peek(flag) == 0x5A, f"το ent_move_slice δεν γύρισε: #{m.pc:04X}"
+            b6 = bank6()
+            ag = b6[sym["G_AGENT_FIELDS"] - 0x4000:][:2048]
+            oc = b6[sym["G_NODE_OCC"] - 0x4000:][:G.MAXNODE]
+            dm = b6[sym["G_DOME_TBL"] - 0x4000:][:len(dome)]
+            p = m.peek(rec) | (m.peek(rec + 1) << 8)
+            got = list(m.read_ram(rec + 2, p - rec - 2))
+            for what, x, y in (("πεδία", ag, a.to_bytes()), ("κατοχή", oc, bytes(occ)),
+                               ("θόλοι", dm, bytes(dome)), ("wh_push", got, want),
+                               ("η υπόλοιπη τράπεζα 6", rest(b6), rest0)):
+                if bytes(x) != bytes(y):
+                    if what == "πεδία":
+                        i = next(j for j in range(2048) if x[j] != y[j])
+                        f = E.FIELDS[(i // 256) * 2 + ((i % 256) >= 128)]
+                        what += f" (πράκτορας {i % 128}, {f}: Z80 {x[i]}, αναφορά {y[i]})"
+                    elif what == "wh_push":
+                        what += f" (Z80 {len(x) // 3}, αναφορά {len(y) // 3})"
+                    return f"κατάσταση {sc}, φέτα {first},{count}: {what}"
+    return None
+
+def move_check(sym, sim0):
+    """Η κίνηση στα όρια, και το αρνητικό της: χωρίς το τύλιγμα της φέτας στο
+    128 (res 7,c -> nop nop) η φέτα 120,16 διαβάζει «πράκτορες» 128-135."""
+    why = move_branches(sym, sim0)
+    if why:
+        print(f"ΑΠΟΤΥΧΙΑ κίνηση στα όρια: {why}")
+        return 1
+    at = sym["ENT_MOVE_SLICE"]
+    code = run_peek(sym, at, 16)
+    k = next((k for k in range(15) if code[k:k + 2] == [0xCB, 0xB9]), None)
+    if k is None:
+        print("ΑΠΟΤΥΧΙΑ κίνηση στα όρια: το ent_move_slice δεν τυλίγει με res 7,c")
+        return 1
+    if move_branches(sym, sim0, n=1, patch=[(at + k, 0), (at + k + 1, 0)]) is None:
+        print("ΑΠΟΤΥΧΙΑ κίνηση στα όρια: ΑΡΝΗΤΙΚΟ — χωρίς το τύλιγμα στο 128 ο "
+              "Z80 βγαίνει ίδιος με την αναφορά")
+        return 1
+    print(f"OK κίνηση στα όρια: {12 * len(MOVE_SLICES)} φέτες σε 12 καταστάσεις — "
+          f"άφιξη σε γεμάτο δαχτυλίδι και σε δομή, απρόσιτος, κόμβος χωρίς ακμές, "
+          f"μπαγιάτικο NEXTHOP, εργαζόμενος που φεύγει από θόλο και από δομή, φέτα "
+          f"που τυλίγει — πεδία, μάσκες, θόλοι και wh_push ίδια με την αναφορά, η "
+          f"υπόλοιπη τράπεζα 6 ανέγγιχτη. ΑΡΝΗΤΙΚΟ: χωρίς το τύλιγμα στο 128 διαφέρουν")
     return 0
 
 

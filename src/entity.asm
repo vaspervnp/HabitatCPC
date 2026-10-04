@@ -38,65 +38,60 @@ ent_move_slice:
         dec     b
         ret     z
 ems_lp:
-        ld      a,c
-        ld      (em_id),a
         push    bc
+        ld      l,c
         call    ent_move_one
         pop     bc
-        ld      a,c
-        inc     a
-        and     N_AGENT - 1
-        ld      c,a
+        inc     c
+        res     7,c                     ; mod N_AGENT
         djnz    ems_lp
         ret
 
 ; ---------------------------------------------------------------------------
-; ent_move_one — ένα βήμα για τον (em_id).
+; ent_move_one — ένα βήμα για τον πράκτορα L.
+;
+; Το id έρχεται στο L και μένει σε καταχωρητή (L, ή D και C όπου το HL
+; χρειάζεται αλλού): τα πεδία είναι σε σελίδες, οπότε ένα πεδίο είναι ένα
+; `ld h` και ένα `set`/`res 7,l` μακριά. Ως το βήμα 59 κάθε πεδίο ξαναδιάβαζε
+; το em_id· τώρα γράφεται μόνο όταν κάποιος φεύγει από κόμβο, όπου το θέλει το
+; ent_release.
 ; ---------------------------------------------------------------------------
 ent_move_one:
-        ld      a,(em_id)
         ld      h,AG_PG
-        ld      l,a
-        ld      a,(hl)
-        and     F_ALIVE
+        bit     0,(hl)                  ; F_ALIVE
         ret     z
-
-        ld      a,(em_id)
         ld      h,AG_PG + 2
-        ld      l,a
         set     7,l
         ld      a,(hl)                  ; edge
         inc     a
-        jp      nz,em_trans             ; != 255 -> ταξιδεύει
+        jr      nz,em_trans             ; != 255 -> ταξιδεύει
 
 ; --- ΣΤΑΘΕΡΟΣ: χρειάζεται να ξεκινήσει; ---
-        ld      a,(em_id)
-        ld      h,AG_PG + 2
-        ld      l,a
-        ld      a,(hl)                  ; dest
-        ld      e,a
-        ld      h,AG_PG + 1
-        ld      a,(em_id)
-        ld      l,a
+        res     7,l
+        ld      e,(hl)                  ; dest
+        dec     h                       ; AG_PG + 1
         ld      a,(hl)                  ; node
-        ld      (em_node),a
         cp      e
         ret     z                       ; είναι ήδη εκεί
+        ld      (em_node),a
+        ld      d,l                     ; D = id
 
-        ; --- NEXTHOP[node][dest] : μία ανάγνωση, μία σελιδοποίηση ---
+        ; --- NEXTHOP[node][dest] : μία ανάγνωση, μία σελιδοποίηση. Η γραμμή
+        ; είναι #4000 + node*128: (node + 128) / 2 στο H, και το bit που
+        ; περισσεύει πάνω από το dest στο L (dest < 128). ---
+        add     a,#80
+        rra
         ld      h,a
-        ld      l,0
-        srl     h
-        rr      l                       ; HL = node*128
-        ld      a,l
-        add     a,e                     ; + dest  (δεν κρατάει: l = 0 ή 128)
+        ld      a,0
+        rra
+        or      e
         ld      l,a
-        set     6,h                     ; + &4000
         ld      bc,GA_PORT + PAGE_B5
         out     (c),c
         ld      a,(hl)
-        ld      bc,GA_PORT + PAGE_B6
+        ld      c,PAGE_B6 & 255         ; το B είναι ακόμη GA_PORT / 256
         out     (c),c
+        ld      l,d
         cp      255
         jr      nz,em_have
 
@@ -108,254 +103,212 @@ ent_move_one:
         ; του παίκτη τελείωνε άλλοτε σε 300 frames και άλλοτε σε 10.800 — όσο
         ; χρειαζόταν για να πεινάσει ο μηχανικός, που είναι το μόνο άλλο
         ; πράγμα που καθαρίζει το task.
-        ld      a,(em_node)
-        ld      e,a
-        ld      a,(em_id)
-        ld      h,AG_PG + 2
-        ld      l,a
-        ld      (hl),e                  ; dest = node
-        ld      h,AG_PG + 3             ; +128 = task
+        ld      h,AG_PG + 1
+        ld      a,(hl)                  ; node
+        inc     h
+        ld      (hl),a                  ; dest = node
+        inc     h                       ; +128 = task
         set     7,l
         ld      (hl),NO_TASK
         ret
 
 em_have:
-        ld      (em_nh),a
         ; --- ποια θέση της λίστας γειτνίασης είναι ο nh; ---
+        ld      e,a                     ; E = nh
+        ld      a,l
+        ld      (em_id),a
         ld      a,(em_node)
+        ld      l,a
         ld      h,NODEPG
-        ld      l,a
-        ld      b,(hl)                  ; deg[node]
-        inc     b
-        dec     b
-        ret     z                       ; κόμβος χωρίς ακμές — δεν συμβαίνει
-        ld      h,0
-        ld      l,a
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl
-        ld      de,G_node_adj
-        add     hl,de
-        ld      a,(em_nh)
-        ld      c,0
-em_scan:
-        cp      (hl)
-        jr      z,em_found
-        inc     hl
+        ld      c,(hl)                  ; deg[node]
         inc     c
-        djnz    em_scan
-        ret                             ; μπαγιάτικο NEXTHOP — μένει ακίνητος
+        dec     c
+        ret     z                       ; κόμβος χωρίς ακμές — δεν συμβαίνει
+        ld      b,0
+        ; G_node_adj + node*8 = (G_node_adj/8 + node) * 8, χωρίς κρατούμενο
+        ; στο κάτω byte (assert)
+        add     a,(G_node_adj / 8) & 255
+        ld      l,a
+        ld      h,G_node_adj / 2048
+        add     hl,hl
+        add     hl,hl
+        add     hl,hl
+        ld      a,e
+        cpir
+        ret     nz                      ; μπαγιάτικο NEXTHOP — μένει ακίνητος
+        dec     l
+        ld      a,l
+        and     7                       ; k: η λίστα ξεκινά σε πολλαπλάσιο του 8
+        ld      c,a
 
-em_found:
         ; Αν δούλευε, ο θόλος χάνει έναν χειριστή καθώς βγαίνει. Είναι ο
         ; καθρέφτης της άφιξης στο jobs.asm, και χωρίς αυτό οι χειριστές
         ; μόνο ανεβαίνουν: ο θόλος θυμάται κόσμο που έφυγε πριν από ώρα.
-        ld      a,(em_id)
+        ld      l,d                     ; το id, από την αρχή του σταθερού
         ld      h,AG_PG
-        ld      l,a
-        ld      a,(hl)
-        and     F_WORKING
+        bit     5,(hl)                  ; F_WORKING (assert στο jobs.asm)
         jr      z,emf_rel
-        ld      a,(hl)
-        and     255 - F_WORKING
-        ld      (hl),a
+        res     5,(hl)
         ld      a,(em_node)
         cp      MAX_DOME
         jr      nc,emf_rel
-        call    jb_dome_ptr
+        call    jb_dome_ptr             ; δεν αγγίζει το BC
         ld      de,D_OPS
         add     hl,de
         dec     (hl)
 emf_rel:
         ; ελευθερώνει τη θέση του και μπαίνει στην ακμή C
-        call    ent_release
+        call    ent_release             ; κρατά το BC
         ld      a,(em_id)
-        ld      h,AG_PG + 2
         ld      l,a
+        ld      h,AG_PG + 3
+        ld      (hl),0                  ; progress = 0
+        dec     h
         set     7,l
         ld      (hl),c                  ; edge = k
-        ld      h,AG_PG + 3
-        ld      l,a
-        ld      (hl),0                  ; progress = 0
         ret
 
-; --- ΤΑΞΙΔΕΥΕΙ ---
+; --- ΤΑΞΙΔΕΥΕΙ. A = edge + 1, H = AG_PG + 2, L = id + 128. ---
 em_trans:
-        ld      a,(em_id)
+        ld      b,a                     ; B = edge + 1
         ld      h,AG_PG
-        ld      l,a
-        set     7,l
         ld      a,(hl)                  ; role
         and     7
-        ld      hl,role_speed
-        add     a,l
-        ld      l,a
-        ld      a,0
-        adc     a,h
-        ld      h,a
-        ld      e,(hl)                  ; ταχύτητα
-
-        ld      a,(em_id)
-        ld      h,AG_PG + 3
-        ld      l,a
-        ld      a,(hl)
+        ld      de,role_speed
         add     a,e
+        ld      e,a
+        adc     a,d
+        sub     e
+        ld      d,a
+        ld      a,(de)                  ; ταχύτητα
+        ld      h,AG_PG + 3
+        res     7,l
+        add     a,(hl)                  ; + progress
         jr      c,em_arrive
         ld      (hl),a                  ; ακόμη στον σωλήνα
         ret
 
 em_arrive:
         ; ο κόμβος στην άλλη άκρη: node_adj[node*8 + edge]
-        ld      a,(em_id)
+        ld      c,l                     ; C = id
         ld      h,AG_PG + 1
-        ld      l,a
         ld      a,(hl)                  ; node
-        ld      (em_node),a
-        ld      h,0
+        add     a,(G_node_adj / 8) & 255
         ld      l,a
+        ld      h,G_node_adj / 2048
         add     hl,hl
         add     hl,hl
         add     hl,hl
-        ld      de,G_node_adj
-        add     hl,de
-        ld      a,(em_id)
-        ld      d,h
-        ld      e,l
-        ld      h,AG_PG + 2
+        dec     b                       ; edge < 8: χωρίς κρατούμενο
+        ld      a,l
+        add     a,b
         ld      l,a
-        set     7,l
-        ld      a,(hl)                  ; edge
-        add     a,e
-        ld      e,a
-        ld      a,0
-        adc     a,d
-        ld      d,a
-        ld      a,(de)                  ; ο κόμβος-στόχος
-        ld      (em_dst),a
+        ld      a,(hl)                  ; ο κόμβος-στόχος
+        ld      b,a                     ; B = στόχος, C = id
 
         ; Μπαίνει ΠΑΝΤΑ, με θέση ή χωρίς. Το δαχτυλίδι έχει οκτώ θέσεις
         ; επειδή τόσες ζωγραφίζει το sprite — δεν είναι πόρτα. Οσο ήταν,
         ; ένας γεμάτος θόλος με χαλασμένη μηχανή δεν επισκευαζόταν ποτέ.
+        push    bc
         call    ent_claim               ; A = θέση, ή 255 αν δεν χωρά
-em_landed:
-        ld      e,a                     ; E = θέση
-        ld      a,(em_id)
+        pop     bc
+        ld      l,c
         ld      h,AG_PG + 1
-        ld      l,a
-        ld      a,(em_dst)
-        ld      (hl),a                  ; node = στόχος
+        ld      (hl),b                  ; node = στόχος
         set     7,l
-        ld      (hl),e                  ; slot
-        ld      a,(em_id)
-        ld      h,AG_PG + 2
-        ld      l,a
-        set     7,l
+        ld      (hl),a                  ; slot
+        inc     h
         ld      (hl),NO_EDGE
-        ld      h,AG_PG + 3
+        inc     h
         res     7,l
         ld      (hl),0                  ; progress = 0
         ret
 
 ; ---------------------------------------------------------------------------
-; ent_claim — A/(em_dst) = κόμβος. Επιστρέφει A = θέση, ή 255 αν γέμισε.
+; ent_claim — A = κόμβος. Επιστρέφει A = θέση, ή 255 αν γέμισε.
 ;
 ; Η σειρά γεμίσματος είναι το corr_fill των assets (0,4,2,6,1,5,3,7) ώστε οι
 ; άνθρωποι να μη μοιάζουν στοιβαγμένοι στο δαχτυλίδι.
 ; ---------------------------------------------------------------------------
 ent_claim:
-        ld      a,(em_dst)
-        ld      h,OCCPG
         ld      l,a
+        ld      h,OCCPG
         ld      c,(hl)                  ; μάσκα κατοχής
         push    hl
-        ld      hl,G_corr_fill
+        ld      de,G_corr_fill
         ld      b,8
 ec_lp:
-        ld      a,(hl)                  ; η θέση που δοκιμάζουμε
-        push    hl
+        ld      a,(de)                  ; η θέση που δοκιμάζουμε
         ld      hl,bit_tab
         add     a,l
         ld      l,a
-        ld      a,0
         adc     a,h
+        sub     l
         ld      h,a
         ld      a,(hl)                  ; 1 << θέση
-        pop     hl
-        ld      e,a
         and     c
         jr      z,ec_free
-        inc     hl
+        inc     e                       ; οκτώ bytes σε μία σελίδα (assert)
         djnz    ec_lp
         pop     hl
         ld      a,NO_SLOT
         ret
 ec_free:
-        ld      a,(hl)                  ; ο αριθμός της θέσης
-        ld      d,a
-        ld      a,c
-        or      e
+        ld      a,(hl)
+        or      c
         pop     hl
         ld      (hl),a                  ; η μάσκα με τη νέα θέση πιασμένη
-        ld      a,d
-        ld      (ec_slot),a
-        ld      a,(em_dst)
-        cp      MAX_DOME
-        jr      nc,ec_done
-        ld      b,a
-        ld      a,(ec_slot)
+        ld      a,(de)                  ; ο αριθμός της θέσης
         ld      c,a
-        ld      a,DK_SLOT
+        ld      a,l                     ; ο κόμβος
+        cp      MAX_DOME
+        ld      a,c
+        ret     nc                      ; δομή: δεν έχει δαχτυλίδι
+        push    af                      ; το wh_push χαλάει ό,τι χαλάει ο χειριστής
+        ld      b,l
+        xor     a                       ; DK_SLOT
         call    wh_push
-ec_done:
-        ld      a,(ec_slot)
+        pop     af
         ret
 
-ec_slot:    db 0
-
 ; ---------------------------------------------------------------------------
-; ent_release — ελευθερώνει τη θέση του (em_id) στον (em_node).
+; ent_release — ελευθερώνει τη θέση του (em_id) στον (em_node). Κρατά το BC.
 ; ---------------------------------------------------------------------------
 ent_release:
         push    bc
         ld      a,(em_id)
-        ld      h,AG_PG + 1
         ld      l,a
+        ld      h,AG_PG + 1
         set     7,l
         ld      a,(hl)                  ; slot
         cp      NO_SLOT
         jr      z,er_out
-        ld      (er_slot),a
         ld      (hl),NO_SLOT
+        ld      c,a                     ; C = θέση, για το wh_push
         ld      hl,bit_tab
         add     a,l
         ld      l,a
-        ld      a,0
         adc     a,h
+        sub     l
         ld      h,a
-        ld      a,(hl)
-        cpl                             ; ~(1<<slot)
-        ld      c,a
         ld      a,(em_node)
-        ld      h,OCCPG
-        ld      l,a
-        ld      a,(hl)
-        and     c
-        ld      (hl),a
+        ld      e,a
+        ld      d,OCCPG
+        ld      a,(de)
+        or      (hl)
+        xor     (hl)                    ; μάσκα & ~(1 << θέση)
+        ld      (de),a
         ; Η θέση άδειασε: η οθόνη πρέπει να σβήσει τη φιγούρα. Οι δομές δεν
         ; έχουν δακτύλιο, οπότε μόνο οι θόλοι.
-        ld      a,(em_node)
+        ld      a,e
         cp      MAX_DOME
         jr      nc,er_out
         ld      b,a
-        ld      a,(er_slot)
-        ld      c,a
-        ld      a,DK_SLOT
+        xor     a                       ; DK_SLOT
         call    wh_push
 er_out:
         pop     bc
         ret
-
-er_slot:    db 0
 
 bit_tab:    db 1,2,4,8,16,32,64,128
 ; Διπλάσιες από την πρώτη εκτίμηση: με τις παλιές, μια ακμή ήθελε έξι
@@ -365,5 +318,8 @@ role_speed: db 96,96,88,104,112,128,144,120
 
 em_id:      db 0
 em_node:    db 0
-em_dst:     db 0
-em_nh:      db 0
+
+        assert  F_ALIVE == 1 && N_AGENT == 128 && DK_SLOT == 0
+        assert  NO_EDGE == 255 && (PAGE_B5 >> 8) == (PAGE_B6 >> 8)
+        assert  (G_node_adj & 7) == 0 && ((G_node_adj / 8) & 255) + 128 <= 256
+        assert  (G_corr_fill & 255) <= 256 - 8

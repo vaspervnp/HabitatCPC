@@ -331,9 +331,8 @@ ngp_lp:
         ld      l,c
         ld      (hl),d                  ; προορισμός = εκεί που είναι
         ld      a,d
-        ld      (em_dst),a
         push    bc
-        call    ent_claim
+        call    ent_claim               ; A = κόμβος
         pop     bc
         ld      h,AG_PG + 1
         ld      l,c

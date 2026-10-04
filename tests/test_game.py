@@ -112,6 +112,22 @@ def main():
           f"{m.peek(g + 58)}")
     row2 = hud(2)
     check(row2.startswith("POP  4/"), f"το HUD ξέρει τον πληθυσμό: |{row2}|")
+    # Οι μάσκες κατοχής λένε ό,τι λένε οι άποικοι: η θέση όποιου στέκεται, και
+    # καμία άλλη. Το ng_people δίνει τον κόμβο στο ent_claim από καταχωρητή·
+    # με τον λάθος (βήμα 59, σκόπιμα) οι θέσεις έπεφταν σε άλλους κόμβους και
+    # τίποτε άλλο εδώ δεν το έλεγε.
+    from cpc import _lib
+    b6 = bytes(_lib.cpcemu_ram_ptr(m._h, 6)[:0x4000])
+    ag = b6[layout_addr("G_agent_fields") - 0x4000:][:2048]
+    occ = b6[layout_addr("G_node_occ") - 0x4000:][:128]
+    want = bytearray(128)
+    for i in range(128):                    # flags, node, slot, edge
+        if ag[i] & 1 and ag[640 + i] == 255 and ag[384 + i] != 255:
+            want[ag[256 + i]] |= 1 << ag[384 + i]
+    check(bytes(want) == occ and any(occ),
+          f"οι μάσκες κατοχής είναι οι θέσεις των αποίκων: "
+          f"{[(n, bin(v)) for n, v in enumerate(occ) if v]} "
+          f"(οι άποικοι λένε {[(n, bin(v)) for n, v in enumerate(want) if v]})")
 
     # --- 2 & 3. η προσομοίωση τρέχει ΚΑΙ φαίνεται ------------------------
     m.run_frames(2000)
