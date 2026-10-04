@@ -34,14 +34,16 @@ rm_names:
 
 ; ---------------------------------------------------------------------------
 ; rm_room — Out: A = το δωμάτιο που δείχνει το bd_rsel.
+; rm_at   — A = θέση καταλόγου -> A = δωμάτιο. Κρατά τα BC, DE.
 ; ---------------------------------------------------------------------------
 rm_room:
         ld      a,(bd_rsel)
+rm_at:
         ld      hl,rm_list
         add     a,l
         ld      l,a
-        ld      a,0
         adc     a,h
+        sub     l
         ld      h,a
         ld      a,(hl)
         ret
@@ -55,8 +57,8 @@ rm_name:
         ld      hl,rm_names
         add     a,l
         ld      l,a
-        ld      a,0
         adc     a,h
+        sub     l
         ld      h,a
         ld      a,(hl)
         inc     hl
@@ -66,7 +68,7 @@ rm_name:
 
 ; ---------------------------------------------------------------------------
 ; rm_build — A = δωμάτιο. Γεμίζει το rm_buf με ό,τι επιτρέπεται εκεί μέσα, στο
-;            τρέχον μέγεθος (bd_param).
+;            τρέχον μέγεθος (bd_param, 0..2). Κρατά τα BC, DE, HL.
 ;
 ;   Out: A = (rm_nbuf) = πόσα· CY αν το δωμάτιο ΘΕΛΕΙ μηχανήματα αλλά κανένα
 ;        δεν χωράει στο μέγεθος. Χωρίς CY και με μηδέν, το δωμάτιο απλώς δεν
@@ -81,144 +83,90 @@ rm_build:
         push    bc
         push    de
         push    hl
-        ld      hl,rm_buf
-        ld      b,0
         cp      R_GREENHS               ; τα φυτά δεν έχουν κανόνα μεγέθους
         jr      nz,rmb_mach
-rmb_pl:
-        ld      de,rm_plants            ; θερμοκήπιο: με σειρά ΚΛΑΣΗΣ (βλ. κάτω)
-        ld      a,b
-        add     a,e
-        ld      e,a
-        ld      a,0
-        adc     a,d
-        ld      d,a
-        ld      a,(de)
-        ld      (hl),a
-        inc     hl
-        inc     b
-        ld      a,b
-        cp      RM_MACH
-        jr      c,rmb_pl
-        jp      rmb_out                 ; A = RM_MACH, CY καθαρό
+        ld      hl,rm_plants            ; θερμοκήπιο: με σειρά ΚΛΑΣΗΣ (βλ. κάτω)
+        ld      de,rm_buf
+        ld      bc,RM_MACH
+        ldir                            ; το CY μένει καθαρό από το cp
+        ld      a,RM_MACH
+        jr      rmb_st
 rmb_mach:
-        ld      (rm_rm),a               ; το δωμάτιο, για το rm_pref
+        ld      c,a
         add     a,a                     ; room_machines: δύο bytes το δωμάτιο
+        add     a,G_room_machines & 255
         ld      l,a
-        ld      h,0
-        ld      de,G_room_machines
-        add     hl,de
+        ld      h,G_room_machines >> 8
         ld      e,(hl)
-        inc     hl
+        inc     l
         ld      d,(hl)                  ; DE = μάσκα 12 bit
         ld      a,d
         or      e
-        ld      hl,rm_buf
-        jr      z,rmb_out               ; δωμάτιο χωρίς μηχανήματα: A = 0
-        ld      a,(bd_param)
-        push    hl
-        ld      hl,rm_sbit
-        add     a,l
-        ld      l,a
-        ld      a,0
-        adc     a,h
-        ld      h,a
-        ld      a,(hl)
-        ld      (rm_mbit),a             ; 1 << μέγεθος
-        pop     hl
-        ld      c,0                     ; C = πόσα μπήκαν
-        ; --- Η ΚΥΡΙΑ ΜΗΧΑΝΗ ΤΟΥ ΔΩΜΑΤΙΟΥ ΠΑΙΡΝΕΙ ΤΗΝ ΥΠΟΔΟΧΗ 0 ---
-        ld      a,(rm_rm)
-        push    hl
-        ld      hl,rm_pref
-        add     a,l
-        ld      l,a
-        ld      a,0
-        adc     a,h
-        ld      h,a
-        ld      a,(hl)
-        pop     hl
-        ld      (rm_pf),a
-        cp      RM_MACH
-        jr      nc,rmb_lp               ; 255: το δωμάτιο δεν έχει προτίμηση
-        ld      b,a
-        push    de                      ; την δέχεται το δωμάτιο;
-        inc     b
-rmb_pfs:
-        dec     b
-        jr      z,rmb_pft
-        srl     d
-        rr      e
-        jr      rmb_pfs
-rmb_pft:
-        ld      a,e
-        and     1
-        pop     de
-        jr      z,rmb_lp0               ; όχι — μένει η αριθμητική σειρά
-        ld      a,(rm_pf)
-        call    rmb_fit                 ; χωράει στο μέγεθος;
-        jr      z,rmb_lp0
-        ld      a,(rm_pf)
-        ld      (hl),a
-        inc     hl
-        inc     c
-        jr      rmb_lp
-rmb_lp0:
-        ld      a,255
-        ld      (rm_pf),a
-rmb_lp:
-        ld      a,e
-        and     1
-        jr      z,rmb_nx
-        ld      a,(rm_pf)
-        cp      b
-        jr      z,rmb_nx                ; η κύρια μπήκε ήδη στην υποδοχή 0
-        ld      a,b
-        call    rmb_fit
-        jr      z,rmb_nx                ; δεν χωράει σε αυτό το μέγεθος
-        ld      (hl),b
-        inc     hl
-        inc     c
-rmb_nx:
-        srl     d
-        rr      e
-        inc     b
-        ld      a,b
-        cp      RM_MACH
-        jr      c,rmb_lp
+        jr      z,rmb_st                ; δωμάτιο χωρίς μηχανήματα: A = 0, NC
         ld      a,c
-        or      a
+        ld      hl,rm_pref
+        call    ob_addu
+        ld      a,(hl)
+        push    af                      ; η κύρια μηχανή, για το τέλος
+        ld      a,(bd_param)
+        ld      c,a
+        srl     c
+        inc     a
+        add     a,c
+        ld      (rm_mbit),a             ; 1 << μέγεθος: 1, 2, 4
+        ld      hl,rm_buf
+        ld      bc,RM_MACH * 256        ; B = γύροι, C = μηχανή
+rmb_lp:
+        srl     d
+        rr      e
+        jr      nc,rmb_nx               ; δεν τη δέχεται το δωμάτιο
+        push    hl
+        ld      a,c
+        add     a,G_machine_rules & 255
+        ld      l,a
+        ld      h,G_machine_rules >> 8
+        ld      a,(rm_mbit)
+        and     (hl)
+        pop     hl
+        jr      z,rmb_nx                ; δεν χωράει σε αυτό το μέγεθος
+        ld      (hl),c
+        inc     hl
+rmb_nx:
+        inc     c
+        djnz    rmb_lp
+        pop     de                      ; D = η κύρια μηχανή, 255 αν δεν έχει
+        ld      a,l
+        sub     rm_buf & 255            ; πόσα
         scf                             ; ζητούσε μηχανήματα· κανένα δεν χωρά
         jr      z,rmb_st
-        or      a                       ; καθαρίζει το CY
-rmb_out:
+        ld      (rm_nbuf),a
+        ; --- Η ΚΥΡΙΑ ΜΗΧΑΝΗ ΤΟΥ ΔΩΜΑΤΙΟΥ ΠΑΙΡΝΕΙ ΤΗΝ ΥΠΟΔΟΧΗ 0: αν μπήκε, όσες
+        ; μπήκαν πριν από αυτήν πάνε μία θέση πίσω ---
+        ld      c,a                     ; BC = πόσα (το B είναι 0 μετά το djnz)
+        ld      a,d
+        ld      hl,rm_buf
+        cpir
+        jr      nz,rmb_ok               ; δεν τη δέχεται, δεν χωρά, ή δεν έχει
+        dec     hl
         ld      a,l
-        sub     rm_buf & 255
+        sub     rm_buf & 255            ; η θέση της
+        jr      z,rmb_ok                ; ήδη πρώτη
+        ld      c,a
+        ld      a,(hl)
+        ld      d,h
+        ld      e,l
+        dec     hl
+        lddr
+        ld      (de),a
+rmb_ok:
+        ld      a,(rm_nbuf)
+        or      a                       ; καθαρίζει το CY
 rmb_st:
         ld      (rm_nbuf),a
         pop     hl
         pop     de
         pop     bc
         ret
-
-; rmb_fit — A = μηχανή. NZ αν χωράει στο τρέχον μέγεθος. Χαλάει το AF μόνο.
-rmb_fit:
-        push    de
-        push    hl
-        ld      de,G_machine_rules
-        add     a,e
-        ld      e,a
-        ld      a,0
-        adc     a,d
-        ld      d,a
-        ld      a,(de)
-        ld      hl,rm_mbit
-        and     (hl)
-        pop     hl
-        pop     de
-        ret
-
-rm_sbit:    db 1,2,4
 
 ; ΠΟΙΑ ΜΗΧΑΝΗ ΠΑΙΡΝΕΙ ΤΗΝ ΥΠΟΔΟΧΗ 0, ανά δωμάτιο. Οχι διακόσμηση: μια μηχανή
 ; τρέχει μόνο αν η υποδοχή της είναι μικρότερη από το πλήθος των χειριστών
@@ -246,21 +194,12 @@ rm_plants:  db 0, 5, 10, 11, 1, 6, 2, 7, 3, 8, 4, 9
 
 ; ---------------------------------------------------------------------------
 ; rm_fits — A = θέση καταλόγου δωματίων. Z αν χωράει στο τρέχον μέγεθος.
+; Κρατά τα BC, DE.
 ; ---------------------------------------------------------------------------
 rm_fits:
-        push    hl
-        ld      hl,rm_list
-        add     a,l
-        ld      l,a
-        ld      a,0
-        adc     a,h
-        ld      h,a
-        ld      a,(hl)
-        pop     hl
+        call    rm_at
         call    rm_build
-        ld      a,0                     ; ΟΧΙ xor: το CY είναι η απάντηση
-        adc     a,0                     ; 0 = χωράει, 1 = όχι
-        or      a
+        sbc     a,a                     ; CY -> #FF, NZ: δεν χωράει
         ret
 
 ; ---------------------------------------------------------------------------
@@ -276,10 +215,8 @@ rms_lp:
         jr      c,rms_st
         ; Εκτός ορίων, και οι δύο άκρες με το ίδιο cp: ακριβώς RM_N σημαίνει
         ; ότι πέρασε το τέλος, οτιδήποτε άλλο είναι το #FF της αρχής.
-        jr      z,rms_zero
         ld      a,RM_N - 1
-        jr      rms_st
-rms_zero:
+        jr      nz,rms_st
         xor     a
 rms_st:
         ld      (bd_rsel),a
@@ -303,9 +240,10 @@ rm_fix:
         jr      rm_step
 
 rm_mbit:    db 1
-rm_rm:      db 0
-rm_pf:      db 255
 rm_nbuf:    db 0
             db NO_MACH              ; ΤΟ ΑΔΕΙΟ ΠΡΙΝ ΑΠΟ ΤΗ ΛΙΣΤΑ: ο εξοπλισμός
 rm_buf:     defs RM_MACH            ; (fit_enter) αντιγράφει από το rm_buf - 1
         assert  FIT_MAX == RM_MACH + 1          ; το ΑΔΕΙΟ και ως 12 μηχανές
+        assert  (rm_buf & 255) + RM_MACH <= 256 ; το πλήθος από το κάτω byte
+        assert  (G_room_machines & 255) + 2 * (R_LOUNGE + 1) <= 256
+        assert  (G_machine_rules & 255) + RM_MACH <= 256

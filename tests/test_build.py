@@ -55,6 +55,118 @@ def sb(v):
     return v - 256 if v > 127 else v
 
 
+# --- τα δωμάτια απέναντι σε μοντέλο (βήμα 60) --------------------------------
+# Από την πρόζα του §6.5: τι δέχεται το δωμάτιο (room_machines), τι χωράει στο
+# μέγεθος (machine_rules), η κύρια μηχανή πρώτη (rm_pref), το θερμοκήπιο με τη
+# σειρά των κλάσεων (rm_plants). Και ο κατάλογος: πάνω-κάτω πηγαίνει στο
+# επόμενο δωμάτιο που ΧΩΡΑΕΙ, κυκλικά.
+R_GREENHS_ = 5
+RM_LIST = [4, 3, 2, 5, 8, 9, 10, 1, 6, 11]       # οξυγόνο, καντίνα, ... σαλόνι
+RM_PREF = {8: 1, 9: 9, 10: 10}                    # εργοστάσιο, εργαστήριο, ιατρείο
+RM_PLANTS = [0, 5, 10, 11, 1, 6, 2, 7, 3, 8, 4, 9]
+
+
+def rooms_model(rmach, rules, room, size):
+    """(λίστα, CY): CY αν το δωμάτιο θέλει μηχανήματα και κανένα δεν χωρά."""
+    if room == R_GREENHS_:
+        return list(RM_PLANTS), False
+    mask = rmach[2 * room] | rmach[2 * room + 1] << 8
+    if not mask:
+        return [], False
+    got = [c for c in range(12) if mask >> c & 1 and rules[c] >> size & 1]
+    if not got:
+        return [], True
+    p = RM_PREF.get(room)
+    if p in got:
+        got.remove(p)
+        got.insert(0, p)
+    return got, False
+
+
+def rooms_step(rmach, rules, sel, d, size):
+    fits = lambda k: not rooms_model(rmach, rules, RM_LIST[k], size)[1]
+    for _ in range(len(RM_LIST)):
+        sel = (sel + d) % len(RM_LIST)
+        if fits(sel):
+            break
+    return sel
+
+
+def rooms_check(sym, patch=(), n=24):
+    """rm_build για κάθε δωμάτιο και μέγεθος, rm_step από κάθε θέση και προς τις
+    δύο μεριές, rm_fix για θόλο και για δομή — με τους πραγματικούς πίνακες και
+    με n τυχαίους, ώστε η κύρια μηχανή να πέφτει σε κάθε θέση της λίστας. Η
+    πρώτη διαφορά, ή None."""
+    from cpc import CPC
+    import random
+    m = CPC()
+    m.run_frames(60)
+    assert m.quickload(SNA, start=False), "quickload απέτυχε"
+    for at, v in patch:
+        m.poke(at, v)
+    def layout_addr(name):
+        for line in open(os.path.join(ROOT, "build", "layout.asm"), encoding="utf-8"):
+            if line.split()[:1] == [name]:
+                return int(line.split("#")[1].split()[0], 16)
+    rm_at, mr_at = layout_addr("G_room_machines"), layout_addr("G_machine_rules")
+    real = (m.read_ram(rm_at, 24), m.read_ram(mr_at, 12))
+    rnd = random.Random(60)
+    tables = [real] + [(bytes(b for _ in range(12) for b in (
+        lambda x: (x & 255, x >> 8))(rnd.choice([0, rnd.randrange(4096),
+                                                rnd.randrange(4096) | 0x602]))),
+        bytes(rnd.randrange(8) for _ in range(12))) for _ in range(n)]
+
+    def call(code):
+        """BC, DE, HL φορτωμένα #1234, #5678, #9ABC πριν από την κλήση· μετά
+        γράφονται, μαζί με το AF, στο #3FF1.. — το fit_enter θέλει το rm_build
+        να τα κρατά."""
+        m.poke(0x3FF0, 0)
+        m.run_code(0x3F00, bytes([0xF3, 0x31, 0x00, 0x01] + code[:-3] +
+                                 [0x01, 0x34, 0x12, 0x11, 0x78, 0x56, 0x21, 0xBC, 0x9A] +
+                                 code[-3:] +
+                                 [0xF5, 0xED, 0x43, 0xF3, 0x3F, 0xED, 0x53, 0xF5, 0x3F,
+                                  0x22, 0xF7, 0x3F, 0xE1, 0x22, 0xF1, 0x3F,   # AF -> #3FF1
+                                  0x3E, 0x5A, 0x32, 0xF0, 0x3F, 0x18, 0xFE]), frames=1)
+        assert m.peek(0x3FF0) == 0x5A, f"δεν γύρισε: #{m.pc:04X}"
+        return m.peek(0x3FF2), m.peek(0x3FF1)               # A, F
+    regs = lambda: list(m.read_ram(0x3FF3, 6))
+    fn = lambda name: [0xCD, sym[name] & 255, sym[name] >> 8]
+    for ti, (rmach, rules) in enumerate(tables):
+        m.write_ram(rm_at, rmach)
+        m.write_ram(mr_at, rules)
+        for size in range(3):
+            m.poke(sym["BD_PARAM"], size)
+            for room in range(12):
+                a, f = call([0x3E, room] + fn("RM_BUILD"))
+                got = (list(m.read_ram(sym["RM_BUF"], a)), bool(f & 1))
+                want = rooms_model(rmach, rules, room, size)
+                if got != want or m.peek(sym["RM_NBUF"]) != a:
+                    return (f"πίνακες {ti}, δωμάτιο {room}, μέγεθος {size}: "
+                            f"Z80 {got}, μοντέλο {want}")
+                if regs() != [0x34, 0x12, 0x78, 0x56, 0xBC, 0x9A]:
+                    return (f"πίνακες {ti}, δωμάτιο {room}: το rm_build δεν κράτησε τα "
+                            f"BC, DE, HL — {[hex(x) for x in regs()]}")
+            for sel in range(len(RM_LIST)):
+                for d in (1, 255):
+                    m.poke(sym["BD_RSEL"], sel)
+                    call([0x3E, d] + fn("RM_STEP"))
+                    want = rooms_step(rmach, rules, sel, 1 if d == 1 else -1, size)
+                    if m.peek(sym["BD_RSEL"]) != want:
+                        return (f"πίνακες {ti}, rm_step από {sel} προς {d}, μέγεθος "
+                                f"{size}: {m.peek(sym['BD_RSEL'])}, μοντέλο {want}")
+                for kind in (0, 1):
+                    m.poke(sym["BD_RSEL"], sel)
+                    m.poke(sym["BD_KIND"], kind)
+                    call(fn("RM_FIX"))
+                    fits = not rooms_model(rmach, rules, RM_LIST[sel], size)[1]
+                    want = sel if kind or fits else rooms_step(rmach, rules, sel, 1, size)
+                    m.poke(sym["BD_KIND"], 0)
+                    if m.peek(sym["BD_RSEL"]) != want:
+                        return (f"πίνακες {ti}, rm_fix από {sel}, είδος {kind}, μέγεθος "
+                                f"{size}: {m.peek(sym['BD_RSEL'])}, μοντέλο {want}")
+    return None
+
+
 def main():
     sym, g = build()
     from cpc import CPC, KEY_SPACE, KEY_RIGHT, KEY_LEFT, KEY_UP, KEY_DOWN, KEY_ESC
@@ -513,6 +625,30 @@ def main():
         fails += 1
     else:
         print(f"OK η θέση δεν ξαναχτίζεται: {bad2} άκυρα tiles")
+
+    # --- 6. τα δωμάτια απέναντι στο μοντέλο (βήμα 60) ----------------------
+    why = rooms_check(sym)
+    if why:
+        print(f"ΑΠΟΤΥΧΙΑ δωμάτια: {why}")
+        fails += 1
+    else:
+        # ΑΡΝΗΤΙΚΟ: 11 γύροι αντί για 12 στο rm_build — η μηχανή 11 χάνεται
+        at = sym["RM_BUILD"]
+        m5 = CPC()
+        m5.run_frames(60)
+        assert m5.quickload(SNA, start=False)
+        k = next((k for k in range(80) if [m5.peek(at + k + j) for j in range(3)]
+                  == [0x01, 0x00, 12]), None)
+        if k is None or rooms_check(sym, patch=[(at + k + 2, 11)], n=8) is None:
+            print("ΑΠΟΤΥΧΙΑ δωμάτια: ΑΡΝΗΤΙΚΟ — με 11 γύρους στο rm_build το μοντέλο "
+                  "δεν διαφωνεί" if k is not None else
+                  "ΑΠΟΤΥΧΙΑ δωμάτια: το rm_build δεν ξεκινά με ld bc,RM_MACH * 256")
+            fails += 1
+        else:
+            print("OK δωμάτια: rm_build για κάθε δωμάτιο και μέγεθος (και κρατά τα BC, "
+                  "DE, HL), rm_step από κάθε θέση και προς τις δύο μεριές, rm_fix για "
+                  "θόλο και δομή — με τους πραγματικούς πίνακες και με 24 τυχαίους, "
+                  "ίδια με το μοντέλο. ΑΡΝΗΤΙΚΟ: με 11 γύρους διαφέρουν")
     return 1 if fails else 0
 
 
