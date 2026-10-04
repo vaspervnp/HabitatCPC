@@ -42,6 +42,7 @@ python3 tests/test_dirty.py
 python3 tests/test_slot.py
 python3 tests/test_input.py
 python3 tests/test_build.py
+python3 tests/test_ghost.py
 python3 tests/test_route.py
 python3 tests/test_game.py
 python3 tests/test_reveal.py

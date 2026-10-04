@@ -14,8 +14,12 @@
 ; το GH_LOG και το GH_BUF είναι στο const.asm
 
 ; ---------------------------------------------------------------------------
+; gh_undo — όλα πίσω. Μια ανταλλαγή βάζει στην οθόνη ό,τι ήταν από κάτω, και
+; ό,τι πήγε στο αρχείο (το φάντασμα) πετιέται με το gh_reset.
 ; gh_reset — άδειο αρχείο.
 ; ---------------------------------------------------------------------------
+gh_undo:
+        call    gh_swap
 gh_reset:
         ld      hl,GH_BUF
         ld      (gh_ptr),hl
@@ -25,12 +29,14 @@ gh_reset:
         ret
 
 ; ---------------------------------------------------------------------------
-; gh_wrap — μετά από `inc de` που γύρισε το E στο 0: μέσα στο δαχτυλίδι των 2 KB.
+; gh_wrap — μετά από `inc e` που γύρισε το E στο 0: το κρατούμενο στο D, μέσα
+; στο δαχτυλίδι των 2 KB.
 ;
-; Το ph αυξήθηκε, και αν έγινε 0 σημαίνει ότι ήταν 7 και μπήκε στο πεδίο της
+; Το ph αυξάνεται, και αν γίνει 0 σημαίνει ότι ήταν 7 και μπήκε στο πεδίο της
 ; γραμμής — οπότε πίσω οκτώ, στην αρχή του ΙΔΙΟΥ δαχτυλιδιού.
 ; ---------------------------------------------------------------------------
 gh_wrap:
+        inc     d
         ld      a,d
         and     7
         ret     nz
@@ -38,6 +44,90 @@ gh_wrap:
         sub     8
         ld      d,a
         ret
+
+; ---------------------------------------------------------------------------
+; gh_mark — γέμισμα 2 bytes x 4 γραμμές στο κέντρο ενός tile. Ενα σημάδι για
+; κάθε tile που ΔΕΝ επιτρέπεται, ώστε ο παίκτης να ξέρει ΠΟΙΟ φταίει.
+; In: B = στήλη, C = σειρά του tile ΜΕΣΑ στο κάδρο (προσημασμένα, 8 bit).
+;
+; ΧΩΡΙΣ CLIP. Η κάμερα κουμπώνει πάντα σε tiles (το cam_p είναι πολλαπλάσιο
+; του 4), οπότε ένα tile είτε φαίνεται ολόκληρο είτε καθόλου — και το σημάδι
+; μαζί του. Ως το βήμα 35 κάθε σημάδι περνούσε από συντεταγμένες 16 bit, δύο
+; ob_clip και τέσσερις λωρίδες· το κόκκινο φάντασμα ενός L έχει 64 σημάδια.
+; ---------------------------------------------------------------------------
+gh_mark:
+        ld      a,b
+        cp      VIEW_TW
+        ret     nc                      ; αρνητικό είναι «μεγάλο» χωρίς πρόσημο
+        ld      a,c
+        cp      VIEW_TH
+        ret     nc
+        ld      a,b
+        add     a,a
+        add     a,a
+        inc     a
+        ld      h,a                     ; x = 4 * στήλη + 1
+        ld      l,2
+        ld      (cl_n),hl               ; cl_n, cl_start
+        ld      a,c
+        add     a,a
+        add     a,a
+        add     a,a
+        add     a,a
+        add     a,6
+        ld      h,a                     ; y = 16 * σειρά + 6
+        ld      l,4
+        ld      (gh_hs),hl              ; gh_hs, gh_ys
+        jr      ghr_put
+
+; ---------------------------------------------------------------------------
+; gh_box — πλαίσιο γύρω από ορθογώνιο: τέσσερα ορθογώνια, όχι 2 x h λωρίδες.
+; In: (gh_bx) 16-bit x σε bytes, (gh_by) 16-bit y, (gh_bw) bytes, (gh_bh) γραμμές
+;
+; Οι πλευρές ξεκινούν κάτω από την πάνω και σταματούν πάνω από την κάτω: αν
+; επικαλύπτονταν, η δεύτερη θα έσωζε ό,τι είχε ήδη γράψει η πρώτη.
+; ---------------------------------------------------------------------------
+; GH_EDGE (πάχος της οριζόντιας πλευράς) είναι στο const.asm: από αυτό
+; υπολογίζεται και το μέγεθος του αρχείου (GH_LOG).
+
+gh_box:
+        ; --- πάνω ---
+        ld      hl,(gh_bx)
+        ld      (gh_x),hl
+        ld      hl,(gh_by)
+        ld      (gh_y),hl
+        ld      hl,(gh_bw)
+        ld      h,GH_EDGE
+        ld      (gh_n),hl               ; gh_n = gh_bw, gh_nv = GH_EDGE
+        call    gh_rect
+        ; --- κάτω ---
+        ld      hl,(gh_by)
+        ld      a,(gh_bh)
+        sub     GH_EDGE
+        call    ob_addsx
+        ld      (gh_y),hl
+        call    gh_rect
+        ; --- αριστερά, ΧΩΡΙΣ τις γραμμές που έγραψαν οι οριζόντιες ---
+        ld      a,(gh_bh)
+        sub     GH_EDGE*2
+        ret     c
+        ret     z
+        ld      h,a
+        ld      l,1
+        ld      (gh_n),hl               ; gh_n = 1, gh_nv = ό,τι μένει
+        ld      hl,(gh_by)
+        repeat  GH_EDGE
+        inc     hl
+        rend
+        ld      (gh_y),hl
+        call    gh_rect
+        ; --- δεξιά ---
+        ld      hl,(gh_bx)
+        ld      a,(gh_bw)
+        dec     a
+        call    ob_addsx
+        ld      (gh_x),hl
+        ; και στο gh_rect, που ακολουθεί
 
 ; ---------------------------------------------------------------------------
 ; gh_rect — ορθογώνιο w x h, κομμένο στο κάδρο. Σώζει και γράφει.
@@ -58,9 +148,8 @@ gh_rect:
         ld      de,(clip_y0)
         call    ob_clip
         ret     z
-        ld      (gh_hs),a               ; cl_n
-        ld      a,(cl_start)
-        ld      (gh_ys),a
+        ld      hl,(cl_n)
+        ld      (gh_hs),hl              ; gh_hs, gh_ys = cl_n, cl_start
         ld      hl,(gh_x)
         ld      a,(gh_n)
         ld      de,(clip_x0)
@@ -71,81 +160,48 @@ gh_rect:
 ghr_put:
         ; --- χωράει; κεφαλίδα 4 + w*h. Γεμάτο αρχείο: μη γράφεις ό,τι δεν
         ; μπορείς να πάρεις πίσω. Επαναλήψεις όσο το ΠΛΑΤΟΣ: οι πλευρές του
-        ; πλαισίου είναι 1 x 124, και ανάποδα ήταν 124 γύροι για ένα γινόμενο. ---
+        ; πλαισίου είναι 1 x 124, και ανάποδα ήταν 124 γύροι για ένα γινόμενο.
+        ; Το HL ξεκινά από 4 ΜΕΙΟΝ το όριο, οπότε το κρατούμενο της τελευταίας
+        ; πρόσθεσης είναι η απάντηση — χωρίς sbc και χωρίς δεύτερη σταθερά. ---
         ld      a,(gh_hs)
         ld      e,a
         ld      d,0
-        ld      hl,4
+        ld      hl,#10000 + 4 - (GH_BUF + GH_LOG + 1)
         ld      a,(cl_n)
         ld      b,a
 ghr_mul:
-        add     hl,de
+        add     hl,de                   ; δεν κρατά: w*h < το όριο - 4 (assert)
         djnz    ghr_mul
         ld      de,(gh_ptr)
-        add     hl,de
-        ld      de,GH_BUF + GH_LOG + 1
-        or      a
-        sbc     hl,de
-        ret     nc
+        add     hl,de                   ; CY: gh_ptr + 4 + w*h > GH_BUF + GH_LOG
+        ret     c
         ; ΤΟ ΠΕΡΙΓΡΑΜΜΑ ΤΟΥ ΑΡΧΕΙΟΥ. Η λίστα αλλαγών (§8.5) ζωγραφίζει κάτω από
         ; το φάντασμα χωρίς να το ξέρει, και η αναίρεση ύστερα γράφει πίσω bytes
         ; που δεν είναι πια στην οθόνη. Το dt_ghost το ρωτά ΑΥΤΟ: όχι το κουτί
         ; του κέρσορα, γιατί στη σύνδεση διαδρόμου τα σημάδια βγαίνουν έξω του.
         ld      hl,gh_bbx
-        ld      a,(cl_start)
-        cp      (hl)
-        jr      nc,ghb_x0
-        ld      (hl),a
-ghb_x0:
-        inc     hl
-        ld      b,a
-        ld      a,(cl_n)
-        add     a,b                     ; το τέλος, αποκλειστικό
-        cp      (hl)
-        jr      c,ghb_x1
-        ld      (hl),a
-ghb_x1:
-        inc     hl
-        ld      a,(gh_ys)
-        cp      (hl)
-        jr      nc,ghb_y0
-        ld      (hl),a
-ghb_y0:
-        inc     hl
-        ld      b,a
-        ld      a,(gh_hs)
-        add     a,b
-        cp      (hl)
-        jr      c,ghb_y1
-        ld      (hl),a
-ghb_y1:
-        ld      a,(cl_start)
-        ld      c,a
-        ld      a,(gh_ys)
+        ld      de,(cl_n)               ; E = πλάτος, D = πρώτο byte
+        ld      c,d                     ; το x του scr_addr: το gh_bbox δεν αγγίζει το BC
+        call    gh_bbox
+        ld      de,(gh_hs)              ; E = ύψος, D = πρώτη γραμμή
+        call    gh_bbox
+        ld      a,d                     ; το y
         call    scr_addr
         ld      hl,(gh_ptr)
         ld      (hl),e
         inc     hl
         ld      (hl),d
         inc     hl
+        ld      bc,(gh_pen)             ; C = pen, B = γραμμές (gh_hs)
         ld      a,(cl_n)
         ld      (hl),a
         inc     hl
-        ld      a,(gh_hs)
-        ld      (hl),a
+        ld      (hl),b
         inc     hl
-        ld      ixl,a                   ; γραμμές
-        ld      a,(cl_n)
+        ld      ixl,b                   ; γραμμές
         ld      ixh,a                   ; πλάτος
-        ld      a,(gh_pen)
-        ld      c,a
-        call    gh_rows
-        ld      (gh_ptr),hl
-        ret
 
-; ---------------------------------------------------------------------------
-; gh_rows — ο βρόχος του gh_rect: σώσε και γράψε C, IXH bytes x IXL γραμμές.
-; In: DE = οθόνη, HL = αρχείο. Out: HL μετά την εγγραφή.
+; --- σώσε και γράψε C, IXH bytes x IXL γραμμές. DE = οθόνη, HL = αρχείο ---
 ;
 ; ΔΥΟ ΓΡΗΓΟΡΟΙ ΔΡΟΜΟΙ, γιατί ό,τι κοστίζει στο φάντασμα είναι οι βρόχοι, όχι
 ; η λογική του (βήμα 35: 94 ms το κόκκινο φάντασμα ενός L, τα 35 στους
@@ -153,10 +209,8 @@ ghb_y1:
 ; καθεμιά — δεν σώζει και δεν ξαναφορτώνει τη διεύθυνση σε κάθε γραμμή. Μια
 ; γραμμή που δεν φτάνει στο #FF δεν ελέγχει το τύλιγμα σε κάθε byte: κοιτά μία
 ; φορά αν το τελευταίο της byte το περνά, και μόνο τότε πάει στον αργό δρόμο.
-; ---------------------------------------------------------------------------
-gh_rows:
-        ld      a,ixh
-        dec     a
+; Το gh_swap έχει τους ίδιους δύο δρόμους.
+        dec     a                       ; A = πλάτος: το 1 είναι η στήλη
         jr      nz,ghw_row
 ghw_col:                                ; πλάτος 1: η στήλη
         ld      a,(de)
@@ -167,7 +221,7 @@ ghw_col:                                ; πλάτος 1: η στήλη
         call    scr_nextline
         dec     ixl
         jr      nz,ghw_col
-        ret
+        jr      ghw_done
 ghw_row:
         push    de
         ld      b,ixh
@@ -190,9 +244,7 @@ ghw_slow:
         inc     hl
         ld      a,c
         ld      (de),a
-        inc     de
-        ld      a,e
-        or      a
+        inc     e
         call    z,gh_wrap
         djnz    ghw_slow
 ghw_next:
@@ -200,15 +252,26 @@ ghw_next:
         call    scr_nextline
         dec     ixl
         jr      nz,ghw_row
+ghw_done:
+        ld      (gh_ptr),hl
         ret
 
-; ---------------------------------------------------------------------------
-; gh_undo — όλα πίσω. Μια ανταλλαγή βάζει στην οθόνη ό,τι ήταν από κάτω, και
-; ό,τι πήγε στο αρχείο (το φάντασμα) πετιέται με το gh_reset.
-; ---------------------------------------------------------------------------
-gh_undo:
-        call    gh_swap
-        jp      gh_reset
+; gh_bbox — ένας άξονας του περιγράμματος: HL -> (αρχή, τέλος), D = αρχή, E =
+; μήκος. Μεγαλώνει ώστε να χωρά το [D, D+E). Out: HL στον επόμενο άξονα.
+gh_bbox:
+        ld      a,d
+        cp      (hl)
+        jr      nc,ghb_lo
+        ld      (hl),a
+ghb_lo:
+        inc     hl
+        add     a,e                     ; το τέλος, αποκλειστικό
+        cp      (hl)
+        jr      c,ghb_hi
+        ld      (hl),a
+ghb_hi:
+        inc     hl
+        ret
 
 ; ---------------------------------------------------------------------------
 ; gh_swap — οθόνη και αρχείο ανταλλάσσουν bytes, ορθογώνιο προς ορθογώνιο.
@@ -237,14 +300,13 @@ gs_go:
         inc     hl
         ld      d,(hl)
         inc     hl
-        ld      a,(hl)
-        ld      ixh,a                   ; πλάτος
+        ld      a,(hl)                  ; πλάτος
         inc     hl
-        ld      a,(hl)
-        ld      ixl,a                   ; ύψος
+        ld      c,(hl)
         inc     hl
-        ; οι ίδιοι δύο γρήγοροι δρόμοι με το gh_rows
-        ld      a,ixh
+        ld      ixl,c                   ; ύψος
+        ld      ixh,a
+        ; οι ίδιοι δύο γρήγοροι δρόμοι με το ghr_put
         dec     a
         jr      nz,gs_row
 gs_col:
@@ -282,9 +344,7 @@ gs_slow:
         ld      (de),a
         ld      (hl),c
         inc     hl
-        inc     de
-        ld      a,e
-        or      a
+        inc     e
         call    z,gh_wrap
         djnz    gs_slow
 gs_next:
@@ -293,90 +353,6 @@ gs_next:
         dec     ixl
         jr      nz,gs_row
         jr      gs_lp
-
-; ---------------------------------------------------------------------------
-; gh_box — πλαίσιο γύρω από ορθογώνιο: τέσσερα ορθογώνια, όχι 2 x h λωρίδες.
-; In: (gh_bx) 16-bit x σε bytes, (gh_by) 16-bit y, (gh_bw) bytes, (gh_bh) γραμμές
-;
-; Οι πλευρές ξεκινούν κάτω από την πάνω και σταματούν πάνω από την κάτω: αν
-; επικαλύπτονταν, η δεύτερη θα έσωζε ό,τι είχε ήδη γράψει η πρώτη.
-; ---------------------------------------------------------------------------
-; GH_EDGE (πάχος της οριζόντιας πλευράς) είναι στο const.asm: από αυτό
-; υπολογίζεται και το μέγεθος του αρχείου (GH_LOG).
-
-gh_box:
-        ; --- πάνω ---
-        ld      hl,(gh_bx)
-        ld      (gh_x),hl
-        ld      hl,(gh_by)
-        ld      (gh_y),hl
-        ld      a,(gh_bw)
-        ld      (gh_n),a
-        ld      a,GH_EDGE
-        ld      (gh_nv),a
-        call    gh_rect
-        ; --- κάτω ---
-        ld      hl,(gh_by)
-        ld      a,(gh_bh)
-        sub     GH_EDGE
-        call    ob_addsx
-        ld      (gh_y),hl
-        call    gh_rect
-        ; --- αριστερά, ΧΩΡΙΣ τις γραμμές που έγραψαν οι οριζόντιες ---
-        ld      a,(gh_bh)
-        sub     GH_EDGE*2
-        ret     c
-        ret     z
-        ld      (gh_nv),a
-        ld      a,1
-        ld      (gh_n),a
-        ld      hl,(gh_by)
-        ld      de,GH_EDGE
-        add     hl,de
-        ld      (gh_y),hl
-        call    gh_rect
-        ; --- δεξιά ---
-        ld      hl,(gh_bx)
-        ld      a,(gh_bw)
-        dec     a
-        call    ob_addsx
-        ld      (gh_x),hl
-        jp      gh_rect
-
-; ---------------------------------------------------------------------------
-; gh_mark — γέμισμα 2 bytes x 4 γραμμές στο κέντρο ενός tile. Ενα σημάδι για
-; κάθε tile που ΔΕΝ επιτρέπεται, ώστε ο παίκτης να ξέρει ΠΟΙΟ φταίει.
-; In: B = στήλη, C = σειρά του tile ΜΕΣΑ στο κάδρο (προσημασμένα, 8 bit).
-;
-; ΧΩΡΙΣ CLIP. Η κάμερα κουμπώνει πάντα σε tiles (το cam_p είναι πολλαπλάσιο
-; του 4), οπότε ένα tile είτε φαίνεται ολόκληρο είτε καθόλου — και το σημάδι
-; μαζί του. Ως το βήμα 35 κάθε σημάδι περνούσε από συντεταγμένες 16 bit, δύο
-; ob_clip και τέσσερις λωρίδες· το κόκκινο φάντασμα ενός L έχει 64 σημάδια.
-; ---------------------------------------------------------------------------
-gh_mark:
-        ld      a,b
-        cp      VIEW_TW
-        ret     nc                      ; αρνητικό είναι «μεγάλο» χωρίς πρόσημο
-        ld      a,c
-        cp      VIEW_TH
-        ret     nc
-        ld      a,b
-        add     a,a
-        add     a,a
-        inc     a
-        ld      (cl_start),a            ; x = 4 * στήλη + 1
-        ld      a,c
-        add     a,a
-        add     a,a
-        add     a,a
-        add     a,a
-        add     a,6
-        ld      (gh_ys),a               ; y = 16 * σειρά + 6
-        ld      a,2
-        ld      (cl_n),a
-        ld      a,4
-        ld      (gh_hs),a
-        jp      ghr_put
 
 ; gh_setpen — A = pen -> το byte γεμίσματος στο gh_pen.
 gh_setpen:
@@ -393,9 +369,9 @@ gh_x:       dw 0
 gh_y:       dw 0
 gh_n:       db 0
 gh_nv:      db 0
-gh_ys:      db 0
-gh_hs:      db 0                ; γραμμές που μένουν μετά το clip
 gh_pen:     db 0
+gh_hs:      db 0                ; γραμμές που μένουν μετά το clip,
+gh_ys:      db 0                ; και η πρώτη: όπως cl_n, cl_start
 ; x0, x1 σε bytes οθόνης και y0, y1 σε γραμμές, με τη διάταξη των clip_x0..
 ; clip_y1 του object.asm — το dt_ghost τα φορτώνει στη θέση τους αυτούσια.
 gh_bbx:     db 255, 0
@@ -404,3 +380,9 @@ gh_bx:      dw 0
 gh_by:      dw 0
 gh_bw:      db 0
 gh_bh:      db 0
+        ; ζεύγη που διαβάζονται και γράφονται ως λέξεις
+        assert  gh_nv == gh_n + 1 && gh_bh == gh_bw + 1
+        assert  gh_ys == gh_hs + 1 && cl_start == cl_n + 1 && gh_hs == gh_pen + 1
+        assert  gh_bby == gh_bbx + 2
+        ; ghr_put: το w*h δεν φτάνει ποτέ το κρατούμενο πριν από το gh_ptr
+        assert  SCR_W * PLAY_LINES < GH_BUF + GH_LOG + 1 - 4

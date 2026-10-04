@@ -259,15 +259,17 @@ def dome(sym, g, cut_ghost=False, short=False):
     επιστρέφεται μόνο πόσο γέμισε: το τελευταίο σημάδι δεν πρέπει να χωρά."""
     G = Game(sym, g)
     if short:
-        at, want = sym["GHR_PUT"], G.ghbuf + RED_L + 1
+        # ld hl,4 - όριο (βήμα 58: το κρατούμενο είναι η απάντηση) — όριο ένα
+        # byte πιο κάτω σημαίνει σταθερά ένα πιο πάνω
+        at, want = sym["GHR_PUT"], (0x10000 + 4 - (G.ghbuf + RED_L + 1)) & 0xFFFF
         for k in range(48):
-            if (G.m.peek(at + k) == 0x11 and G.m.peek(at + k + 1) == want & 0xFF
+            if (G.m.peek(at + k) == 0x21 and G.m.peek(at + k + 1) == want & 0xFF
                     and G.m.peek(at + k + 2) == want >> 8):
-                G.m.poke(at + k + 1, (want - 1) & 0xFF)
-                G.m.poke(at + k + 2, (want - 1) >> 8)
+                G.m.poke(at + k + 1, (want + 1) & 0xFF)
+                G.m.poke(at + k + 2, (want + 1) >> 8)
                 break
         else:
-            raise SystemExit(f"το ghr_put δεν ελέγχει το #{want:04X}: το GH_LOG "
+            raise SystemExit(f"το ghr_put δεν ξεκινά από #{want:04X}: το GH_LOG "
                              f"δεν είναι {RED_L}")
     tx, ty = B.clear_spots(8, 1)[0]
     G.camera(tx - 6, ty - 1)                 # ο θόλος στις στήλες 6-13
