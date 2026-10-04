@@ -1395,7 +1395,21 @@ slower:
 
 The wait for new routes is unchanged, because the budget is counted in expansions: a
 full colony still routes on stale tables for ~27 s. What changed is what the 12
-expansions of a frame cost, about 2.1 ms instead of 2.7.
+expansions of a frame cost on average, about 2.1 ms instead of 2.7.
+
+**The worst frame of a rebuild is not expansions, and the budget did not go up.**
+`rt_slice` counts the opening of a source (clearing 256 bytes) and its closing (two
+copies of 128) as one unit each, like a node. Each costs about 1.3 ms, as much as
+eight nodes.
+
+- `rt_n` is always 96. In a young colony most of those sources are alone, and each
+  costs three units: open, itself, close.
+- A slice of 12 is then four lone sources: **13.1 ms**, 13.4 before milestone 62.
+  That was measured on 12 nodes with `rt_n` = 96, the colony's shape for its first
+  hours.
+- At 15 it would be five, **16.4 ms**. So raising `WH_RT_B` to spend the 22 %, as
+  this section first proposed, would have made the worst frame 3 ms worse in the
+  common case to save ~5 s in the rare one. It stays 12.
 
 The check was a script kept out of the repository. It used 28 graphs: the ten of
 `tools/graph.py` and eighteen random ones, from 1 node to 128, some with `rt_n` above
@@ -4831,7 +4845,7 @@ gap.
 | **13.5 s** world generation feels long even on a cassette-era machine, and it is 3.9× the original estimate | Medium | New game only — loads read the plane off disc ([§5.10](#510-player-modification)). **Both halves are built**: the progress bar of [§13.2](#132-the-loading-screen) — title, a dot per file, a bar that moves once per two world rows — and, since milestone 24, **music** ([§9.5](#95-sound)), played by the generator's own player and clocked by its own tile loop, because interrupts are off down there. The identified 2× win ([§5.9](#59-cost--measured)) is held in reserve. |
 | A seed produces a technically valid but miserable map | Low | Feature anchors guarantee the necessities; the headless seed sweep ([§13](#13-build-and-test)) finds the rest. |
 | **Airlock: dome or structure?** The asset set now has both an `icon_airlock` room type and a standalone `airlock` structure sprite; the node graph in [§6.2](#62-the-node-graph) only models the dome | Medium | Decide before the node graph is written — it changes what an *outdoor edge* connects to. Recommendation and the comparison are in [§6.2](#62-the-node-graph). Cheap either way: the unused half is 400–512 bytes. |
-| A full-colony routing rebuild is ~27 s of stale routes at the current budget | Medium | Only at 128 nodes; 48 nodes is 3.8 s ([§6.4](#64-routing)). Milestone 62 made `rt_node` 22 % cheaper (222 → 174 µs per expansion), which by itself shortens nothing: the budget is counted in expansions. Two levers, both untaken: raise the per-frame budget while the camera is still, or spend what milestone 62 saved — 15 expansions now cost what 12 did, ~22 s instead of 27. |
+| A full-colony routing rebuild is ~27 s of stale routes at the current budget | Medium | Only at 128 nodes; 48 nodes is 3.8 s ([§6.4](#64-routing)). Milestone 62 made `rt_node` 22 % cheaper (222 → 174 µs per expansion), which by itself shortens nothing: the budget is counted in expansions. Two levers, both untaken: raise the per-frame budget while the camera is still, or count the opening and the closing of a source at what they cost. The 22 % cannot simply be spent on a budget of 15: it is the average that fell, and the worst frame is a young colony's lone sources, 13.1 ms at 12 and 16.4 at 15 ([§6.4](#smaller-and-faster-at-milestone-62)). |
 | ~~Slots 11, 12, 13 and 15 of the wheel are unwritten~~ | ~~Medium~~ | **Written and measured.** Four of six budgets were low, by 1.5× to 5× ([§7.2](#72-the-wheel)). The worst frame is a third of a frame, so the design holds. Remaining passes should be budgeted pessimistically. |
 | A heavy sim slot and a scroll column in the same frame come to ~19 ms of 20 | Medium | The dirty list is a budget, so the edge redraw spreads over two frames. Costs nothing but a one-frame lag on the newly exposed column; needs watching once the HUD re-render ([§8.1](#81-screen-layout)) is measured too. |
 | ~~Needs, health and death are not written~~ | ~~High~~ | **Written.** Colonists eat, drink, sleep, get treated, die, and grieve; the only loss condition is live ([§6.6](#66-needs)). |
