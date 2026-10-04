@@ -77,6 +77,16 @@ stop3:  jr      stop3
 
         include "../src/graph.asm"
 
+; rt_rebuild — όλη η ανοικοδόμηση χωρίς κόψιμο. Εδώ και όχι στο graph.asm:
+; το παιχνίδι δεν τη χρειάζεται ποτέ (βήμα 62).
+rt_rebuild:
+        call    rt_begin
+rtr_lp:
+        ld      b,255
+        call    rt_slice
+        jr      nc,rtr_lp
+        ret
+
 done_flag:   db 0
 dump_flag:   db 0
 slice_b:     db 8

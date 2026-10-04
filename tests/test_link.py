@@ -317,8 +317,9 @@ def third(sym, g):
 
 # --- ΧΤΙΣΙΜΟ ----------------------------------------------------------------
 def build(sym, g, sa, sb, dx, dy, what, patch=None):
-    """Χτίζει τον διάδρομο ως το τέλος της εμφάνισης. Με `patch`, μόνο το
-    πλήθος των λάθος bytes, για αρνητικό δείγμα."""
+    """Χτίζει τον διάδρομο ως το τέλος της εμφάνισης. Με `patch`, μόνο τα
+    λάθος bytes, οι γύροι και οι περισσότερες σειρές σε έναν, για αρνητικό
+    δείγμα."""
     P = Pair(sym, g, sa, sb, dx, dy, patch=patch)
     G, m = P.G, P.G.m
     side, runs, path = P.ref()
@@ -358,7 +359,7 @@ def build(sym, g, sa, sb, dx, dy, what, patch=None):
     bad = sum(1 for i, (a, b) in enumerate(zip(pic, ref)) if a != b and i)
     if patch:
         G.go(on)
-        return bad
+        return bad, bands, most
     paid = metal - (m.peek(g + 6) | (m.peek(g + 7) << 8))
     rec = [bytes(b6[tbl + (slot + k) * CORR_REC:
                     tbl + (slot + k + 1) * CORR_REC]) for k in range(2)]
@@ -640,9 +641,18 @@ def main():
     at = sym["CRRW_BS"] - 1
     m0 = R.Game(sym, g).m
     assert m0.peek(at) == 0x05, f"στο #{at:04X} δεν είναι DEC B"
-    bad = build(sym, g, 0, 0, -10, 10, "", patch={at: 0x00})
+    bad, _, _ = build(sym, g, 0, 0, -10, 10, "", patch={at: 0x00})
     check(bad > 0, f"ΑΡΝΗΤΙΚΟ: με τη λωρίδα του «/» ένα tile δεξιά, η οθόνη "
                    f"δεν είναι η πλήρης σχεδίαση — {bad} λάθος bytes")
+    # ΑΡΝΗΤΙΚΟ για τη μέτρηση των γύρων (βήμα 62, βλ. test_reveal.Game.hook):
+    # με τη σειρά διαγωνίου στα 6.000 αντί 12.000 χωρούν δύο σε έναν γύρο, και
+    # η μέτρηση πρέπει να το δει.
+    dc = sym["DIRTY_COST"] + 2 * 7                      # DK_CROW
+    assert m0.peek(dc) | (m0.peek(dc + 1) << 8) == 12000, "το dirty_cost άλλαξε"
+    _, bands, most = build(sym, g, 0, 2, 12, 6, "",
+                           patch={dc: 6000 & 255, dc + 1: 6000 >> 8})
+    check(most >= 2, f"ΑΡΝΗΤΙΚΟ: με τη σειρά διαγωνίου στα 6.000 βγαίνουν δύο σε "
+                     f"έναν γύρο — {bands} γύροι, το πολύ {most} σειρές σε έναν")
     return 1 if FAIL else 0
 
 

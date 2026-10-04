@@ -45,6 +45,7 @@ from cpc import JOY_FIRE, KEY_SPACE, KEY_RIGHT                     # noqa: E402
 
 FAIL = []
 PROBE = 0x3F10                           # η σκαλωσιά των δοκιμών (§4.2)
+HOOK, CNT, RING = 0x3EC0, 0x3EE0, 0x3EF0  # ο μετρητής γύρων, κάτω από το PROBE
 I_DOME_S, I_DOME_L, I_CORR, I_SOLAR = 0, 2, 3, 4
 R_FACTORY = 4
 DS_ACTIVE = 2
@@ -72,7 +73,8 @@ class Game:
             self.m.poke(g + 2 * k, 0xE7)
             self.m.poke(g + 2 * k + 1, 0x03)
         self.iters, self.t, self.inw, self.last = [], 0, False, None
-        self.pend = []                       # rv_pend σε κάθε αρχή γύρου
+        self.pend = []                       # rv_pend σε κάθε τέλος γύρου
+        self.hook()
         for line in open(os.path.join(ROOT, "build", "layout.asm"),
                          encoding="utf-8"):
             if line.startswith("PAGE2_TOP"):
@@ -81,24 +83,62 @@ class Game:
     def bank(self, n):
         return cpc._lib.cpcemu_ram_ptr(self.m._h, n)
 
+    def hook(self):
+        """Ο ΓΥΡΟΣ ΜΕΤΡΙΕΤΑΙ ΜΕΣΑ ΣΤΟ ΠΑΙΧΝΙΔΙ. Το `jp main_loop` στο τέλος του
+        βρόχου πηγαίνει πρώτα εδώ: το rv_pend του γύρου που μόλις τελείωσε στο
+        RING[μετρητής & 15], και ΜΕΤΑ ο μετρητής γύρων στο CNT — αλλιώς ένα
+        δείγμα ανάμεσα στα δύο διαβάζει θέση που δεν γράφτηκε ακόμη. Ο μετρητής
+        είναι ένα byte, για να μη διαβαστεί ποτέ μισογραμμένος· ανάμεσα σε δύο
+        δείγματα κλείνουν το πολύ δύο γύροι.
+
+        Ως το βήμα 62 ο γύρος ήταν «το PC μέσα στην αναμονή του vsync», με δείγμα
+        κάθε 100 us. Μια αναμονή κάτω από 100 us δεν φαινόταν, και δύο γύροι
+        μετρούσαν για έναν: όταν η δρομολόγηση έγινε φθηνότερη, ένας γύρος του
+        test_link έκλεινε λίγο πριν από το vsync και η διαγώνιος «έβγαλε δύο
+        σειρές σε έναν γύρο» που ήταν στην πραγματικότητα δύο. Ούτε πυκνότερο
+        δείγμα το λύνει, η αναμονή μπορεί να είναι όσο μικρή θέλει. 23 bytes
+        κώδικα, ~27 µs ανά γύρο."""
+        m, top, ut, rv = self.m, self.top, self.sym["UI_TICK"], self.sym["RV_PEND"]
+        k = next(k for k in range(256) if list(m.read_ram(top + k, 6)) ==
+                 [0xCD, ut & 255, ut >> 8, 0xC3, top & 255, top >> 8])
+        assert (RING & 255) + 15 < 256
+        m.write_ram(HOOK, bytes([
+            0x3A, CNT & 255, CNT >> 8,          # ld a,(CNT)
+            0x3C, 0x6F,                         # inc a · ld l,a
+            0xE6, 0x0F, 0xC6, RING & 255,       # and 15 · add a,RING
+            0x5F, 0x16, RING >> 8,              # ld e,a · ld d,RING >> 8
+            0x3A, rv & 255, rv >> 8, 0x12,      # ld a,(rv_pend) · ld (de),a
+            0x7D, 0x32, CNT & 255, CNT >> 8,    # ld a,l · ld (CNT),a
+            0xC3, top & 255, top >> 8]))        # jp main_loop
+        m.poke(CNT, 0)
+        m.write_ram(top + k + 4, bytes([HOOK & 255, HOOK >> 8]))
+        self.cnt = 0
+
+    def count(self):
+        return self.m.peek(CNT)
+
     # --- το ρολόι ---------------------------------------------------------
     def run(self, us, until=None, step=100):
         """Τρέχει με βήμα `step` και κρατά τη διάρκεια ΚΑΘΕ γύρου του βρόχου.
 
-        Γύρος = από τη μία έξοδο από την αναμονή του vsync ως την επόμενη. Ενα
-        ρολόι για όλη τη δοκιμή, ώστε κανένας γύρος να μη χάνεται στις ραφές.
+        Γύρος = από το ένα τέλος του βρόχου ως το επόμενο, όπως τα μετρά το
+        hook. Ενα ρολόι για όλη τη δοκιμή, ώστε κανένας γύρος να μη χάνεται
+        στις ραφές· όσοι γύροι έτρεξαν ΕΞΩ από το run (run_frames, probe) δεν
+        μετρούν, και ο επόμενος δεν έχει διάρκεια.
         """
         m, end, after = self.m, self.t + us, None
+        if self.count() != self.cnt:
+            self.cnt, self.last = self.count(), None
         while self.t < end:
             m.run_us(step)
             self.t += step
-            w = self.top <= m.pc < self.top + 13
-            if self.inw and not w:
+            c = self.count()
+            while self.cnt != c:             # και δύο γύροι σε ένα βήμα
+                self.cnt = (self.cnt + 1) & 0xFF
                 if self.last is not None:
                     self.iters.append(self.t - self.last)
                 self.last = self.t
-                self.pend.append(m.peek(self.sym["RV_PEND"]))
-            self.inw = w
+                self.pend.append(m.peek(RING + (self.cnt & 15)))
             if until and until():
                 until, after = None, len(self.iters)
             # ΤΡΕΙΣ ΓΥΡΟΙ ΑΚΟΜΗ μετά τη συνθήκη, όχι χρόνος. Η συνθήκη αληθεύει

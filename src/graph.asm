@@ -2,7 +2,7 @@
 ;
 ; Μία BFS ανά πηγή, 96 πηγές, δύο σειρές των 128 bytes η καθεμία:
 ;
-;       DIST[from][to]      άλματα, 254 = μακριά, 255 = απρόσιτος   (τράπεζα 1)
+;       DIST[from][to]      άλματα, 255 = απρόσιτος                 (τράπεζα 1)
 ;       NEXTHOP[from][to]   ο επόμενος κόμβος, 255 = απρόσιτος      (τράπεζα 5)
 ;
 ; Και οι δύο σειρές βγαίνουν από την ΙΔΙΑ διάσχιση: όταν η BFS φτάνει πρώτη
@@ -29,8 +29,20 @@ NODE_DEG    equ G_rt_nodes              ; [0..127]
 RT_QUEUE    equ G_rt_nodes + 128        ; [128..255]
 
 RT_UNREACH  equ 255
-RT_FAR      equ 254
 RT_NODES    equ MAX_NODE                ; 96 — δες const.asm
+
+; ---------------------------------------------------------------------------
+; rt_mark — «ο γράφος άλλαξε»: διάδρομος χτίστηκε, γκρεμίστηκε, ή νέο παιχνίδι.
+;
+; Εδώ και όχι στο wheel.asm, όπου ήταν: το build mode πρέπει να το καλεί και το
+; build mode δεν ξέρει τίποτε για τον τροχό — το tests/uitest.asm δεν τον
+; συνδέει καν. Το rt_begin μόνο του ΔΕΝ αρκεί: μηδενίζει τον μετρητή πηγών,
+; αλλά αυτό που κάνει τον τροχό να τρέξει την ανοικοδόμηση είναι το rt_dirty.
+; ---------------------------------------------------------------------------
+rt_mark:
+        ld      a,1
+        ld      (rt_dirty),a
+        ; και συνεχίζει στο rt_begin
 
 ; ---------------------------------------------------------------------------
 ; rt_begin — ξεκινά πλήρη ανοικοδόμηση από την πηγή 0.
@@ -47,22 +59,6 @@ rt_begin:
         ret
 
 ; ---------------------------------------------------------------------------
-; rt_mark — «ο γράφος άλλαξε»: διάδρομος χτίστηκε, γκρεμίστηκε, ή νέο παιχνίδι.
-;
-; Εδώ και όχι στο wheel.asm, όπου ήταν: το build mode πρέπει να το καλεί και το
-; build mode δεν ξέρει τίποτε για τον τροχό — το tests/uitest.asm δεν τον
-; συνδέει καν. Το rt_begin μόνο του ΔΕΝ αρκεί: μηδενίζει τον μετρητή πηγών,
-; αλλά αυτό που κάνει τον τροχό να τρέξει την ανοικοδόμηση είναι το rt_dirty.
-; ---------------------------------------------------------------------------
-rt_mark:
-        call    rt_begin
-        ld      a,1
-        ld      (rt_dirty),a
-        ret
-
-rt_dirty:   db 0
-
-; ---------------------------------------------------------------------------
 ; rt_slice — ως B επεκτάσεις κόμβων. Επιστρέφει Cy=1 όταν τελείωσαν και οι 96.
 ;
 ; Ενας «κόμβος» εδώ είναι μία αφαίρεση από την ουρά μαζί με τους ως 8 γείτονές
@@ -72,43 +68,40 @@ rt_dirty:   db 0
 rt_slice:
         ld      a,(rt_phase)
         or      a
-        jr      z,rts_open
-        ; --- φάση 1: επέκταση κόμβων ---
+        jr      nz,rts_expand
+rts_open:
+        call    rt_open
+        dec     b
+        ret     z                       ; Cy=0 από το or a ή το xor a
 rts_expand:
         call    rt_node
         jr      nc,rts_more             ; η ουρά είχε ακόμη κόμβο
         ; η ουρά άδειασε: κλείσιμο και επόμενη πηγή
         call    rt_flush
-        ld      a,(rt_src)
-        inc     a
-        ld      (rt_src),a
-        ld      hl,rt_n
-        cp      (hl)
-        jr      nc,rts_done
+        ld      hl,rt_src
+        inc     (hl)
+        ld      a,(hl)
+        dec     hl
+        cp      (hl)                    ; rt_n
+        ccf
+        ret     c                       ; Cy=1 — και οι 96 έτοιμες
         xor     a
         ld      (rt_phase),a
         dec     b
-        jr      nz,rt_slice
-        or      a                       ; Cy=0 — μένει δουλειά
-        ret
+        jr      nz,rts_open
+        ret                             ; Cy=0 από το xor — μένει δουλειά
 rts_more:
         djnz    rts_expand
-        or      a
-        ret
-rts_done:
-        scf
-        ret
-rts_open:
-        call    rt_open
-        ld      a,1
-        ld      (rt_phase),a
-        dec     b
-        jr      nz,rts_expand
-        or      a
-        ret
+        ret                             ; Cy=0 από το rt_node
 
 ; ---------------------------------------------------------------------------
 ; rt_open — καθαρίζει τη σειρά και βάζει την πηγή στην ουρά.
+;
+; Οι δείκτες της ουράς κρατιούνται ως 128 + k, δηλαδή είναι ήδη το κάτω byte
+; της θέσης στο RT_QUEUE. Το rt_phase γίνεται NODEPG: έτσι η λέξη
+; (rt_tail, rt_phase) είναι η διεύθυνση της ουράς και το rt_node τη φορτώνει
+; ολόκληρη. Το 128ο στοιχείο πάει τον δείκτη στο 256 = 0· και οι δύο
+; τυλίγονται ίδια, οπότε η σύγκριση «άδεια» μένει σωστή.
 ; ---------------------------------------------------------------------------
 rt_open:
         push    bc                      ; το ldir τρώει το BC — και μαζί του τον
@@ -118,173 +111,147 @@ rt_open:
         ld      e,l
         inc     de
         ld      bc,255
-        ldir                            ; 256 bytes σε 255
+        ldir                            ; 256 bytes σε 255· το H μένει ROWPG
 
         ld      a,(rt_src)
-        ld      h,ROWPG
         ld      l,a
         ld      (hl),0                  ; dist[src] = 0
         set     7,l
         ld      (hl),a                  ; next[src] = ο εαυτός
         ld      (RT_QUEUE),a
-        xor     a
-        ld      (rt_head),a
-        inc     a
-        ld      (rt_tail),a
+        ld      hl,129 * 256 + 128
+        ld      (rt_head),hl            ; head = 0, tail = 1
+        ld      a,NODEPG
+        ld      (rt_phase),a
         pop     bc
         ret
 
 ; ---------------------------------------------------------------------------
 ; rt_node — μία αφαίρεση από την ουρά. Cy=1 αν η ουρά ήταν άδεια.
+;
+; Η ουρά γράφεται από το HL' — το παιχνίδι δεν ανοίγει ποτέ τις διακοπές
+; (main.asm) και κανείς άλλος δεν αγγίζει τους σκιώδεις καταχωρητές.
+; Οι αποστάσεις δεν χρειάζονται ταβάνι: η BFS σε ως 128 κόμβους δεν ξεπερνά
+; τα 127 άλματα, άρα το dist+1 δεν φτάνει ποτέ το 255.
 ; ---------------------------------------------------------------------------
 rt_node:
+        ld      hl,(rt_head)            ; L = head, H = tail
+        ld      a,l
+        cp      h
+        scf
+        ret     z                       ; άδεια
         push    bc
-        ld      a,(rt_head)
-        ld      hl,rt_tail
-        cp      (hl)
-        jr      z,rtn_empty
         inc     a
         ld      (rt_head),a
-        dec     a
 
         ld      h,NODEPG
-        ld      l,a
-        set     7,l
-        ld      a,(hl)                  ; A = u
-        ld      (rt_u),a
-
-        ld      l,a
-        ld      b,(hl)                  ; B = deg[u]   (h=NODEPG)
+        ld      l,(hl)                  ; L = u
+        ld      b,(hl)                  ; B = deg[u]
         inc     b
         dec     b
         jr      z,rtn_out               ; μοναχικός κόμβος
 
-        ; --- C = η απόσταση που θα πάρουν οι γείτονες ---
         ld      h,ROWPG
-        ld      l,a
         ld      c,(hl)
-        inc     c
-        ld      a,c
-        cp      RT_FAR
-        jr      c,rtn_dok
-        ld      c,RT_FAR                ; δεν συμβαίνει με 96 κόμβους· φθηνό
-rtn_dok:
-        ; --- IXL = ο πρώτος κόμβος της διαδρομής ---
-        ; 255 = «είμαστε στην πηγή, βάλε τον ίδιο τον γείτονα»
-        ld      a,(rt_u)
-        ld      hl,rt_src
-        cp      (hl)
-        ld      a,RT_UNREACH
-        jr      z,rtn_first
-        ld      h,ROWPG
-        ld      a,(rt_u)
-        ld      l,a
-        set     7,l
-        ld      a,(hl)
-rtn_first:
-        ld      ixl,a
+        inc     c                       ; C = η απόσταση των γειτόνων
 
-        ; --- DE = node_adj + u*8 ---
-        ld      h,0
-        ld      a,(rt_u)
+        ; --- IXL = ο πρώτος κόμβος της διαδρομής, IXH = η πηγή ---
+        ; Το next[u] είναι η πηγή μόνο όταν u = πηγή (το rt_open το βάζει
+        ; εκεί): τότε ο πρώτος κόμβος είναι ο ίδιος ο γείτονας.
+        set     7,l
+        ld      a,(hl)                  ; next[u]
+        res     7,l
+        ld      ixl,a
+        ld      a,(rt_src)
+        ld      ixh,a
+
+        ; --- DE = G_node_adj + u*8 = (G_node_adj/8 + u) * 8 (assert) ---
+        ld      a,l
+        add     a,(G_node_adj / 8) & 255
         ld      l,a
+        ld      h,G_node_adj / 2048
         add     hl,hl
         add     hl,hl
         add     hl,hl
-        ld      de,G_node_adj
-        add     hl,de
         ex      de,hl
 
         ld      h,ROWPG                 ; μένει σταθερό σε όλον τον βρόχο
+        exx
+        ld      hl,(rt_tail)            ; HL' = RT_QUEUE + tail
+        exx
         ; --- ο καυτός βρόχος: ως 8 γείτονες, 1.024 ανά πηγή ---
 rtn_nb:
         ld      a,(de)                  ; v
-        inc     de
+        inc     e                       ; η γραμμή των 8 δεν περνά σελίδα
         ld      l,a
         ld      a,(hl)                  ; dist[v]
         inc     a                       ; 255 -> 0
         jr      nz,rtn_skip             ; τον ξέρουμε ήδη
         ld      (hl),c                  ; dist[v] = d
+        ld      a,l
+        exx
+        ld      (hl),a                  ; στην ουρά
+        inc     l
+        exx
         ld      a,ixl
-        cp      RT_UNREACH
+        cp      ixh
         jr      nz,rtn_have
         ld      a,l                     ; γείτονας της πηγής: ο ίδιος ο v
 rtn_have:
         set     7,l
         ld      (hl),a                  ; next[v]
-        res     7,l                     ; L = v ξανά
-        ; ουρά
-        push    de
-        ld      a,(rt_tail)
-        ld      e,a
-        set     7,e
-        ld      d,NODEPG
-        ld      a,l
-        ld      (de),a
-        ld      a,(rt_tail)
-        inc     a
-        ld      (rt_tail),a
-        pop     de
 rtn_skip:
         djnz    rtn_nb
+        exx
+        ld      (rt_tail),hl            ; και το NODEPG πίσω στο rt_phase
+        exx
 rtn_out:
         pop     bc
         or      a                       ; Cy=0
-        ret
-rtn_empty:
-        pop     bc
-        scf
         ret
 
 ; ---------------------------------------------------------------------------
 ; rt_flush — η έτοιμη σειρά στις δύο τράπεζες.
 ;
-; Η γραμμή της πηγής s κάθεται στο &4000 + s*128 και στις δύο.
+; Η γραμμή της πηγής s κάθεται στο &4000 + s*128 και στις δύο. Πρώτα η 5,
+; ώστε η 1 — η προεπιλογή — να είναι αυτή που μένει στο παράθυρο.
 ; ---------------------------------------------------------------------------
 rt_flush:
         push    bc
         ld      a,(rt_src)
-        ld      h,a
-        ld      l,0
-        srl     h
-        rr      l                       ; HL = s*128
-        set     6,h                     ; + &4000
-        ld      (rt_dst),hl
-
-        ld      bc,GA_PORT + PAGE_B1
-        out     (c),c
-        ld      hl,RT_DIST
-        ld      de,(rt_dst)
-        ld      bc,128
-        ldir
+        add     a,#80
+        rra
+        ld      d,a                     ; #40 + s/2
+        sbc     a,a
+        and     #80
+        ld      e,a                     ; (s & 1) * 128
 
         ld      bc,GA_PORT + PAGE_B5
         out     (c),c
         ld      hl,RT_NEXT
-        ld      de,(rt_dst)
+        push    de
         ld      bc,128
         ldir
+        pop     de
 
-        ld      bc,GA_PORT + PAGE_B1    ; πίσω στην προεπιλογή
+        dec     h                       ; HL = RT_DIST
+        ld      bc,GA_PORT + PAGE_B1
         out     (c),c
+        ld      bc,128
+        ldir
         pop     bc
         ret
 
-; ---------------------------------------------------------------------------
-; rt_rebuild — όλη η ανοικοδόμηση χωρίς κόψιμο. Για μέτρηση και για δοκιμή.
-; ---------------------------------------------------------------------------
-rt_rebuild:
-        call    rt_begin
-rtr_lp:
-        ld      b,255
-        call    rt_slice
-        jr      nc,rtr_lp
-        ret
+        assert  (G_rt_row & 255) == 0 && (G_rt_nodes & 255) == 0
+        assert  (G_node_adj & 7) == 0 && ((G_node_adj / 8) & 255) + 128 <= 256
+        assert  NODEPG != 0 && RT_NODES <= 128
 
 rt_n:       db RT_NODES             ; ανώτατο id + 1 — βλ. rt_begin
 rt_src:     db 0
-rt_u:       db 0
-rt_head:    db 0
+rt_head:    db 0                    ; 128 + k, όπως και το rt_tail
 rt_tail:    db 0
-rt_phase:   db 0
-rt_dst:     dw 0
+rt_phase:   db 0                    ; 0 = άνοιγμα, NODEPG = επέκταση
+rt_dirty:   db 0
+
+        assert  rt_src == rt_n + 1                  ; το rt_slice: dec hl · cp (hl)
+        assert  rt_tail == rt_head + 1 && rt_phase == rt_tail + 1

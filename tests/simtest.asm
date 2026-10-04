@@ -127,6 +127,17 @@ save_state:
         ld      (done_flag),a
 b4:     jr      b4
 
+
+; rt_rebuild — όλη η ανοικοδόμηση χωρίς κόψιμο. Εδώ και όχι στο graph.asm:
+; το παιχνίδι δεν τη χρειάζεται ποτέ (βήμα 62).
+rt_rebuild:
+        call    rt_begin
+rtr_lp:
+        ld      b,255
+        call    rt_slice
+        jr      nc,rtr_lp
+        ret
+
         include "../src/graph.asm"
         include "../src/entity.asm"
         include "../src/econ.asm"
