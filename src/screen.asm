@@ -8,7 +8,7 @@
 ; **1.024 λέξεις = 2.048 bytes**, και η οθόνη χρησιμοποιεί 1.000 από αυτές.
 ; Μόλις η κάμερα δώσει offset > 24 λέξεις, το σημείο τυλίγματος μπαίνει ΜΕΣΑ
 ; στην ορατή εικόνα: το p πρέπει να υπολογίζεται mod 2.048, και μια γραμμή
-; sprite μπορεί να το πατήσει στη μέση (scr_wrap).
+; sprite μπορεί να το πατήσει στη μέση (το bl_wrap του blit.asm).
 ;
 ;       p = ((y>>3)*SCR_W + x + cam_p) & #7FF
 ;       D = #C0 + (y&7)*8 + (p>>8)      E = p & #FF
@@ -42,54 +42,43 @@ scr_nextline:
 ; ---------------------------------------------------------------------------
 ; scr_addr — διεύθυνση οθόνης για (x, y), με το offset της κάμερας μέσα.
 ; In :  C = x σε bytes (0..79),  A = y σε γραμμές (0..199)
-; Out:  DE = διεύθυνση
-; Χαλάει: A, F, HL
+; Out:  DE = διεύθυνση,  A = D,  HL = r*SCR_W + x + cam_p (χωρίς το mod)
+; Χαλάει: F.  Κρατά: BC, IX, IY.
+;
+; ΧΩΡΙΣ ΠΙΝΑΚΑ ΑΠΟ ΤΟ ΒΗΜΑ 68 (DESIGN §8.2). Το r*80 είναι (y & #F8) * 10, δηλαδή
+; 8r -> x4 -> +8r -> x2: τέσσερις προσθέσεις του HL, φθηνότερες από το να
+; διαβαστεί λέξη από πίνακα 50 bytes. Το y μένει στο A ως το τέλος, άρα δεν
+; χρειάζεται ούτε push af ούτε push bc.
 ; ---------------------------------------------------------------------------
 scr_addr:
-        push    bc
-        push    af
-        rrca
-        rrca
-        rrca
-        and     #1F                 ; r = y >> 3   (0..24)
         ld      l,a
-        ld      h,0
-        add     hl,hl               ; *2, πίνακας λέξεων
-        ld      de,scr_rowtab
-        add     hl,de
-        ld      e,(hl)
-        inc     hl
-        ld      d,(hl)              ; DE = r * SCR_W
-        ld      a,c
-        add     a,e
+        and     #F8                 ; 8r, r = y >> 3
         ld      e,a
-        ld      a,0
-        adc     a,d
-        ld      d,a                 ; DE = r*SCR_W + x   (<= #07CF)
-        ld      hl,(cam_p)          ; + η κάμερα, σε bytes (0..2046)
-        add     hl,de               ; <= #0FBD — το bit 12 δεν σηκώνεται ποτέ
-        ld      e,l
+        ld      d,0
+        ld      a,l                 ; το y, ως το τέλος
+        ld      h,d
+        ld      l,e                 ; HL = DE = 8r
+        add     hl,hl
+        add     hl,hl               ; 32r
+        add     hl,de               ; 40r
+        add     hl,hl               ; 80r = r * SCR_W   (<= 1.920)
+        ld      e,c                 ; το D είναι ακόμη 0
+        add     hl,de               ; + x
+        ld      de,(cam_p)
+        add     hl,de               ; + η κάμερα, σε bytes (0..2046): <= #0FBD
+        add     a,a
+        add     a,a
+        add     a,a                 ; (y&7) * 8 στα bits 3-5, ό,τι να 'ναι στα 6-7
+        or      #C0                 ; ...που το #C0 τα σβήνει: χωρίς `and 7`
+        ld      e,a
         ld      a,h
-        and     7                   ; p mod 2048
+        and     7                   ; p >> 8, mod 2048
+        or      e
         ld      d,a
-        pop     af
-        and     7
-        add     a,a
-        add     a,a
-        add     a,a                 ; (y&7) * 8  -> ψηλό byte
-        add     a,d
-        add     a,#C0
-        ld      d,a
-        pop     bc
+        ld      e,l
         ret
 
-; r * SCR_W για r = 0..24
-scr_rowtab:
-        dw      0*SCR_W, 1*SCR_W, 2*SCR_W, 3*SCR_W, 4*SCR_W
-        dw      5*SCR_W, 6*SCR_W, 7*SCR_W, 8*SCR_W, 9*SCR_W
-        dw     10*SCR_W,11*SCR_W,12*SCR_W,13*SCR_W,14*SCR_W
-        dw     15*SCR_W,16*SCR_W,17*SCR_W,18*SCR_W,19*SCR_W
-        dw     20*SCR_W,21*SCR_W,22*SCR_W,23*SCR_W,24*SCR_W
+        assert  SCR_W == 80         ; το x10 του (y & #F8)
 
 ; Η κάμερα σε bytes μέσα στο δαχτυλίδι — 2x το offset λέξεων του CRTC.
 cam_p:      dw 0
