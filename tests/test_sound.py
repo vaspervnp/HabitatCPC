@@ -233,7 +233,8 @@ def main():
     m.key_down(KEY_SPACE)
     m.poke(sym["REQ"], 8)
     entry(m, sym, "DO_KEYS")
-    keys = [m.peek(sym["KEY_NOW"] + i) for i in range(10)]
+    # το key_now κρατά τα bits όπως τα δίνει ο PSG, 0 = πατημένο (βήμα 64)
+    keys = [m.peek(sym["KEY_NOW"] + i) ^ 0xFF for i in range(10)]
     sound = m.psg_regs()[9]
     m.key_up(KEY_SPACE)
     check(keys[5] & 0x80 and sound != 0,
