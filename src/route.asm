@@ -38,278 +38,229 @@
 
 ; ---------------------------------------------------------------------------
 ; cr_plan — διαδρομή ανάμεσα στους θόλους (cr_a) και (cr_b).
-; Out: A = πλήθος τρεξιμάτων (0 = δεν υπάρχει)· (cr_from) ο θόλος αφετηρίας.
-; Χαλάει τα πάντα. Επιστρέφει με την τράπεζα 1 στο παράθυρο.
+; Out: A = πλήθος τρεξιμάτων (0 = δεν υπάρχει)· (cr_from) ο θόλος αφετηρίας,
+; (cr_to) ο προορισμός. Χαλάει τα πάντα. Επιστρέφει με την τράπεζα 1.
+;
+; ΤΟ cr_from ΕΙΝΑΙ ΤΟ cr_a (βήμα 72). Κάθε άκρο είναι μία εγγραφή τεσσάρων
+; bytes — θόλος, cx, cy, μέγεθος — και αν η διαδρομή δεν βγαίνει από τον a, οι
+; δύο εγγραφές αλλάζουν θέση και δοκιμάζεται ο b. Ως το βήμα 71 οι θέσεις
+; διαβάζονταν σε τρίτο ζεύγος και αντιγράφονταν σε κάθε μεριά.
 ; ---------------------------------------------------------------------------
 cr_plan:
-        xor     a
-        ld      (cr_n),a
         ld      bc,GA_PORT + PAGE_B6
         out     (c),c
         ld      a,(cr_a)
-        ld      de,cr_pax
+        ld      de,cr_fx
         call    cr_read
         jr      c,crp_out
         ld      a,(cr_b)
-        ld      de,cr_pbx
+        inc     de                      ; cr_tx
         call    cr_read
         jr      c,crp_out
         ld      bc,GA_PORT + PAGE_B1
         out     (c),c
-        ; --- πρώτα από τον a ---
-        ld      hl,cr_pax
-        ld      de,cr_fx
-        ld      bc,3
-        ldir
-        ld      hl,cr_pbx
-        ld      de,cr_tx
-        ld      bc,3
-        ldir
         call    cr_side
         ld      a,(cr_n)
         or      a
-        jr      z,crp_other
-        ld      a,(cr_a)
-        ld      (cr_from),a
-        ld      a,(cr_b)
-        ld      (cr_to),a
-        ld      a,(cr_n)
-        ret
-crp_other:
+        ret     nz
         ; --- και μετά από τον b: η διαγώνιος αγκυρώνεται στον ΘΟΛΟ ΑΦΕΤΗΡΙΑΣ,
         ; οπότε οι δύο κατευθύνσεις δεν είναι η ίδια ερώτηση.
-        ld      hl,cr_pbx
-        ld      de,cr_fx
-        ld      bc,3
-        ldir
-        ld      hl,cr_pax
-        ld      de,cr_tx
-        ld      bc,3
-        ldir
+        ld      hl,cr_a
+        ld      de,cr_b
+        ld      b,4
+crp_sw:
+        ld      a,(de)
+        ld      c,(hl)
+        ld      (hl),a
+        ld      a,c
+        ld      (de),a
+        inc     hl
+        inc     de
+        djnz    crp_sw
         call    cr_side
         ld      a,(cr_n)
         or      a
-        ret     z
-        ld      a,(cr_b)
-        ld      (cr_from),a
-        ld      a,(cr_a)
-        ld      (cr_to),a
-        ld      a,(cr_n)
         ret
 crp_out:
         ld      bc,GA_PORT + PAGE_B1
         out     (c),c
         xor     a
+        ld      (cr_n),a
         ret
 
-; cr_read — A = θόλος, DE = πού (cx, cy, size). CY αν η θέση είναι άδεια.
-; Απαιτεί τράπεζα 6.
+; cr_read — A = θόλος, DE = πού (cx, cy, size). CY αν η θέση είναι άδεια,
+; αλλιώς DE += 3. Απαιτεί τράπεζα 6.
 cr_read:
         push    de                      ; το ob_domeadr ΧΑΛΑΕΙ το DE
         call    ob_domeadr
+        pop     de
         push    hl
-        ld      de,D_STATE
-        add     hl,de
+        ld      bc,D_STATE
+        add     hl,bc
         ld      a,(hl)
         pop     hl
-        pop     de
-        or      a
-        jr      z,crr_no
+        sub     1                       ; CY μόνο για DS_EMPTY
+        ret     c
         ld      bc,3
         ldir
-        or      a
-        ret
-crr_no:
-        scf
         ret
 
 ; ---------------------------------------------------------------------------
 ; cr_side — διαδρομή που ΞΕΚΙΝΑ από τον (cr_fx, cr_fy, cr_fs).
-; Out: A = (cr_n), και τα (cr_d0, cr_l0, cr_d1, cr_l1).
+; Out: (cr_n), και τα (cr_d0, cr_l0, cr_d1, cr_l1).
 ; ---------------------------------------------------------------------------
 cr_side:
         xor     a
         ld      (cr_n),a
         ; --- διαφορές σε tiles. Τα κέντρα είναι σε ΖΥΓΑ μισά tiles (§3.4),
         ; άρα η διαφορά τους είναι ακέραιο πλήθος tiles· αν όχι, δεν πέφτει
-        ; στο πλέγμα και δεν υπάρχει διαδρομή.
+        ; στο πλέγμα και δεν υπάρχει διαδρομή: το sra το λέει στο CY.
         ld      a,(cr_tx)
         ld      hl,cr_fx
         sub     (hl)
-        bit     0,a
-        ret     nz
         sra     a
+        ret     c
         call    cr_sgn
         ld      (cr_ds),a
         ld      a,c
         ld      (cr_ux),a
         ld      a,(cr_ty)
-        ld      hl,cr_fy
+        inc     hl                      ; cr_fy
         sub     (hl)
-        bit     0,a
-        ret     nz
         sra     a
+        ret     c
         call    cr_sgn
         ld      (cr_dt),a
         ld      a,c
         ld      (cr_uy),a
         ; --- ακτίνες σε tiles και το βήμα εκκίνησης της διαγωνίου ---
+        ld      hl,cr_ra
         ld      a,(cr_fs)
-        ld      hl,cr_radt
-        call    cr_look
-        ld      (cr_ra),a
-        ld      a,(cr_fs)
-        ld      hl,cr_kt
-        call    cr_look
-        ld      (cr_ka),a
+        call    crs_rk                  ; ra, ka
         ld      a,(cr_ts)
-        ld      hl,cr_radt
-        call    cr_look
-        ld      (cr_rb),a
-        ld      a,(cr_ts)
-        ld      hl,cr_kt
-        call    cr_look
-        ld      (cr_kb),a
+        call    crs_rk                  ; rb, kb
         ; --- ποια περίπτωση; ---
-        ld      a,(cr_ds)
         ld      hl,cr_dt
+        ld      a,(cr_ds)
+        ld      b,a                     ; S
         or      (hl)
         ret     z                       ; ο ίδιος θόλος
-        ld      a,(cr_ds)
+        ld      c,a                     ; S | T: το μήκος, όταν το άλλο είναι 0
+        ld      a,b
         or      a
-        jp      z,crs_axial
-        ld      a,(cr_dt)
+        jr      z,crs_axial
+        ld      a,(hl)                  ; T
         or      a
-        jp      z,crs_axial
-        ld      a,(cr_ds)
-        ld      hl,cr_dt
-        cp      (hl)
-        jp      z,crs_diag
-        jr      c,crs_vert              ; S < T: διαγώνιος, μετά κάθετος
+        jr      z,crs_axial
+        cp      b
+        jr      z,crs_diag
+        jr      nc,crs_vert             ; S < T: διαγώνιος, μετά κάθετος
         ; fall through — T < S: διαγώνιος, μετά οριζόντιος
 
 ; --- διαγώνιος + οριζόντιος ------------------------------------------------
 crs_horz:
-        ld      a,(cr_dt)               ; n1 = T - ka + 1
-        ld      hl,cr_ka
-        sub     (hl)
-        inc     a
-        ret     m
-        ret     z
-        ld      (cr_l0),a
-        ld      a,(cr_ds)               ; n2 = S - T - rb + 1
-        ld      hl,cr_dt
-        sub     (hl)
-        ld      hl,cr_rb
-        sub     (hl)
-        inc     a
-        ret     m
-        ret     z
-        ld      (cr_l1),a
-        call    cr_c0                   ; η στήλη του πρώτου οριζόντιου
-        call    cr_sgn
-        ld      hl,cr_ra                ; δεν πρέπει να γυρίσει μέσα στον a
-        cp      (hl)
-        ret     c
-        call    cr_diagdir
-        ld      (cr_d0),a
+        ld      de,(cr_ds)              ; E = S, D = T
         ld      a,(cr_ux)
-        ld      c,a
-        ld      a,0
-        call    cr_dir
-        ld      (cr_d1),a
-        ld      a,2
-        ld      (cr_n),a
-        ret
+        ld      c,a                     ; το δεύτερο τρέξιμο: (ux, 0)
+        ld      b,0
+        ld      a,d
+        inc     a                       ; n1 = T - ka + 1
+        jr      crs_bend
 
 ; --- διαγώνιος + κάθετος ---------------------------------------------------
 crs_vert:
-        ld      a,(cr_ds)               ; n1 = S - ka
+        ld      de,(cr_ds)
+        ld      a,e
+        ld      e,d                     ; E = T
+        ld      d,a                     ; D = S
+        ld      a,(cr_uy)
+        ld      b,a                     ; το δεύτερο τρέξιμο: (0, uy)
+        ld      c,0
+        ld      a,d                     ; n1 = S - ka
+        ; fall through
+
+; crs_bend — οι δύο στροφές είναι ΕΝΑΣ τύπος (βήμα 72), με m = min(S, T):
+;
+;   n1 = m - ka, +1 όταν η στροφή είναι σε οριζόντιο (ο A στην είσοδο)
+;   n2 = max(S, T) - m - rb + 1
+;   και το πρώτο πλακίδιο του άξονα δεν γυρίζει μέσα στον a: απέχει από το
+;   κέντρο m - 1 tiles αν ο άξονας πηγαίνει προς τα θετικά, m αν όχι, και
+;   αυτό πρέπει να είναι τουλάχιστον ra.
+;
+; D = m, E = max, B/C = uy/ux του δεύτερου τρεξίματος.
+crs_bend:
         ld      hl,cr_ka
         sub     (hl)
         ret     m
         ret     z
         ld      (cr_l0),a
-        ld      a,(cr_dt)               ; n2 = T - S - rb + 1
-        ld      hl,cr_ds
-        sub     (hl)
-        ld      hl,cr_rb
+        ld      a,e
+        sub     d
+        dec     hl                      ; cr_rb
         sub     (hl)
         inc     a
         ret     m
         ret     z
         ld      (cr_l1),a
-        call    cr_r0
-        call    cr_sgn
-        ld      hl,cr_ra
+        ld      a,b
+        or      c                       ; ο άξονας: +1 ή -1
+        dec     a                       ; Z αν προς τα θετικά
+        ld      a,d
+        jr      nz,crs_bm
+        dec     a
+crs_bm:
+        dec     hl                      ; cr_ra
         cp      (hl)
-        ret     c
-        call    cr_diagdir
-        ld      (cr_d0),a
-        ld      c,0                     ; ux = 0
-        ld      a,(cr_uy)
+        ret     c                       ; θα έστριβε μέσα στον a
+        ld      a,b
         call    cr_dir
         ld      (cr_d1),a
         ld      a,2
-        ld      (cr_n),a
-        ret
+        jr      crs_set
 
-; --- καθαρή διαγώνιος ------------------------------------------------------
+; --- καθαρή διαγώνιος: n = S - ka - kb + 1 ----------------------------------
 crs_diag:
-        ld      a,(cr_ds)               ; n = S - ka - kb + 1
+        ld      a,b
         ld      hl,cr_ka
         sub     (hl)
-        ld      hl,cr_kb
+        inc     hl                      ; cr_kb
         sub     (hl)
         inc     a
-        ret     m
-        ret     z
-        ld      (cr_l0),a
-        call    cr_diagdir
-        ld      (cr_d0),a
-        ld      a,1
-        ld      (cr_n),a
-        ret
+        jr      crs_one
 
-; --- καθαρά αξονικός -------------------------------------------------------
+; --- καθαρά αξονικός: n = S|T - ra - rb (ο ένας από τους δύο είναι μηδέν) ----
 crs_axial:
-        ld      a,(cr_ds)               ; ο ένας από τους δύο είναι μηδέν
-        ld      hl,cr_dt
-        or      (hl)
+        ld      a,c
         ld      hl,cr_ra
         sub     (hl)
-        ld      hl,cr_rb
+        inc     hl                      ; cr_rb
         sub     (hl)
+crs_one:
         ret     m
         ret     z
         ld      (cr_l0),a
+        ld      a,1
+crs_set:
+        ld      (cr_n),a
         call    cr_diagdir
         ld      (cr_d0),a
-        ld      a,1
-        ld      (cr_n),a
         ret
 
-; cr_c0 — η στήλη του πρώτου οριζόντιου πλακιδίου: ux*T - (ux > 0).
-cr_c0:
-        ld      a,(cr_dt)
-        ld      hl,cr_ux
-        bit     7,(hl)
-        jr      nz,crc0_neg
-        dec     a
-        ret
-crc0_neg:
-        neg
-        ret
-
-; cr_r0 — η σειρά του πρώτου κάθετου πλακιδίου: uy*(S-1) - (uy < 0).
-cr_r0:
-        ld      a,(cr_ds)
-        dec     a
-        ld      hl,cr_uy
-        bit     7,(hl)
-        ret     z
-        inc     a
-        neg
+; crs_rk — A = μέγεθος -> (HL) = ακτίνα σε tiles, 2/3/4, και (HL+2) = DIAG_K,
+; 2/3/3: το βήμα όπου ο δακτύλιος ξεφεύγει. HL += 1. Ως το βήμα 71 ήταν δύο
+; πίνακες και τέσσερις αναζητήσεις.
+crs_rk:
+        ld      b,a
+        add     a,2
+        ld      (hl),a
+        inc     hl
+        inc     hl
+        ld      a,b
+        cp      1                       ; CY μόνο για το S
+        ld      a,3
+        sbc     a,0
+        ld      (hl),a
+        dec     hl
         ret
 
 ; cr_diagdir — η κατεύθυνση από τα (cr_ux, cr_uy).
@@ -320,20 +271,16 @@ cr_diagdir:
         ; fall through
 
 ; cr_dir — A = uy, C = ux (και τα δύο -1, 0 ή 1) -> A = κατεύθυνση 0..7.
+; Χαλάει B, HL.
 cr_dir:
-        inc     a
         ld      b,a
         add     a,a
-        add     a,b                     ; (uy+1)*3
-        ld      b,a
-        ld      a,c
-        inc     a
         add     a,b
+        add     a,c                     ; 3uy + ux, -4..4
+        add     a,(cr_dtab + 4) & 255
         ld      l,a
-        ld      h,0
-        ld      de,cr_dtab
-        add     hl,de
-        ld      a,(hl)
+        ld      h,cr_dtab >> 8          ; >> και όχι / : ο rasm στρογγυλεύει
+        ld      a,(hl)                  ; το / (#23F5 / 256 = #24, στο uitest)
         ret
 
 ; cr_look — A = δείκτης, HL = πίνακας -> A = πίνακας[δείκτης].
@@ -349,12 +296,10 @@ cr_sgn:
         ld      c,0
         or      a
         ret     z
-        jp      p,crg_pos
+        ld      c,1                     ; ld, όχι inc: οι σημαίες είναι του A
+        ret     p
         ld      c,-1
         neg
-        ret
-crg_pos:
-        ld      c,1
         ret
 
 ; ---------------------------------------------------------------------------
@@ -385,13 +330,13 @@ cr_redraw:
         ld      a,(cr_from)
         ld      b,a
         ld      a,(cr_d0)
-        and     7
         ld      c,a
+        ld      e,a                     ; το dirty_push κρατά το E
         ld      a,DK_CONN
         call    dirty_push
         ld      a,(cr_n)
         cp      2
-        ld      a,(cr_d0)
+        ld      a,e
         jr      c,crr_last
         ld      a,(cr_d1)
 crr_last:
@@ -402,7 +347,7 @@ crr_last:
         ld      b,a
         ld      a,DK_CONN
         call    dirty_push
-        ld      a,(cr_d0)
+        ld      a,e
         rrca
         jr      c,crr_diag
         ; --- αξονικός: όλη η διαδρομή σε ένα ορθογώνιο ---
@@ -426,74 +371,60 @@ crr_pend:
 
 ; crr_rows — μία DK_CROW για κάθε σειρά της διαγωνίου που φαίνεται στο κάδρο.
 ;
-; Το πλακίδιο j έχει το σημείο πλέγματος (ux*j, uy*j) στη μέση του, πιάνει
-; τις στήλες ux*j - 1 και ux*j, και μισό tile πάνω και κάτω από τη γραμμή
-; uy*j. Αρα μια σειρά R = uy*v τη μοιράζονται τα πλακίδια v και v + uy, και
-; οι στήλες τους είναι ΤΡΕΙΣ: από ux*v - 1 για «\» (ux = uy), από ux*v - 2
-; για «/». Οι σειρές είναι l0 + 1, και η πρώτη έχει v = ka - 1 όταν η
-; διαγώνιος κατεβαίνει (uy > 0), v = ka όταν ανεβαίνει.
+; Τα δύο tiles του πλακιδίου j είναι οι δύο διαγώνιες γωνίες του τετραγώνου
+; 2x2 γύρω από το σημείο πλέγματος (ux*j, uy*j). Μια σειρά της διαγωνίου την
+; πατούν δύο διαδοχικά πλακίδια, και οι στήλες τους είναι ΤΡΕΙΣ: από τη στήλη
+; του πρώτου tile της σειράς στη σειρά tiles του cr_walk μείον ένα. Οι σειρές
+; είναι l0 + 1, όσα και τα tiles της διαγωνίου, και προχωρούν μαζί τους.
 crr_rows:
         call    crw_base
-        ld      a,(cr_uy)
-        rlca
-        and     1
-        xor     1                       ; 1 αν uy > 0
+        call    crw_dg                  ; B, C = το πρώτο tile, E = uy
+        dec     b                       ; τρεις στήλες, από την αριστερή
+crrw_bs:                                ; (το tests/test_link.py σβήνει το dec b)
+        ld      hl,(cr_btx)
+        ld      a,b
+        add     a,l
         ld      b,a
-        ld      a,(cr_ka)
-        sub     b
-        ld      (cr_j),a                ; v
+        ld      a,c
+        add     a,h
+        ld      c,a                     ; στον κόσμο
         ld      a,(cr_l0)
         inc     a
         ld      (cr_i),a
 crrw_lp:
-        ld      a,(cr_j)
-        ld      hl,cr_uy
-        call    cr_mulsg
-        ld      hl,cr_bty
-        add     a,(hl)
-        ld      c,a                     ; η σειρά, στον κόσμο
-        ld      a,(cr_j)
-        ld      hl,cr_ux
-        call    cr_mulsg
-        dec     a
-        ld      hl,cr_btx
-        add     a,(hl)
-        ld      b,a                     ; η πρώτη στήλη, στον κόσμο
-        ld      a,(cr_ux)
-        ld      hl,cr_uy
-        cp      (hl)
-        jr      z,crrw_bs
-        dec     b                       ; «/»: ένα tile αριστερότερα
-crrw_bs:
         ; ΜΟΝΟ Ο,ΤΙ ΦΑΙΝΕΤΑΙ. Μια σειρά έξω από το κάδρο θα την έκοβε ούτως ή
         ; άλλως το vr_clip, και μια μακριά διαγώνιος θα γέμιζε το δαχτυλίδι
         ; των 32. Αν η κάμερα κουνηθεί στο μεταξύ, ό,τι μπαίνει στο κάδρο το
         ; ζωγραφίζει ολόκληρο η λωρίδα του σκρολαρίσματος.
-        ld      a,(cam_ty)
-        neg
-        add     a,c
-        cp      VIEW_TH
-        jr      nc,crrw_nx
-        ld      a,(cam_tx)
-        neg
-        add     a,b
+        ld      hl,cam_tx
+        ld      a,b
+        sub     (hl)
         add     a,2                     ; τρεις στήλες: φαίνεται από το -2
         cp      VIEW_TW + 2
         jr      nc,crrw_nx
+        inc     hl                      ; cam_ty
+        ld      a,c
+        sub     (hl)
+        cp      VIEW_TH
+        jr      nc,crrw_nx
         ld      a,DK_CROW
-        call    dirty_push
+        call    dirty_push              ; κρατά B, C, E
         ld      hl,rv_pend
         inc     (hl)
 crrw_nx:
-        ld      hl,cr_j
-        inc     (hl)
+        ld      a,(cr_ux)
+        add     a,b
+        ld      b,a
+        ld      a,c
+        add     a,e
+        ld      c,a
         ld      hl,cr_i
         dec     (hl)
         jr      nz,crrw_lp
         ret
 
 ; crr_box — το περίγραμμα των tiles που περπατά η ρουτίνα (HL), χωρίς
-; περιθώριο, και view_rect πάνω του.
+; περιθώριο, και view_add πάνω του.
 crr_box:
         push    hl
         ld      hl,#00FF                ; min = +127, max = -128 (μετατοπισμένα)
@@ -503,23 +434,21 @@ crr_box:
         ld      (cr_cb),hl
         pop     hl
         call    crr_go
-        ld      a,(crr_x0)
+        ld      hl,(crr_x0)             ; L = min, H = max· η διαφορά τους δεν
+        ld      a,l                     ; θέλει πίσω τη μετατόπιση
         xor     #80
         ld      (vr_tx),a
-        ld      b,a
-        ld      a,(crr_x1)
-        xor     #80
+        ld      a,h
+        sub     l
         inc     a
-        sub     b
         ld      (vr_w),a
-        ld      a,(crr_y0)
+        ld      hl,(crr_y0)
+        ld      a,l
         xor     #80
         ld      (vr_ty),a
-        ld      b,a
-        ld      a,(crr_y1)
-        xor     #80
+        ld      a,h
+        sub     l
         inc     a
-        sub     b
         ld      (vr_h),a
         jp      view_add                ; ο διάδρομος μόνο προσθέτει
 crr_go:
@@ -559,83 +488,36 @@ crr_y1:     db 0
 ;
 ; Το διαγώνιο πλακίδιο πατά ΔΥΟ tiles, όχι τέσσερα: η γραμμή του περνά από τις
 ; δύο απέναντι γωνίες του τετραγώνου 2x2 που καλύπτει, και τα άλλα δύο μόνο τα
-; ακουμπά. Το ποια δύο εξαρτάται από το αν είναι «\» ή «/». Δύο διαδοχικά
-; μοιράζονται το ένα, οπότε μια διαγώνιος n βημάτων είναι n + 1 tiles.
+; ακουμπά. Δύο διαδοχικά μοιράζονται το ένα, οπότε μια διαγώνιος n βημάτων
+; είναι n + 1 tiles.
+;
+; ΚΑΘΕ TILE ΜΙΑ ΦΟΡΑ. Ως το βήμα 37 το κοινό tile περνούσε δύο φορές, και το
+; φάντασμα ζωγράφιζε το σημάδι του δύο φορές — η αναίρεση, που πάει μπροστά,
+; έγραφε τελευταίο το «φόντο» της δεύτερης εγγραφής, δηλαδή το πρώτο σημάδι,
+; και ο κέρσορας άφηνε ίχνος.
+;
+; ΚΑΙ ΕΙΝΑΙ ΜΙΑ ΕΥΘΕΙΑ (βήμα 72). Το «μπροστινό» tile του πλακιδίου j είναι το
+; «πίσω» του j + 1, άρα τα n + 1 tiles απέχουν κατά (ux, uy) το καθένα από το
+; προηγούμενο: η διαγώνιος περνά από το cr_line, όπως οι άξονες. Ως το βήμα 71
+; κάθε βήμα υπολόγιζε τα δύο tiles του πλακιδίου με δύο πολλαπλασιασμούς.
 ; ---------------------------------------------------------------------------
 cr_walk:
         call    crw_base
         ld      a,(cr_d0)
         rrca
-        jp      nc,crw_ax0              ; ζυγή κατεύθυνση = αξονικός
+        jr      nc,crw_ax0              ; ζυγή κατεύθυνση = αξονικός
         ; --- τρέξιμο 0: διαγώνιος ---
-        ld      a,(cr_ka)
-        ld      (cr_j),a
+        call    crw_dg
         ld      a,(cr_l0)
-        ld      (cr_i),a
-crw_dl:
-        ld      a,(cr_j)
-        ld      hl,cr_ux
-        call    cr_mulsg                ; A = ux * j
-        ld      (cr_lx),a
-        ld      a,(cr_j)
-        ld      hl,cr_uy
-        call    cr_mulsg
-        ld      (cr_ly),a
-        ; Τα δύο tiles: T1 = (lx - 1, y1), T2 = (lx, 2*ly - 1 - y1), με
-        ; y1 = ly - 1 για «\» (ux = uy) και ly για «/».
-        ld      a,(cr_ux)
-        ld      hl,cr_uy
-        cp      (hl)
-        ld      a,(cr_ly)
-        jr      nz,crw_slash
-        dec     a
-crw_slash:
-        ld      c,a                     ; y1
-        ld      a,(cr_ly)
-        add     a,a
-        dec     a
-        sub     c
-        ld      e,a                     ; y2
-        ld      a,(cr_lx)
-        ld      d,a                     ; x2
-        ld      b,a
-        dec     b                       ; x1
-        ; ΚΑΘΕ TILE ΜΙΑ ΦΟΡΑ. Δύο διαδοχικά πλακίδια μοιράζονται ένα tile:
-        ; το «μπροστινό» του j είναι το «πίσω» του j + 1. Ως το βήμα 37 το
-        ; περνούσαμε δύο φορές, και το φάντασμα ζωγράφιζε το σημάδι του δύο
-        ; φορές — η αναίρεση, που πάει μπροστά, έγραφε τελευταίο το «φόντο»
-        ; της δεύτερης εγγραφής, δηλαδή το πρώτο σημάδι, και ο κέρσορας άφηνε
-        ; ίχνος. Μπροστινό είναι το T2 όταν ux > 0, το T1 όταν ux < 0.
-        ld      a,(cr_ux)
-        or      a
-        jp      p,crw_fw
+        inc     a
+        call    cr_line
+        ld      a,c                     ; το τελευταίο tile, για τη στροφή:
+        sub     e                       ; το cr_line σταματά ένα βήμα μετά
+        ld      l,a
         ld      a,b
-        ld      b,d
-        ld      d,a
-        ld      a,c
-        ld      c,e
-        ld      e,a
-crw_fw:
-        ld      (crw_dy),de             ; E = y, D = x
-        ld      a,(cr_j)                ; (B, C) πίσω, (D, E) μπροστά
-        ld      hl,cr_ka
-        cp      (hl)
-        jr      nz,crw_front            ; το πίσω το πέρασε το προηγούμενο βήμα
-        push    de
-        call    cr_emit
-        pop     de
-crw_front:
-        ld      b,d
-        ld      c,e
-        call    cr_emit
-        ld      hl,(crw_dy)             ; το τελευταίο μπροστινό, για τη στροφή
+        sub     d
+        ld      h,a
         ld      (crw_ly),hl
-crw_dn:
-        ld      hl,cr_j
-        inc     (hl)
-        ld      hl,cr_i
-        dec     (hl)
-        jr      nz,crw_dl
         ld      a,(cr_n)
         cp      2
         ret     c
@@ -645,11 +527,18 @@ cr_walk1:
         and     3                       ; e και w είναι 2 και 6· n και s 0 και 4
         cp      2
         jr      nz,crw_v1
+; Ο οριζόντιος από τη στήλη ux*T - (ux > 0), στη σειρά uy*T, βήμα (ux, 0).
 crw_h1:
-        call    cr_c0
-        ld      b,a
+        ld      hl,cr_ux
         ld      a,(cr_dt)
-        ld      hl,cr_uy
+        ld      e,a
+        dec     a
+        ld      c,a
+        ld      d,(hl)
+        call    crw_oz
+        ld      b,a
+        inc     hl                      ; cr_uy
+        ld      a,e
         call    cr_mulsg
         ld      c,a
         ; ΟΤΑΝ Η ΔΙΑΓΩΝΙΟΣ ΑΝΕΒΑΙΝΕΙ, το ΠΡΩΤΟ tile του οριζόντιου είναι το
@@ -662,72 +551,87 @@ crw_h1:
         jr      z,crw_h1s
         ld      (crw_ly),bc             ; C -> crw_ly, B -> crw_lx
 crw_h1s:
-        ld      a,(cr_ux)
-        ld      d,a
         ld      e,0
         jr      crw_run1
+; Ο κάθετος από τη σειρά uy*(S-1) - (uy < 0), στη στήλη ux*S, βήμα (0, uy).
 crw_v1:
-        call    cr_r0
-        ld      c,a
+        ld      hl,cr_uy
         ld      a,(cr_ds)
-        ld      hl,cr_ux
+        ld      b,a
+        dec     a
+        ld      c,a
+        ld      e,(hl)
+        call    crw_oz
+        ld      c,a
+        dec     hl                      ; cr_ux
+        ld      a,b
         call    cr_mulsg
         ld      b,a
         ld      d,0
-        ld      a,(cr_uy)
-        ld      e,a
 crw_run1:
         ld      a,(cr_l1)
         jp      cr_line
 
 ; --- τρέξιμο 0 αξονικό: από το σημείο σύνδεσης, προς τα έξω ---------------
+; Από το ra (νότος, ανατολή) ή το -ra-1 (βορράς, δύση) στον άξονα της κίνησης,
+; 0 στον άλλον. Χωρίς το crw_oz: εδώ είναι ο ένας από τους δύο, και οι δύο
+; κλήσεις έκαναν τον αξονικό διάδρομο 8 µs πιο αργό από το βήμα 71.
 crw_ax0:
-        ld      a,(cr_d0)
-        and     3
-        cp      2
-        jr      z,crw_axh
-        ; κάθετος: r0 = ra (νότος) ή -ra-1 (βορράς)
+        ld      hl,(cr_ux)              ; L = ux, H = uy
+        ld      d,l
+        ld      e,h
+        ld      a,l
+        or      h                       ; ο άξονας: +1 ή -1
         ld      a,(cr_ra)
-        ld      hl,cr_uy
-        bit     7,(hl)
-        jr      z,crw_axv1
-        inc     a
-        neg
-crw_axv1:
-        ld      c,a
-        ld      b,0
-        ld      d,0
-        ld      a,(cr_uy)
-        ld      e,a
-        ld      a,(cr_l0)
-        jp      cr_line
-crw_axh:
-        ld      a,(cr_ra)
-        ld      hl,cr_ux
-        bit     7,(hl)
-        jr      z,crw_axh1
-        inc     a
-        neg
-crw_axh1:
-        ld      b,a
+        jp      p,crw_axp
+        cpl
+crw_axp:
+        ld      b,a                     ; οριζόντιος...
         ld      c,0
-        ld      a,(cr_ux)
-        ld      d,a
-        ld      e,0
+        inc     l
+        dec     l
+        jr      nz,crw_axr
+        ld      c,b                     ; ...ή κάθετος
+        ld      b,0
+crw_axr:
         ld      a,(cr_l0)
         jp      cr_line
+
+; crw_dg — το πρώτο tile της διαγωνίου, το «πίσω» του πλακιδίου ka:
+; B = ux*(ka-1) - (ux < 0), C = το ίδιο με το uy. D = ux, E = uy.
+crw_dg:
+        ld      hl,cr_ux
+        ld      a,(cr_ka)
+        dec     a
+        ld      c,a
+        ld      d,(hl)
+        call    crw_oz
+        ld      b,a
+        inc     hl                      ; cr_uy
+        ld      e,(hl)
+        call    crw_oz
+        ld      c,a
+        ret
+
+; crw_oz — (HL) = u (-1, 0, 1), C = k -> A = 0, k, ή ~k = -k-1.
+crw_oz:
+        ld      a,(hl)
+        or      a
+        ret     z
+        ld      a,c
+        ret     p
+        cpl
+        ret
 
 ; crw_base — η βάση των σχετικών συντεταγμένων: το tile του κέντρου του a.
 ; Και ξεχνά το τελευταίο tile της διαγωνίου (-128: δεν υπάρχει στον κόσμο).
 crw_base:
         ld      hl,#8080
         ld      (crw_ly),hl
-        ld      a,(cr_fx)
-        sra     a
-        ld      (cr_btx),a
-        ld      a,(cr_fy)
-        sra     a
-        ld      (cr_bty),a
+        ld      hl,(cr_fx)              ; L = cx, H = cy, σε μισά tiles
+        sra     l
+        sra     h
+        ld      (cr_btx),hl
         ret
 
 ; cr_line — A πλακίδια από το (B, C) με βήμα (D, E).
@@ -754,8 +658,9 @@ crl_lp:
 ;
 ; Ο ΟΡΙΖΟΝΤΙΟΣ ΤΗΣ ΣΤΡΟΦΗΣ ξεκινά ένα tile πίσω, πάνω στο τελευταίο διαγώνιο
 ; πλακίδιο, και όταν η διαγώνιος κατεβαίνει το δεύτερο tile του είναι το
-; τελευταίο της διαγωνίου· όταν ανεβαίνει, το πρώτο του (crw_h1). Δεύτερη
-; φορά δεν περνιέται (crw_lx).
+; τελευταίο της διαγωνίου· όταν ανεβαίνει, το πρώτο του (crw_h1). Το ίδιο το
+; πρώτο tile του κάθετου όταν η διαγώνιος πάει δυτικά. Δεύτερη φορά δεν
+; περνιέται (crw_lx).
 cr_emit:
         ld      a,(crw_lx)
         cp      b
@@ -764,10 +669,11 @@ cr_emit:
         cp      c
         ret     z
 cre_go:
-        ld      a,(cr_btx)
+        ld      hl,(cr_btx)
+        ld      a,l
         add     a,b
         ld      b,a
-        ld      a,(cr_bty)
+        ld      a,h
         add     a,c
         ld      c,a
         ld      hl,(cr_cb)
@@ -780,30 +686,27 @@ cr_mulsg:
         neg
         ret
 
-cr_radt:    db 2,3,4                    ; ακτίνα σε tiles ανά μέγεθος
-cr_kt:      db 2,3,3                    ; DIAG_K — το βήμα που ξεφεύγει ο δακτύλιος
 ; (uy+1)*3 + (ux+1) -> κατεύθυνση
 cr_dtab:    db 7,0,1
             db 6,255,2
             db 5,4,3
 
-cr_a:       db 0
-cr_b:       db 0
+; Τα δύο άκρα, μία εγγραφή τεσσάρων bytes το καθένα: θόλος, cx, cy, μέγεθος.
+cr_a:
 cr_from:    db 0
+cr_fx:      db 0
+cr_fy:      db 0
+cr_fs:      db 0
+cr_b:
 cr_to:      db 0
+cr_tx:      db 0
+cr_ty:      db 0
+cr_ts:      db 0
 cr_n:       db 0
 cr_d0:      db 0
 cr_l0:      db 0
 cr_d1:      db 0
 cr_l1:      db 0
-cr_pax:     db 0,0,0                    ; cx, cy, size του a
-cr_pbx:     db 0,0,0
-cr_fx:      db 0
-cr_fy:      db 0
-cr_fs:      db 0
-cr_tx:      db 0
-cr_ty:      db 0
-cr_ts:      db 0
 cr_ds:      db 0                        ; |Δx| σε tiles
 cr_dt:      db 0                        ; |Δy| σε tiles
 cr_ux:      db 0
@@ -814,15 +717,18 @@ cr_ka:      db 0
 cr_kb:      db 0
 cr_btx:     db 0
 cr_bty:     db 0
-cr_lx:      db 0
-cr_ly:      db 0
 cr_i:       db 0
-cr_j:       db 0
 cr_cb:      dw 0
-crw_ly:     db 0                        ; το τελευταίο μπροστινό διαγώνιο tile,
+crw_ly:     db 0                        ; το τελευταίο tile της διαγωνίου,
 crw_lx:     db 0                        ; σχετικό (y, x) — #80 = κανένα
-crw_dy:     db 0                        ; το μπροστινό του τρέχοντος βήματος
-crw_dx:     db 0
+
+        assert  cr_b == cr_a + 4 && cr_tx == cr_fx + 4 && cr_fy == cr_fx + 1
+        assert  cr_fx == cr_a + 1 && cr_ty == cr_tx + 1 && cr_ts == cr_tx + 2
+        assert  cr_l0 == cr_d0 + 1 && cr_d1 == cr_d0 + 2 && cr_l1 == cr_d0 + 3
+        assert  cr_dt == cr_ds + 1 && cr_uy == cr_ux + 1
+        assert  cr_rb == cr_ra + 1 && cr_ka == cr_ra + 2 && cr_kb == cr_ra + 3
+        assert  cr_bty == cr_btx + 1 && crw_lx == crw_ly + 1
+        assert  (cr_dtab & 255) + 8 < 256       ; cr_dir: ένα byte διεύθυνσης
 
 ; ---------------------------------------------------------------------------
 ; cr_check — περπατά τη διαδρομή και μετρά τα tiles που δεν επιτρέπονται.
@@ -831,14 +737,8 @@ crw_dx:     db 0
 cr_check:
         xor     a
         ld      (cr_bad),a
-        ld      (cr_ntile),a
         ld      hl,cr_cb_chk
-        ld      (cr_cb),hl
-        ld      bc,GA_PORT + PAGE_B4
-        out     (c),c
-        call    cr_walk
-        ld      bc,GA_PORT + PAGE_B1
-        out     (c),c
+        call    crw_b4
         ld      a,(cr_bad)
         ret
 
@@ -853,22 +753,20 @@ cr_check:
 ; διαγωνίου). Μέσα σε ένα αποτύπωμα δεν πατά τίποτε άλλο εκτός από τον ίδιο
 ; τον θόλο, οπότε εκεί δεν έχει τι να ελέγξει η κατοχή· το αν το πλακίδιο
 ; πέφτει πάνω στον δακτύλιο το αποφασίζει η γεωμετρία του cr_side.
+;
+; Εξω από τον κόσμο είναι ένα από τα δύο (B + 64, C + 64) με το bit 7: το
+; πρόσημο του OR τους τα πιάνει μαζί.
 cr_cb_chk:
-        ld      hl,cr_ntile
-        inc     (hl)
         ld      a,b
         add     a,64
-        bit     7,a
-        jr      nz,crk_bad              ; έξω από τον κόσμο
+        ld      e,a
         ld      a,c
         add     a,64
-        bit     7,a
-        jr      nz,crk_bad
-        push    bc
-        call    tile_addr
+        or      e
+        jp      m,crk_bad               ; έξω από τον κόσμο
+        call    tile_addr               ; κρατά τα BC
         ld      a,(hl)
-        call    bd_ok
-        pop     bc
+        call    bd_ok                   ; κι αυτό
         ret     z
         ld      hl,cr_fx
         call    crk_in
@@ -883,15 +781,15 @@ crk_bad:
 
 ; crk_in — HL -> (cx, cy, size) ενός άκρου, κέντρο σε μισά tiles. CY αν το
 ; tile (B, C) είναι μέσα στο αποτύπωμά του: B - (cx/2 - r) < 2r, χωρίς
-; πρόσημο, και το ίδιο για το C. Χαλάει A, DE, HL.
+; πρόσημο, και το ίδιο για το C. Η ακτίνα σε tiles είναι size + 2. Χαλάει
+; A, DE, HL.
 crk_in:
-        push    hl
         inc     hl
         inc     hl
         ld      a,(hl)
-        ld      hl,cr_radt
-        call    cr_look                 ; A = r σε tiles
-        pop     hl
+        add     a,2                     ; r
+        dec     hl
+        dec     hl
         ld      e,a
         add     a,a
         ld      d,a                     ; 2r
@@ -921,6 +819,8 @@ crk_in:
 ; ---------------------------------------------------------------------------
 cr_stamp:
         ld      hl,cr_cb_stp
+; crw_b4 — HL = callback: η διαδρομή με την τράπεζα 4 στο παράθυρο.
+crw_b4:
         ld      (cr_cb),hl
         ld      bc,GA_PORT + PAGE_B4
         out     (c),c
@@ -932,68 +832,66 @@ cr_stamp:
 cr_cb_stp:
         ld      a,b
         add     a,64
-        bit     7,a
-        ret     nz
+        ld      e,a
         ld      a,c
         add     a,64
-        bit     7,a
-        ret     nz
-        push    bc
+        or      e
+        ret     m                       ; έξω από τον κόσμο
         call    tile_addr
-        ld      a,(hl)
-        or      W_OCC_STRUCT
-        ld      (hl),a
-        pop     bc
+        set     4,(hl)                  ; W_OCC_STRUCT
         ret
 
+        assert  W_OCC_STRUCT == 1 << 4
+
 ; ---------------------------------------------------------------------------
-; cr_cost — το συνολικό κόστος σε (cr_metal, cr_biop), 16 bit.
+; cr_cost — το συνολικό κόστος σε (cr_metal, cr_biop), 16 bit. Out: HL =
+; (cr_metal).
 ; Ο κατάλογος δίνει την τιμή ΑΝΑ ΠΛΑΚΙΔΙΟ: ένας διάδρομος δέκα πλακιδίων
 ; κοστίζει δέκα φορές όσο ένας του ενός, που είναι και το μόνο που βγάζει
 ; νόημα όταν το μήκος το διαλέγει η γεωμετρία και όχι ο παίκτης.
 ; ---------------------------------------------------------------------------
 cr_cost:
-        ld      a,(cr_l0)
-        ld      b,a
+        ld      hl,cr_l0
         ld      a,(cr_n)
         cp      2
+        ld      a,(hl)
         jr      c,crc_one
-        ld      a,(cr_l1)
-        add     a,b
-        ld      b,a
+        inc     hl
+        inc     hl                      ; cr_l1
+        add     a,(hl)
 crc_one:
-        ld      a,b
-        ld      (cr_ntile),a
-        ld      a,(bd_metal)
-        ld      c,a
-        ld      a,(cr_ntile)
+        ld      hl,(bd_metal)           ; L = μέταλλο, H = βιοπλαστικό
+        push    hl
+        ld      c,h
+        call    ob_mul                  ; HL = A * C· το A μένει (οκτώ rlca)
+        ld      (cr_biop),hl
+        pop     hl
+        ld      c,l
         call    ob_mul
         ld      (cr_metal),hl
-        ld      a,(bd_biop)
-        ld      c,a
-        ld      a,(cr_ntile)
-        call    ob_mul
-        ld      (cr_biop),hl
         ret
 
-; cr_afford — Z αν φτάνουν τα υλικά για ολόκληρη τη διαδρομή.
+        assert  bd_biop == bd_metal + 1
+
+; cr_afford — Z και A = 0 αν φτάνουν τα υλικά για ολόκληρη τη διαδρομή, NZ
+; και A = 1 αν όχι. Το μέταλλο πρώτα, όπως ως το βήμα 71: το κόστος του είναι
+; ήδη στο HL, και ένα «λείπει» βγαίνει χωρίς να κοιτάξει το βιοπλαστικό.
 cr_afford:
         call    cr_cost
+        ex      de,hl
         ld      hl,(EC_STOCK + S_METAL*2)
-        ld      de,(cr_metal)
         or      a
         sbc     hl,de
         jr      c,cra_no
         ld      hl,(EC_STOCK + S_BIOPL*2)
         ld      de,(cr_biop)
-        or      a
-        sbc     hl,de
+        sbc     hl,de                   ; NC από πριν
         jr      c,cra_no
         xor     a
         ret
 cra_no:
-        or      a
         ld      a,1
+        or      a
         ret
 
 ; ---------------------------------------------------------------------------
@@ -1018,8 +916,8 @@ cr_commit:
         ld      bc,GA_PORT + PAGE_B6
         out     (c),c
         ld      hl,G_corr_tbl + C_CSTATE
+        ld      de,CORR_REC
         ld      b,MAX_CORR
-        ld      c,0
 crm_find:
         ld      a,(hl)
         or      a
@@ -1031,57 +929,33 @@ crm_find:
         dec     a
         jr      z,crm_next              ; τελευταία θέση — δεν χωρά ζευγάρι
         push    hl
-        ld      de,CORR_REC
         add     hl,de
         ld      a,(hl)
         pop     hl
         or      a
         jr      z,crm_got
 crm_next:
-        ld      de,CORR_REC
         add     hl,de
-        inc     c
         djnz    crm_find
         ld      bc,GA_PORT + PAGE_B1
         out     (c),c
         ld      a,1
         ret
 crm_got:
-        ; HL δείχνει στο C_CSTATE της πρώτης άδειας· πίσω στην αρχή της
-        ld      de,C_CSTATE
-        or      a
-        sbc     hl,de
-        push    hl
+        ld      de,(cr_d0)              ; E = d0, D = l0
         ld      a,(cr_from)
-        ld      (hl),a
-        inc     hl
+        ld      c,a
         ld      a,(cr_to)
-        ld      (hl),a
-        inc     hl
-        ld      a,(cr_d0)
-        ld      (hl),a
-        inc     hl
-        ld      a,(cr_l0)
-        ld      (hl),a
-        inc     hl
-        ld      (hl),DS_ACTIVE
-        pop     hl
+        ld      b,a
+        call    crm_put
         ld      a,(cr_n)
         cp      2
         jr      c,crm_done
-        ld      de,CORR_REC
+        ld      de,CORR_REC + C_CSTATE
         add     hl,de
-        ld      (hl),255                ; C_A = 255: συνέχεια της προηγούμενης
-        inc     hl
-        ld      (hl),255
-        inc     hl
-        ld      a,(cr_d1)
-        ld      (hl),a
-        inc     hl
-        ld      a,(cr_l1)
-        ld      (hl),a
-        inc     hl
-        ld      (hl),DS_ACTIVE
+        ld      de,(cr_d1)              ; E = d1, D = l1
+        ld      bc,#FFFF                ; C_A = 255: συνέχεια της προηγούμενης
+        call    crm_put
 crm_done:
         ld      bc,GA_PORT + PAGE_B1
         out     (c),c
@@ -1093,11 +967,27 @@ crm_done:
         xor     a
         ret
 
+; crm_put — HL -> C_CSTATE μιας εγγραφής· C = a, B = b, E = κατεύθυνση,
+; D = μήκος. Γράφει από το τέλος προς την αρχή· HL -> η αρχή της.
+crm_put:
+        ld      (hl),DS_ACTIVE
+        dec     hl
+        ld      (hl),d
+        dec     hl
+        ld      (hl),e
+        dec     hl
+        ld      (hl),b
+        dec     hl
+        ld      (hl),c
+        ret
+
+        assert  C_A == 0 && C_B == 1 && C_DIR == 2 && C_LEN == 3 && C_CSTATE == 4
+
 ; cr_pay — αφαιρεί το κόστος ολόκληρης της διαδρομής.
 cr_pay:
         call    cr_cost
+        ex      de,hl
         ld      hl,(EC_STOCK + S_METAL*2)
-        ld      de,(cr_metal)
         or      a
         sbc     hl,de
         ld      (EC_STOCK + S_METAL*2),hl
@@ -1117,40 +1007,37 @@ cr_link:
         ld      b,a
         ld      a,(cr_to)
         ld      c,a
-        call    cr_edge
-        ld      a,(cr_to)
-        ld      b,a
-        ld      a,(cr_from)
+        call    cr_edge                 ; κρατά τα BC
+        ld      a,b
+        ld      b,c
         ld      c,a
         call    cr_edge
         ; Οχι rt_begin: αυτό μόνο μηδενίζει τον μετρητή πηγών. Το rt_dirty
         ; είναι που κάνει τον τροχό να ΤΡΕΞΕΙ την ανοικοδόμηση.
         jp      rt_mark
 
-; cr_edge — προσθέτει τον C στους γείτονες του B, αν χωράει.
+; cr_edge — προσθέτει τον C στους γείτονες του B, αν χωράει. Κρατά τα BC.
 cr_edge:
         ld      h,NODEPG
         ld      l,b
         ld      a,(hl)
         cp      MAX_DEGREE
         ret     nc
-        push    af
         inc     (hl)
         ld      l,b
         ld      h,0
         add     hl,hl
         add     hl,hl
         add     hl,hl
+        add     a,l                     ; ο βαθμός < 8: χωρά στα τρία bits
+        ld      l,a
         ld      de,G_node_adj
-        add     hl,de
-        pop     af
-        ld      e,a
-        ld      d,0
         add     hl,de
         ld      (hl),c
         ret
 
+        assert  MAX_DEGREE <= 8
+
 cr_bad:     db 0
-cr_ntile:   db 0
 cr_metal:   dw 0
 cr_biop:    dw 0
