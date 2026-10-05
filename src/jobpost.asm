@@ -8,27 +8,32 @@
 ; μετεωρίτη αλλά όχι το build.asm, της διεπαφής (tests/uitest.asm) το
 ; ανάποδο — στο jobs.asm ή στο build.asm, ένα από τα δύο δεν θα έβρισκε τη
 ; ρουτίνα. Το περιλαμβάνουν και τα τρία.
+;
+; ΤΟ inc (hl) ΕΙΝΑΙ ΚΑΙ ΕΡΩΤΗΣΗ ΚΑΙ ΑΠΑΝΤΗΣΗ (βήμα 70, DESIGN §6.7): μια ελεύθερη
+; θέση είναι NO_JOB = 255, και το 255 + 1 είναι 0 = J_BUILD, ήδη γραμμένο. Μια
+; πιασμένη το ξαναπαίρνει πίσω με dec (hl) — οι διακοπές είναι πάντα κλειστές.
+; Ο κόμβος μένει στο A ως το τέλος, το D = 0 είναι το τελευταίο byte.
 ; ---------------------------------------------------------------------------
 jb_post_build:
-        ld      c,a
         ld      hl,G_job_tbl
+        ld      de,JOB_REC
         ld      b,MAX_JOB
 jpb_lp:
-        ld      a,(hl)
-        cp      NO_JOB
+        inc     (hl)                    ; NO_JOB + 1 = J_BUILD: Z = ελεύθερη
         jr      z,jpb_got
-        ld      de,JOB_REC
+        dec     (hl)                    ; πιασμένη: όπως ήταν
         add     hl,de
         djnz    jpb_lp
         ret
 jpb_got:
-        ld      (hl),J_BUILD
-        inc     hl
-        ld      (hl),c
+        inc     hl                      ; το είδος είναι ήδη J_BUILD
+        ld      (hl),a                  ; ο κόμβος
         inc     hl
         ld      (hl),255                ; αδιάθετη
         inc     hl
         ld      (hl),5                  ; προτεραιότητα, από το job_prio
         inc     hl
-        ld      (hl),0
+        ld      (hl),d                  ; 0
         ret
+
+        assert  NO_JOB == 255 && J_BUILD == 0 && JOB_REC < 256
