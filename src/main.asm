@@ -98,6 +98,10 @@ ml_nohud:
         call    ui_tick
         jp      main_loop
 
+        ; Εδώ, και όχι με τα άλλα: ο πίνακας του in_read και το key_now θέλουν
+        ; μία σελίδα, και εδώ δεν τα σπρώχνει τίποτα (src/input.asm, βήμα 66).
+        include "input.asm"
+
 ml_hudw:    db 1                    ; αντίστροφη μέτρηση για το ρολόι του HUD
 
 ; ml_boom — HL = mt_boom. Ο ήχος της κρούσης παίζει από εδώ και όχι από τον
@@ -217,7 +221,6 @@ ml_hud:
         include "hud.asm"
         include "view.asm"
         include "ghost.asm"
-        include "input.asm"
         include "graph.asm"
         include "ui.asm"
         include "fit.asm"               ; βήμα 45: ο εξοπλισμός, μία κατάσταση του ui

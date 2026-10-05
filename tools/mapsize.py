@@ -25,13 +25,26 @@ TMP = "zz_sizemap.asm"                  # μέσα στο src/: τα include ε�
 def build_map():
     text = open(os.path.join(SRC, "main.asm"), encoding="utf-8").read()
     out, names = [], []
+    # Οι δείκτες με τη σειρά του πηγαίου: σε ίδια διεύθυνση κερδίζει ο
+    # τελευταίος (τα equ-μόνο αρχεία δεν πιάνουν χώρο, ο επόμενος ναι).
+    main = "main.asm (ο βρόχος)"
     for line in text.splitlines(True):
         m = re.match(r'\s*include\s+"([^"]+)"', line)
         if m:
             n = re.sub(r"\W", "_", os.path.basename(m.group(1)))
-            names.append(n)
+            names.append((f"ZZ_SZ_{n.upper()}", n))
             out.append(f"zz_sz_{n}:\n")
         out.append(line)
+        if m:
+            # ...και ένας ΜΕΤΑ: ό,τι ακολουθεί ως το επόμενο include είναι του
+            # main.asm. Από το βήμα 66 το input.asm μπαίνει ανάμεσα στον βρόχο
+            # και στις ρουτίνες του, και χωρίς αυτόν οι δεύτερες μετρούσαν στο
+            # input.asm.
+            names.append((f"ZZ_SZM_{len(names)}", main))
+            out.append(f"zz_szm_{len(names) - 1}:\n")
+        e = re.match(r"(zz_bank0_end|zz_page2_end):", line)
+        if e:
+            names.append((e.group(1).upper(), "--"))
     path = os.path.join(SRC, TMP)
     open(path, "w", encoding="utf-8").write("".join(out))
     try:
@@ -54,18 +67,17 @@ def build_map():
 
 def main():
     names, sym = build_map()
-    marks = [(sym[f"ZZ_SZ_{n.upper()}"], n) for n in names
-             if f"ZZ_SZ_{n.upper()}" in sym]
-    marks.append((sym["ZZ_BANK0_END"], "-- τέλος τράπεζας 0 --"))
-    marks.append((sym["START"], "main.asm (ο βρόχος)"))
-    marks.append((sym["ZZ_PAGE2_END"], "-- τέλος κώδικα τράπεζας 2 --"))
+    marks = [(sym[lab], k, n) for k, (lab, n) in enumerate(names) if lab in sym]
     marks.sort()
-    rows = []
-    for (a, n), (b, _) in zip(marks, marks[1:]):
+    rows = {}
+    for (a, _, n), (b, _, _) in zip(marks, marks[1:]):
         # Οι δείκτες «τέλος» δεν είναι αρχή αρθρώματος: το διάστημα από εκεί ως
         # τον επόμενο δείκτη είναι το ΚΕΝΟ ανάμεσα σε δύο περιοχές μνήμης.
-        if b > a and not n.startswith("--"):
-            rows.append((b - a, a, n))
+        # Το main.asm είναι κομμάτια: ένα άθροισμα, με τη διεύθυνση του πρώτου.
+        if b > a and n != "--":
+            size, a0 = rows.get(n, (0, a))
+            rows[n] = (size + b - a, min(a, a0))
+    rows = [(size, a, n) for n, (size, a) in rows.items()]
     # Ο τίτλος έλεγε #3F80 από την εποχή που εκεί καθόταν το επίμετρο· το
     # πραγματικό ταβάνι είναι το TEST_FLOOR του tools/mkdsk.py (#3EC0).
     for lo, hi, title in ((0x0100, 0x4000, "ΤΡΑΠΕΖΑ 0 (#0100-#3EC0)"),
