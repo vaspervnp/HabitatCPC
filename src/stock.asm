@@ -24,28 +24,28 @@ ec_stock_ptr:
 ; κάθε σημείο που παράγει, με το A και το DE φορτωμένα δύο φορές.
 ec_make:
         ld      hl,EC_PRODM
-        ld      b,a
+        ld      c,a                     ; το απόθεμα, για το ec_add_stock
         cp      8
         jr      c,ecm_lo
         inc     hl                      ; τα αποθέματα 8-13 στο πάνω byte
-        sub     8
 ecm_lo:
-        ld      c,1
-        inc     a
-        jr      ecm_e
+        and     7
+        ld      b,a
+        inc     b
+        ld      a,#80
 ecm_sh:
-        sla     c
-ecm_e:
-        dec     a
-        jr      nz,ecm_sh               ; C = 1 << A
-        ld      a,c
+        rlca
+        djnz    ecm_sh                  ; A = 1 << (απόθεμα & 7): το #80 n+1 φορές
         or      (hl)
         ld      (hl),a
-        ld      a,b
+        ld      a,c
         ; fall through
 
 ; ec_add_stock — A = απόθεμα, DE = ποσότητα (16 bit: οι αντλίες ξεπερνούν
 ; εύκολα το 255). Με ταβάνι EC_CAP. Χαλάει AF, BC, DE, HL.
+; Το άθροισμα δεν περνά ποτέ το 65.535 (το απόθεμα είναι ως το EC_CAP, η
+; μεγαλύτερη ποσότητα οι αντλίες και τα ορυχεία ενός κύκλου, εκατοντάδες), άρα
+; το add hl,bc αφήνει CY = 0 και το sbc δεν θέλει `or a` πριν (βήμα 69).
 ec_add_stock:
         ex      de,hl                   ; HL = ποσότητα
         call    ec_stock_ptr
@@ -54,9 +54,8 @@ ec_add_stock:
         inc     hl
         ld      b,(hl)                  ; BC = απόθεμα
         ex      de,hl                   ; DE -> το πάνω byte του
-        add     hl,bc
+        add     hl,bc                   ; CY = 0: απόθεμα + ποσότητα < 65.536
         ld      bc,EC_CAP
-        or      a
         sbc     hl,bc
         add     hl,bc                   ; CY αν κάτω από το ταβάνι
         jr      c,eas_st
