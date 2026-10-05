@@ -342,7 +342,7 @@ must always be reachable is in bank 0 (`&0000–&3FFF`) or bank 2 (`&8000–&BFF
 | window | 5 | **next-hop matrix** `NEXTHOP[96][128]` 12,288 · **object index** ≤ 960 ([§8.4](#84-object-pass-and-draw-order)) | 16,384 | 3,136 |
 | window | 6 | `flip_mode0` 256 · dome+ring `nw` quadrants 7,424 · slot figures 3,456 · entity tables 4,832 ([§6.1](#61-entities)) · figure cache 512 | 16,356 | 28 |
 | window | 7 | external structures 11,264 · plants 1,584 · `plant_ptr` 24 · text 1,024 (1,017 used) · **font 1,536** (was the `audio` reservation, milestone 33) | 15,432 | 952, 7 of them in the text block |
-| `&8000–&BFFF` | 2 | graphics, flat 9,592 (font gone to bank 7) · ghost undo log 1,160 · code 5,024 ([§4.3](#43-bank-2-flat-again)) | 16,270 | **608** |
+| `&8000–&BFFF` | 2 | graphics, flat 9,592 (font gone to bank 7) · ghost undo log 1,160 · code 4,744 ([§4.3](#43-bank-2-flat-again)) | 16,270 | **888** |
 | `&C000–&FFFF` | 3 | play-area screen | 16,384 | 0 |
 
 Every bank is spoken for. The two matrices in banks 1 and 5 are the clearest answer
@@ -564,7 +564,9 @@ milestone 71 another 29 out of the main loop itself, and every round of it got f
 ([§7.1](#smaller-and-faster-at-milestone-71)): **3,122**. Bank 2's code area, at 117
 since milestone 59, went to **608** at milestone 72, when the corridor router lost 491
 of its 1,672 bytes and got faster everywhere
-([§9.4](#smaller-and-faster-at-milestone-72)).
+([§9.4](#smaller-and-faster-at-milestone-72)), and to **888** at milestone 73, when
+the build flow lost 280 of its 1,068 and the check under the cursor got twice as fast
+([§9.3](#smaller-and-faster-at-milestone-73)).
 
 A first attempt at the same measurement said the log runs to 1,600 with nothing but
 the cursor on screen. That was the *measurement* breaking the thing it measured:
@@ -2107,7 +2109,8 @@ since, so both columns here were measured now.)
   - It is taken at the footprint's corner. Moving back two rows and two columns is
     −258, and each row after that is 128 bytes further.
   - The old loop called `tile_addr` for every row and kept its place in `bd_cy` and
-    `bd_row`, which are `build.asm`'s variables. `bd_res` no longer touches them.
+    `bd_row`, which were `build.asm`'s variables. `bd_res` no longer touches them
+    (and since milestone 73 they no longer exist).
   - The subtraction cannot leave the plane, because the scan stays inside ±63 (see
     above).
 - **The kind and the parameter are read as one word.** `bd_param` follows `bd_kind`
@@ -4729,6 +4732,178 @@ log. It has two negatives:
 It catches all twenty-two faults. With the old `ghost.asm`, every check passes
 except the two patches, which look for instructions the old code did not have.
 
+#### Smaller and faster, at milestone 73
+
+`src/build.asm` went from 1,068 bytes to **788**, and bank 2's code area from 608
+bytes free to **888**. Every routine got faster or stayed the same in every case the
+check tried. The one that matters is `bd_check`, which runs on every step of the
+cursor in PLACE: a large dome's footprint went from 5.5 ms to **2.1 ms**, a 3 × 3
+structure's from 1.2 to 0.6.
+
+- **`bd_ok` is six instructions, 8 bytes instead of 25.** A tile is allowed when
+  `byte & #37` is 0, 1 or 7: no occupancy, and ground, dust or foundation. `and`,
+  `ret z`, `dec a`, `ret z`, `cp 6`, `ret`. It leaves every register but `A` alone. The old one saved `BC` and set `A`
+  to 0 or 1, which no caller reads — they all test `Z`.
+- **So `bd_check` stopped saving registers around it.** Every tile paid three `push`
+  and three `pop`. The bad tiles are now counted in `C`, and `bd_nbad` is gone. Each
+  row starts 128 bytes after the last one, the layout `tile_addr` already uses, so
+  the check calls `tile_addr` once instead of once a row. The commit's stamp does the
+  same.
+- **`bd_rect` works in 8 bits.** The centre plus 128 is an unsigned byte. Its
+  difference from the width keeps a ninth bit in the borrow, and `rra` halves all
+  nine at once. The result is the first tile plus 64, which is inside the world
+  exactly when it is at most 128 − W, one unsigned `cp`. Until milestone 72 this was
+  16 bits through `ob_sext`, and a `bd_range` with two subtractions of its own. The x
+  axis still returns before it touches `bd_ty`, as before, because `ui_rect` reads
+  the pair either way.
+- **`bd_link` walks the dome table with a pointer.** It used to pay an
+  `ob_dome_live` and an `ob_domeadr`, two multiplications by 24, for every one of
+  the 64 slots. It now runs straight after the record is written, while bank 6 is
+  still in the window, and its "itself" check after the loop is gone: the loop
+  already skips the new dome.
+- **Both records come from one routine** (`bdk_rec`): `cx`, `cy`, the parameter, one
+  byte (the room or the structure's size), `DS_BUILDING`, two zeros. The search that
+  found the free slot leaves `HL` on its state byte, so the record starts four bytes
+  back instead of at a second address calculation.
+- **The commit pages less.** Bank 6 for the search, the record and the link; bank 4
+  for the stamp; then bank 1. Payment, the edges, the Build job and `ob_touch_n`
+  live in banks 0 and 2 and do not care. `bd_stamp`, `bd_link` and `bd_postjob` had
+  one caller each and are now inside `bd_commit`. `jb_post_build` keeps `A`, so the
+  node is loaded once for it and for `ob_touch_n`.
+- **`bd_afford` and `bd_stock_pay` load both costs with one `ld de,(bd_metal)`** and
+  take each from its stock a byte at a time, instead of building `DE` and an
+  `sbc hl,de` per material. `bd_afford` turns the last borrow into its 0 or 1 with
+  `sbc a,a` · `neg`.
+- **`bd_select`** tests the parity with `rra` instead of `and 1`, reaches `cur_hy`
+  with `inc hl`, and works out the structure's size with `cp` · `sbc a,a` · `and 2`.
+- **Six variables are gone:** `bd_item`, which was written and never read; `bd_span`,
+  which was neither; `bd_cy`, `bd_row`, `bd_nbad` and `bl_i`.
+
+[§6.5](#smaller-and-faster-at-milestone-67)'s table for the whole of `bd_check`,
+measured again the same way, through a probe with interrupts off:
+
+| Placement | Milestone 72 | Milestone 73 |
+|---|---|---|
+| a 3×3 that needs no material | 1,221 µs | **599 µs** |
+| the pump at a shore, the water in the first row of the scan | 1,291 µs | **669 µs** |
+| the pump on dry ground, 7×7 with nothing in it | 1,987 µs | **1,365 µs** |
+| the mine with no vein, 8×8 | 2,761 µs | **1,778 µs** |
+
+The check was a script kept out of the repository, on `build/main.sna`. It called
+every routine directly and recorded `A`, `F` and every byte that changed in all eight
+banks. Bank 2's code area moved by 280 bytes, so a byte there was keyed by the label
+before it and the offset from it. It made 2,378 calls:
+
+- `bd_ok` for all 256 bytes;
+- `bd_select` 200 times, for every item and two that do not exist, at every cursor
+  parity;
+- `bd_rect` 400 times, with every centre and size from 1 to 8;
+- `bd_check` 400 times, on random planes, near the edges and outside the world;
+- `bd_afford` and `bd_stock_pay` 400 times each, around the cost and with random
+  16-bit stocks;
+- `bd_commit` 400 times, on random dome, structure and job tables. These included
+  full tables and 27 first buildings with no dome to join;
+- `bd_redraw` 126 times, after a commit, with the camera near the site.
+
+All 2,378 were identical. The flags of `bd_ok` and `bd_afford` were compared as `Z`
+only, because the old routines' other flags and `bd_ok`'s `A` were never read.
+
+| | Milestone 72 | Milestone 73 | Faster in |
+|---|---|---|---|
+| `bd_ok` | 13,528 µs | 10,936 µs (−19 %) | 256 of 256 |
+| `bd_select` | 37,724 | 35,747 (−5 %) | 165 of 200; the other 35 are the items that do not exist, the same |
+| `bd_rect` | 85,472 | 35,688 (−58 %) | 400 of 400 |
+| `bd_check` | 715,170 | 346,238 (−52 %) | 400 of 400 |
+| `bd_afford` | 26,600 | 24,039 (−10 %) | 400 of 400 |
+| `bd_stock_pay` | 30,400 | 28,000 (−8 %) | 400 of 400 |
+| `bd_commit` | 3,454,245 | 1,526,005 (−56 %) | 400 of 400 |
+| `bd_redraw` | 1,915,451 | 1,897,516 (−1 %) | 126 of 126 |
+
+One commit was 2 µs *slower* at first: with the dome table full, the search fell into
+a `jr` to the shared failure exit. The failure now follows the dome search, and the
+structure search, whose loop got 10 T-states a slot faster, does the jumping.
+
+**A trap the rewrite hit:** an `assert cur_hy == cur_hx + 1` in `build.asm` assembled
+in `main.sna` and failed in the uitest build, where `ui.asm` comes after `build.asm`
+and the labels are not known yet. It was redundant anyway — `ui.asm` asserts the
+same pair, and `view.asm` the `vr_*` pairs `bd_redraw` now writes as words — so both
+asserts stayed where the labels are. Like milestone 67's lost sign
+([§6.5](#smaller-and-faster-at-milestone-67)) and milestone 72's rounded `/ 256`
+([§9.4](#smaller-and-faster-at-milestone-72)), it showed up in only one of the two
+builds: the uitest-based tests have to run too.
+
+**What the planted faults found.** Thirty-five faults were run against the script and
+six tests: `test_build.py`, `test_terrain.py`, `test_reveal.py`, `test_map.py`,
+`test_game.py` and `test_link.py`.
+
+- **The script caught thirty-four.** One of them only by never finishing: a
+  structure's redraw box with the width taken from `bd_tx` ran past three seconds. It
+  missed `bd_check` clearing seven rows of `bd_bad` instead of eight. Every case
+  started from the same snapshot, and nothing in it had ever left the eighth row
+  dirty.
+- **The six tests together caught twenty.** `test_reveal.py` caught thirteen,
+  `test_game.py` eleven, `test_build.py` nine, `test_link.py` six, `test_map.py` five
+  and `test_terrain.py` none. They let fifteen through:
+  - all three in `bd_select`: the cursor not snapped to the footprint's parity in x,
+    the parity tested with `and`, and a mine given size 2;
+  - a dome's redraw returning `Z`, so the ghost would not wait for its rows; and the
+    structure's box with the wrong width;
+  - three in `bd_rect`: the east edge one tile short, `bd_ty` overwritten when x is
+    out, and the ninth bit dropped;
+  - three in `bd_check`: seven rows cleared, a footprint outside the world allowed,
+    and the row carry lost where a row crosses a page;
+  - both in `bd_afford`: Bioplastic ignored, and `A` = 255 for "no";
+  - the payment losing its borrow;
+  - the stamp keeping bit 3.
+
+  The tests build through the interface at a handful of places, so the world's
+  edges, odd parities and empty tables are where they do not go.
+- **`tests/test_place.py` catches all thirty-five.** Its first version missed the
+  stamp keeping bit 3: none of its planes had a byte with bit 3 set under a
+  footprint. They do now.
+
+`tests/test_place.py` calls `build.asm`'s entry points directly in `main.sna`, against
+rules written from the prose:
+
+- **`bd_ok`** for all 256 bytes.
+- **`bd_select`** for every item and two that do not exist, at random cursors: the
+  record copied, the cursor on the footprint's parity, the structure's size.
+- **`bd_rect`** at every centre and size from 1 to 8. When x is out, `bd_ty` must be
+  what it was.
+- **`bd_check`** on random planes with a mountain rim at |x|, |y| ≥ 62, as the
+  generator leaves it, so that `bd_res`'s margin stays on the plane. Cursors are near
+  the edges, outside the world, and anywhere. `bd_bad` and `bd_nres` start from
+  garbage. The material is `test_terrain.py`'s model.
+- **`bd_afford` and `bd_stock_pay`** around the cost, and with random 16-bit stocks.
+- **300 commits** on random dome, structure, graph and job tables, full ones and
+  first buildings included. The rule covers the slot and its record, the stamp, the
+  payment, the edges to the nearest live dome (in 8 bits, as the Z80 does it, ties to
+  the first), the Build job and `ob_idx` — or 255 and nothing at all.
+- **200 redraws** with stubs on `dirty_push`, `vr_tiles`, `ob_struct` and
+  `ob_clip_full`. A dome must push one `DK_SITE` per row and return `NZ`. A structure
+  must fill `vr_*` and, if visible, draw itself.
+- **Time**, in ten cases, none slower than this milestone measured:
+  - `bd_check` for 4 × 4, 6 × 6, 8 × 8 and 3 × 3 on clear ground, for a mine finding
+    its vein, and outside the world;
+  - `bd_rect`, and `bd_afford`;
+  - a dome's and a structure's commit into the last free slot.
+
+  With milestone 72's `build.asm` all ten fail.
+- **Seven negatives:**
+  - foundation refused;
+  - the first tile one to the right;
+  - the check's next row +64;
+  - seven `NO_MACH`;
+  - the link counting the new dome itself;
+  - `A` = 255 from `bd_afford`;
+  - a dome's redraw returning `Z`.
+
+**A contract the test made visible:** `bd_commit` stamps the footprint at `bd_tx`,
+`bd_ty`, which the check left there — it does not work them out again. The interface
+always validates before it commits, so this holds. A test that calls the commit on its
+own has to set them first, and the first draft of this one did not: it stamped a
+structure at (0, 0).
+
 ### 9.4 Corridor routing
 
 The art gives four corridor sprites — `corr_h`, `corr_v`, `corr_dr`, `corr_dl` — so
@@ -5583,6 +5758,7 @@ tests in this document runnable rather than aspirational:
 | Stocks | `ec_stock_ptr`, `ec_add_stock` and `ec_make` in the game's own binary for all fourteen stocks, 336 calls against the rule — the cap, the `EC_PRODM` bit, the other stocks untouched; `ec_make` for every stock no slower than milestone 69 measured it — three negatives (`test_stock.py`) |
 | Water and ore near a pump or a mine | `bd_res` called directly in the game's own binary (`main.sna`, not a test build: the same source assembled differently there at milestone 67), 1,200 times on three planes (the uitest's world, the game's, and a synthetic one with near misses), for every kind in the catalogue at sizes 1×1 to 8×8, against the rule of §6.5 written in Python: `A` and `bd_nres`, the latter starting from garbage; the mine's and the pump's search with nothing to find, no slower than milestone 67 measured it — three negatives (`test_terrain.py`) |
 | Build mode | cursor, ghost-leaves-no-trace, the panel rows after a camera step (marked with `#AA` first, so a cell nobody rewrote is visible), validation, placement, payment, and the dome placed **empty** (`test_build.py`) |
+| The build flow, routine by routine | `build.asm`'s entry points called directly in `main.sna`, against rules written from the prose: `bd_ok` for all 256 bytes; `bd_select` for every item and none, at every cursor parity; `bd_rect` at every centre and size, the world's edges included and `bd_ty` left alone when x is out; `bd_check` on random planes with a mountain rim, near the edges and out of the world, with `test_terrain.py`'s model for the material; `bd_afford` and `bd_stock_pay` around the cost; 300 commits on random dome, structure, graph and job tables — the slot, the record, the stamp, the payment, the edges to the nearest dome, the Build job, `ob_idx`, or 255 and nothing; 200 redraws with stubs; the check, `bd_rect`, `bd_afford` and the commit no slower than milestone 73 measured — seven negatives (`test_place.py`) |
 | Rooms and the catalogue | `rm_build` for every room and size against a model of §6.5 (what the room accepts, what fits the size, the main machine first, the greenhouse by class), with the real `room_machines` and `machine_rules` and with 24 random ones; `BC`, `DE`, `HL` kept across it; every catalogue step from every position in both directions, and `rm_fix` for a dome and a structure; 11 rounds instead of 12 as the negative (milestone 60, `test_build.py`) |
 | Where the ghost is drawn | `gh_box`, `gh_mark`, `gh_swap`, `gh_undo`, `gh_reset` and `gh_setpen` called directly, 1,200 operations over a screen of noise at four camera offsets (two wrap the ring inside a row) and changing clip windows, against a Python model of `ob_clip`, the screen address and the record: screen, log and bounding box byte for byte after every one; the log's limit to the byte (a mark goes in with 12 left, and with 11 touches nothing, not even the byte after the log); `gh_wrap` without `inc d` and the limit one byte higher as negatives (milestone 58, `test_ghost.py`) |
 | Fitting | in the real binary, with the keys: a finished large Factory fitted slot by slot — the record, the payment per `fit_cost`, the screen equal to a full redraw; a slot emptied — `NO_MACH`, half back, the slot's bytes changed, the canary alive, the screen exact, worst round 40 ms — and with `dh_mach`'s jump to `dhv_rect` patched out, the machine stays on screen and the comparison fails; a replacement, with the build sound; a refusal with 3 Metal (nothing changes, the box red, the refusal's sound); `SPACE` into all eight, and `SPACE` with Metal for three — the first three, and only the refusal's sound; the choice standing on what each slot already holds, in the factory and in the greenhouse, with `fit_pick` patched one place off as its negative (milestone 55: no test caught that before); Quarters refusing to open. A greenhouse site fitted crop by crop before it finishes — nothing drawn onto the site — and MIXED, then the plants appearing when it is done (`test_fit.py`). The operator rule over sparse slots in `test_sim.py`, the FIT panel and an oxygen generator fitted to the site in `test_game.py` |
@@ -5763,7 +5939,7 @@ gap.
 | ~~The flow-balance wheel slot re-scans 64 structures every revolution~~ | ~~Medium~~ | **Resolved, and not for speed.** 7,887 µs for numbers that change slowly — but the reason it moved was [§6.5](#65-economy)'s clock: a battery that charges 750 times a sol is not a battery. The scan, the battery and the pumps now run once per 64 revolutions (`FLOW_DIV`), the living are still counted every revolution, and a finished building kicks the balance so the panel the player just paid for shows up at once. |
 | ~~Nothing the player does exists: no build mode, no input, no HUD, nothing drawn since milestone 5~~ | ~~High~~ | **Resolved.** The colony is drawn, the camera scrolls, the dirty list keeps it honest, the HUD reports — and the player now moves a cursor, opens a menu, places a dome and routes a corridor between two of them ([§9.1](#91-controls), [§9.3](#93-build-flow), [§9.4](#94-corridor-routing), [§6.9](#69-construction)). |
 | ~~The two halves have never been assembled into one binary~~ | ~~Medium~~ | **Assembled, and it did not fit: 20,571 bytes wanted 16,128.** Resolved by moving the generator out, cutting `MAX_NODES` to 96 and putting code in bank 2 ([§4.2](#42-the-eight-banks)). It also turned up duplicate constants in three files and, worse, [§7.4](#74-one-convention-per-half-and-they-disagreed)'s paging disagreement. |
-| **Memory is the binding constraint from here on** | High | **3,122 bytes free in bank 0, 608 in bank 2's code area, 28 in bank 6, 952 in bank 7 (7 of the `text` block)** — after milestone 72 shrank the corridor router, after milestone 71 shrank the main loop, after milestone 70 shrank the Build job's poster, after milestone 69 shrank the stocks, after milestone 68 shrank the screen addressing, after milestone 67 shrank the search for water and ore, after milestone 66 shrank the blit kernels, after milestone 65 shrank the wheel, after milestone 64 shrank the controls, after milestone 63 spent 30 on the routing's opening, after milestone 62 shrank the routing rebuild, after milestone 61 shrank the view, after milestone 60 shrank the rooms, after milestone 59 shrank the movement, after milestone 58 shrank the ghost, after milestone 57 shrank the ships and milestones, after milestone 56 shrank the tile pass, after milestone 55 shrank the fitting, after milestone 54 shrank the dirty list, after milestone 53 shrank the needs pass, after milestone 52 shrank the HUD, after milestone 47 shrank the job board, after milestone 46 shrank the economy, after milestone 45 fitted domes slot by slot, after milestone 44 shrank the interface, after milestone 43 shrank the object pass by a fifth, after milestone 42 redrew an emptied ring slot as the full pass would, after milestone 41 cut the ghost's log to its worst case and moved the index's build up, after milestone 39 indexed the object pass, after milestone 38 brought the meteors, after milestone 37 drew diagonal corridors a row at a time, after milestone 36 joined them to the colony, after milestone 35 put the milestone-2 blit kernels, which only their own tests still call, behind `HAS_QUADS`, after milestone 34 spent 279 and 118 on building without a freeze, and after milestone 33, which found two reservations nobody had ever read (`ui_cursor` 256 in bank 2, `audio` 2,048 in bank 7), moved the font into the second, and let `newgame.asm` and `fdc.asm` follow `save.asm` into bank 2 ([§4.3](#43-bank-2-flat-again)). Bank 0's ceiling is `&3EC0`, where the tests' own scaffolding runs, and the loader's two scratch areas are checks now too. Bank 6's *156* was wrong by 128 — `tools/pack.py` has been printing **28** all along, which is what happens to a figure copied into a document instead of read out of the build. The ledger: 26–29 spent 671; 30 handed back 560; 31 spent 152 and took 192 back from the test floor; 32 spent 144; 33 handed back 957 and cost 29 in paging; 34 spent 279 in bank 0 (the ghost's swap and bounding box, `view_rect`, the `DK_BUILT` handler) and put its cold half — the two post-placement redraws — in bank 2 for 118; 35 spent 200 in bank 0 (the row-by-row reveal, the one-pass mirror, the ghost's rectangles) and 82 in bank 2, and took 268 back from `blit_quads` and `flip_span`, whose only callers left are `tests/blittest.asm` and `tests/packtest.asm`; 36 spent 23 in bank 0 (the door scan looking one record ahead) and 59 in bank 2 (`crk_in`, and B's door in `cr_redraw`); 37 spent 113 in bank 0 (the `DK_CROW` handler, `dt_ghost_rect`, `view_add`, the budget's carry) and 183 in bank 2 (pushing the rows, a walk that visits each tile once); 38 spent 64 in bank 0 (the shared Galois step, `ec_break_d`, the Build-job poster moved out of `build.asm`, the boom and the HUD line, two bytes for `ship_crew`'s exits) and 431 in bank 2 (`meteor.asm`, 48 of it the scan that keeps an impact at 3 ms, less the poster `build.asm` gave up), and moved the loader's code scratch to `&6800` ([§4.3](#43-bank-2-flat-again)); 39 spent 538 in bank 0 on the object index — the walk, `oi_build` and its measuring hooks, the class bits — and took 1 back in bank 2 ([§8.4](#84-object-pass-and-draw-order)), the most any milestone has spent on one thing, for 47 ms off every scroll step and every redraw of a strip. Bank 2's 23 went to 15 at milestone 40, for the climbing turn. **41 spent the last soft reserve**: the ghost's log went from 1,600 to the 1,160 its worst ghost needs — computed, and checked to fit whole ([§4.2](#42-the-eight-banks)) — and the 440 bytes took the object index's build up from bank 0 (`src/objindex.asm`, 347 bytes; the structure sort stayed below, because the whole file did not fit): bank 0 88 → **428**, bank 2's code area 15 → **108**. 42 spent 220 of it in bank 0: `dhs_vacate` (the terrain under an emptied slot and the object pass over it, both clipped to its 2×8, and its own charge to the budget) and `tile_src`, split out of `tile_one` so the two share the terrain lookup — 428 → 208. **43 took 737 back**, all of it by writing the same thing fewer times: `object.asm` 3,130 → 2,490, and its clip's register interface 76 out of `dirty.asm` and 21 out of `ghost.asm` — 208 → 945 ([§8.4](#84-object-pass-and-draw-order)). **44 took 283 more out of `ui.asm`** (2,224 → 1,941), by the same means: one routine for "left/right, cyclic" where the save slot and the build menu each had their own, one for "change state around the ghost", one for a ghost mark at a world tile (the route's tiles and the bad tiles of a footprint had one each), and coordinate pairs read and written as words — 945 → **1,228** ([§9.3](#93-build-flow)). It would have been 295: a table-driven `ui_sig` was 12 bytes smaller and 139 µs slower on every cursor step, and went back. **45 spent 750 in bank 0 on the fitting**: `src/fit.asm` 757, `ui.asm` 34 for its hooks and `ui_ud`, `dirty.asm` 40 for `dhv_rect`, the emptied machine slot and the clip's restore, less `rooms.asm`'s `rm_fitout` (75) and 6 out of `econ.asm`; bank 2's code area got 6 back from `bd_commit`'s call — 1,228 → **478**, 108 → **114**. The fitting's names and keys took 187 of the text block's 194. **46 took 422 back out of `econ.asm`** (1,549 → 1,097, 58 of it moved to the shared `stock.asm`, which let `fit.asm` drop its own copy of the capped add: 23 more), by the same means as 43 and 44 ([§6.5](#smaller-at-milestone-46)) — 478 → **900**. **47 took 272 out of `jobs.asm`** (1,089 → 817), and made slot 13 faster on the way ([§6.7](#smaller-at-milestone-47)) — 900 → **1,172**. **52 took 390 out of `hud.asm`** (1,032 → 642) and 9 out of `ui.asm`, which now asks the HUD for a column instead of stepping to it, and the HUD redraw got 23–44% faster ([§9.2](#smaller-at-milestone-52)) — 1,172 → **1,571**. **53 took 187 out of `needs.asm`** (963 → 776), and the room index, the worst frame of the wheel, went from 34 % of a frame to 23 % ([§6.6](#smaller-at-milestone-53)) — 1,571 → **1,758**. **54 took 173 out of `dirty.asm`** (1,126 → 953), most of it a second copy of the view clipping in the terrain handler ([§8.5](#smaller-at-milestone-54)) — 1,758 → **1,931**. **55 took 92 out of `fit.asm`** (734 → 642) and gave 1 to `rooms.asm`, the empty choice in front of `rm_buf` ([§9.3](#smaller-at-milestone-55)) — 1,931 → **2,022**. **56 took 112 out of `tiles.asm`** (633 → 521), and a full terrain pass went from 9.7 frames to 8.9 ([§8.3](#smaller-and-faster-at-milestone-56)) — 2,022 → **2,134**. **57 took 197 out of `ship.asm`** (574 → 377), a third of the file, most of it a loop that rebuilt two constant masks every sol and a new colonist written field by field ([§10.2](#smaller-at-milestone-57)) — 2,134 → **2,331**. **58 took 56 out of `ghost.asm`** (484 → 428), and every ghost operation got faster on the way — the size check became a carry, and the screen address is taken from what the bounding box has just loaded ([§9.3](#smaller-and-faster-at-milestone-58)) — 2,331 → **2,387**. **59 took 124 out of `entity.asm`** (449 → 325) and 3 out of `newgame.asm` in bank 2: the agent's id stays in a register instead of being read back before every field, and the movement slot of the wheel went from 1,298 µs to 899 ([§6.3](#smaller-and-faster-at-milestone-59)) — 2,387 → **2,511**, bank 2's code area 114 → **117**. **60 took 92 out of `rooms.asm`** (372 → 280): the main machine is moved to the front of the list after the scan instead of being looked for before it, and every routine got faster ([§6.5](#smaller-and-faster-at-milestone-60)) — 2,511 → **2,603**. **61 took 72 out of `view.asm`** (356 → 284) and 3 out of `dirty.asm`: the camera's offset without the +64 that drops out of the mod, R12/R13 in four `out`s, and `dk_clamp` answering in the zero flag ([§8.2](#smaller-at-milestone-61)) — 2,603 → **2,678**. **62 took 91 out of `graph.asm`** (314 → 223), 11 of it `rt_rebuild`, which only the tests call and now carry themselves, and a rebuild got 18 % faster: the queue's tail in `HL'`, and its indices stored as the low byte of their slot ([§6.4](#smaller-and-faster-at-milestone-62)) — 2,678 → **2,769**. **63 spent 30 of it**: `rt_open` resets only the entries the previous source wrote, and the routing budget went from 12 to 15 expansions a frame with no frame worse than before ([§6.4](#a-cheaper-opening-and-a-budget-of-15-at-milestone-63)) — 2,769 → **2,739**. **64 took 120 out of `input.asm`** (292 → 172): the joystick is one `or`, because line 9's bits are the first six actions in order, the table is two bytes an action, and `key_now` keeps the PSG's own polarity ([§9.1](#smaller-and-faster-at-milestone-64)) — 2,739 → **2,859**. **65 took 32 out of `wheel.asm`** (211 → 179): `wh_push` tests the hook's high byte and keeps `A`, the routing lives in `wh_frame` and keeps its carry across the paging, and one multiply serves movement and needs ([§7.2](#smaller-at-milestone-65)) — 2,859 → **2,891**. **66 took 85 out of `blit.asm`** (205 → 120) and 7 out of `screen.asm`: one split at the wrap point for the three line kernels, with the kernel in `IY` and the remainder in `AF'`, `scr_ringtop` folded into it, and `blit_op` behind `HAS_QUADS`; every line got faster ([§8.2](#smaller-and-faster-at-milestone-66)) — 2,891 → **2,983**. **67 took 37 out of `terrain.asm`** (115 → 78): water and ore are one test, `(byte & D) == E`, and the margin is walked from a single `tile_addr`; the pump on dry ground went from 3.3 ms to 2.0 ([§6.5](#smaller-and-faster-at-milestone-67)) — 2,983 → **3,020**. **68 took 63 out of `screen.asm`** (114 → 51): `scr_rowtab`'s 50 bytes became four additions, (y & `&F8`) × 10, and `scr_addr` lost its `push`/`pop` and 20 µs a call ([§8.2](#smaller-and-faster-at-milestone-68)) — 3,020 → **3,083**. **69 took 5 out of `stock.asm`** (58 → 53): `ec_make`'s mask is `#80` rotated with `rlca`/`djnz`, and `ec_add_stock` lost an `or a` its own `add` makes unnecessary ([§6.5](#smaller-and-faster-at-milestone-69)) — 3,083 → **3,088**. **70 took 5 out of `jobpost.asm`** (32 → 27): `inc (hl)` turns a free slot's 255 into `J_BUILD`'s 0 ([§6.7](#smaller-and-faster-at-milestone-70)) — 3,088 → **3,093**. **71 took 29 out of `main.asm`'s own code** (187 → 158): the loop's four one-caller helpers inline, `ml_alert`'s edge one carry, `wh_hook` set at assembly time; every round of the loop got 5–21 µs faster ([§7.1](#smaller-and-faster-at-milestone-71)) — 3,093 → **3,122**. **72 took 491 out of `route.asm`** (1,672 → 1,181), in bank 2: the two ends are records that trade places, both bends are one formula, and a diagonal is walked as a straight line; planning got 20 % faster, the walk 38 %, the check 30 % ([§9.4](#smaller-and-faster-at-milestone-72)) — bank 2's code area 117 → **608**. There is no slack left in the log; room in bank 2 has to come from code, as milestone 72's did. `tools/mapsize.py` says *who* is spending bank 0. The reserves that remain, in order: the rest of bank 7 (952, data only), the tests' 320-byte floor once the probes take their address from `ZZ_BANK0_END`, and the 864-byte `s` room-icon set. Every file in bank 0 has now had its milestone; `main.asm`'s own loop was the last, at milestone 71. Bank 6 at 28 is the tight one. |
+| **Memory is the binding constraint from here on** | High | **3,122 bytes free in bank 0, 888 in bank 2's code area, 28 in bank 6, 952 in bank 7 (7 of the `text` block)** — after milestone 73 shrank the build flow, after milestone 72 shrank the corridor router, after milestone 71 shrank the main loop, after milestone 70 shrank the Build job's poster, after milestone 69 shrank the stocks, after milestone 68 shrank the screen addressing, after milestone 67 shrank the search for water and ore, after milestone 66 shrank the blit kernels, after milestone 65 shrank the wheel, after milestone 64 shrank the controls, after milestone 63 spent 30 on the routing's opening, after milestone 62 shrank the routing rebuild, after milestone 61 shrank the view, after milestone 60 shrank the rooms, after milestone 59 shrank the movement, after milestone 58 shrank the ghost, after milestone 57 shrank the ships and milestones, after milestone 56 shrank the tile pass, after milestone 55 shrank the fitting, after milestone 54 shrank the dirty list, after milestone 53 shrank the needs pass, after milestone 52 shrank the HUD, after milestone 47 shrank the job board, after milestone 46 shrank the economy, after milestone 45 fitted domes slot by slot, after milestone 44 shrank the interface, after milestone 43 shrank the object pass by a fifth, after milestone 42 redrew an emptied ring slot as the full pass would, after milestone 41 cut the ghost's log to its worst case and moved the index's build up, after milestone 39 indexed the object pass, after milestone 38 brought the meteors, after milestone 37 drew diagonal corridors a row at a time, after milestone 36 joined them to the colony, after milestone 35 put the milestone-2 blit kernels, which only their own tests still call, behind `HAS_QUADS`, after milestone 34 spent 279 and 118 on building without a freeze, and after milestone 33, which found two reservations nobody had ever read (`ui_cursor` 256 in bank 2, `audio` 2,048 in bank 7), moved the font into the second, and let `newgame.asm` and `fdc.asm` follow `save.asm` into bank 2 ([§4.3](#43-bank-2-flat-again)). Bank 0's ceiling is `&3EC0`, where the tests' own scaffolding runs, and the loader's two scratch areas are checks now too. Bank 6's *156* was wrong by 128 — `tools/pack.py` has been printing **28** all along, which is what happens to a figure copied into a document instead of read out of the build. The ledger: 26–29 spent 671; 30 handed back 560; 31 spent 152 and took 192 back from the test floor; 32 spent 144; 33 handed back 957 and cost 29 in paging; 34 spent 279 in bank 0 (the ghost's swap and bounding box, `view_rect`, the `DK_BUILT` handler) and put its cold half — the two post-placement redraws — in bank 2 for 118; 35 spent 200 in bank 0 (the row-by-row reveal, the one-pass mirror, the ghost's rectangles) and 82 in bank 2, and took 268 back from `blit_quads` and `flip_span`, whose only callers left are `tests/blittest.asm` and `tests/packtest.asm`; 36 spent 23 in bank 0 (the door scan looking one record ahead) and 59 in bank 2 (`crk_in`, and B's door in `cr_redraw`); 37 spent 113 in bank 0 (the `DK_CROW` handler, `dt_ghost_rect`, `view_add`, the budget's carry) and 183 in bank 2 (pushing the rows, a walk that visits each tile once); 38 spent 64 in bank 0 (the shared Galois step, `ec_break_d`, the Build-job poster moved out of `build.asm`, the boom and the HUD line, two bytes for `ship_crew`'s exits) and 431 in bank 2 (`meteor.asm`, 48 of it the scan that keeps an impact at 3 ms, less the poster `build.asm` gave up), and moved the loader's code scratch to `&6800` ([§4.3](#43-bank-2-flat-again)); 39 spent 538 in bank 0 on the object index — the walk, `oi_build` and its measuring hooks, the class bits — and took 1 back in bank 2 ([§8.4](#84-object-pass-and-draw-order)), the most any milestone has spent on one thing, for 47 ms off every scroll step and every redraw of a strip. Bank 2's 23 went to 15 at milestone 40, for the climbing turn. **41 spent the last soft reserve**: the ghost's log went from 1,600 to the 1,160 its worst ghost needs — computed, and checked to fit whole ([§4.2](#42-the-eight-banks)) — and the 440 bytes took the object index's build up from bank 0 (`src/objindex.asm`, 347 bytes; the structure sort stayed below, because the whole file did not fit): bank 0 88 → **428**, bank 2's code area 15 → **108**. 42 spent 220 of it in bank 0: `dhs_vacate` (the terrain under an emptied slot and the object pass over it, both clipped to its 2×8, and its own charge to the budget) and `tile_src`, split out of `tile_one` so the two share the terrain lookup — 428 → 208. **43 took 737 back**, all of it by writing the same thing fewer times: `object.asm` 3,130 → 2,490, and its clip's register interface 76 out of `dirty.asm` and 21 out of `ghost.asm` — 208 → 945 ([§8.4](#84-object-pass-and-draw-order)). **44 took 283 more out of `ui.asm`** (2,224 → 1,941), by the same means: one routine for "left/right, cyclic" where the save slot and the build menu each had their own, one for "change state around the ghost", one for a ghost mark at a world tile (the route's tiles and the bad tiles of a footprint had one each), and coordinate pairs read and written as words — 945 → **1,228** ([§9.3](#93-build-flow)). It would have been 295: a table-driven `ui_sig` was 12 bytes smaller and 139 µs slower on every cursor step, and went back. **45 spent 750 in bank 0 on the fitting**: `src/fit.asm` 757, `ui.asm` 34 for its hooks and `ui_ud`, `dirty.asm` 40 for `dhv_rect`, the emptied machine slot and the clip's restore, less `rooms.asm`'s `rm_fitout` (75) and 6 out of `econ.asm`; bank 2's code area got 6 back from `bd_commit`'s call — 1,228 → **478**, 108 → **114**. The fitting's names and keys took 187 of the text block's 194. **46 took 422 back out of `econ.asm`** (1,549 → 1,097, 58 of it moved to the shared `stock.asm`, which let `fit.asm` drop its own copy of the capped add: 23 more), by the same means as 43 and 44 ([§6.5](#smaller-at-milestone-46)) — 478 → **900**. **47 took 272 out of `jobs.asm`** (1,089 → 817), and made slot 13 faster on the way ([§6.7](#smaller-at-milestone-47)) — 900 → **1,172**. **52 took 390 out of `hud.asm`** (1,032 → 642) and 9 out of `ui.asm`, which now asks the HUD for a column instead of stepping to it, and the HUD redraw got 23–44% faster ([§9.2](#smaller-at-milestone-52)) — 1,172 → **1,571**. **53 took 187 out of `needs.asm`** (963 → 776), and the room index, the worst frame of the wheel, went from 34 % of a frame to 23 % ([§6.6](#smaller-at-milestone-53)) — 1,571 → **1,758**. **54 took 173 out of `dirty.asm`** (1,126 → 953), most of it a second copy of the view clipping in the terrain handler ([§8.5](#smaller-at-milestone-54)) — 1,758 → **1,931**. **55 took 92 out of `fit.asm`** (734 → 642) and gave 1 to `rooms.asm`, the empty choice in front of `rm_buf` ([§9.3](#smaller-at-milestone-55)) — 1,931 → **2,022**. **56 took 112 out of `tiles.asm`** (633 → 521), and a full terrain pass went from 9.7 frames to 8.9 ([§8.3](#smaller-and-faster-at-milestone-56)) — 2,022 → **2,134**. **57 took 197 out of `ship.asm`** (574 → 377), a third of the file, most of it a loop that rebuilt two constant masks every sol and a new colonist written field by field ([§10.2](#smaller-at-milestone-57)) — 2,134 → **2,331**. **58 took 56 out of `ghost.asm`** (484 → 428), and every ghost operation got faster on the way — the size check became a carry, and the screen address is taken from what the bounding box has just loaded ([§9.3](#smaller-and-faster-at-milestone-58)) — 2,331 → **2,387**. **59 took 124 out of `entity.asm`** (449 → 325) and 3 out of `newgame.asm` in bank 2: the agent's id stays in a register instead of being read back before every field, and the movement slot of the wheel went from 1,298 µs to 899 ([§6.3](#smaller-and-faster-at-milestone-59)) — 2,387 → **2,511**, bank 2's code area 114 → **117**. **60 took 92 out of `rooms.asm`** (372 → 280): the main machine is moved to the front of the list after the scan instead of being looked for before it, and every routine got faster ([§6.5](#smaller-and-faster-at-milestone-60)) — 2,511 → **2,603**. **61 took 72 out of `view.asm`** (356 → 284) and 3 out of `dirty.asm`: the camera's offset without the +64 that drops out of the mod, R12/R13 in four `out`s, and `dk_clamp` answering in the zero flag ([§8.2](#smaller-at-milestone-61)) — 2,603 → **2,678**. **62 took 91 out of `graph.asm`** (314 → 223), 11 of it `rt_rebuild`, which only the tests call and now carry themselves, and a rebuild got 18 % faster: the queue's tail in `HL'`, and its indices stored as the low byte of their slot ([§6.4](#smaller-and-faster-at-milestone-62)) — 2,678 → **2,769**. **63 spent 30 of it**: `rt_open` resets only the entries the previous source wrote, and the routing budget went from 12 to 15 expansions a frame with no frame worse than before ([§6.4](#a-cheaper-opening-and-a-budget-of-15-at-milestone-63)) — 2,769 → **2,739**. **64 took 120 out of `input.asm`** (292 → 172): the joystick is one `or`, because line 9's bits are the first six actions in order, the table is two bytes an action, and `key_now` keeps the PSG's own polarity ([§9.1](#smaller-and-faster-at-milestone-64)) — 2,739 → **2,859**. **65 took 32 out of `wheel.asm`** (211 → 179): `wh_push` tests the hook's high byte and keeps `A`, the routing lives in `wh_frame` and keeps its carry across the paging, and one multiply serves movement and needs ([§7.2](#smaller-at-milestone-65)) — 2,859 → **2,891**. **66 took 85 out of `blit.asm`** (205 → 120) and 7 out of `screen.asm`: one split at the wrap point for the three line kernels, with the kernel in `IY` and the remainder in `AF'`, `scr_ringtop` folded into it, and `blit_op` behind `HAS_QUADS`; every line got faster ([§8.2](#smaller-and-faster-at-milestone-66)) — 2,891 → **2,983**. **67 took 37 out of `terrain.asm`** (115 → 78): water and ore are one test, `(byte & D) == E`, and the margin is walked from a single `tile_addr`; the pump on dry ground went from 3.3 ms to 2.0 ([§6.5](#smaller-and-faster-at-milestone-67)) — 2,983 → **3,020**. **68 took 63 out of `screen.asm`** (114 → 51): `scr_rowtab`'s 50 bytes became four additions, (y & `&F8`) × 10, and `scr_addr` lost its `push`/`pop` and 20 µs a call ([§8.2](#smaller-and-faster-at-milestone-68)) — 3,020 → **3,083**. **69 took 5 out of `stock.asm`** (58 → 53): `ec_make`'s mask is `#80` rotated with `rlca`/`djnz`, and `ec_add_stock` lost an `or a` its own `add` makes unnecessary ([§6.5](#smaller-and-faster-at-milestone-69)) — 3,083 → **3,088**. **70 took 5 out of `jobpost.asm`** (32 → 27): `inc (hl)` turns a free slot's 255 into `J_BUILD`'s 0 ([§6.7](#smaller-and-faster-at-milestone-70)) — 3,088 → **3,093**. **71 took 29 out of `main.asm`'s own code** (187 → 158): the loop's four one-caller helpers inline, `ml_alert`'s edge one carry, `wh_hook` set at assembly time; every round of the loop got 5–21 µs faster ([§7.1](#smaller-and-faster-at-milestone-71)) — 3,093 → **3,122**. **72 took 491 out of `route.asm`** (1,672 → 1,181), in bank 2: the two ends are records that trade places, both bends are one formula, and a diagonal is walked as a straight line; planning got 20 % faster, the walk 38 %, the check 30 % ([§9.4](#smaller-and-faster-at-milestone-72)) — bank 2's code area 117 → **608**. **73 took 280 out of `build.asm`** (1,068 → 788): `bd_ok` in six instructions that leave every other register alone, so `bd_check` no longer saves three around each tile; `bd_rect` in 8 bits; `bd_link` walking the dome table with a pointer; the footprint check under the cursor got twice as fast ([§9.3](#smaller-and-faster-at-milestone-73)) — 608 → **888**. There is no slack left in the log; room in bank 2 has to come from code, as milestones 72 and 73's did. `tools/mapsize.py` says *who* is spending bank 0. The reserves that remain, in order: the rest of bank 7 (952, data only), the tests' 320-byte floor once the probes take their address from `ZZ_BANK0_END`, and the 864-byte `s` room-icon set. Every file in bank 0 has now had its milestone; `main.asm`'s own loop was the last, at milestone 71. Bank 6 at 28 is the tight one. |
 | ~~Nothing finishes what the player starts~~ | ~~High~~ | **Built.** A Build job is picked up, the agent routes to the site, works it 32 points a visit, and at 255 the building turns `DS_ACTIVE` and is drawn ([§6.9](#69-construction)). `tests/test_game.py` walks the whole chain: place a solar panel with 30 Metal, and about six seconds later the HUD says `ALL SYSTEMS OK` with no key pressed in between. |
 | ~~A completed building stalls the game for 0.8 s~~ | ~~Medium~~ | **Resolved at milestone 34 — and it was 360–920 ms, not 0.8 s.** The site is already on screen from placement; what completion changes is the room icon and the machines, so the Build job pushes one dirty record (`DK_BUILT`) and the handler draws those two things — a structure, nothing at all ([§6.9](#69-construction)). The completion frame of a large Factory is **120 ms** (100 at milestone 34), 60 of them lifting the ghost the player left on it; a solar panel's is an ordinary 40 ms HUD tick. The freeze did not go away entirely, though — it was always at **placement** too, and that is the next row. |
 | ~~Placing a large dome still freezes the game for 0.86 s~~ | ~~Medium~~ | **Resolved at milestone 35 with the eight-chunk reveal of [§6.9](#69-construction), at placement.** A dome goes into the dirty list one tile row at a time and each row draws only that dome; the ghost waits for the last row. Worst frame of a large Factory's placement: 998 → 859 → **140 ms**; solar panel 439 → 220 → **120**; straight corridor 260 → **120**. The levers this row named were all taken: the reveal, a one-pass mirror (`blt_mask_flip`: the whole large site 450 → 351 ms, a full redraw of the view 839 → 679), and marks without clips on a log of rectangles (red ghost 263 → 57 ms). |

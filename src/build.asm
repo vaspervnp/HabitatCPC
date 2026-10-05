@@ -26,7 +26,6 @@ BLD_N       equ 11
 bd_select:
         cp      BLD_N
         ret     nc
-        ld      (bd_item),a
         add     a,a
         add     a,a
         add     a,a                     ; *BLD_REC
@@ -37,36 +36,32 @@ bd_select:
         ld      de,bd_kind
         ld      bc,BLD_REC
         ldir
-        ; --- ισοτιμία ---
-        ld      a,(cur_hx)
-        ld      hl,bd_w
-        xor     (hl)
-        and     1
-        jr      z,bds_y
+        ; --- ισοτιμία: μισό tile πιο πέρα, αν το κέντρο δεν ταιριάζει ---
         ld      hl,cur_hx
+        ld      a,(bd_w)
+        xor     (hl)
+        rra                             ; CY: άλλη ισοτιμία
+        jr      nc,bds_y
         inc     (hl)
 bds_y:
-        ld      a,(cur_hy)
-        ld      hl,bd_h
+        inc     hl                      ; cur_hy
+        ld      a,(bd_h)
         xor     (hl)
-        and     1
-        jr      z,bds_done
-        ld      hl,cur_hy
+        rra
+        jr      nc,bds_sz
         inc     (hl)
-bds_done:
+bds_sz:
         ; Το μέγεθος μιας δομής βγαίνει από το είδος: τα τέσσερα ενεργειακά
         ; υπάρχουν σε τρία μεγέθη και ο κατάλογος δίνει το μεγάλο· ορυχείο,
         ; αεροθάλαμος και πλατφόρμα υπάρχουν μόνο στη θέση 0 του struct_dims.
         ld      a,(bd_param)
         cp      K_MINE
-        ld      a,2
-        jr      c,bds_sz
-        xor     a
-bds_sz:
+        sbc     a,a                     ; -1 πριν από το ορυχείο, 0 από εκεί
+        and     2
         ld      (bd_size),a
         ; Το δωμάτιο οξυγόνου χωράει μόνο σε μικρό θόλο: αλλάζοντας μέγεθος, η
         ; επιλογή μπορεί να έγινε άκυρη μόνη της (§6.5).
-        jp      rm_fix
+        jp      rm_fix                  ; cur_hx, cur_hy διπλανά: assert στο ui.asm
 
 ; ---------------------------------------------------------------------------
 ; bd_redraw — το αποτύπωμα του κτίσματος που μόλις μπήκε, και τίποτε άλλο.
@@ -87,16 +82,12 @@ bds_sz:
 bd_redraw:
         call    bd_rect
         ld      a,(bd_kind)
-        cp      BK_DOME
+        or      a                       ; BK_DOME
         jr      z,bdr_bands
-        ld      a,(bd_tx)
-        ld      (vr_tx),a
-        ld      a,(bd_ty)
-        ld      (vr_ty),a
-        ld      a,(bd_w)
-        ld      (vr_w),a
-        ld      a,(bd_h)
-        ld      (vr_h),a
+        ld      hl,(bd_tx)              ; και το bd_ty
+        ld      (vr_tx),hl              ; και το vr_ty
+        ld      hl,(bd_w)               ; και το bd_h
+        ld      (vr_w),hl               ; και το vr_h
         ; ΜΟΝΟ Η ΔΟΜΗ πάνω στο έδαφος, όχι το ob_draw_all: το αποτύπωμα είναι
         ; δικό της. Το πλήρες πέρασμα θα ρωτούσε 64 θόλους, 96 διαδρόμους και
         ; όλες τις δομές, και θα ξανάχτιζε τα δύο ευρετήρια που μόλις ακύρωσε
@@ -115,79 +106,56 @@ bdr_out:
         xor     a
         ret
 bdr_bands:
+        ld      a,(bd_h)
+        ld      e,a                     ; σειρές
         ld      a,(bd_node)
         ld      b,a
         ld      c,0
 bdr_lp:
         ld      a,DK_SITE
-        call    dirty_push              ; κρατά BC
+        call    dirty_push              ; κρατά BC, E
         ld      hl,rv_pend
         inc     (hl)
         inc     c
-        ld      a,(bd_h)
-        cp      c
+        dec     e
         jr      nz,bdr_lp
-        or      a                       ; NZ: το A είναι το bd_h — το cp έβγαινε Z
+        inc     e                       ; NZ
         ret
+
+        assert  BK_DOME == 0            ; vr_* ανά δύο: assert στο view.asm
 
 ; ---------------------------------------------------------------------------
 ; bd_rect — πάνω-αριστερά tile του αποτυπώματος, από το κέντρο του κέρσορα.
 ;       left_tile = (cur_hx - W) / 2      (ακριβές: ίδια ισοτιμία)
-; Out: (bd_tx), (bd_ty) προσημασμένα· CY αν βγαίνει έξω από τον κόσμο.
+; Out: (bd_tx), (bd_ty) προσημασμένα· CY αν βγαίνει έξω από τον κόσμο — και
+; τότε, αν φταίει το x, το bd_ty μένει όπως ήταν.
+;
+; ΣΕ 8 BIT (βήμα 73). Το κέντρο + 128 είναι ανυπόγραφο, και η διαφορά του από
+; το W έχει ένατο bit το δανεικό: το rra τα κάνει όλα μαζί το μισό, και το
+; αποτέλεσμα είναι το πρώτο tile + 64, που μέσα στον κόσμο πάει 0..128-W. Ως
+; το βήμα 72 ήταν 16 bit με το ob_sext και ένα bd_range με δύο αφαιρέσεις.
 ; ---------------------------------------------------------------------------
 bd_rect:
+        ld      hl,bd_w
+        ld      de,bd_tx
         ld      a,(cur_hx)
-        call    ob_sext
-        ld      a,(bd_w)
-        ld      e,a
-        ld      d,0
-        or      a
-        sbc     hl,de
-        sra     h
-        rr      l                       ; (cx - W) / 2, ακριβές: ίδια ισοτιμία
-        ld      a,l
-        ld      (bd_tx),a
-        ld      a,(bd_w)
-        call    bd_range
-        ret     c
+        call    bdr_one
+        ret     c                       ; το bd_ty μένει όπως ήταν
+        inc     hl                      ; bd_h
+        inc     de                      ; bd_ty
         ld      a,(cur_hy)
-        call    ob_sext
-        ld      a,(bd_h)
-        ld      e,a
-        ld      d,0
-        or      a
-        sbc     hl,de
-        sra     h
-        rr      l
-        ld      a,l
-        ld      (bd_ty),a
-        ld      a,(bd_h)
-        jp      bd_range
-
-; bd_range — HL = άκρη σε tiles (προσημασμένο), A = μήκος.
-; CY αν το [άκρη, άκρη+μήκος) δεν χωράει στο -64..+63.
-bd_range:
-        ld      e,a
-        ld      d,0
-        push    hl
-        add     hl,de
-        ld      de,64
-        or      a
-        sbc     hl,de                   ; τέλος - 64
-        pop     hl
-        jr      z,br_lo
-        jp      p,br_bad
-br_lo:
-        push    hl
-        ld      de,#FFC0                ; -64
-        or      a
-        sbc     hl,de                   ; άκρη + 64
-        pop     hl
-        jp      m,br_bad
-        or      a
-        ret
-br_bad:
-        scf
+; bdr_one — A = κέντρο σε μισά tiles, (HL) = μήκος σε tiles -> (DE) = το
+; πρώτο tile, προσημασμένο. CY αν [πρώτο, πρώτο+μήκος) βγαίνει από το -64..63.
+bdr_one:
+        xor     #80
+        sub     (hl)
+        rra                             ; πρώτο + 64
+        ld      c,a
+        sub     64
+        ld      (de),a
+        ld      a,128
+        sub     (hl)
+        cp      c                       ; CY: πρώτο + 64 > 128 - μήκος
         ret
 
 ; ---------------------------------------------------------------------------
@@ -196,129 +164,105 @@ br_bad:
 ; Το §6.9 λέει: έδαφος, σκόνη ή θεμέλιο, και η κατοχή ελεύθερη. Τα κακά tiles
 ; σημειώνονται στο bd_bad (ένα byte ανά σειρά, ένα bit ανά στήλη) ώστε το
 ; φάντασμα να δείξει ΠΟΙΟ φταίει και όχι μόνο ότι κάτι φταίει.
-; Out: A = πλήθος κακών tiles (0 = επιτρέπεται) — ή 1 από το bd_res παρακάτω,
-;      όταν τα tiles είναι μια χαρά αλλά λείπει το υλικό της δομής. Το ποιο
-;      λείπει το λέει το (bd_nres), και ο πίνακας το διαβάζει για να το πει.
+; Out: A = πλήθος κακών tiles (0 = επιτρέπεται), 255 έξω από τον κόσμο — ή 1
+;      από το bd_res παρακάτω, όταν τα tiles είναι μια χαρά αλλά λείπει το
+;      υλικό της δομής. Το ποιο λείπει το λέει το (bd_nres), και ο πίνακας το
+;      διαβάζει για να το πει.
+;
+; Τρέχει σε κάθε βήμα του κέρσορα (ui_validate). Το bd_ok κρατά τα πάντα εκτός
+; από το A, άρα τα tiles μετριούνται σε καταχωρητή και κάθε σειρά είναι η
+; προηγούμενη + 128 (tile_addr) — ως το βήμα 72 κάθε tile πλήρωνε τρία push
+; και τρία pop, και κάθε σειρά ένα tile_addr.
 ; ---------------------------------------------------------------------------
 bd_check:
         ld      hl,bd_bad
-        ld      de,bd_bad+1
-        ld      bc,7
-        ld      (hl),0
-        ldir
+        ld      b,8
         xor     a
-        ld      (bd_nbad),a
+bdc_z:
+        ld      (hl),a
+        inc     hl
+        djnz    bdc_z
         call    bd_rect
-        jr      nc,bdc_in
         ld      a,255                   ; έξω από τον κόσμο: όλα άκυρα
-        ld      (bd_nbad),a
-        ret
-bdc_in:
-        ld      a,(bd_ty)
-        ld      (bd_cy),a
-        xor     a
-        ld      (bd_row),a
-bdc_rl:
-        ld      a,(bd_tx)
-        ld      b,a
-        ld      a,(bd_cy)
-        ld      c,a
+        ret     c
+        ld      hl,(bd_tx)              ; L = x, H = y
+        ld      b,l
+        ld      c,h
         call    tile_addr
+        ld      de,bd_bad
+        ld      c,0                     ; τα κακά tiles
+        ld      a,(bd_h)
+bdc_rl:
+        push    af                      ; οι σειρές που μένουν
+        push    hl
+        push    de
         ld      a,(bd_w)
         ld      b,a
-        ld      d,1                     ; η μάσκα της στήλης
-        ld      e,0                     ; τα κακά tiles της σειράς
+        ld      de,#0100                ; D = το bit της στήλης, E = τα κακά της σειράς
 bdc_cl:
         ld      a,(hl)
-        push    hl
-        push    bc
-        push    de
         call    bd_ok
-        pop     de
-        pop     bc
-        pop     hl
         jr      z,bdc_good
         ld      a,e
         or      d
         ld      e,a
-        push    hl
-        ld      hl,bd_nbad
-        inc     (hl)
-        pop     hl
+        inc     c
 bdc_good:
         sla     d
         inc     hl
         djnz    bdc_cl
-        ld      a,(bd_row)
+        ld      a,e
+        pop     de
+        ld      (de),a
+        inc     de
+        pop     hl
+        ld      a,l                     ; η επόμενη σειρά: +128
+        add     a,128
         ld      l,a
-        ld      h,0
-        ld      bc,bd_bad
-        add     hl,bc
-        ld      (hl),e
-        ld      a,(bd_cy)
-        inc     a
-        ld      (bd_cy),a
-        ld      a,(bd_row)
-        inc     a
-        ld      (bd_row),a
-        ld      hl,bd_h
-        cp      (hl)
+        jr      nc,bdc_nx
+        inc     h
+bdc_nx:
+        pop     af
+        dec     a
         jr      nz,bdc_rl
-        ld      a,(bd_nbad)
-        or      a
+        or      c                       ; A = 0: το πλήθος
         ret     nz
         ; Το αποτύπωμα πατάει· φτάνει και στο υλικό; Ο έλεγχος ζει στην ΤΡΑΠΕΖΑ
         ; 0 (src/terrain.asm) επειδή εδώ πάνω δεν χωρούσε — δες το src/main.asm.
         jp      bd_res
 
-; bd_ok — A = world byte. Z αν το tile επιτρέπεται.
+; bd_ok — A = world byte. Z αν το tile επιτρέπεται: χωρίς κατοχή, και έδαφος
+; (0), σκόνη (1) ή θεμέλιο (7). Χαλάει ΜΟΝΟ το A.
 bd_ok:
-        push    bc
-        ld      c,a
-        and     W_OCC_MASK
-        jr      nz,bok_no
-        ld      a,c
-        and     7
-        cp      W_FOUNDATION
-        jr      z,bok_yes
-        cp      W_DUST
-        jr      z,bok_yes
-        or      a
-        jr      z,bok_yes
-bok_no:
-        pop     bc
-        ld      a,1
-        or      a
+        and     W_OCC_MASK + 7          ; το decor (6, 7) και το bit 3 δεν μετράνε
+        ret     z
+        dec     a
+        ret     z
+        cp      W_FOUNDATION - 1
         ret
-bok_yes:
-        pop     bc
-        xor     a
-        ret
+
+        assert  W_DUST == 1 && W_OCC_MASK == #30
 
 ; ---------------------------------------------------------------------------
 ; bd_afford — έχει η αποικία τα υλικά; Z και A = 0 αν ναι, NZ και A = 1 αν
 ; όχι (το fit_show φτιάχνει το χρώμα από το A). Κρατά το BC.
 ; ---------------------------------------------------------------------------
 bd_afford:
+        ld      de,(bd_metal)           ; E = μέταλλο, D = βιοπλαστικό
         ld      hl,(EC_STOCK + S_METAL*2)
-        ld      a,(bd_metal)
-        ld      e,a
-        ld      d,0
-        or      a
-        sbc     hl,de
+        ld      a,l
+        sub     e
+        ld      a,h
+        sbc     a,0
         jr      c,bda_no
         ld      hl,(EC_STOCK + S_BIOPL*2)
-        ld      a,(bd_biop)
-        ld      e,a
-        ld      d,0
-        or      a
-        sbc     hl,de
-        jr      c,bda_no
-        xor     a
-        ret
+        ld      a,l
+        sub     d
+        ld      a,h
+        sbc     a,0
 bda_no:
-        or      a
-        ld      a,1
+        sbc     a,a                     ; -1 αν δεν φτάνει
+        neg                             ; 1 και NZ, ή 0 και Z
         ret
 
 ; ---------------------------------------------------------------------------
@@ -331,120 +275,63 @@ bda_no:
 ; μπαίνει ως DS_BUILDING με ακεραιότητα 0 και δημοσιεύεται εργασία Build.
 ; ---------------------------------------------------------------------------
 bd_commit:
+        ld      bc,GA_PORT + PAGE_B6
+        out     (c),c
         ld      a,(bd_kind)
         cp      BK_STRUCT
         jr      z,bdk_struct
         ; --- θόλος ---
-        ld      bc,GA_PORT + PAGE_B6
-        out     (c),c
-        ld      b,MAX_DOME
-        ld      c,0
+        ld      bc,MAX_DOME * 256       ; B = πόσοι μένουν, C = ο θόλος
 bdk_find:
         ld      a,c
-        call    ob_dome_live
+        call    ob_dome_live            ; HL -> D_STATE
         jr      z,bdk_got
         inc     c
         djnz    bdk_find
+bdk_full:
         ld      bc,GA_PORT + PAGE_B1
         out     (c),c
         ld      a,255
         ret
 bdk_got:
-        ld      a,c
         ld      (bd_node),a
-        call    ob_domeadr
-        ld      a,(cur_hx)
-        ld      (hl),a
-        inc     hl
-        ld      a,(cur_hy)
-        ld      (hl),a
-        inc     hl
-        ld      a,(bd_param)
-        ld      (hl),a                  ; μέγεθος
-        inc     hl
         push    hl
         call    rm_room                 ; ό,τι διάλεξε ο παίκτης με πάνω-κάτω
         pop     hl
-        ld      (hl),a                  ; δωμάτιο
+        call    bdk_rec                 ; δωμάτιο, DS_BUILDING, ακεραιότητα 0
+        ld      (hl),a                  ; χειριστές
         inc     hl
-        ld      (hl),DS_BUILDING
-        inc     hl
-        ld      (hl),0                  ; ακεραιότητα 0 — δεν χτίστηκε ακόμη
-        inc     hl
-        ld      (hl),0
-        inc     hl
-        ld      (hl),0                  ; χειριστές
-        inc     hl
-        ld      b,8
+        ld      bc,8 * 256 + NO_MACH
 bdk_m:
-        ld      (hl),NO_MACH
+        ld      (hl),c
         inc     hl
         djnz    bdk_m
         ld      b,8
 bdk_h:
-        ld      (hl),0
+        ld      (hl),a
         inc     hl
         djnz    bdk_h
         ; Ο ΘΟΛΟΣ ΜΠΑΙΝΕΙ ΑΔΕΙΟΣ (βήμα 45, όπως στο Planetbase). Τις μηχανές
         ; τις διαλέγει ο παίκτης μία-μία και τις πληρώνει χωριστά, και μπορεί
         ; από τώρα, πάνω στο εργοτάξιο: φαίνονται όταν χτιστεί (src/fit.asm).
-        jr      bdk_done
+        jr      bd_link
 bdk_struct:
-        ld      bc,GA_PORT + PAGE_B6
-        out     (c),c
         ld      hl,G_struct_tbl + ST_STATE
-        ld      b,MAX_STRUCT
-        ld      c,0
+        ld      de,STRUCT_REC
+        ld      bc,MAX_STRUCT * 256 + MAX_DOME  ; C = ο κόμβος: 64 + δομή
 bds_find:
         ld      a,(hl)
         or      a
         jr      z,bds_got
-        ld      de,STRUCT_REC
         add     hl,de
         inc     c
         djnz    bds_find
-        ld      bc,GA_PORT + PAGE_B1
-        out     (c),c
-        ld      a,255
-        ret
+        jr      bdk_full
 bds_got:
         ld      a,c
-        add     a,MAX_DOME              ; κόμβος = 64 + δομή
         ld      (bd_node),a
-        ld      a,c
-        ld      l,a
-        ld      h,0
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl
-        ld      de,G_struct_tbl
-        add     hl,de
-        ld      a,(cur_hx)
-        ld      (hl),a
-        inc     hl
-        ld      a,(cur_hy)
-        ld      (hl),a
-        inc     hl
-        ld      a,(bd_param)
-        ld      (hl),a                  ; είδος
-        inc     hl
         ld      a,(bd_size)
-        ld      (hl),a
-        inc     hl
-        ld      (hl),DS_BUILDING
-        inc     hl
-        ld      (hl),0
-        inc     hl
-        ld      (hl),0
-bdk_done:
-        ld      bc,GA_PORT + PAGE_B1
-        out     (c),c
-        call    bd_stock_pay            ; πληρώνει ΑΦΟΥ βρεθεί θέση
-        call    bd_stamp
-        call    bd_link
-        call    bd_postjob
-        ld      a,(bd_node)
-        jp      ob_touch_n              ; μόνο η κατηγορία του· κρατά το A
+        call    bdk_rec                 ; μέγεθος, DS_BUILDING, 0, 0
 
 ; ---------------------------------------------------------------------------
 ; bd_link — το εργοτάξιο συνδέεται με τον κοντινότερο ζωντανό θόλο.
@@ -457,97 +344,77 @@ bdk_done:
 ;
 ; «Κοντινότερος» με |dx|+|dy| σε μισά tiles. Η ρίζα θα ήταν σωστότερη και δεν
 ; θα άλλαζε ποτέ την απάντηση σε αποικία που χωράει σε 128 tiles.
+;
+; Ο πίνακας θόλων περπατιέται με δείκτη (βήμα 73): ως το βήμα 72 κάθε θέση
+; πλήρωνε ένα ob_dome_live και ένα ob_domeadr, δύο πολλαπλασιασμούς επί 24.
+; Με την τράπεζα 6 ακόμη στο παράθυρο από την εγγραφή.
 ; ---------------------------------------------------------------------------
 bd_link:
-        ld      a,255
-        ld      (bl_best),a
-        ld      (bl_dist),a
-        ld      bc,GA_PORT + PAGE_B6
-        out     (c),c
-        xor     a
-        ld      (bl_i),a
+        ld      hl,#FFFF
+        ld      (bl_best),hl            ; και το bl_dist: κανένας ακόμη
+        ld      hl,G_dome_tbl + D_STATE
+        ld      b,0                     ; ο θόλος
 bl_lp:
-        ld      a,(bl_i)
+        ld      a,(hl)
+        or      a
+        jr      z,bl_next               ; άδεια θέση
         ; ΤΟΝ ΕΑΥΤΟ ΤΟΥ ΔΕΝ ΤΟΝ ΜΕΤΡΑΕΙ. Το εργοτάξιο είναι ήδη «ζωντανό»
         ; (DS_BUILDING) και απέχει μηδέν από τον κέρσορα, άρα ήταν πάντα ο
         ; κοντινότερος: ο έλεγχος «ο εαυτός του» πιο κάτω γύριζε ΧΩΡΙΣ ακμή και
         ; ο θόλος έμενε απρόσιτος για πάντα. Καμία δομή δεν το έδειχνε — μια
         ; δομή παίρνει κόμβο 64+, που δεν ισούται ποτέ με δείκτη θόλου — και
         ; καμία δοκιμή δεν είχε περιμένει θόλο να τελειώσει ως το βήμα 26.
-        ld      hl,bd_node
-        cp      (hl)
+        ld      a,(bd_node)
+        cp      b
         jr      z,bl_next
-        call    ob_dome_live
-        jr      z,bl_next
-        ld      a,(bl_i)
-        call    ob_domeadr
+        push    hl
+        dec     hl
+        dec     hl
+        dec     hl
+        ld      c,(hl)                  ; cy
+        dec     hl
         ld      a,(hl)                  ; cx
-        inc     hl
-        ld      c,(hl)                  ; cy, πριν χαθεί το HL
         ld      hl,cur_hx
         sub     (hl)
-        call    bl_abs                  ; το C επιβιώνει
-        ld      b,a
+        jp      p,bl_x
+        neg
+bl_x:
+        ld      e,a                     ; |dx|
         ld      a,c
-        ld      hl,cur_hy
+        inc     hl                      ; cur_hy
         sub     (hl)
-        call    bl_abs
-        add     a,b
-        jr      c,bl_next               ; ξεχείλισε: πολύ μακριά
+        jp      p,bl_y
+        neg
+bl_y:
+        add     a,e
+        jr      c,bl_far                ; ξεχείλισε: πολύ μακριά
         ld      hl,bl_dist
         cp      (hl)
-        jr      nc,bl_next
+        jr      nc,bl_far
         ld      (hl),a
-        ld      a,(bl_i)
-        ld      (bl_best),a
+        dec     hl                      ; bl_best
+        ld      (hl),b
+bl_far:
+        pop     hl
 bl_next:
-        ld      hl,bl_i
-        inc     (hl)
-        ld      a,(hl)
+        ld      de,DOME_REC
+        add     hl,de
+        inc     b
+        ld      a,b
         cp      MAX_DOME
         jr      c,bl_lp
-        ld      bc,GA_PORT + PAGE_B1
-        out     (c),c
-        ld      a,(bl_best)
-        cp      255
-        ret     z                       ; πρώτο κτίριο του κόσμου
-        ld      b,a
-        ld      a,(bd_node)
-        ld      c,a
-        cp      b
-        ret     z                       ; ο εαυτός του
-        call    cr_edge
-        ld      a,(bl_best)
-        ld      c,a
-        ld      a,(bd_node)
-        ld      b,a
-        call    cr_edge
-        jp      rt_mark
 
-bl_abs:
-        or      a
-        ret     p
-        neg
-        ret
-
-bl_best:    db 255
-bl_dist:    db 255
-bl_i:       db 0
-
-; bd_stamp — τα tiles γίνονται θεμέλιο και δεσμευμένα (§6.9 βήμα 2).
-bd_stamp:
+; --- τα tiles γίνονται θεμέλιο και δεσμευμένα (§6.9 βήμα 2) ---------------
         ld      bc,GA_PORT + PAGE_B4
         out     (c),c
-        ld      a,(bd_ty)
-        ld      (bd_cy),a
-        ld      a,(bd_h)
-        ld      (bd_row),a
-bst_rl:
-        ld      a,(bd_tx)
-        ld      b,a
-        ld      a,(bd_cy)
-        ld      c,a
+        ld      hl,(bd_tx)              ; L = x, H = y
+        ld      b,l
+        ld      c,h
         call    tile_addr
+        ld      a,(bd_h)
+        ld      c,a
+bst_rl:
+        push    hl
         ld      a,(bd_w)
         ld      b,a
 bst_cl:
@@ -557,45 +424,89 @@ bst_cl:
         ld      (hl),a
         inc     hl
         djnz    bst_cl
-        ld      a,(bd_cy)
-        inc     a
-        ld      (bd_cy),a
-        ld      a,(bd_row)
-        dec     a
-        ld      (bd_row),a
+        pop     hl
+        ld      de,128
+        add     hl,de                   ; η επόμενη σειρά (tile_addr)
+        dec     c
         jr      nz,bst_rl
         ld      bc,GA_PORT + PAGE_B1
         out     (c),c
+        call    bd_stock_pay            ; πληρώνει ΑΦΟΥ βρεθεί θέση
+        ; --- η ακμή προς τον κοντινότερο, αν υπάρχει ---
+        ld      a,(bl_best)
+        ld      b,a
+        inc     a
+        jr      z,bdk_post              ; πρώτο κτίριο του κόσμου
+        ld      a,(bd_node)
+        ld      c,a
+        call    cr_edge                 ; ο νέος στους γείτονες του θόλου· κρατά BC
+        ld      a,b
+        ld      b,c
+        ld      c,a
+        call    cr_edge                 ; και ο θόλος στους δικούς του
+        call    rt_mark
+bdk_post:
+        ; Με την εργασία Build, το ΠΡΩΤΟ είδος εργασίας που δέχονται τα ρομπότ
+        ; απέκτησε πηγή: ως τότε κανείς δεν δημοσίευε Haul, Drill ή Build, και
+        ; το ορόσημο «αυτοματισμός» του §10.2 ήταν απρόσιτο εξ ορισμού.
+        ld      a,(bd_node)
+        call    jb_post_build           ; src/jobs.asm — και για τον μετεωρίτη· κρατά το A
+        jp      ob_touch_n              ; μόνο η κατηγορία του· κρατά το A
+
+; bdk_rec — HL -> D_STATE / ST_STATE μιας εγγραφής, A = το τέταρτο byte
+; (δωμάτιο ή μέγεθος): γράφει cx, cy, bd_param, A, DS_BUILDING, 0, 0.
+; Out: HL -> το όγδοο byte, A = 0.
+bdk_rec:
+        dec     hl
+        dec     hl
+        dec     hl
+        dec     hl                      ; η αρχή της εγγραφής
+        ld      de,(cur_hx)             ; E = cx, D = cy
+        ld      (hl),e
+        inc     hl
+        ld      (hl),d
+        inc     hl
+        ld      e,a
+        ld      a,(bd_param)            ; μέγεθος θόλου, ή είδος δομής
+        ld      (hl),a
+        inc     hl
+        ld      (hl),e
+        inc     hl
+        ld      (hl),DS_BUILDING
+        inc     hl
+        xor     a
+        ld      (hl),a
+        inc     hl
+        ld      (hl),a
+        inc     hl
         ret
+
+        assert  D_STATE == 4 && ST_STATE == 4
+
+bl_best:    db 255
+bl_dist:    db 255
+        assert  bl_dist == bl_best + 1
 
 ; bd_stock_pay — αφαιρεί το κόστος. Κρατά το BC (fit_set).
 bd_stock_pay:
+        ld      de,(bd_metal)           ; E = μέταλλο, D = βιοπλαστικό
         ld      hl,(EC_STOCK + S_METAL*2)
-        ld      a,(bd_metal)
-        ld      e,a
-        ld      d,0
-        or      a
-        sbc     hl,de
+        ld      a,l
+        sub     e
+        ld      l,a
+        jr      nc,bsp_m
+        dec     h
+bsp_m:
         ld      (EC_STOCK + S_METAL*2),hl
         ld      hl,(EC_STOCK + S_BIOPL*2)
-        ld      a,(bd_biop)
-        ld      e,a
-        ld      d,0
-        or      a
-        sbc     hl,de
+        ld      a,l
+        sub     d
+        ld      l,a
+        jr      nc,bsp_b
+        dec     h
+bsp_b:
         ld      (EC_STOCK + S_BIOPL*2),hl
         ret
-
-; ---------------------------------------------------------------------------
-; bd_postjob — εργασία Build στον νέο κόμβο.
-;
-; Με αυτό, το ΠΡΩΤΟ είδος εργασίας που δέχονται τα ρομπότ αποκτά πηγή: ως τώρα
-; κανείς δεν δημοσίευε Haul, Drill ή Build, και το ορόσημο «αυτοματισμός» του
-; §10.2 ήταν απρόσιτο εξ ορισμού.
-; ---------------------------------------------------------------------------
-bd_postjob:
-        ld      a,(bd_node)
-        jp      jb_post_build           ; src/jobs.asm — και για τον μετεωρίτη
 
 ; --- ο κατάλογος -----------------------------------------------------------
 ; είδος, παράμετρος, W tiles, H tiles, μέταλλο, βιοπλαστικό, όνομα
@@ -650,7 +561,6 @@ t_lock:     db "AIRLOCK  ",0
 t_pad:      db "LANDING  ",0
 
 ; --- η τρέχουσα επιλογή, αντιγραμμένη από τον κατάλογο ---------------------
-bd_item:    db 0
 bd_kind:    db 0
 bd_param:   db 0
 bd_w:       db 0
@@ -662,10 +572,6 @@ bd_size:    db 2                ; μέγεθος δομής· οι δομές τ
 bd_rsel:    db 0                ; θέση στον κατάλογο δωματίων (src/rooms.asm)
 bd_tx:      db 0
 bd_ty:      db 0
-bd_cy:      db 0
-bd_row:     db 0
-bd_span:    db 0
-bd_nbad:    db 0
 bd_node:    db 255
 bd_bad:     defs 8
         assert  bd_ty == bd_tx + 1 && bd_h == bd_w + 1  ; το ui_rect τα διαβάζει ανά δύο
