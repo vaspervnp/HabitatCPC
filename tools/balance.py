@@ -58,7 +58,7 @@ def plane():
     return open(os.path.join(ROOT, "build", "world_new.bin"), "rb").read()
 
 
-RES_NEAR = 2                            # src/build.asm
+RES_NEAR = 2                            # src/const.asm
 
 
 def has_near(pl, tx, ty, size, kind):

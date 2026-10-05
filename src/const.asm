@@ -96,6 +96,11 @@ K_TURBINE   equ 1
 K_COLLECT   equ 2
 K_EXTRACT   equ 3
 K_MINE      equ 4
+; Πόσα tiles φτάνει η αντλία/το ορυχείο (§6.5). Ηταν στο build.asm, που στο
+; main.asm έρχεται ΜΕΤΑ το terrain.asm: το rasm ΠΕΤΑΕΙ το μείον μπροστά σε equ
+; που ορίζεται πιο κάτω (`-X`, `-X * k`, `-X + 1`· οι ετικέτες δεν παθαίνουν
+; τίποτα). Το `ld bc,-RES_NEAR * 129` έβγαινε +258 (βήμα 67).
+RES_NEAR    equ 2
 K_AIRLOCK   equ 5
 K_PAD       equ 6
 K_SHIP      equ 7

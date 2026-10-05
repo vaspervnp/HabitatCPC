@@ -12,7 +12,8 @@
 ; αντικείμενο· ο παίκτης δεν το βλέπει ποτέ.
 
 BLD_REC     equ 8
-RES_NEAR    equ 2                       ; πόσα tiles φτάνει η αντλία/το ορυχείο
+; RES_NEAR: στο const.asm από το βήμα 67 — το src/terrain.asm το χρειάζεται
+; πριν από εδώ (βλ. εκεί).
 BK_DOME     equ 0
 BK_STRUCT   equ 1
 BK_LINK     equ 2
@@ -669,3 +670,4 @@ bd_node:    db 255
 bd_bad:     defs 8
         assert  bd_ty == bd_tx + 1 && bd_h == bd_w + 1  ; το ui_rect τα διαβάζει ανά δύο
         assert  bd_biop == bd_metal + 1         ; το fit_price τα γράφει μαζί
+        assert  bd_param == bd_kind + 1 && BK_STRUCT == 1       ; το bd_res (src/terrain.asm)

@@ -39,20 +39,64 @@
 ; ένα έγκυρο αποτύπωμα μένει μέσα στο -61..61 και η σάρωση μέσα στο -63..63.
 ;
 ; Out: A = 0 αν επιτρέπεται. (bd_nres) = 0 · 1 θέλει νερό · 2 θέλει φλέβα.
+;
+; ΜΙΚΡΟΤΕΡΟ ΚΑΙ ΓΡΗΓΟΡΟΤΕΡΟ ΣΤΟ ΒΗΜΑ 67 (DESIGN §6.5). Τα δύο υλικά είναι η ίδια
+; ερώτηση, (byte & D) == E: νερό = κλάση 4 ή 5 = (b & 6) == 4, φλέβα = βουνό
+; ΜΕ το bit πόρου = (b & 15) == 11. Ενα tile είναι τέσσερις εντολές, όχι μια
+; κλήση που ξαναδιάβαζε το bd_nres. Το περιθώριο ξεκινά από ΕΝΑ tile_addr και
+; κατεβαίνει 128 bytes τη σειρά (μια σειρά του επιπέδου): η σάρωση μένει μέσα
+; στο -63..63, όπως εξηγεί το παραπάνω, άρα η αφαίρεση δεν ξεφεύγει ποτέ.
 ; ---------------------------------------------------------------------------
 bd_res:
-        xor     a
-        ld      (bd_nres),a
-        ld      a,(bd_kind)
-        cp      BK_STRUCT
+        ld      hl,(bd_kind)            ; L = είδος, H = παράμετρος (assert)
+        dec     l                       ; BK_STRUCT == 1
         jr      nz,bdr_none
-        ld      a,(bd_param)
-        ld      c,1                     ; 1 = νερό
-        cp      K_EXTRACT
+        ld      a,h
+        sub     K_EXTRACT
+        ld      de,6 * 256 + W_WATER    ; νερό ή βαθύ νερό
         jr      z,bdr_go
-        inc     c                       ; 2 = φλέβα
-        cp      K_MINE
-        jr      z,bdr_go
+        ld      de,15 * 256 + W_MOUNTAIN + 8    ; κλάση ΚΑΙ το bit πόρου (§3.5)
+        dec     a                       ; K_MINE == K_EXTRACT + 1
+        jr      nz,bdr_none
+bdr_go:
+        ld      a,h
+        sub     K_EXTRACT - 1           ; 1 νερό, 2 φλέβα
+        ld      (bd_nres),a             ; «λείπει», ώσπου να βρεθεί
+        ld      hl,(bd_w)
+        ld      bc,2 * RES_NEAR * 257
+        add     hl,bc                   ; L = w + 4 στήλες, H = h + 4 σειρές
+        push    hl
+        ld      hl,(bd_tx)
+        ld      b,l
+        ld      c,h
+        call    tile_addr               ; κρατά τα BC, DE
+        ld      bc,-RES_NEAR * 129      ; RES_NEAR σειρές και RES_NEAR στήλες πίσω
+                                        ; (το RES_NEAR στο const.asm: ΠΡΙΝ από εδώ)
+        add     hl,bc
+        pop     bc                      ; C = στήλες, B = σειρές
+bdr_rl:
+        push    bc
+bdr_cl:
+        ld      a,(hl)
+        and     d
+        cp      e
+        jr      z,bdr_yes
+        inc     hl
+        dec     c
+        jr      nz,bdr_cl
+        pop     bc
+        ld      a,128                   ; HL += 128 - στήλες: η αρχή της επόμενης
+        sub     c
+        add     a,l
+        ld      l,a
+        adc     a,h
+        sub     l
+        ld      h,a
+        djnz    bdr_rl
+        ld      a,1                     ; δεν βρέθηκε: άκυρη θέση
+        ret
+bdr_yes:
+        pop     bc
 bdr_none:
         ; ΜΕ ΚΑΘΑΡΟ ΤΟ A, ΚΑΙ ΟΧΙ ΜΕ ΟΤΙ ΕΤΥΧΕ. Εδώ στεκόταν ένα `ret nz` μετά
         ; το `cp`, που γυρνούσε το ΕΙΔΟΣ της δομής ως αριθμό άκυρων tiles: ο
@@ -60,59 +104,10 @@ bdr_none:
         ; πουθενά. Το έπιασε το tests/test_needs.py, που χτίζει επτά κτίσματα
         ; και είδε το τέταρτο να μην μπαίνει.
         xor     a
-        ret
-bdr_go:
-        ld      a,c
-        ld      (bd_nres),a             ; «λείπει», ώσπου να βρεθεί
-        ld      a,(bd_ty)
-        sub     RES_NEAR
-        ld      (bd_cy),a
-        ld      a,(bd_h)
-        add     a,RES_NEAR*2
-        ld      (bd_row),a
-bdr_rl:
-        ld      a,(bd_tx)
-        sub     RES_NEAR
-        ld      b,a
-        ld      a,(bd_cy)
-        ld      c,a
-        call    tile_addr
-        ld      a,(bd_w)
-        add     a,RES_NEAR*2
-        ld      b,a
-bdr_cl:
-        ld      a,(hl)
-        call    bdr_test
-        jr      z,bdr_yes
-        inc     hl
-        djnz    bdr_cl
-        ld      hl,bd_cy
-        inc     (hl)
-        ld      hl,bd_row
-        dec     (hl)
-        jr      nz,bdr_rl
-        ld      a,1                     ; δεν βρέθηκε: άκυρη θέση
-        ret
-bdr_yes:
-        xor     a
         ld      (bd_nres),a
         ret
 
-; bdr_test — A = world byte. Z αν είναι το υλικό που ζητά το (bd_nres).
-; Δεν πειράζει ούτε HL ούτε BC: τρέχει μέσα στον βρόχο των στηλών.
-bdr_test:
-        ld      e,a
-        ld      a,(bd_nres)
-        dec     a
-        ld      a,e
-        jr      nz,bdr_ore
-        and     7
-        cp      W_WATER
-        ret     z
-        cp      W_DEEPWATER
-        ret
-bdr_ore:
-        and     7 + 8                   ; κλάση ΚΑΙ το bit πόρου (§3.5)
-        cp      W_MOUNTAIN + 8
-        ret
 bd_nres:    db 0                ; ποιο υλικό λείπει: 0 κανένα, 1 νερό, 2 φλέβα
+
+        assert  K_MINE == K_EXTRACT + 1
+        assert  W_DEEPWATER == W_WATER + 1 && (W_WATER & 6) == W_WATER
