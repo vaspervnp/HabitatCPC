@@ -358,11 +358,12 @@ def main():
     g.poke(gsym["ML_WARM"], 0)
     g.poke(ec + 46, 1)                              # POK
     g.poke(ec + 47, 1)                              # O2OK
-    g.run_code(0x3F00, bytes(call("ML_ALERT") + [0x18, 0xFE]))
+    hudw = [0x21, gsym["ML_HUDW"] & 0xFF, gsym["ML_HUDW"] >> 8]   # ld hl,ml_hudw (βήμα 71)
+    g.run_code(0x3F00, bytes(hudw + call("ML_ALERT") + [0x18, 0xFE]))
     g.run_frames(2)
     before = g.psg_regs()[8]
     g.poke(ec + 46, 0)                              # έπεσε το ρεύμα
-    g.run_code(0x3F00, bytes(call("ML_ALERT") + call("SND_TICK") + [0x18, 0xFE]))
+    g.run_code(0x3F00, bytes(hudw + call("ML_ALERT") + call("SND_TICK") + [0x18, 0xFE]))
     g.run_frames(2)
     r = g.psg_regs()
     check(before == 0 and r[8] == 11 and r[0] == 28 and r[1] == 1,
