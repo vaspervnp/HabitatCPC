@@ -1293,7 +1293,122 @@ def meteors(sym, g, nexthop, sim0):
         return 1
     print(f"OK κατασκευή:  ένα εργοτάξιο ξαναχτίστηκε, ίδια bytes στον Z80 και "
           f"στην αναφορά")
+
+    # 5. Ο ΙΔΙΟΣ Ο ΤΡΟΧΟΣ (βήμα 65), και τέσσερα αρνητικά: με τον προϋπολογισμό
+    # της δρομολόγησης ένα λιγότερο, με την 6 να μένει στο παράθυρο, με τις
+    # σβηστές θέσεις να τρέχουν, και με το wheel_reset να μη μηδενίζει τη θέση.
+    why = wheel_check(sym, g, nexthop, base)
+    if why:
+        print(f"ΑΠΟΤΥΧΙΑ τροχός: {why}")
+        return 1
+    print(f"OK τροχός:     η δρομολόγηση σε ακριβώς ⌈μονάδες / {WH_RT_B}⌉ frames με την 1 "
+          f"στο παράθυρο μετά από καθένα, οι σβηστές θέσεις δεν αγγίζουν τίποτα, το "
+          f"wheel_reset ξεκινά από τη θέση 0")
+    m = boot_only()
+    wt, wf, wr = sym["WHEEL_TICK"], sym["WH_FRAME"], sym["WHEEL_RESET"]
+    find = lambda at, pat, n=64: next((at + k for k in range(n)
+                                       if list(m.read_ram(at + k, len(pat))) == pat), None)
+    b_at = find(wf, [0x06, WH_RT_B])                         # ld b,WH_RT_B
+    w_at = find(wt + 3, [0x01, 0xC0, 0x7F])                  # ld bc,GA_PORT + PAGE_B1
+    o_at = find(wf + 10, [0xB7, 0xC8])                       # or a · ret z (wh_on)
+    r_at = find(wr, [0xAF, 0x32], 4)                         # xor a · ld (wh_slot),a
+    for label, patch in (("προϋπολογισμός ένα λιγότερο", b_at and [(b_at + 1, WH_RT_B - 1)]),
+                         ("η 6 μένει στο παράθυρο", w_at and [(w_at + 1, 0xC6)]),
+                         ("οι σβηστές θέσεις τρέχουν", o_at and [(o_at + 1, 0x00)]),
+                         ("το wheel_reset κρατά τη θέση", r_at and [(r_at + 1, 0), (r_at + 2, 0),
+                                                                  (r_at + 3, 0)])):
+        if not patch or wheel_check(sym, g, nexthop, base, patch) is None:
+            print(f"ΑΠΟΤΥΧΙΑ ΑΡΝΗΤΙΚΟ τροχού: με «{label}» ο έλεγχος πέρασε")
+            return 1
+        print(f"OK ΑΡΝΗΤΙΚΟ τροχού: με «{label}» ο έλεγχος αποτυγχάνει")
     return 0
+
+
+WH_RT_B = 15                    # src/wheel.asm, DESIGN §7.2
+
+
+def boot_only():
+    from cpc import CPC
+    m = CPC()
+    m.run_frames(60)
+    assert m.quickload(SNA, start=False), "quickload απέτυχε"
+    return m
+
+
+def wheel_check(sym, g, nexthop, base, patch=()):
+    """Ο τροχός απευθείας, wheel_tick ένα-ένα: η πρώτη διαφορά ή None.
+
+      1. rt_mark και frames ως το rt_dirty = 0: ακριβώς ⌈Σ(R(s) + 2) / WH_RT_B⌉
+         για τις 96 πηγές, και μετά από ΚΑΘΕ frame η τράπεζα 1 στο παράθυρο
+         (§7.4: ο τροχός μπαίνει με την 6 και βγαίνει με την 1).
+      2. όλες οι θέσεις σβηστές, 32 frames: η τράπεζα 6 και η οικονομία ίδιες.
+      3. wheel_reset: wh_slot = 0 και rt_dirty = 0.
+    """
+    import ctypes
+    import cpc
+    m = boot_only()
+    sim = fresh(g, nexthop, base)
+    m.write_ram(sym["G_NODE_ADJ"], bytes(g.adj))
+    m.write_ram(sym["G_RT_NODES"], bytes(g.deg))
+    m.poke(sym["RT_N"], 96)
+    enter(m, sym, "BUILD_ROUTES")
+    m.write_ram(STAGE_AG, sim.a.to_bytes())
+    m.write_ram(STAGE_OCC, bytes(sim.occ) + bytes(128))
+    m.write_ram(STAGE_DOME, bytes(sim.e.dome))
+    m.write_ram(STAGE_STR, bytes(sim.e.struct))
+    m.write_ram(sym["G_ECON_STATE"], EC.to_bytes(sim.e))
+    m.write_ram(sym["G_JOB_TBL"], bytes(sim.e.job))
+    m.write_ram(sym["G_ROOM_N"], bytes(sim.e.room_n))
+    m.write_ram(sym["G_ROOM_LIST"], bytes(sim.e.room_list))
+    enter(m, sym, "LOAD_STATE")
+    for at, v in patch:
+        m.poke(at, v)
+    bank = lambda n, size=0x4000: ctypes.string_at(cpc._lib.cpcemu_ram_ptr(m._h, n), size)
+
+    def run(name):
+        a = sym[name]
+        code = [0xF3, 0x31, 0x00, 0x01, 0xCD, a & 255, a >> 8,
+                0x21, 0x00, 0x40, 0x11, 0x80, 0x3F, 0x01, 0x40, 0x00, 0xED, 0xB0,  # &4000 -> &3F80
+                0x18, 0xFE]
+        m.write_ram(0x3F00, bytes(code))
+        m.set_pc(0x3F00)
+        end = 0x3F00 + len(code) - 2
+        for _ in range(4000):
+            if end <= m.pc <= end + 2:
+                return m.read_ram(0x3F80, 64)
+            m.run_us(100)
+        raise AssertionError(f"το {name} δεν γύρισε: #{m.pc:04X}")
+
+    units = sum(2 + sum(1 for d in G.bfs_row(g, s)[0] if d != G.UNREACH) for s in range(96))
+    want = -(-units // WH_RT_B)
+    run("RT_MARK")
+    n = 0
+    while m.peek(sym["RT_DIRTY"]):
+        seen = run("WHEEL_TICK")
+        n += 1
+        if seen != bank(1, 64) or seen == bank(6, 64):
+            return f"μετά το frame {n} το &4000 δεν είναι η τράπεζα 1"
+        if n > 2 * want:
+            break
+    if n != want:
+        return f"η δρομολόγηση τελείωσε σε {n} frames, {units} μονάδες θέλουν {want}"
+    for k in range(16):
+        m.poke(sym["WH_ON"] + k, 0)
+    before = (bank(6), m.read_ram(sym["G_ECON_STATE"], EC.ECON_BYTES))
+    slot = m.peek(sym["WH_SLOT"])
+    for _ in range(32):
+        run("WHEEL_TICK")
+    if (bank(6), m.read_ram(sym["G_ECON_STATE"], EC.ECON_BYTES)) != before:
+        return "με όλες τις θέσεις σβηστές άλλαξαν η τράπεζα 6 ή η οικονομία"
+    if m.peek(sym["WH_SLOT"]) != slot:
+        return f"32 frames πήγαν το wh_slot από {slot} σε {m.peek(sym['WH_SLOT'])}"
+    m.poke(sym["WH_SLOT"], 7)
+    m.poke(sym["RT_DIRTY"], 1)
+    run("WHEEL_RESET")
+    if (m.peek(sym["WH_SLOT"]), m.peek(sym["RT_DIRTY"])) != (0, 0):
+        return f"μετά το wheel_reset wh_slot {m.peek(sym['WH_SLOT'])}, rt_dirty " \
+               f"{m.peek(sym['RT_DIRTY'])}"
+    return None
 
 
 METEOR_TICKS = 1600             # 100 περιστροφές: οκτώ κρούσεις, δρόμος, χτίσιμο

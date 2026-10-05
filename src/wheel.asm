@@ -7,8 +7,9 @@
 ; επαναλαμβάνονται.
 ;
 ; Η ΔΡΟΜΟΛΟΓΗΣΗ ΔΕΝ ΕΙΝΑΙ ΘΕΣΗ ΤΟΥ ΤΡΟΧΟΥ, και αυτό είναι αλλαγή από το §7.2.
-; Μια θέση τρέχει μία φορά στα 16 frames· με μετρημένα 222 us ανά επέκταση
-; κόμβου και n^2 επεκτάσεις, μια αποικία 128 κόμβων θα ήθελε λεπτά. Η
+; Μια θέση τρέχει μία φορά στα 16 frames· με μετρημένα 174 us ανά επέκταση
+; κόμβου (222 ως το βήμα 62) και n^2 επεκτάσεις, μια αποικία 128 κόμβων θα
+; ήθελε λεπτά. Η
 ; ανοικοδόμηση παίρνει **προϋπολογισμό ανά frame**, όπως η λίστα βρώμικων
 ; πλακιδίων — τρέχει σε ΚΑΘΕ frame, με ταβάνι, όσο ο γράφος είναι βρώμικος.
 
@@ -53,14 +54,31 @@ wheel_tick:
         ret
 
 
+; ---------------------------------------------------------------------------
+; wh_frame — η δρομολόγηση, και μετά η θέση του frame.
+;
+; Η δρομολόγηση: ως WH_RT_B επεκτάσεις κόμβων, μόνο όσο ο γράφος είναι
+; βρώμικος. Το rt_slice αφήνει την 1 στο παράθυρο· το ld/out που ξαναβάζει
+; την 6 δεν αγγίζει το Cy του.
+; ---------------------------------------------------------------------------
 wh_frame:
-        call    wh_routing              ; κάθε frame, με ταβάνι
-
-        ld      a,(wh_slot)
+        ld      a,(rt_dirty)
+        or      a
+        jr      z,wf_slot
+        ld      b,WH_RT_B
+        call    rt_slice
+        ld      bc,GA_PORT + PAGE_B6
+        out     (c),c
+        jr      nc,wf_slot
+        xor     a
+        ld      (rt_dirty),a            ; τελείωσε
+wf_slot:
+        ld      hl,wh_slot
+        ld      a,(hl)
         ld      e,a
         inc     a
         and     WH_SLOTS - 1
-        ld      (wh_slot),a
+        ld      (hl),a
 
         ld      d,0
         ; Μια θέση μπορεί να είναι σβηστή: στην παύση, στη φόρτωση, και όσο
@@ -87,74 +105,43 @@ wh_frame:
 ; μεγαλώνει η αποικία, και μια ολίσθηση θα δούλευε μόνο για δυνάμεις του δύο.
 ; Τρέχει μία φορά ανά frame — το κόστος του δεν μετριέται.
 wh_move:
+        ld      hl,ent_move_slice
         ld      a,(wh_move_n)
-        ld      b,a
         ld      c,0
-wm_lp:
-        ld      a,e
-        or      a
-        jr      z,wm_go
+; wh_go — B = A, C += E * A, και στο HL: η φέτα (C = πρώτος, B = πλήθος).
+wh_go:
+        push    hl
+        ld      b,a
+wg_lp:
         dec     e
+        ret     m                       ; E ως 7: το -1 είναι το τέλος
         ld      a,c
         add     a,b
         ld      c,a
-        jr      wm_lp
-wm_go:
-        jp      ent_move_slice
+        jr      wg_lp
 
 ; --- θέσεις 8-10: ανάγκες — φθορά, ικανοποίηση, υγεία, θάνατος, απόφαση ---
+;
+; Οι τρεις θέσεις μοιράζονται 24 αποίκους από το wh_need_base, και η 10
+; προχωρά τη βάση ΑΦΟΥ πάρει τη δική της φέτα από την παλιά.
 wh_decay:
+        res     3,e                     ; 8-10 -> 0-2
+        ld      hl,wh_need_base
+        ld      c,(hl)
         ld      a,e
-        sub     8
-        ld      e,a
-        ld      a,(wh_decay_n)
-        ld      b,a
-        ld      a,(wh_need_base)
-        ld      c,a
-wd_lp:
-        ld      a,e
-        or      a
-        jr      z,wd_go
-        dec     e
+        cp      2
+        jr      nz,wd_go
         ld      a,c
-        add     a,b
-        ld      c,a
-        jr      wd_lp
-wd_go:
-        ld      a,(wh_slot)             ; μόλις αυξήθηκε: 11 σημαίνει «ήταν 10»
-        cp      11
-        jr      nz,wd_run
-        ld      a,(wh_need_base)
         add     a,WH_NEED_SPAN
         cp      MAX_COLONIST
         jr      c,wd_nb
         sub     MAX_COLONIST
 wd_nb:
-        ld      (wh_need_base),a
-wd_run:
-        jp      ent_needs_slice
-
-; --- η ελεύθερη θέση ---
-wh_todo:
-        ret
-
-; ---------------------------------------------------------------------------
-; wh_routing — ως WH_RT_B επεκτάσεις κόμβων, μόνο όσο ο γράφος είναι βρώμικος.
-; ---------------------------------------------------------------------------
-wh_routing:
-        ld      a,(rt_dirty)
-        or      a
-        ret     z
-        ld      b,WH_RT_B
-        call    rt_slice
-        push    af
-        ld      bc,GA_PORT + PAGE_B6    ; το rt_slice αφήνει την 1 στο παράθυρο
-        out     (c),c
-        pop     af
-        ret     nc
-        xor     a
-        ld      (rt_dirty),a            ; τελείωσε
-        ret
+        ld      (hl),a
+wd_go:
+        ld      hl,ent_needs_slice
+        ld      a,(wh_decay_n)
+        jr      wh_go
 
 wh_table:
         dw wh_move, wh_move, wh_move, wh_move
@@ -172,21 +159,20 @@ wh_on:      db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
 ;
 ; Περνά από δείκτη και όχι με κατευθείαν κλήση στο dirty_push επειδή το
 ; tests/simtest.asm δεν συνδέει renderer — εκεί ο δείκτης μένει μηδέν και η
-; κλήση κοστίζει δεκατέσσερα T-states. Ο βρόχος του main.asm τον γεμίζει.
+; κλήση κοστίζει λίγα T-states. Ο βρόχος του main.asm τον γεμίζει. Ενας
+; χειριστής στη σελίδα 0 δεν υπάρχει (ο κώδικας αρχίζει στο &0100), άρα
+; «μηδέν» είναι H = 0 — και το A φτάνει στον χειριστή χωρίς να το φυλάξει κανείς.
 ;
 ; Χαλάει ό,τι χαλάει ο χειριστής. Τα σημεία κλήσης φυλάνε ό,τι χρειάζονται.
 ; ---------------------------------------------------------------------------
 wh_push:
-        ld      (whp_kind),a
         ld      hl,(wh_hook)
-        ld      a,h
-        or      l
+        inc     h
+        dec     h
         ret     z
-        ld      a,(whp_kind)
         jp      (hl)
 
 wh_hook:    dw 0
-whp_kind:   db 0
 
 wh_slot:    db 0
 wh_move_n:  db WH_MOVE_DEF            ; §7.3 — οι φέτες μεγαλώνουν, ο τροχός όχι
