@@ -99,8 +99,23 @@ def _one_side(ax, ay, sa, bx, by, sb):
     return [(d, n1), (_dir_of(0, uy), n2)]
 
 
+MAX_APART = 64                  # tiles σε έναν άξονα: από εκεί και πέρα, κανένας
+
+
+def too_far(ax, ay, bx, by):
+    """Απέχουν οι δύο θόλοι 64 tiles ή περισσότερο σε έναν άξονα; (βήμα 81)
+
+    Τα κέντρα είναι μισά tiles, -128..127, και ο Z80 αφαιρεί σε 8 bits: πιο
+    μακριά η διαφορά αναδιπλωνόταν και η διαδρομή έβγαινε ανάποδα. Ο κανόνας
+    είναι συμμετρικός, και το -64 (που χωρά σε 8 bits) είναι κι αυτό μακριά.
+    """
+    return abs(bx - ax) >= 2 * MAX_APART or abs(by - ay) >= 2 * MAX_APART
+
+
 def plan(ax, ay, sa, bx, by, sb):
     """(από, προς, [(dir, len), ...]) ή None. Δοκιμάζει και τις δύο μεριές."""
+    if too_far(ax, ay, bx, by):
+        return None
     r = _one_side(ax, ay, sa, bx, by, sb)
     if r is not None:
         return 0, r

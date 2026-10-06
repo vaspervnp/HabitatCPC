@@ -684,7 +684,8 @@ uid_wt:     db 4,6,8
 
 ; ---------------------------------------------------------------------------
 ; ln_plan — η διαδρομή από τον (ln_a) στον θόλο κάτω από τον κέρσορα.
-; Out: A = (ui_bad): 0 σημαίνει «χτίζεται». (cr_n) = 0 αν δεν υπάρχει καν.
+; Out: A = (ui_bad): 0 σημαίνει «χτίζεται». (cr_n) = 0 αν δεν υπάρχει καν, και
+; τότε το ui_bad λέει γιατί: 1 το σχήμα, 2 η απόσταση (cr_far, βήμα 81).
 ; ---------------------------------------------------------------------------
 ln_plan:
         xor     a
@@ -704,14 +705,17 @@ ln_plan:
         ld      (cr_a),a
         call    cr_plan
         or      a
-        jr      z,lnp_no
+        jr      z,lnp_none
         call    cr_check
         ld      (ui_bad),a
         ret
-lnp_no:
-        xor     a
-        ld      (cr_n),a
+lnp_none:
+        ld      a,(cr_far)
+        inc     a
+        jr      lnp_bad
+lnp_no:                                 ; το cr_n είναι 0 από την αρχή
         ld      a,1
+lnp_bad:
         ld      (ui_bad),a
         ret
 
@@ -1274,8 +1278,14 @@ uip_ln:
         jr      z,uip_say
         ld      a,(cr_n)
         or      a
-        ld      hl,t_ln2
+        jr      nz,uip_lnr
+        ld      a,(ui_bad)
+        dec     a
+        ld      hl,t_ln2                ; 1: το σχήμα δεν βγαίνει
         jr      z,uip_say
+        ld      hl,t_far                ; 2: >= 64 tiles (βήμα 81)
+        jr      uip_say
+uip_lnr:
         ld      a,(ui_bad)
         or      a
         ld      hl,t_block

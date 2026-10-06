@@ -59,6 +59,7 @@ x_t_block:    db "BLOCKED             ",0
 x_t_poor:     db "NOT ENOUGH MATERIAL ",0
 x_t_ln1:      db "PICK THE FIRST DOME ",0
 x_t_ln2:      db "NO ROUTE FROM THERE ",0
+x_t_far:      db "TOO FAR             ",0       ; >= 64 tiles (βήμα 81)
 x_t_nowat:    db "NEEDS WATER NEARBY  ",0
 x_t_noore:    db "NEEDS AN ORE VEIN   ",0
 x_t_fe:       db "FE",0
@@ -148,6 +149,7 @@ t_block   equ x_t_block - TEXT_IMG + G_text
 t_poor    equ x_t_poor - TEXT_IMG + G_text
 t_ln1     equ x_t_ln1 - TEXT_IMG + G_text
 t_ln2     equ x_t_ln2 - TEXT_IMG + G_text
+t_far     equ x_t_far - TEXT_IMG + G_text
 t_nowat   equ x_t_nowat - TEXT_IMG + G_text
 t_noore   equ x_t_noore - TEXT_IMG + G_text
 t_fe      equ x_t_fe - TEXT_IMG + G_text
