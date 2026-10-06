@@ -220,14 +220,21 @@ sv_magic:   db "HBT", SV_VER + '0', SV_VER
 sv_after:
         ld      a,(SV_HDR + 7)
         call    pal_planet              ; ο κόσμος που ήρθε μπορεί να είναι άλλος πλανήτης
-        ld      a,(SV_HDR + 8)
-        ld      (cam_tx),a
-        ld      a,(SV_HDR + 9)
-        ld      (cam_ty),a
-        ld      a,(SV_HDR + 10)
-        ld      (cur_hx),a
-        ld      a,(SV_HDR + 11)
-        ld      (cur_hy),a
+        ; Η κάμερα μέσα στον κόσμο: μια θέση σωσμένη πριν από το βήμα 78 μπορεί
+        ; να την έχει στο -65 ή και πέρα, και μια πλήρης σχεδίαση εκεί διαβάζει
+        ; λάθος σειρές (DESIGN §15).
+        ld      hl,(SV_HDR + 8)         ; L = cam_tx, H = cam_ty
+        ld      a,l
+        ld      b,CAM_XMAX + #80
+        call    sv_cam
+        ld      l,a
+        ld      a,h
+        ld      b,CAM_YMAX + #80
+        call    sv_cam
+        ld      h,a
+        ld      (cam_tx),hl             ; cam_tx, cam_ty διπλανά (ui.asm)
+        ld      hl,(SV_HDR + 10)
+        ld      (cur_hx),hl             ; cur_hx, cur_hy διπλανά (ui.asm)
         ld      bc,GA_PORT + PAGE_B5
         out     (c),c
         ld      hl,#4000
@@ -248,6 +255,21 @@ sv_after:
         call    ui_hudall
         call    ui_show
         xor     a
+        ret
+
+; sv_cam — A προσημασμένο -> στο [-64, B - #80]. Με το xor #80 η σειρά των
+; προσημασμένων γίνεται σειρά ανυπόγραφων, και αρκούν δύο cp.
+sv_cam:
+        xor     #80
+        cp      #40                     ; -64
+        jr      nc,svc_hi
+        ld      a,#40
+svc_hi:
+        cp      b
+        jr      c,svc_ok
+        ld      a,b
+svc_ok:
+        xor     #80
         ret
 
 sv_slot:    db 0

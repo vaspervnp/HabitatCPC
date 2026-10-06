@@ -4,8 +4,8 @@
   bd_ok      Z αν το byte του κόσμου επιτρέπεται: χωρίς κατοχή (#30), και
              έδαφος, σκόνη ή θεμέλιο (0, 1, 7) — και τα 256
   bd_select  η εγγραφή του καταλόγου στο bd_kind..bd_name, ο κέρσορας στην
-             ισοτιμία του αποτυπώματος, το μέγεθος της δομής· τίποτα για
-             αντικείμενο έξω από τον κατάλογο
+             ισοτιμία του αποτυπώματος (μισό tile πιο πέρα, ή πίσω στο 127),
+             το μέγεθος της δομής· τίποτα για αντικείμενο έξω από τον κατάλογο
   bd_rect    (κέντρο - μήκος) / 2, και CY αν το αποτύπωμα βγαίνει από το
              -64..63 — με το bd_ty όπως ήταν όταν φταίει το x
   bd_check   τα κακά tiles ανά σειρά (bit ανά στήλη) και το πλήθος τους, 255
@@ -167,6 +167,15 @@ def rect_rule(cx, cy, w, h):
     return tx, ty, ty < -64 or ty + h > 64
 
 
+def snap_rule(c, w):
+    """Το κέντρο στην ισοτιμία του πλάτους: μισό tile πιο πέρα — εκτός από το
+    127, όπου το «πιο πέρα» είναι η απέναντι άκρη του κόσμου, και πάει μισό
+    tile πίσω (βήμα 78)."""
+    if not (c ^ w) & 1:
+        return c
+    return 126 if c == 127 else (c + 1) & 255
+
+
 def ok_rule(b):
     return not b & 0x30 and b & 7 in (0, 1, 7)
 
@@ -186,6 +195,8 @@ def rules(sym, patch=(), n=600):
     for case in range(n // 3):
         G.restore()
         i, cx, cy = rnd.randrange(13), rnd.randrange(256), rnd.randrange(256)
+        if case % 8 < 2:                    # το ανατολικό και το νότιο χείλος
+            cx, cy = (127, cy) if case % 8 == 0 else (cx, 127)
         G.cursor(cx, cy)
         G.item(rnd.randrange(11))
         before = m.read_ram(sym["BD_KIND"], 9)
@@ -194,7 +205,7 @@ def rules(sym, patch=(), n=600):
         if i < 11:
             it = G.items[i]
             want = (it + bytes([2 if it[1] < K_MINE else 0]),
-                    (cx + ((cx ^ it[2]) & 1)) & 255, (cy + ((cy ^ it[3]) & 1)) & 255)
+                    snap_rule(cx, it[2]), snap_rule(cy, it[3]))
         else:
             want = (before, cx, cy)
         if got != want:

@@ -23,6 +23,11 @@ MSG_TICKS   equ 6                       ; τικ HUD που κρατά ένα μ
 
 UIP_NSIG    equ 11                      ; bytes υπογραφής των σειρών 3-4
 UI_MARGIN   equ 1                       ; tiles από το χείλος πριν σκρολάρει
+; Η κάμερα δεν βγαίνει από τον κόσμο (-64..63): πάνω-αριστερά από -64 ως εκεί
+; όπου το κάδρο φτάνει στο 63 (βήμα 78).
+CAM_MIN     equ #C0                     ; -64
+CAM_XMAX    equ 64 - VIEW_TW            ; 44
+CAM_YMAX    equ 64 - VIEW_TH            ; 54
 PEN_CUR     equ 15                      ; ροζ — το λευκό χανόταν πάνω στα χείλη
                                     ; των διαδρόμων, που είναι κι αυτά λευκά
 PEN_OK      equ 9                       ; έντονο πράσινο — επιτρέπεται
@@ -708,17 +713,32 @@ um_go:
         ld      a,d
         or      e
         ret     z                       ; τίποτα δεν πατήθηκε
-        push    de
-        call    ui_hide
-        pop     de
-        ld      hl,cur_hx
-        ld      a,(hl)
+        ; ΣΤΟ ΧΕΙΛΟΣ ΤΟΥ ΚΟΣΜΟΥ Ο ΚΕΡΣΟΡΑΣ ΣΤΑΜΑΤΑ. Τα μισά tiles -128..127
+        ; είναι ακριβώς τα tiles -64..63, οπότε «βγαίνει από τον κόσμο» είναι
+        ; η υπερχείλιση του add. Ως το βήμα 78 τυλιγόταν στην απέναντι άκρη,
+        ; και η κάμερα τον ακολουθούσε μέσα από 128 στήλες σκουπίδια.
+        ld      hl,(cur_hx)             ; L = hx, H = hy
+        ld      a,l
         add     a,e
-        ld      (hl),a
-        inc     hl                      ; cur_hy
-        ld      a,(hl)
+        jp      po,um_x
+        ld      e,0                     ; έξω: αυτός ο άξονας δεν κινείται
+        ld      a,l
+um_x:
+        ld      l,a
+        ld      a,h
         add     a,d
-        ld      (hl),a
+        jp      po,um_y
+        ld      d,0
+        ld      a,h
+um_y:
+        ld      h,a
+        ld      a,d
+        or      e
+        ret     z                       ; μόνο προς τα έξω: σαν να μην πατήθηκε
+        push    hl
+        call    ui_hide
+        pop     hl
+        ld      (cur_hx),hl
         call    ui_follow
         call    ui_show
         ld      a,SFX_MOVE
@@ -729,6 +749,8 @@ um_go:
 ; ---------------------------------------------------------------------------
 ; ui_follow — η κάμερα κρατά το αποτύπωμα μέσα στο κάδρο, με ένα tile
 ; περιθώριο, και σκρολάρει ΜΕ ΛΩΡΙΔΑ — όχι με πλήρη σχεδίαση.
+; Η κάμερα σταματά στο χείλος του κόσμου (CAM_MIN..CAM_XMAX/YMAX): εκεί το
+; περιθώριο χάνεται και ο κέρσορας φτάνει ως το τελευταίο tile.
 ; ---------------------------------------------------------------------------
 ui_follow:
         call    ui_rect
@@ -741,6 +763,9 @@ uif_x:
         cp      UI_MARGIN
         jr      nc,uif_x2
 uif_west:
+        ld      a,(hl)                  ; HL = cam_tx
+        cp      CAM_MIN
+        jr      z,uif_x2                ; το δυτικό χείλος του κόσμου
         ld      a,3                     ; δύση
         call    view_scroll
         jr      uif_x
@@ -752,6 +777,9 @@ uif_x2:
         sub     (hl)
         cp      VIEW_TW - UI_MARGIN + 1
         jr      c,uif_y
+        ld      a,(hl)
+        cp      CAM_XMAX
+        jr      z,uif_y
         ld      a,1                     ; ανατολή
         call    view_scroll
         jr      uif_x2
@@ -764,7 +792,10 @@ uif_y:
         cp      UI_MARGIN
         jr      nc,uif_y2
 uif_north:
-        ld      a,0                     ; βορράς
+        ld      a,(hl)                  ; HL = cam_ty
+        cp      CAM_MIN
+        jr      z,uif_y2
+        xor     a                       ; βορράς
         call    view_scroll
         jr      uif_y
 uif_y2:
@@ -775,6 +806,9 @@ uif_y2:
         sub     (hl)
         cp      VIEW_TH - UI_MARGIN + 1
         ret     c
+        ld      a,(hl)
+        cp      CAM_YMAX
+        ret     z
         ld      a,2                     ; νότος
         call    view_scroll
         jr      uif_y2
