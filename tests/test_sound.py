@@ -120,34 +120,39 @@ class Ref:
                 self.wait[c] -= 1
                 continue
             p = self.ptr[c]
-            frames = self.mem[p]
+            vol = self.mem[p]
             tbit, nbit = 1 << c, 8 << c
-            if frames == 0:
+            if vol == 0:
                 self.ptr[c] = self.pri[c] = 0
                 self.reg[8 + c] = 0
                 self.reg[7] |= tbit | nbit
                 continue
-            vol, lo, hi = self.mem[p + 1], self.mem[p + 2], self.mem[p + 3]
-            self.ptr[c] = p + 4
-            self.wait[c] = frames - 1
             self.reg[8 + c] = vol & 15
             self.reg[7] |= tbit | nbit
-            if vol & 0x80:
-                self.reg[6] = lo & 31
+            if vol & 0x80:                 # θόρυβος: ένταση, περίοδος, frames
+                self.reg[6] = self.mem[p + 1] & 31
+                frames = self.mem[p + 2]
+                self.ptr[c] = p + 3
                 self.reg[7] &= ~nbit & 0xFF
-            else:
-                self.reg[2 * c] = lo
-                self.reg[2 * c + 1] = hi
+            else:                          # τόνος: ένταση, lo, hi, frames
+                self.reg[2 * c] = self.mem[p + 1]
+                self.reg[2 * c + 1] = self.mem[p + 2]
+                frames = self.mem[p + 3]
+                self.ptr[c] = p + 4
                 self.reg[7] &= ~tbit & 0xFF
+            self.wait[c] = frames - 1
 
 
 def read_table(m, sym):
-    """Ο πίνακας εφέ, από τη μνήμη: (κανάλι, προτεραιότητα, διεύθυνση βημάτων)."""
+    """Ο πίνακας εφέ, από τη μνήμη: (κανάλι, προτεραιότητα, διεύθυνση βημάτων).
+    Το sn_tab[k] είναι η απόσταση του εφέ από το ίδιο το sn_tab + k, και το
+    πρώτο byte του εφέ προτεραιότητα << 4 | κανάλι << 2 (βήμα 75)."""
     base = sym["SN_TAB"]
     out = []
     for i in range(len(FX)):
-        a = m.peek(base + i * 2) | (m.peek(base + i * 2 + 1) << 8)
-        out.append((m.peek(a), m.peek(a + 1), a + 2))
+        a = base + i + m.peek(base + i)
+        h = m.peek(a)
+        out.append(((h >> 2) & 3, h >> 4, a + 1))
     return out
 
 
@@ -202,11 +207,14 @@ def main():
     m = boot(sym)
     play(m, sym, 6)                                  # ALERT, κανάλι 0, προτ. 8
     tick(m, sym)
-    before = m.psg_regs()[0:2]
+    # ΟΛΟΙ οι καταχωρητές ως τον R10: το πλοίο είναι θόρυβος και δεν γράφει
+    # ποτέ τον R0/R1 — ως το βήμα 75 μόνο αυτοί κοιτάζονταν, και ένα snd_play
+    # που άφηνε το πλοίο να κόψει τον συναγερμό περνούσε (§9.5).
+    before = m.psg_regs()[0:11]
     play(m, sym, 5)                                  # SHIP, ίδιο κανάλι, προτ. 6
     tick(m, sym)
-    check(m.psg_regs()[0:2] == before,
-          f"ο συναγερμός δεν κόβεται από το πλοίο (περίοδος {before})")
+    check(m.psg_regs()[0:11] == before,
+          f"ο συναγερμός δεν κόβεται από το πλοίο (περίοδος {before[0:2]})")
 
     m = boot(sym)
     play(m, sym, 5)                                  # SHIP πρώτα

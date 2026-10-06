@@ -139,19 +139,21 @@ class Fit:
 
     def sounds(self, act, *args):
         """Οι ήχοι που ΞΕΚΙΝΗΣΑΝ όσο έτρεχε το act(*args). Το snd_play βάζει
-        τον δείκτη ενός καναλιού (sn_st) στο πρώτο βήμα του εφέ, sn_tab[k] + 2,
+        τον δείκτη ενός καναλιού (sn_st + 1) στο πρώτο βήμα του εφέ — ένα byte
+        μετά το εφέ, που είναι sn_tab[k] bytes μετά το sn_tab + k —
         και μετά από ένα πάτημα το εφέ έχει ήδη σβήσει — γι' αυτό κοιτάζεται σε
         κάθε βήμα του ρολογιού, και μόνο όσο κρατά το act."""
         m, sym = self.m, self.sym
         w = lambda a: m.peek(a) | (m.peek(a + 1) << 8)
-        start = {w(sym["SN_TAB"] + 2 * k) + 2: k for k in range(SFX_N)}
+        tab = sym["SN_TAB"]
+        start = {tab + k + m.peek(tab + k) + 1: k for k in range(SFX_N)}
         heard, raw = [], m.run_us
-        last = [w(sym["SN_ST"] + 4 * c) for c in range(3)]
+        last = [w(sym["SN_ST"] + 4 * c + 1) for c in range(3)]
 
         def run_us(us):
             raw(us)
             for c in range(3):
-                a = w(sym["SN_ST"] + 4 * c)
+                a = w(sym["SN_ST"] + 4 * c + 1)
                 if a != last[c]:
                     last[c] = a
                     if a in start:

@@ -16,16 +16,21 @@
 ;
 ; ΚΑΙ ΤΟ BIT 6 ΤΟΥ R7 ΜΕΝΕΙ ΜΗΔΕΝ. Είναι η κατεύθυνση της θύρας Α του PSG: 1
 ; θα την έκανε έξοδο και το πληκτρολόγιο θα σταματούσε να διαβάζεται. Ο μίκτης
-; γράφεται πάντα από το sn_mix, που ξεκινά #3F και δεν αγγίζει ποτέ τα bit 6-7.
+; γράφεται πάντα από το sn_mix, που ξεκινά #3F, και ένα κανάλι αλλάζει μόνο τα
+; δύο δικά του bits (το E του snd_tick: 9, 18, 36) — ποτέ τα 6-7.
 ;
-; --- η μορφή ενός εφέ ---
+; --- η μορφή ενός εφέ (βήμα 75) ---
 ;
-;   db  κανάλι (0-2), προτεραιότητα
-;   db  frames, ένταση, περίοδος_lo, περίοδος_hi   ; ένα ή περισσότερα βήματα
-;   db  0                                          ; τέλος
+;   FX    κανάλι, προτεραιότητα      db  προτ. << 4 | κανάλι << 2
+;   TONE  frames, ένταση, περίοδος   db  ένταση, περ. lo, περ. hi, frames
+;   NOISE frames, ένταση, περίοδος   db  #80 | ένταση, περίοδος, frames
+;   END                              db  0
 ;
-; Με bit 7 στην ένταση το βήμα είναι ΘΟΡΥΒΟΣ: το lo πάει στον R6 (περίοδος
-; θορύβου, 0-31) και ο μίκτης ανοίγει θόρυβο αντί για τόνο στο κανάλι.
+; Ενα βήμα θορύβου δεν έχει hi: η περίοδος θορύβου (R6) είναι 5 bits. Η ΕΝΤΑΣΗ
+; ΠΑΕΙ ΣΤΟΝ AY ΟΠΩΣ ΕΙΝΑΙ, με το bit 7 του θορύβου μέσα: οι R8-R10 έχουν πέντε
+; bits και το 7 δεν υπάρχει. Το 4 όμως υπάρχει (envelope) — γι' αυτό η ένταση
+; είναι ως 15, και το λέει το assert των μακροεντολών. Ενταση 0 σε τόνο είναι
+; το τέλος· ένας θόρυβος με ένταση 0 είναι παύση.
 ;
 ; Περίοδος τόνου = 62500 / Hz (ο AY του CPC δουλεύει στο 1 MHz, διαιρεμένο διά
 ; 16). 142 = λα 440, 120 = ντο 523, 60 = ντο 1047.
@@ -34,10 +39,12 @@
 ;
 ; Ενα εφέ παίρνει το κανάλι του μόνο αν η προτεραιότητά του είναι >= αυτής που
 ; ήδη παίζει εκεί. Χωρίς αυτό ένα «βήμα κέρσορα» — που γίνεται δεκαπέντε φορές
-; το δευτερόλεπτο όταν κρατάς το πλήκτρο — θα έκοβε τον συναγερμό.
+; το δευτερόλεπτο όταν κρατάς το πλήκτρο — θα έκοβε τον συναγερμό. Η εγγραφή
+; κρατά ολόκληρο το byte του FX: στο ίδιο κανάλι τα bits του καναλιού είναι
+; ίδια, οπότε η σύγκριση είναι σύγκριση προτεραιοτήτων.
 
 SND_CH      equ 3                       ; κανάλια
-SND_REC     equ 4                       ; bytes κατάστασης ανά κανάλι
+SND_REC     equ 4                       ; ανά κανάλι: wait, δείκτης (2), FX
 
 ; --- τα εφέ, με τη σειρά του sn_tab ---
 SFX_MOVE    equ 0                       ; βήμα κέρσορα
@@ -53,107 +60,76 @@ SFX_N       equ 9
         assert  SFX_DENY == SFX_BUILD - 1       ; fit.asm: uf_paid
 
 ; ---------------------------------------------------------------------------
-; snd_init — σιωπή, και το PPI στη θέση που θέλει ο ήχος.
+; snd_init / snd_off — σβήνει ΟΛΑ τα κανάλια τώρα. Το snd_off το καλεί το
+; σώσιμο/φόρτωμα: ο δίσκος κρατά τη μηχανή 35 frames με di, και ένα εφέ που
+; ξεκίνησε θα έμενε να σφυρίζει όλη αυτή την ώρα. Το PPI το βάζει στη θέση του
+; το πρώτο snd_reg.
 ; ---------------------------------------------------------------------------
 snd_init:
-        ld      bc,PPI_CTRL + #82
-        out     (c),c
-        xor     a
-        ld      hl,sn_st
-        ld      b,SND_CH * SND_REC
-sni_lp:
-        ld      (hl),a
-        inc     hl
-        djnz    sni_lp
-        ; fall through
-
-; ---------------------------------------------------------------------------
-; snd_off — σβήνει ΟΛΑ τα κανάλια τώρα. Το καλεί το σώσιμο/φόρτωμα: ο δίσκος
-; κρατά τη μηχανή 35 frames με di, και ένα εφέ που ξεκίνησε θα έμενε να
-; σφυρίζει όλη αυτή την ώρα.
-; ---------------------------------------------------------------------------
 snd_off:
-        ld      hl,sn_st
+        ld      hl,sn_st + SND_CH * SND_REC - 1
         ld      b,SND_CH * SND_REC
 sno_lp:
         ld      (hl),0
-        inc     hl
-        djnz    sno_lp
-        ld      a,#3F
-        ld      (sn_mix),a
-        ld      e,a
+        dec     hl
+        djnz    sno_lp                  ; HL = sn_mix
+        ld      (hl),#3F
         ld      a,7
-        call    snd_reg
-        ld      b,SND_CH
-        ld      c,8                     ; R8, R9, R10: οι εντάσεις
-sno_amp:
-        ld      a,c
-        ld      e,0
-        push    bc
-        call    snd_reg
-        pop     bc
-        inc     c
-        djnz    sno_amp
+sno_reg:
+        call    snd_reg                 ; R7 = #3F, μετά R8-R10 = 0 από το sn_st
+        inc     a
+        cp      8 + SND_CH
+        jr      nz,sno_reg
         ret
 
 ; ---------------------------------------------------------------------------
-; snd_play — A = εφέ. Το παίρνει το κανάλι του εφέ, αν το επιτρέπει η
-; προτεραιότητα. Δεν γράφει τίποτα στον AY: το πρώτο βήμα το φορτώνει το
-; επόμενο snd_tick, ώστε ένα εφέ να ακούγεται το ίδιο όποιος κι αν το ζήτησε.
+; snd_play — A = εφέ (< SFX_N: το δίνουν μόνο σταθερές). Το παίρνει το κανάλι
+; του εφέ, αν το επιτρέπει η προτεραιότητα. Δεν γράφει τίποτα στον AY: το
+; πρώτο βήμα το φορτώνει το επόμενο snd_tick, ώστε ένα εφέ να ακούγεται το ίδιο
+; όποιος κι αν το ζήτησε. Δεν πειράζει το BC.
 ; ---------------------------------------------------------------------------
 snd_play:
-        cp      SFX_N
-        ret     nc
-        add     a,a
-        ld      l,a
-        ld      h,0
-        ld      de,sn_tab
+        ld      hl,sn_tab
+        ld      e,a
+        ld      d,0
         add     hl,de
         ld      e,(hl)
+        add     hl,de                   ; HL = το εφέ
+        ld      a,(hl)                  ; FX: προτεραιότητα, κανάλι
         inc     hl
-        ld      d,(hl)                  ; DE = το εφέ
-        ld      a,(de)                  ; κανάλι
-        add     a,a
-        add     a,a                     ; * SND_REC
+        push    hl                      ; [το πρώτο του βήμα]
+        ld      e,a
+        and     #0C                     ; κανάλι * SND_REC
         ld      l,a
-        ld      h,0
-        ld      bc,sn_st
-        add     hl,bc                   ; HL = η εγγραφή του καναλιού
-        inc     de
-        ld      a,(de)                  ; προτεραιότητα
-        inc     de
-        push    hl
-        inc     hl
-        inc     hl
-        inc     hl                      ; -> προτεραιότητα του καναλιού
+        ld      h,d                     ; (D = 0)
+        ld      a,e
+        ld      de,sn_st + 3
+        add     hl,de                   ; HL -> το FX του καναλιού
+        pop     de                      ; DE = το πρώτο βήμα
         cp      (hl)
-        pop     hl
         ret     c                       ; παίζει κάτι πιο σημαντικό
-        push    af
-        ld      (hl),e
-        inc     hl
-        ld      (hl),d                  ; δείκτης = πρώτο βήμα
-        inc     hl
-        ld      (hl),0                  ; wait = 0: φόρτωσε το βήμα αμέσως
-        inc     hl
-        pop     af
         ld      (hl),a
+        dec     hl
+        ld      (hl),d
+        dec     hl
+        ld      (hl),e                  ; δείκτης = πρώτο βήμα
+        dec     hl
+        ld      (hl),1                  ; wait 1: το φορτώνει το επόμενο tick
         ret
 
 ; ---------------------------------------------------------------------------
 ; snd_ping — snd_play που δεν χαλάει κανέναν καταχωρητή.
 ;
 ; Το καλεί η ΠΡΟΣΟΜΟΙΩΣΗ: εκεί μέσα τα HL/DE/BC κρατούν δείκτες πρακτόρων και
-; μετρητές βρόχων, και ένα εφέ δεν επιτρέπεται να τους αγγίξει.
+; μετρητές βρόχων, και ένα εφέ δεν επιτρέπεται να τους αγγίξει. Το BC το
+; κρατά ήδη το snd_play.
 ; ---------------------------------------------------------------------------
 snd_ping:
-        push    bc
         push    de
         push    hl
         call    snd_play
         pop     hl
         pop     de
-        pop     bc
         ret
 
 ; ---------------------------------------------------------------------------
@@ -161,252 +137,193 @@ snd_ping:
 ;
 ; Γράφει στον AY ΜΟΝΟ όταν αλλάζει βήμα: ένα εφέ τεσσάρων βημάτων κοστίζει
 ; τέσσερις φορές τέσσερις εγγραφές καταχωρητή, όχι μία ανά frame.
+;
+; Το wait είναι τα frames που μένουν στο βήμα, και 0 μόνο σε σιωπηλό κανάλι:
+; όταν φτάσει στο 0 φορτώνεται το επόμενο βήμα, που το ξαναγεμίζει — εκτός αν
+; είναι το τέλος. Τα bytes του βήματος πάνε στον AY κατευθείαν από το HL.
 ; ---------------------------------------------------------------------------
 snd_tick:
         ld      hl,sn_st
-        ld      c,0
-snt_lp:
-        ld      a,(hl)
-        inc     hl
-        or      (hl)
-        dec     hl
-        jr      z,snt_next              ; σιωπηλό κανάλι
-        push    hl
-        push    bc
-        call    snt_one
-        pop     bc
-        pop     hl
-snt_next:
-        ld      de,SND_REC
-        add     hl,de
-        inc     c
-        ld      a,c
-        cp      SND_CH
-        jr      nz,snt_lp
-        ret
-
-; snt_one — HL = εγγραφή καναλιού, C = κανάλι.
-snt_one:
-        push    hl
-        inc     hl
-        inc     hl                      ; -> wait
+        ld      de,8 << 8 | 9           ; D = R8, E = τα bits του Α στον R7
+stk_lp:
         ld      a,(hl)
         or      a
-        jr      z,sn1_step
+        jr      z,stk_next              ; σιωπηλό κανάλι
         dec     (hl)
-        pop     hl
-        ret
-sn1_step:
-        pop     hl
-        ld      e,(hl)
+        jr      nz,stk_next             ; το βήμα κρατά ακόμα
+        push    hl                      ; [εγγραφή]
         inc     hl
-        ld      d,(hl)
-        dec     hl                      ; DE = βήμα, HL = εγγραφή
-        ld      a,(de)                  ; frames
+        ld      a,(hl)
+        inc     hl
+        ld      h,(hl)
+        ld      l,a                     ; HL = το βήμα
+        ld      a,(hl)                  ; ένταση, bit 7 = θόρυβος· 0 = τέλος
         or      a
-        jr      z,sn1_end
-        dec     a
-        push    af                      ; το wait του βήματος
-        inc     de
-        ld      a,(de)
-        ld      b,a                     ; B = ένταση (bit 7 = θόρυβος)
-        inc     de
-        ld      a,(de)
-        ld      (sn1_lo),a
-        inc     de
-        ld      a,(de)
-        ld      (sn1_hi),a
-        inc     de
-        ld      (hl),e
-        inc     hl
-        ld      (hl),d
-        inc     hl
-        pop     af
-        ld      (hl),a                  ; wait = frames - 1
-        ; --- τι ακούγεται ---
-        ; Το snd_reg χαλάει A και BC, οπότε ό,τι πρέπει να ζήσει από κλήση σε
-        ; κλήση ζει σε μνήμη. Το C (το κανάλι) το φυλάει κάθε φορά push/pop.
-        ld      a,b
-        ld      (sn1_vol),a
-        and     #0F
-        ld      e,a
-        ld      a,c
-        add     a,8                     ; R8/R9/R10 = ένταση A/B/C
-        push    bc
-        call    snd_reg
-        pop     bc
-        ld      a,(sn1_vol)
-        bit     7,a
-        jr      nz,sn1_noise
-        ld      a,c
-        add     a,a                     ; R0/R2/R4 = περίοδος A/B/C
-        ld      (sn1_r),a
-        ld      a,(sn1_lo)
-        ld      e,a
-        ld      a,(sn1_r)
-        push    bc
-        call    snd_reg
-        pop     bc
-        ld      a,(sn1_hi)
-        ld      e,a
-        ld      a,(sn1_r)
-        inc     a
-        push    bc
-        call    snd_reg
-        pop     bc
-        xor     a                       ; 0 = τόνος
-        jr      sn_mixset
-sn1_noise:
-        ld      a,(sn1_lo)
-        and     31
-        ld      e,a
-        ld      a,6                     ; R6 = περίοδος θορύβου, κοινή στα τρία
-        push    bc
-        call    snd_reg
-        pop     bc
-        ld      a,1                     ; 1 = θόρυβος
-        jr      sn_mixset
-sn1_end:
-        ; τέλος εφέ: σιωπή, και το κανάλι ελεύθερο για οτιδήποτε
-        ld      (hl),0
-        inc     hl
-        ld      (hl),0
-        inc     hl
-        ld      (hl),0
-        inc     hl
-        ld      (hl),0                  ; προτεραιότητα 0
-        ld      a,c
-        add     a,8
-        ld      e,0
-        push    bc
-        call    snd_reg
-        pop     bc
-        ld      a,2                     ; 2 = κλείσε και τα δύο
-
-; ---------------------------------------------------------------------------
-; sn_mixset — C = κανάλι, A = 0 τόνος / 1 θόρυβος / 2 σιωπή. Γράφει τον R7.
-;
-; Ο μίκτης είναι ΑΝΤΕΣΤΡΑΜΜΕΝΟΣ: 1 σημαίνει κλειστό. Κάθε βήμα κλείνει και τα
-; δύο bit του καναλιού του και ανοίγει το ένα — έτσι ένα εφέ με θόρυβο μετά από
-; ένα με τόνο δεν αφήνει τον τόνο ανοιχτό από κάτω.
-; ---------------------------------------------------------------------------
-sn_mixset:
-        ld      (sn1_nf),a
-        push    bc
-        ld      b,0
-        ld      hl,sn_tb
-        add     hl,bc
-        ld      d,(hl)                  ; D = bit τόνου
-        ld      hl,sn_nb
-        add     hl,bc
-        ld      e,(hl)                  ; E = bit θορύβου
+        jr      z,stk_end
+        add     a,a                     ; carry = θόρυβος — το snd_reg τον κρατά
         ld      a,d
-        or      e
+        call    snd_reg                 ; R8+c = ένταση
+        ld      a,6                     ; θόρυβος: R6
+        jr      c,stk_one
+        ld      a,e
+        and     6                       ; R0/R2/R4 (9, 18, 36 -> 0, 2, 4)
+        call    snd_reg                 ; περίοδος lo
+        inc     a                       ; R1/R3/R5
+stk_one:
+        call    snd_reg                 ; περίοδος hi, ή περίοδος θορύβου
+        sbc     a,a
+        and     #3F
+        xor     #38                     ; τόνος #38 (κλείνει ο θόρυβος), θόρυβος 7
+        ld      c,(hl)                  ; frames
+        inc     hl
+        ex      (sp),hl                 ; HL = εγγραφή, [το επόμενο βήμα]
+        ld      (hl),c                  ; wait = frames
+        pop     bc
+        push    hl
+        inc     hl
+        ld      (hl),c
+        inc     hl
+        ld      (hl),b                  ; δείκτης = το επόμενο βήμα
+; Ο ΜΙΚΤΗΣ είναι ΑΝΤΕΣΤΡΑΜΜΕΝΟΣ: 1 σημαίνει κλειστό. Το A λέει ποια bits του
+; καναλιού είναι κλειστά μετά το βήμα (#38 τόνος, 7 θόρυβος, #FF σιωπή), το E
+; ποια είναι του καναλιού: ((A ^ m) & E) ^ m — αυτά από το A, τα άλλα από το m.
+; Ετσι ένα βήμα θορύβου μετά από τόνο δεν αφήνει τον τόνο ανοιχτό από κάτω.
+stk_mix:
         ld      hl,sn_mix
-        or      (hl)                    ; και τα δύο κλειστά
-        ld      c,a                     ; C = ο μίκτης με τα δύο bits κλειστά
-        ld      a,(sn1_nf)
-        or      a
-        ld      a,d
-        jr      z,sms_open              ; 0: άνοιξε τον τόνο
-        ld      a,(sn1_nf)
-        dec     a                       ; (το dec ΔΕΝ πειράζει το carry —
-        ld      a,e                     ;  γι' αυτό ο έλεγχος είναι με zero)
-        jr      z,sms_open              ; 1: άνοιξε τον θόρυβο
-        xor     a                       ; 2: τίποτα ανοιχτό
-sms_open:
-        cpl
-        and     c
-        ld      (sn_mix),a
-        ld      e,a
+        xor     (hl)
+        and     e
+        xor     (hl)
+        ld      (hl),a
         ld      a,7
-        call    snd_reg
-        pop     bc
+        call    snd_reg                 ; R7
+        pop     hl
+stk_next:
+        ld      bc,SND_REC
+        add     hl,bc
+        inc     d
+        sla     e
+        bit     6,e
+        jr      z,stk_lp
         ret
+stk_end:
+        ; τέλος εφέ: σιωπή, και το κανάλι ελεύθερο για οτιδήποτε
+        pop     hl
+        push    hl
+        ld      a,d
+        call    snd_reg                 ; R8+c = 0, από το wait που μόλις μηδένισε
+        xor     a
+        ld      (hl),a
+        inc     hl
+        ld      (hl),a
+        inc     hl
+        ld      (hl),a                  ; χωρίς δείκτη, προτεραιότητα 0
+        dec     a                       ; #FF: κλείνουν και τα δύο
+        jr      stk_mix
 
 ; ---------------------------------------------------------------------------
-; snd_reg — A = καταχωρητής, E = τιμή. Χαλάει A, BC.
+; snd_reg — A = καταχωρητής, (HL) = τιμή, HL + 1. Χαλάει ΜΟΝΟ το BC: τα A, F
+; και DE μένουν, γιατί δεν υπάρχει εδώ ούτε μία πράξη.
 ; ---------------------------------------------------------------------------
 snd_reg:
         ld      bc,PPI_CTRL + #82
         out     (c),c
-        ld      b,PPI_A / 256
-        ld      c,a
-        out     (c),c                   ; θύρα Α = αριθμός καταχωρητή
+        ld      b,PPI_A >> 8
+        out     (c),a                   ; θύρα Α = αριθμός καταχωρητή
         ld      bc,PPI_C + #C0
         out     (c),c                   ; PSG: επίλεξε
-        ld      bc,PPI_C + #00
+        ld      c,0
         out     (c),c
-        ld      b,PPI_A / 256
-        ld      c,e
+        ld      b,PPI_A >> 8
+        ld      c,(hl)
         out     (c),c                   ; θύρα Α = τιμή
+        inc     hl
         ld      bc,PPI_C + #80
         out     (c),c                   ; PSG: γράψε
-        ld      bc,PPI_C + #00
+        ld      c,0
         out     (c),c
         ret
 
-sn_tb:      db 1, 2, 4                  ; bit «κλειστός τόνος» ανά κανάλι
-sn_nb:      db 8, #10, #20              ; bit «κλειστός θόρυβος» ανά κανάλι
 sn_mix:     db #3F
-sn1_lo:     db 0
-sn1_hi:     db 0
-sn1_vol:    db 0
-sn1_r:      db 0
-sn1_nf:     db 0
-sn_st:      defs SND_CH * SND_REC       ; ανά κανάλι: δείκτης, wait, προτ/τα
+sn_st:      defs SND_CH * SND_REC       ; ανά κανάλι: wait, δείκτης, FX
+        assert  sn_st == sn_mix + 1             ; snd_off
 
 ; --- τα εφέ ---------------------------------------------------------------
 ; Κανάλι 2 = διεπαφή (μικρά, συχνά), 1 = χτίσιμο, 0 = συμβάντα της αποικίας.
 ; Ετσι ένα «χτίστηκε» δεν κόβει έναν συναγερμό ούτε τον κόβει ο κέρσορας.
-sn_tab:
-        dw fx_move, fx_menu, fx_deny, fx_build
-        dw fx_done, fx_ship, fx_alert, fx_death
-        dw fx_meteor
+;
+; Το sn_tab κρατά για κάθε εφέ την απόστασή του από τη θέση του στον πίνακα:
+; το snd_play προσθέτει και τις δύο στο ίδιο HL.
+macro   FX ch, pri
+        assert  ({ch}) < SND_CH && ({pri}) > 0 && ({pri}) < 16
+        db      (({pri}) << 4) | (({ch}) << 2)
+mend
+macro   TONE frames, vol, period
+        assert  ({frames}) > 0 && ({frames}) < 256 && ({vol}) > 0 && ({vol}) < 16
+        assert  ({period}) > 0 && ({period}) < 4096
+        db      {vol}, ({period}) & 255, ({period}) >> 8, {frames}
+mend
+macro   NOISE frames, vol, period
+        assert  ({frames}) > 0 && ({frames}) < 256 && ({vol}) < 16
+        assert  ({period}) < 32
+        db      #80 | ({vol}), {period}, {frames}
+mend
 
-fx_move:    db 2, 1
-            db 1, 6, 120, 0
+sn_tab:
+        db      fx_move - $
+        db      fx_menu - $
+        db      fx_deny - $
+        db      fx_build - $
+        db      fx_done - $
+        db      fx_ship - $
+        db      fx_alert - $
+        db      fx_death - $
+        db      fx_meteor - $
+        assert  $ - sn_tab == SFX_N
+
+fx_move:    FX 2, 1
+            TONE 1, 6, 120
             db 0
-fx_menu:    db 2, 2
-            db 2, 9, 95, 0
-            db 2, 8, 60, 0
+fx_menu:    FX 2, 2
+            TONE 2, 9, 95
+            TONE 2, 8, 60
             db 0
-fx_deny:    db 2, 4
-            db 3, #8A, 22, 0            ; θόρυβος: bit 7 στην ένταση
-            db 4, #86, 28, 0
+fx_deny:    FX 2, 4
+            NOISE 3, 10, 22
+            NOISE 4, 6, 28
             db 0
-fx_build:   db 1, 3
-            db 3, 10, 142, 0
-            db 3, 10, 120, 0
-            db 4, 9, 95, 0
+fx_build:   FX 1, 3
+            TONE 3, 10, 142
+            TONE 3, 10, 120
+            TONE 4, 9, 95
             db 0
-fx_done:    db 1, 5
-            db 4, 11, 120, 0
-            db 4, 11, 95, 0
-            db 4, 11, 80, 0
-            db 8, 10, 60, 0
+fx_done:    FX 1, 5
+            TONE 4, 11, 120
+            TONE 4, 11, 95
+            TONE 4, 11, 80
+            TONE 8, 10, 60
             db 0
-fx_ship:    db 0, 6
-            db 8, #8C, 8, 0
-            db 8, #8B, 12, 0
-            db 8, #89, 17, 0
-            db 8, #86, 23, 0
+fx_ship:    FX 0, 6
+            NOISE 8, 12, 8
+            NOISE 8, 11, 12
+            NOISE 8, 9, 17
+            NOISE 8, 6, 23
             db 0
-fx_alert:   db 0, 8
-            db 6, 11, 28, 1             ; 284 = λα 220
-            db 6, 11, 240, 0
-            db 6, 11, 28, 1
-            db 6, 11, 240, 0
+fx_alert:   FX 0, 8
+            TONE 6, 11, 284             ; λα 220
+            TONE 6, 11, 240
+            TONE 6, 11, 284
+            TONE 6, 11, 240
             db 0
-fx_meteor:  db 0, 7                    ; κάτω από τον συναγερμό, πάνω από το πλοίο
-            db 2, #8F, 31, 0            ; θόρυβος, η πιο χαμηλή περίοδος: βουητό
-            db 4, #8C, 31, 0
-            db 6, #88, 31, 0
-            db 8, #84, 31, 0
+fx_meteor:  FX 0, 7                     ; κάτω από τον συναγερμό, πάνω από το πλοίο
+            NOISE 2, 15, 31             ; η πιο χαμηλή περίοδος: βουητό
+            NOISE 4, 12, 31
+            NOISE 6, 8, 31
+            NOISE 8, 4, 31
             db 0
-fx_death:   db 0, 9
-            db 6, 11, 28, 1
-            db 6, 10, 84, 1             ; 340
-            db 6, 10, 144, 1            ; 400
-            db 10, 8, 225, 1            ; 481 = ντο 130
+fx_death:   FX 0, 9
+            TONE 6, 11, 284
+            TONE 6, 10, 340
+            TONE 6, 10, 400
+            TONE 10, 8, 481             ; ντο 130
             db 0
+        assert  fx_death - sn_tab < 256

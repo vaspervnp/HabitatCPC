@@ -131,7 +131,7 @@ def shower(sym, g, cut_push=False):
     G.iters = []
     for k in range(400):
         G.run(20_000)
-        ptr = m.peek(sym["SN_ST"]) | (m.peek(sym["SN_ST"] + 1) << 8)
+        ptr = m.peek(sym["SN_ST"] + 1) | (m.peek(sym["SN_ST"] + 2) << 8)   # wait, δείκτης, FX
         booms += fx0 <= ptr < fx1
         hp_min = min(hp_min, G.bank(6)[DOME_TBL + EC.D_HEALTH])
         if (k % 4 == 0 and m.peek(g + EC_METEOR) and m.peek(g + EC_POK) == 1
