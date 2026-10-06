@@ -7,6 +7,7 @@
 ;   PLACE  το φάντασμα ακολουθεί τον κέρσορα, με τα άκυρα tiles σημαδεμένα
 ;   LINK   δύο θόλοι, και η διαδρομή του διαδρόμου ανάμεσά τους σαν φάντασμα
 ;   FIT    ο εξοπλισμός ενός θόλου, υποδοχή-υποδοχή (src/fit.asm)
+;   INFO   το LOOK, με τις σειρές 3-4 να λένε τι έχει κάτω ο κέρσορας (info.asm)
 ;
 ; Η ΣΕΙΡΑ ΜΕΣΑ ΣΕ ΕΝΑ ΒΗΜΑ ΕΙΝΑΙ ΔΕΣΜΕΥΤΙΚΗ: πρώτα σβήνει το φάντασμα, μετά
 ; κινείται ο κέρσορας, μετά (αν χρειάζεται) σκρολάρει η κάμερα, και τελευταίο
@@ -19,6 +20,7 @@ UI_MENU     equ 1
 UI_PLACE    equ 2
 UI_LINK     equ 3                       ; διάλεξε θόλο, διάλεξε θόλο (§9.4)
 UI_SLOT     equ 4                       ; ποια από τις τρεις θέσεις δίσκου (§11)
+UI_INFO     equ 6                       ; τι έχει κάτω ο κέρσορας (βήμα 79· 5 = UI_FIT)
 MSG_TICKS   equ 6                       ; τικ HUD που κρατά ένα μήνυμα (§11)
 
 UIP_NSIG    equ 11                      ; bytes υπογραφής των σειρών 3-4
@@ -96,6 +98,36 @@ uit_state:
 ; --- LOOK ------------------------------------------------------------------
 uist_look:
         call    ui_move                 ; -> NZ αν κουνήθηκε
+        ifdef HAS_SIM
+        ; --- INFO (βήμα 79): μια κατάσταση που πέφτει εδώ, όπως το LOOK. Οι
+        ; σειρές 3-4 έλεγαν για το tile που ΗΤΑΝ κάτω από τον κέρσορα: μόλις
+        ; κουνηθεί, πίσω στο LOOK. ---
+        jr      z,usl_still
+        ld      hl,ui_state
+        ld      a,(hl)
+        cp      UI_INFO
+        jr      nz,usl_still
+        ld      (hl),UI_LOOK
+        call    ui_panel
+usl_still:
+        ; Ενα and για το I και το ESC μαζί, όχι δύο in_hit: στο tick που δεν
+        ; πατιέται τίποτα κοστίζει 8 µs αντί για 100.
+        ld      a,(act_hit)
+        and     1 << A_INFO | 1 << A_CANCEL
+        jr      z,usl_go
+        add     a,a                     ; το bit 7, το I, στο Cy
+        jr      nc,usl_esc
+        ld      a,UI_INFO               ; και ένα δεύτερο I τα ξαναδιαβάζει
+        jp      ui_ask
+        assert  A_INFO == 7 && A_CANCEL < 7
+usl_esc:
+        ld      a,(ui_state)
+        cp      UI_INFO
+        jr      nz,usl_go
+        xor     a                       ; UI_LOOK
+        jp      ui_goto
+usl_go:
+        endif
         ; Ο δίσκος υπάρχει μόνο στο πλήρες παιχνίδι: τα tests/uitest.asm και
         ; tests/objtest.asm δένουν τον renderer χωρίς τροχό και χωρίς οδηγό
         ; δισκέτας, και δεν έχουν πού να σώσουν.
@@ -406,6 +438,17 @@ uim_pick:
         call    ui_click
         jp      ui_show
 
+; ui_ask — A = μια κατάσταση που ΖΗΤΗΣΕ ο παίκτης και ζει στις σειρές 3-4
+; (INFO): το ui_goto, με τον πίνακα άκυρο και χωρίς μήνυμα από πάνω. Ενα
+; μήνυμα κρατά τις σειρές έξι κλήσεις του ui_panel, και σε παύση δεν το καλεί
+; κανένα ρολόι: το I μετά από ένα μήνυμα δεν έδειχνε ποτέ τίποτα.
+        ifdef HAS_SIM
+ui_ask:
+        ld      hl,uip_sig
+        ld      (hl),255                ; ui_dirty, που χαλάει το A
+        ld      hl,ui_hold
+        ld      (hl),0
+        endif
 ; ui_goto — A = η νέα κατάσταση: σβήνει το φάντασμα, αλλάζει, το ξαναδείχνει.
 ; ui_goto_h — το ίδιο, με το φάντασμα ήδη σβηστό.
 ui_goto:
@@ -1040,10 +1083,14 @@ uipc_go:
         jr      nz,uip_notlook
         ld      hl,t_look
         call    hud_text7
-        ld      b,35-32                 ; ως τον δείκτη ταχύτητας (uip_spd)
+        ld      b,35-34                 ; ως τον δείκτη ταχύτητας (uip_spd)
         call    hud_blank
         jp      uip_row4
 uip_notlook:
+        ifdef HAS_SIM
+        cp      UI_INFO
+        jp      z,in_panel              ; src/info.asm, τράπεζα 2
+        endif
         ifdef HAS_DISC
         cp      UI_SLOT
         jr      nz,uip_item

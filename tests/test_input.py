@@ -10,8 +10,9 @@
   2. Το act_hit είναι ακμή: κράτημα δέκα frames μετράει ΜΙΑ φορά. Χωρίς αυτό
      ένα «χτίσε» θα έχτιζε πενήντα θόλους το δευτερόλεπτο.
 
-Ο εξομοιωτής δεν πατά COPY, TAB, C ούτε το δεύτερο κουμπί του χειριστηρίου, και
-στο βήμα 64 ένα TAB στο λάθος bit πέρασε όλα τα tests. Γι' αυτό υπάρχει και ο
+Ο εξομοιωτής δεν πατά COPY, C ούτε το δεύτερο κουμπί του χειριστηρίου, και
+στο βήμα 64 ένα TAB στο λάθος bit πέρασε όλα τα tests (από το βήμα 79 η θέση
+του TAB, που δεν τη διάβασε ποτέ τίποτα, είναι το I). Γι' αυτό υπάρχει και ο
 έλεγχος της ΛΟΓΙΚΗΣ: το in_scan κόβεται, το key_now γράφεται από εδώ με τη μήτρα
 του CPC, και κάθε πλήκτρο και κάθε bit της γραμμής 9 περνά από πάτημα, κράτημα
 και άφημα, με in_hit και in_held και για τις 16 ενέργειες.
@@ -25,10 +26,10 @@ sys.path.insert(0, "/home/vasilhs/cpcemu")
 RASM = os.path.expanduser("~/rasm/rasm.exe")
 SNA = os.path.join(ROOT, "build", "inputtest.sna")
 
-A_UP, A_DOWN, A_LEFT, A_RIGHT, A_FIRE, A_CANCEL, A_MENU, A_NEXT, A_HOME, \
+A_UP, A_DOWN, A_LEFT, A_RIGHT, A_FIRE, A_CANCEL, A_MENU, A_INFO, A_HOME, \
     A_SPD1, A_SPD2, A_SPD3, A_SPD4, A_SAVE, A_LOAD = range(15)
 NAMES = ["πάνω", "κάτω", "αριστερά", "δεξιά", "FIRE", "ακύρωση", "μενού",
-         "επόμενο", "κέντρο", "ταχ.1", "ταχ.2", "ταχ.3", "ταχ.4", "σώσε",
+         "πληροφορίες", "κέντρο", "ταχ.1", "ταχ.2", "ταχ.3", "ταχ.4", "σώσε",
          "φόρτωσε"]
 
 
@@ -50,7 +51,7 @@ def build():
 A_SHIP = 15
 KEYS = {A_UP: (0, 0), A_DOWN: (0, 2), A_LEFT: (1, 0), A_RIGHT: (0, 1),
         A_FIRE: (1, 1),                                  # COPY
-        A_CANCEL: (8, 2), A_MENU: (5, 7), A_NEXT: (8, 4), A_HOME: (5, 4),
+        A_CANCEL: (8, 2), A_MENU: (5, 7), A_INFO: (4, 3), A_HOME: (5, 4),
         A_SPD1: (8, 0), A_SPD2: (8, 1), A_SPD3: (7, 1), A_SPD4: (7, 0),
         A_SAVE: (7, 4), A_LOAD: (4, 4), A_SHIP: (7, 6)}
 JOY = [A_UP, A_DOWN, A_LEFT, A_RIGHT, A_FIRE, A_CANCEL, None, None]   # γραμμή 9, bits 0-7
@@ -129,11 +130,12 @@ def main():
     from cpc import CPC, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_ESC, \
         KEY_SPACE, KEY_F9, JOY_UP, JOY_DOWN, JOY_LEFT, JOY_RIGHT, JOY_FIRE
 
-    # ΔΥΟ ΠΛΗΚΤΡΑ ΔΕΝ ΔΟΚΙΜΑΖΟΝΤΑΙ ΚΑΤΕΥΘΕΙΑΝ: το COPY δεν έχει ASCII και ο
-    # κωδικός του TAB (9) συγκρούεται με το KEY_RIGHT του εξομοιωτή. Και τα δύο
-    # όμως μοιράζονται ΓΡΑΜΜΗ της μήτρας με πλήκτρα που δοκιμάζονται (το COPY
-    # τη γραμμή 1 με τον αριστερό κέρσορα, το TAB τη γραμμή 8 με το ESC), και η
-    # τρίτη στήλη παρακάτω ελέγχει το ΩΜΟ bit — άρα η γραμμή επαληθεύεται.
+    # ΕΝΑ ΠΛΗΚΤΡΟ ΔΕΝ ΔΟΚΙΜΑΖΕΤΑΙ ΚΑΤΕΥΘΕΙΑΝ: το COPY δεν έχει ASCII. Μοιράζεται
+    # όμως ΓΡΑΜΜΗ της μήτρας με πλήκτρο που δοκιμάζεται (τη γραμμή 1 με τον
+    # αριστερό κέρσορα), και η τρίτη στήλη παρακάτω ελέγχει το ΩΜΟ bit — άρα η
+    # γραμμή επαληθεύεται. Ως το βήμα 79 το ίδιο ίσχυε για το TAB, που ο
+    # κωδικός του (9) συγκρούεται με το KEY_RIGHT του εξομοιωτή· η θέση του
+    # είναι από τότε το I, που πατιέται.
     CASES = [
         ("κέρσορας πάνω",    dict(key=KEY_UP),    A_UP,     0, 0x01),
         ("κέρσορας κάτω",    dict(key=KEY_DOWN),  A_DOWN,   0, 0x04),
@@ -142,6 +144,7 @@ def main():
         ("ESC",              dict(key=KEY_ESC),   A_CANCEL, 8, 0x04),
         ("SPACE",            dict(key=KEY_SPACE), A_MENU,   5, 0x80),
         ("H",                dict(key="H"),       A_HOME,   5, 0x10),
+        ("I πληροφορίες",    dict(key="I"),       A_INFO,   4, 0x08),
         ("1",                dict(key="1"),       A_SPD1,   8, 0x01),
         ("2",                dict(key="2"),       A_SPD2,   8, 0x02),
         ("3",                dict(key="3"),       A_SPD3,   7, 0x02),
@@ -196,7 +199,7 @@ def main():
         fails += 1
         print(f"ΑΠΟΤΥΧΙΑ λογική: {why}")
     else:
-        print("OK λογική: τα 16 πλήκτρα (μαζί COPY, TAB, C) και τα 8 bits της γραμμής 9, "
+        print("OK λογική: τα 16 πλήκτρα (μαζί COPY και C) και τα 8 bits της γραμμής 9, "
               "πάτημα-κράτημα-άφημα, in_hit και in_held για τις 16 ενέργειες, C και DE κρατημένα")
     # --- αρνητικά ---
     from cpc import CPC
@@ -205,8 +208,8 @@ def main():
     assert m.quickload(SNA, start=False)
     ir = sym["IN_READ"]
     joy = next((k for k in range(64) if list(m.read_ram(ir + k, 2)) == [0xE6, 0x3F]), None)
-    tab = sym["ACT_SRC"] + 2 * A_NEXT + 1
-    for label, patch in (("TAB στο bit 5", [(tab, 0x20)] if m.peek(tab) == 0x10 else None),
+    info = sym["ACT_SRC"] + 2 * A_INFO + 1
+    for label, patch in (("I στο bit 4, εκεί που είναι το L", [(info, 0x10)] if m.peek(info) == 0x08 else None),
                          ("χειριστήριο χωρίς fire 2", [(ir + joy + 1, 0x1F)] if joy is not None else None),
                          ("in_held από το act_hit", [(sym["IN_HELD"] + 1, sym["ACT_HIT"] & 255)])):
         if patch is None or logic(sym, patch) is None:

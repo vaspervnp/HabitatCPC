@@ -17,7 +17,7 @@
 ; του rasm θα τα έδινε κατευθείαν σωστά, αλλά δεν συνδυάζεται με το `bankset 1`
 ; που στήνει τις τράπεζες 4-7 πιο πάνω.)
 
-TEXT_MAX    equ 1024                    ; η δέσμευση του §4.2
+TEXT_MAX    equ 1280                    ; η δέσμευση του §4.2 (1.024 ως το βήμα 79)
 TEXT_IMG    equ #C000 + G_text - #4000
 
         org     TEXT_IMG
@@ -52,7 +52,7 @@ x_t_pause:    db "PAUSE",0
 x_t_x1:       db "  x1 ",0
 x_t_x2:       db "  x2 ",0
 x_t_x4:       db "  x4 ",0
-x_t_look:     db "LOOK SPACE=BUILD FIRE=FIT C=SHIP",0
+x_t_look:     db "SPACE=BUILD I=INFO FIRE=FIT C=SHIP",0
 x_t_keys:     db "FIRE=PLACE ESC=BACK ",0
 x_t_ok:       db "READY  FIRE TO BUILD",0
 x_t_block:    db "BLOCKED             ",0
@@ -91,6 +91,16 @@ x_t_f_names:  db "OXYGEN ",0, "METAL  ",0, "PLASTIC",0, "WEAPONS",0
               db "MIXED  ",0, "EMPTY  ",0
 x_t_f_slot:   db "SLOT ",0
 x_t_f_keys:   db "UP/DN=PICK FIRE=FIT SPACE=ALL",0
+
+; Τι έχει κάτω ο κέρσορας (src/info.asm, βήμα 79). Τα εδάφη ΕΝΤΕΚΑ bytes το
+; καθένα, με τη σειρά του W_*: το in_panel τα βρίσκει με x11.
+x_t_i_none:   db "NOTHING BUILT",0
+x_t_i_site:   db "SITE  ",0
+x_t_i_act:    db "ACTIVE",0
+x_t_i_hp:     db "HP ",0
+x_t_i_cls:    db "GROUND    ",0, "DUST      ",0, "ROCK      ",0, "MOUNTAIN  ",0
+              db "WATER     ",0, "DEEP WATER",0, "CRATER    ",0, "FOUNDATION",0
+x_t_i_ore:    db " ORE VEIN",0
 
 zz_text_end:
 
@@ -154,12 +164,22 @@ t_nopad   equ x_t_nopad - TEXT_IMG + G_text
 t_f_names equ x_t_f_names - TEXT_IMG + G_text
 t_f_slot  equ x_t_f_slot - TEXT_IMG + G_text
 t_f_keys  equ x_t_f_keys - TEXT_IMG + G_text
+t_i_none  equ x_t_i_none - TEXT_IMG + G_text
+t_i_site  equ x_t_i_site - TEXT_IMG + G_text
+t_i_act   equ x_t_i_act - TEXT_IMG + G_text
+t_i_hp    equ x_t_i_hp - TEXT_IMG + G_text
+t_i_cls   equ x_t_i_cls - TEXT_IMG + G_text
+t_i_ore   equ x_t_i_ore - TEXT_IMG + G_text
 
-        ; Το κενό είναι 1.024 bytes και τελειώνει εκεί που αρχίζει το επόμενο
+        ; Το κενό είναι 1.280 bytes και τελειώνει εκεί που αρχίζει το επόμενο
         ; πράγμα της τράπεζας 7. Χωρίς αυτόν τον έλεγχο, ένα κείμενο παραπάνω θα
         ; έγραφε πάνω σε δεδομένα — αθόρυβα, και μόνο στην οθόνη θα φαινόταν.
         assert  zz_text_end - TEXT_IMG <= TEXT_MAX
+        ; Και το TEXT_MAX ΣΥΜΦΩΝΕΙ με την τρύπα του tools/pack.py, που βάζει τη
+        ; γραμματοσειρά αμέσως μετά: αλλιώς τα κείμενα γράφουν πάνω της.
+        assert  G_text + TEXT_MAX <= G_font_gfx
         assert  x_t_f_slot - x_t_f_names == 18 * 8   ; fit_name: x8
+        assert  x_t_i_ore - x_t_i_cls == 8 * 11      ; in_panel: x11
 
         ; ΚΑΙ ΣΤΟΝ ΔΙΣΚΟ: η BANK7.BIN φτιάχνεται από το tools/pack.py, που δεν
         ; ξέρει τι λέει το παιχνίδι. Τα κείμενα πάνε ως δικό τους αρχείο και ο

@@ -33,7 +33,9 @@ A_RIGHT     equ 3
 A_FIRE      equ 4
 A_CANCEL    equ 5
 A_MENU      equ 6
-A_NEXT      equ 7
+A_INFO      equ 7                       ; I — τι έχει κάτω ο κέρσορας (βήμα 79)
+                                        ; Ως τότε TAB, «επόμενος συναγερμός»,
+                                        ; που δεν το διάβασε ποτέ τίποτα.
 A_HOME      equ 8
 A_SPD1      equ 9
 A_SPD2      equ 10
@@ -61,7 +63,7 @@ act_src:
         db      (key_now + 1) & 255, #02        ; FIRE     — COPY
         db      (key_now + 8) & 255, #04        ; ακύρωση  — ESC
         db      (key_now + 5) & 255, #80        ; μενού    — SPACE
-        db      (key_now + 8) & 255, #10        ; επόμενο  — TAB
+        db      (key_now + 4) & 255, #08        ; I        — τι έχει από κάτω
         db      (key_now + 5) & 255, #10        ; κέντρο   — H
         db      (key_now + 8) & 255, #01        ; 1 παύση
         db      (key_now + 8) & 255, #02        ; 2 κανονικά
