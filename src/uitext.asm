@@ -52,7 +52,7 @@ x_t_pause:    db "PAUSE",0
 x_t_x1:       db "  x1 ",0
 x_t_x2:       db "  x2 ",0
 x_t_x4:       db "  x4 ",0
-x_t_look:     db "SPACE=BUILD I=INFO FIRE=FIT C=SHIP",0
+x_t_look:     db "SPACE=MENU I=INFO FIRE=FIT C=SHIP",0
 x_t_keys:     db "FIRE=PLACE ESC=BACK ",0
 x_t_ok:       db "READY  FIRE TO BUILD",0
 x_t_block:    db "BLOCKED             ",0
@@ -101,6 +101,12 @@ x_t_i_hp:     db "HP ",0
 x_t_i_cls:    db "GROUND    ",0, "DUST      ",0, "ROCK      ",0, "MOUNTAIN  ",0
               db "WATER     ",0, "DEEP WATER",0, "CRATER    ",0, "FOUNDATION",0
 x_t_i_ore:    db " ORE VEIN",0
+
+; Το μενού ενεργειών (src/act.asm, βήμα 80): ΕΠΤΑ bytes το όνομα, με τη σειρά
+; των AI_*· το ac_name τα βρίσκει με x7.
+x_t_a_names:  db "BUILD",0,0, "FIT",0,0,0,0, "INFO",0,0,0, "SHIP",0,0,0
+              db "SAVE",0,0,0, "LOAD",0,0,0, "CENTRE",0
+x_t_a_keys:   db "FIRE=GO ESC=BACK",0
 
 zz_text_end:
 
@@ -170,6 +176,8 @@ t_i_act   equ x_t_i_act - TEXT_IMG + G_text
 t_i_hp    equ x_t_i_hp - TEXT_IMG + G_text
 t_i_cls   equ x_t_i_cls - TEXT_IMG + G_text
 t_i_ore   equ x_t_i_ore - TEXT_IMG + G_text
+t_a_names equ x_t_a_names - TEXT_IMG + G_text
+t_a_keys  equ x_t_a_keys - TEXT_IMG + G_text
 
         ; Το κενό είναι 1.280 bytes και τελειώνει εκεί που αρχίζει το επόμενο
         ; πράγμα της τράπεζας 7. Χωρίς αυτόν τον έλεγχο, ένα κείμενο παραπάνω θα
@@ -180,6 +188,7 @@ t_i_ore   equ x_t_i_ore - TEXT_IMG + G_text
         assert  G_text + TEXT_MAX <= G_font_gfx
         assert  x_t_f_slot - x_t_f_names == 18 * 8   ; fit_name: x8
         assert  x_t_i_ore - x_t_i_cls == 8 * 11      ; in_panel: x11
+        assert  x_t_a_keys - x_t_a_names == 7 * 7    ; ac_name: x7, AI_N ονόματα
 
         ; ΚΑΙ ΣΤΟΝ ΔΙΣΚΟ: η BANK7.BIN φτιάχνεται από το tools/pack.py, που δεν
         ; ξέρει τι λέει το παιχνίδι. Τα κείμενα πάνε ως δικό τους αρχείο και ο

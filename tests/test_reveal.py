@@ -515,7 +515,8 @@ def corridor(sym, g, dx=8, dy=0):
     G.stick(0x20)
     G.stick(0x20)
     G.m.set_joystick_type(0)
-    tap(KEY_SPACE)
+    tap(KEY_SPACE)                      # -> ACT (βήμα 80)
+    tap(KEY_SPACE)                      # -> MENU: το BUILD είναι πρώτο
     for _ in range(14):
         if G.m.peek(sym["UI_SEL"]) == I_CORR:
             break

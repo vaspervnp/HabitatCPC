@@ -36,9 +36,29 @@ MACH_HP     equ 200                     ; καινούργια μηχανή (ό�
 ; fit_enter — από το LOOK: ο θόλος κάτω από τον κέρσορα, αν δέχεται κάτι.
 ; ---------------------------------------------------------------------------
 fit_enter:
+        call    fit_can
+        jr      c,fe_go
+        ret     z                       ; ο κέρσορας δεν είναι πάνω σε θόλο
+        jp      uip_deny                ; θόλος, αλλά τίποτα να μπει
+fe_go:
+        xor     a
+        ld      (fit_s),a
+        inc     a
+        ld      (fit_i),a               ; η κύρια μηχανή του δωματίου (rm_pref)
+        call    fit_pick                ; ή ό,τι ήδη υπάρχει στην υποδοχή 0
+        call    ui_click
+        ld      a,UI_FIT
+        jp      ui_goto
+
+; fit_can — ανοίγει εδώ ο εξοπλισμός; Out: CY ναι, με τον κατάλογο έτοιμο·
+; NC και Z: δεν είναι θόλος· NC και NZ: θόλος που δεν δέχεται τίποτα. Και για
+; το μενού ενεργειών (src/act.asm, βήμα 80), που δείχνει το FIT μόνο όταν
+; ανοίγει: γράφει μόνο τις μεταβλητές του εξοπλισμού, που εκτός FIT δεν τις
+; διαβάζει κανείς.
+fit_can:
         call    ui_dome
         cp      255
-        ret     z                       ; ο κέρσορας δεν είναι πάνω σε θόλο
+        ret     z                       ; NC, Z
         ld      (fit_d),a
         ld      a,D_SIZE
         call    fit_fld
@@ -54,7 +74,7 @@ fit_enter:
         ; και φαίνονται όταν τελειώσει ο θόλος (dh_built).
         dec     a                       ; εργοτάξιο 0, χτισμένος 1
         cp      2
-        jp      nc,uip_deny
+        jr      nc,fc_no
         ld      a,e
         ld      hl,G_machine_count
         call    ob_addu
@@ -82,16 +102,12 @@ fl_copy:
         ld      (fit_c),a
         ld      b,0
         ldir
-        cp      2
-        jp      c,uip_deny              ; δωμάτιο χωρίς μηχανές: τίποτα να μπει
-        xor     a
-        ld      (fit_s),a
-        inc     a
-        ld      (fit_i),a               ; η κύρια μηχανή του δωματίου (rm_pref)
-        call    fit_pick                ; ή ό,τι ήδη υπάρχει στην υποδοχή 0
-        call    ui_click
-        ld      a,UI_FIT
-        jp      ui_goto
+        cp      2                       ; δωμάτιο χωρίς μηχανές: μόνο το ΑΔΕΙΟ
+        ccf
+        ret     c
+fc_no:
+        or      1                       ; NC, NZ
+        ret
 
 fl_green:   db FT_EMPTY, FT_MIX, FT_CLS, FT_CLS+1, FT_CLS+2, FT_CLS+3
 

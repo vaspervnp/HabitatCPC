@@ -224,7 +224,7 @@ def build(m, sym, item, g_metal, at=None, room=None, place=True, fit=True):
     m.set_joystick_type(1)
     stick(0x20, 2)                       # PLACE -> MENU -> ήρεμη κατάσταση
     m.set_joystick_type(0)
-    tap(KEY_SPACE)                       # -> MENU
+    tap(KEY_SPACE, 2)                    # -> ACT -> MENU: το BUILD είναι πρώτο (βήμα 80)
     # Ο κατάλογος ΘΥΜΑΤΑΙ πού έμεινε: μετά τον ηλιακό το ui_sel είναι 4, όχι 0.
     # ΕΝΑ ΠΑΤΗΜΑ ΤΗ ΦΟΡΑ, ΜΕ ΕΠΑΛΗΘΕΥΣΗ: ένα χαμένο δεξιά αφήνει τον κατάλογο
     # σε δομή αντί για θόλο, και τότε το πάνω-κάτω δεν κάνει τίποτα — η

@@ -322,7 +322,7 @@ def main():
     # κείμενο 20 χαρακτήρων, κι έμεναν τέσσερις με ό,τι βρισκόταν από κάτω.
     # Βήμα 45: το FIRE στο LOOK ανοίγει τον εξοπλισμό (src/fit.asm), και το
     # λέει η σειρά 3· η σειρά 4 έλεγε «FIRE=PLACE», που στο LOOK ήταν ψέμα.
-    want = {3: "SPACE=BUILD I=INFO FIRE=FIT C=SHIP" + " " + "  x1 ",
+    want = {3: "SPACE=MENU I=INFO FIRE=FIT C=SHIP" + "  " + "  x1 ",
             4: " " * 40}
     for row, w in want.items():
         got = hud(m, row)

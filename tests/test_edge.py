@@ -157,7 +157,7 @@ def snap(sym, patch=()):
         m.run_frames(10)
         m.set_joystick_type(0)
 
-    tap(KEY_SPACE)                          # -> MENU
+    tap(KEY_SPACE, 2)                       # -> ACT -> MENU: το BUILD είναι πρώτο
     tap(KEY_RIGHT, 4)                       # -> SOLAR
     if m.peek(sym["BD_KIND"]) != 1:
         return f"ο κατάλογος δεν έφτασε στον ηλιακό (είδος {m.peek(sym['BD_KIND'])})"

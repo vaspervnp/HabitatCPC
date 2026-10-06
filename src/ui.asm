@@ -8,6 +8,7 @@
 ;   LINK   δύο θόλοι, και η διαδρομή του διαδρόμου ανάμεσά τους σαν φάντασμα
 ;   FIT    ο εξοπλισμός ενός θόλου, υποδοχή-υποδοχή (src/fit.asm)
 ;   INFO   το LOOK, με τις σειρές 3-4 να λένε τι έχει κάτω ο κέρσορας (info.asm)
+;   ACT    το μενού ενεργειών του SPACE: ό,τι γίνεται εδώ (act.asm)
 ;
 ; Η ΣΕΙΡΑ ΜΕΣΑ ΣΕ ΕΝΑ ΒΗΜΑ ΕΙΝΑΙ ΔΕΣΜΕΥΤΙΚΗ: πρώτα σβήνει το φάντασμα, μετά
 ; κινείται ο κέρσορας, μετά (αν χρειάζεται) σκρολάρει η κάμερα, και τελευταίο
@@ -81,6 +82,10 @@ ui_home:
         jp      ui_show
 uit_state:
         ld      a,(ui_state)
+        ; ΠΡΩΤΑ ΤΟ LOOK, όπου κάθεται το παιχνίδι: ως το βήμα 80 περνούσε από
+        ; πέντε συγκρίσεις για να φτάσει εδώ με πτώση.
+        or      a
+        jr      z,uist_look
         cp      UI_MENU
         jp      z,uist_menu
         cp      UI_PLACE
@@ -93,7 +98,11 @@ uit_state:
         cp      UI_SLOT
         jp      z,uist_slot
         endif
-        ; fall through — UI_LOOK
+        ifdef HAS_SIM
+        cp      UI_ACT
+        jp      z,ac_tick               ; src/act.asm, τράπεζα 2
+        endif
+        ; fall through — UI_INFO
 
 ; --- LOOK ------------------------------------------------------------------
 uist_look:
@@ -158,6 +167,12 @@ ush_none:
         ld      a,A_MENU
         call    in_hit
         ret     z
+        ifdef HAS_SIM
+        jp      ac_open                 ; το μενού ενεργειών (src/act.asm)
+        endif
+; ui_build — ο κατάλογος χτισίματος. Από το SPACE στις δοκιμές χωρίς
+; προσομοίωση, από το BUILD του μενού ενεργειών στο παιχνίδι.
+ui_build:
         call    ui_hide
         ld      a,UI_MENU
         ld      (ui_state),a
@@ -310,16 +325,20 @@ usl_lr:
         ld      c,SV_SLOTS
         call    ui_lr
         ret     z
-        jp      ui_click
+        ; ΚΑΙ ΤΩΡΑ, όχι στο επόμενο ρολόι του HUD: σε παύση δεν έρχεται ποτέ, και
+        ; ως το βήμα 80 η θέση άλλαζε χωρίς να το λέει η σειρά 3.
+        call    ui_click
+        jp      ui_panel
 
 ; ui_askslot — μπαίνει στην επιλογή. A = 0 σώσιμο, 1 φόρτωμα.
 ; (ΟΧΙ «ui_slot»: ο rasm δεν ξεχωρίζει ετικέτα από alias, και το UI_SLOT
 ; είναι ήδη σταθερά.)
 ui_askslot:
         ld      (sl_mode),a
+        call    ui_click
         ld      a,UI_SLOT
-        ld      (ui_state),a
-        jp      ui_click
+        jp      ui_ask                  ; ως το βήμα 80 χωρίς ui_panel: σε παύση
+                                        ; η επιλογή δεν φαινόταν καθόλου
 
 ; uds_go — η αρχή του σωσίματος και του φορτώματος. HL = το πρώτο μήνυμα.
 ; Out: A = η θέση. Ο κέρσορας σβηστός, το μήνυμα στη σειρά 3.
@@ -439,10 +458,11 @@ uim_pick:
         jp      ui_show
 
 ; ui_ask — A = μια κατάσταση που ΖΗΤΗΣΕ ο παίκτης και ζει στις σειρές 3-4
-; (INFO): το ui_goto, με τον πίνακα άκυρο και χωρίς μήνυμα από πάνω. Ενα
-; μήνυμα κρατά τις σειρές έξι κλήσεις του ui_panel, και σε παύση δεν το καλεί
-; κανένα ρολόι: το I μετά από ένα μήνυμα δεν έδειχνε ποτέ τίποτα.
-        ifdef HAS_SIM
+; (INFO, ACT, SLOT): το ui_goto, με τον πίνακα άκυρο και χωρίς μήνυμα από
+; πάνω. Ενα μήνυμα κρατά τις σειρές έξι κλήσεις του ui_panel, και σε παύση
+; δεν το καλεί κανένα ρολόι: το I μετά από ένα μήνυμα δεν έδειχνε ποτέ τίποτα.
+; (HAS_DISC: το HAS_SIM δεν υπάρχει χωρίς αυτό.)
+        ifdef HAS_DISC
 ui_ask:
         ld      hl,uip_sig
         ld      (hl),255                ; ui_dirty, που χαλάει το A
@@ -1083,13 +1103,15 @@ uipc_go:
         jr      nz,uip_notlook
         ld      hl,t_look
         call    hud_text7
-        ld      b,35-34                 ; ως τον δείκτη ταχύτητας (uip_spd)
+        ld      b,35-33                 ; ως τον δείκτη ταχύτητας (uip_spd)
         call    hud_blank
         jp      uip_row4
 uip_notlook:
         ifdef HAS_SIM
         cp      UI_INFO
         jp      z,in_panel              ; src/info.asm, τράπεζα 2
+        cp      UI_ACT
+        jp      z,ac_panel              ; src/act.asm, τράπεζα 2
         endif
         ifdef HAS_DISC
         cp      UI_SLOT

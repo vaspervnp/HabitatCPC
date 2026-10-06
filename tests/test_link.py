@@ -60,7 +60,9 @@ CORR_REC = 5
 METAL_PER_TILE = 6                       # ο κατάλογος του src/build.asm
 LAID_MAX = 160
 FLICKER_MAX = 24                         # μετρημένο 13 (βήμα 37)· με έδαφος 96,
-                                         # 51 από το ευρετήριο του βήματος 39
+                                         # 51 από το ευρετήριο του βήματος 39·
+                                         # 18 και 96 με τέσσερα δείγματα το καρέ
+FLICKER_PER = 4                          # δείγματα ανά καρέ (βήμα 80)
 FIELD = (-50, 20)                        # το καθαρό χωράφι, μακριά από την αποικία
 
 
@@ -211,7 +213,8 @@ class Pair:
         G.stick(0x20)
         G.stick(0x20)
         m.set_joystick_type(0)
-        tap(KEY_SPACE)
+        tap(KEY_SPACE)                  # -> ACT (βήμα 80)
+        tap(KEY_SPACE)                  # -> MENU: το BUILD είναι πρώτο
         for _ in range(14):
             if m.peek(sym["UI_SEL"]) == R.I_CORR:
                 break
@@ -470,8 +473,13 @@ def ghost_log(sym, g, sa, sb, dx, dy, cam=None):
 def flicker(sym, g, terrain=False):
     """Ο,τι ήδη φαίνεται δεν σβήνει όσο βγαίνουν οι σειρές.
 
-    Η οθόνη δειγματίζεται σε ΚΑΘΕ καρέ από το FIRE ως το τέλος της
-    εμφάνισης. Ενα byte που έχει ήδη την τελική του τιμή — από την αρχή, όπως
+    Η οθόνη δειγματίζεται ΤΕΣΣΕΡΙΣ ΦΟΡΕΣ σε κάθε καρέ από το FIRE ως το
+    τέλος της εμφάνισης. Με ένα δείγμα στο τέλος του καρέ η μέτρηση έβλεπε
+    μία μόνο φάση: στο βήμα 80 ο βρόχος έφτασε στο FIRE λίγο αλλιώς (δύο
+    SPACE ως τον κατάλογο, ένα tick του LOOK 21 µs φθηνότερο), το γυμνό
+    έδαφος του αρνητικού έπεφτε πια ανάμεσα σε δύο δείγματα, και το αρνητικό
+    έβγαζε 18 όσο και το θετικό. Με τέσσερα, το βήμα 79 και το 80 δίνουν το
+    ίδιο: 18 και 96. Ενα byte που έχει ήδη την τελική του τιμή — από την αρχή, όπως
     οι θόλοι, ή από ένα προηγούμενο καρέ, όπως η στροφή που μπαίνει με το
     FIRE — και μετά τη χάνει, είναι κάτι που ο παίκτης είδε να σβήνει. Το
     «ούτε πριν ούτε μετά» δεν το πιάνει: γυμνό έδαφος εκεί που μόλις μπήκε ο
@@ -500,12 +508,13 @@ def flicker(sym, g, terrain=False):
     frames = []
     m.set_joystick_type(1)
     m.joystick(JOY_FIRE)
-    for k in range(400):
-        m.run_frames(1)
-        if k == 4:
+    for k in range(400 * FLICKER_PER):
+        m.run_us(20000 // FLICKER_PER)
+        if k == 4 * FLICKER_PER:
             m.joystick(0)
         frames.append(G.play())
-        if k > 10 and m.peek(sym["RV_PEND"]) == 0 and m.peek(sym["UI_OWED"]) == 0:
+        if k > 10 * FLICKER_PER and m.peek(sym["RV_PEND"]) == 0 \
+                and m.peek(sym["UI_OWED"]) == 0:
             break
     m.set_joystick_type(0)
     m.run_frames(4)

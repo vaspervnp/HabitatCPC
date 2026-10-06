@@ -165,7 +165,7 @@ def main():
         m.joystick(0)
         m.run_frames(10)
 
-    tap(KEY_SPACE)                       # -> MENU
+    tap(KEY_SPACE, 2)                    # -> ACT -> MENU: το BUILD είναι πρώτο
     tap(KEY_RIGHT, 4)                    # -> SOLAR
     m.key_up("\x01")
     m.set_joystick_type(1)
@@ -257,7 +257,7 @@ def main():
         m.joystick(0)
         m.run_frames(10)
     m.set_joystick_type(0)
-    tap(KEY_SPACE)                       # -> MENU· θυμάται πού έμεινε (SOLAR)
+    tap(KEY_SPACE, 2)                    # -> MENU· θυμάται πού έμεινε (SOLAR)
     tap(KEY_LEFT, 4)                     # -> DOME S
     # Το δωμάτιο έμεινε CANTEEN από το πέρασμα στους μεγάλους θόλους, όπου το
     # οξυγόνο δεν χωράει: ένα πάτημα πάνω το γυρίζει.
@@ -391,7 +391,7 @@ def main():
     # και η γραμμή 3 έβγαινε κενή.
     check("CONTROL" in hud(3), f"και το λέει: |{hud(3).strip()}|")
 
-    tap(KEY_SPACE)                       # -> MENU· θυμάται το DOME S
+    tap(KEY_SPACE, 2)                    # -> MENU· θυμάται το DOME S
     for _ in range(12):                  # -> CONTROL (θέση 7 στο rm_list)
         if m.peek(sym["BD_RSEL"]) == 7:
             break
