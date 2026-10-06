@@ -70,9 +70,15 @@ mts_seed:
         ld      b,128
 mts_lp:
         ld      a,c
+        cp      MAX_NODE
+        jr      nc,mts_nx               ; 96-127: δεν είναι κόμβος
         call    mt_rec
-        jr      c,mts_nx                ; 96-127: δεν είναι κόμβος
-        call    mt_state
+        push    hl
+        ld      de,D_STATE
+        add     hl,de
+        ld      a,(hl)
+        pop     hl
+        or      a
         jr      nz,mts_got
 mts_nx:
         inc     c
@@ -82,14 +88,16 @@ mts_nx:
 mts_got:
         ld      a,(hl)
         sra     a
-        ld      (EC_MCX),a
+        ld      e,a
         inc     hl
         ld      a,(hl)
         sra     a
-        ld      (EC_MCY),a
+        ld      d,a
+        ld      (EC_MCX),de             ; και το EC_MCY από πίσω
         ld      a,METEOR_N
         ld      (EC_METEOR),a
         ret
+        assert  EC_MCY == EC_MCX + 1
 
 ; --- μία κρούση --------------------------------------------------------------
 mt_impact:
@@ -97,15 +105,12 @@ mt_impact:
         ld      (EC_METEOR),a
         ld      a,1
         ld      (mt_boom),a             ; ο κύριος βρόχος παίζει τον ήχο
-        call    mt_byte
+        call    mt_byte                 ; (και το EC_MRND + 1: ποια μηχανή)
         ld      e,a
-        ld      a,h
-        ld      (mt_s),a                ; ποια μηχανή, αν πέσει σε θόλο
-        ld      a,e
+        ld      hl,(EC_MCX)             ; L = το κέντρο x, H = y
         and     15
         sub     8
-        ld      hl,EC_MCX
-        add     a,(hl)
+        add     a,l
         ld      b,a
         ld      a,e
         rrca
@@ -114,83 +119,31 @@ mt_impact:
         rrca
         and     15
         sub     8
-        ld      hl,EC_MCY
-        add     a,(hl)
+        add     a,h
         ld      c,a                     ; (B, C) = το tile της κρούσης
-        ld      a,b
+        ; ΕΞΩ ΑΠΟ ΤΟΝ ΚΟΣΜΟ: x + 64 ή y + 64 με το bit 7 (-64..63 -> 0..127)
         add     a,64
-        and     #80
-        ret     nz                      ; έξω από τον κόσμο
-        ld      a,c
-        add     a,64
-        and     #80
-        ret     nz
-        ; --- ποιο κτίριο, αν κάποιο ---
-        ld      hl,G_dome_tbl
-        ld      de,MAX_DOME * 256 + DOME_REC
-        xor     a
-        call    mt_scan
-        jr      c,mt_hit
-        ld      hl,G_struct_tbl
-        ld      de,MAX_STRUCT * 256 + STRUCT_REC
-        ld      a,MAX_DOME
-        call    mt_scan
-        jr      c,mt_hit
-        ; fall through: κανένα κτίριο
-
-; --- έδαφος: κρατήρας, αν είναι ελεύθερη γη ----------------------------------
-mt_ground:
-        push    bc
-        ld      bc,GA_PORT + PAGE_B4
-        out     (c),c
-        pop     bc
-        ; η διεύθυνση του tile_addr (src/tiles.asm), εδώ επειδή το harness της
-        ; προσομοίωσης (tests/simtest.asm) δεν έχει renderer
-        ld      a,c
-        add     a,64
-        srl     a
-        ld      h,a
-        ld      a,0
-        rra
         ld      l,a
         ld      a,b
         add     a,64
         or      l
-        ld      l,a
-        ld      a,h
-        add     a,#40                   ; WORLD_BASE / 256
-        ld      h,a
-        ld      d,0                     ; «ο χάρτης δεν άλλαξε»
-        ld      a,(hl)
-        ld      e,a
-        and     W_OCC_MASK
-        jr      nz,mtg_no               ; διάδρομος
-        ld      a,e
-        and     7
-        cp      W_MOUNTAIN
-        jr      c,mtg_yes               ; έδαφος, σκόνη, βράχος
-        cp      W_FOUNDATION
-        jr      nz,mtg_no               ; βουνό, νερό, ήδη κρατήρας
-mtg_yes:
-        ld      a,e
-        and     #C0                     ; το decor μένει
-        or      W_CRATER
-        ld      (hl),a
-        inc     d
-mtg_no:
-        push    bc
-        ld      bc,GA_PORT + PAGE_B6
-        out     (c),c
-        pop     bc
-        dec     d
-        ret     nz                      ; δεν άλλαξε τίποτα στον χάρτη
-        ld      a,DK_TILE               ; το tile και οι γείτονες (autotile)
-        jp      wh_push
+        ret     m
+        ; --- ποιο κτίριο, αν κάποιο: οι θόλοι, και οι δομές αμέσως μετά ---
+        ld      hl,G_dome_tbl
+        ld      de,MAX_DOME * 256 + DOME_REC
+        call    mt_scan
+        ld      a,MAX_DOME
+        jr      c,mt_hit
+        ld      de,MAX_STRUCT * 256 + STRUCT_REC
+        call    mt_scan                 ; το HL είναι ήδη στο G_struct_tbl
+        ld      a,MAX_NODE
+        jr      nc,mt_ground
+        assert  G_struct_tbl == G_dome_tbl + MAX_DOME * DOME_REC
 
-; --- χτύπησε κτίριο ----------------------------------------------------------
+; --- χτύπησε κτίριο: HL = η εγγραφή, A - D = ο κόμβος ------------------------
 mt_hit:
-        ld      a,(mt_n)
-        call    mt_rec
+        sub     d
+        ld      c,a
         ld      de,D_STATE              ; = ST_STATE
         add     hl,de
         ld      a,(hl)
@@ -200,11 +153,11 @@ mt_hit:
         ld      (hl),0                  ; εργοτάξιο: χάνει την πρόοδο
         ret
 mth_live:
-        ld      a,(mt_n)
+        ld      a,c
         cp      MAX_DOME
         jr      nc,mth_struct
         ld      (eb_d),a                ; θόλος: μία μηχανή σταματά
-        ld      a,(mt_s)
+        ld      a,(EC_MRND + 1)         ; το byte πριν από αυτό της κρούσης
         ld      (eb_s),a
         jp      ec_break_d
 mth_struct:
@@ -213,25 +166,62 @@ mth_struct:
         ld      (hl),DS_BUILDING        ; ξανά εργοτάξιο
         ld      a,1
         ld      (ec_fdiv),a             ; το ισοζύγιο ξαναμετρά (όπως το ja_build)
-        ld      a,(mt_n)
+        ld      a,c
         jp      jb_post_build           ; και κάποιος έρχεται να το ξαναχτίσει
+
+; --- έδαφος: κρατήρας, αν είναι ελεύθερη γη ----------------------------------
+mt_ground:
+        ; η διεύθυνση του tile_addr (src/tiles.asm), εδώ επειδή το harness της
+        ; προσομοίωσης (tests/simtest.asm) δεν έχει renderer:
+        ; H = #40 + (y + 64) / 2, L = (y & 1) * 128 + x + 64
+        ld      a,c
+        add     a,64
+        or      #80
+        rra                             ; #40 | (y + 64) / 2, carry = y & 1
+        ld      h,a
+        sbc     a,a
+        and     #80
+        add     a,b
+        add     a,64
+        ld      l,a
+        push    bc
+        ld      bc,GA_PORT + PAGE_B4
+        out     (c),c
+        ld      a,(hl)
+        and     W_OCC_MASK | 7          ; κατοχή και έδαφος
+        cp      W_MOUNTAIN
+        jr      c,mtg_yes               ; ελεύθερο έδαφος, σκόνη, βράχος
+        cp      W_FOUNDATION
+        jr      nz,mtg_back             ; διάδρομος, βουνό, νερό, ήδη κρατήρας
+mtg_yes:
+        ld      a,(hl)
+        and     #C0                     ; το decor μένει
+        or      W_CRATER
+        ld      (hl),a
+        xor     a                       ; Z: ο χάρτης άλλαξε
+mtg_back:
+        ld      bc,GA_PORT + PAGE_B6
+        out     (c),c
+        pop     bc
+        ret     nz                      ; δεν άλλαξε τίποτα στον χάρτη
+        ld      a,DK_TILE               ; το tile και οι γείτονες (autotile)
+        jp      wh_push
 
 ; ---------------------------------------------------------------------------
 ; mt_scan — ένας πίνακας κτιρίων. HL = η πρώτη εγγραφή, D = πόσες, E = μέγεθος
-; εγγραφής, A = ο κόμβος της πρώτης, (B, C) = το tile. CY αν το tile είναι σε
-; κάποιο αποτύπωμα, και τότε (mt_n) = ο κόμβος. Κρατά BC.
+; εγγραφής (DOME_REC ή STRUCT_REC: το bit 4 λέει ποιο), (B, C) = το tile. CY αν
+; το tile είναι σε κάποιο αποτύπωμα, και τότε HL = η εγγραφή και D = πόσες
+; έμεναν μαζί της. NC: HL = μετά την τελευταία. Κρατά BC.
 ;
-; ΠΡΩΤΑ ΤΟ ΚΕΝΤΡΟ, ΜΕΤΑ ΤΟ ΑΠΟΤΥΠΩΜΑ. Το πρώτο γράψιμο ρωτούσε το mt_foot για
-; κάθε ζωντανό κόμβο: ~165 µs ο ένας, 9,5 ms μια κρούση σε αποικία 54 κτιρίων,
-; στη θέση του τροχού με προϋπολογισμό 500 µs. Κανένα αποτύπωμα δεν φτάνει
-; πάνω από MT_REACH tiles από το κέντρο του, οπότε ένα κέντρο μακρύτερα στο x
-; φεύγει με έξι εντολές, και το mt_foot το πληρώνουν μόνο τα κοντινά.
+; ΠΡΩΤΑ ΤΟ ΚΕΝΤΡΟ, ΜΕΤΑ ΤΟ ΑΠΟΤΥΠΩΜΑ. Το πρώτο γράψιμο ρωτούσε το αποτύπωμα
+; κάθε ζωντανού κόμβου: ~165 µs ο ένας, 9,5 ms μια κρούση σε αποικία 54
+; κτιρίων, στη θέση του τροχού με προϋπολογισμό 500 µs. Κανένα αποτύπωμα δεν
+; φτάνει πάνω από MT_REACH tiles από το κέντρο του, οπότε ένα κέντρο μακρύτερα
+; στο x φεύγει με έξι εντολές, και το αποτύπωμα το πληρώνουν μόνο τα κοντινά.
 ; ---------------------------------------------------------------------------
 MT_REACH    equ 4                       ; θόλος L: 8x8, το μισό. Δομές ως 4x4.
 
 mt_scan:
-        add     a,d
-        ld      (mt_end),a              ; ο κόμβος μετά την τελευταία εγγραφή
 msc_lp:
         ld      a,(hl)                  ; cx, μισά tiles
         sra     a
@@ -250,73 +240,34 @@ msc_c:
         jr      nz,msc_lp
         or      a                       ; NC: κανένα
         ret
+
+; Το αποτύπωμα: θόλος, πλευρά 4 + 2*μέγεθος· δομή, το πλαίσιο του sprite της
+; (struct_dims, bytes x γραμμές), που γεμίζει ακριβώς τα tiles της. Η αρχή
+; είναι (κέντρο - πλευρά) / 2, όπως στο dh_site. Άδεια εγγραφή: κανένα.
 msc_near:
         push    de
         push    hl
-        ld      a,(mt_end)
-        sub     d
-        ld      (mt_n),a
-        call    mt_state                ; άδεια εγγραφή: Z, NC
-        call    nz,mt_foot              ; CY αν η κρούση είναι μέσα του
-        pop     hl
-        pop     de
-        ret     c
-        jr      msc_nx
-
-; ---------------------------------------------------------------------------
-; mt_rec — A = κόμβος -> HL = η εγγραφή του (θόλος < 64, δομή από κει και
-; πάνω). CY αν ο κόμβος δεν υπάρχει (>= 96). Χαλάει DE.
-mt_rec:
-        cp      MAX_NODE
-        ccf
-        ret     c
-        cp      MAX_DOME
-        jp      c,jb_dome_ptr           ; γυρίζει χωρίς CY
-        sub     MAX_DOME
-        ld      l,a
-        ld      h,0
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl                   ; *STRUCT_REC
-        ld      de,G_struct_tbl
-        add     hl,de
-        ret
-
-; mt_state — HL = εγγραφή. NZ αν το κτίριο υπάρχει. Κρατά HL, χαλάει A, DE.
-mt_state:
-        push    hl
-        ld      de,D_STATE
-        add     hl,de
-        ld      a,(hl)
-        pop     hl
-        or      a
-        ret
-
-; mt_foot — HL = εγγραφή του κόμβου (mt_n), (B, C) = tile. CY αν το tile
-; είναι στο αποτύπωμα. Θόλος: πλευρά 4 + 2*μέγεθος. Δομή: το πλαίσιο του
-; sprite της (struct_dims, bytes x γραμμές), που γεμίζει ακριβώς τα tiles της.
-; Η αρχή είναι (κέντρο - πλευρά) / 2, όπως στο dh_site. Χαλάει A, DE, HL.
-mt_foot:
-        push    hl
         inc     hl
         inc     hl
-        ld      a,(mt_n)
-        cp      MAX_DOME
-        jr      nc,mtf_st
-        ld      a,(hl)                  ; D_SIZE
+        ld      a,(hl)                  ; D_SIZE / ST_KIND
+        inc     hl
+        ld      d,(hl)                  ; ST_SIZE
+        inc     hl
+        inc     (hl)
+        dec     (hl)                    ; D_STATE = ST_STATE: Z = άδεια
+        jr      z,msn_no
+        bit     4,e
+        jr      z,msn_st
         add     a,a
         add     a,4
         ld      d,a
         ld      e,a
-        jr      mtf_go
-mtf_st:
-        ld      a,(hl)                  ; ST_KIND
+        jr      msn_go
+msn_st:
         add     a,a
         add     a,a
-        add     a,a
-        inc     hl
-        add     a,(hl)
-        add     a,(hl)                  ; + 2*ST_SIZE
+        add     a,d
+        add     a,a                     ; είδος * 8 + 2 * μέγεθος
         ld      e,a
         ld      d,0
         ld      hl,G_struct_dims
@@ -334,15 +285,16 @@ mtf_st:
         rrca
         and     #0F                     ; γραμμές / 16
         ld      e,a
-mtf_go:
+msn_go:
         pop     hl
+        push    hl
         ld      a,(hl)                  ; cx
         sub     d
         sra     a
         neg
         add     a,b
         cp      d
-        ret     nc
+        jr      nc,msn_no
         inc     hl
         ld      a,(hl)                  ; cy
         sub     e
@@ -350,6 +302,29 @@ mtf_go:
         neg
         add     a,c
         cp      e
+        jr      nc,msn_no
+        pop     hl
+        pop     de
+        ret                             ; CY
+msn_no:
+        pop     hl
+        pop     de
+        jr      msc_nx
+        assert  DOME_REC & 16 && !(STRUCT_REC & 16)
+
+; ---------------------------------------------------------------------------
+; mt_rec — A = κόμβος (< MAX_NODE) -> HL = η εγγραφή του (θόλος < 64, δομή από
+; κει και πάνω). Χαλάει DE. Το καλεί και το ja_build (src/jobs.asm).
+mt_rec:
+        cp      MAX_DOME
+        jp      c,jb_dome_ptr
+        ld      l,a
+        ld      h,0
+        add     hl,hl
+        add     hl,hl
+        add     hl,hl                   ; *STRUCT_REC
+        ld      de,G_struct_tbl - MAX_DOME * STRUCT_REC
+        add     hl,de
         ret
 
 ; mt_byte — οκτώ βήματα της EC_MRND: A = L = ένα καινούργιο byte, H το
@@ -364,7 +339,4 @@ mtb_lp:
         ld      a,l
         ret
 
-mt_n:       db 0
-mt_end:     db 0
-mt_s:       db 0
 mt_boom:    db 0                        ; έπεσε μετεωρίτης· ο ήχος από το main

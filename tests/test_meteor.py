@@ -103,7 +103,7 @@ def shower(sym, g, cut_push=False):
         sys.exit("κανένας σπόρος δεν χτυπά πίστα, θόλο και έδαφος")
     if cut_push:
         # JP wh_push -> RET, στο τέλος του mt_ground
-        at, wp = sym["MTG_NO"], sym["WH_PUSH"]
+        at, wp = sym["MTG_BACK"], sym["WH_PUSH"]          # βήμα 76: ήταν mtg_no
         for k in range(32):
             if (G.m.peek(at + k) == 0xC3 and G.m.peek(at + k + 1) == wp & 0xFF
                     and G.m.peek(at + k + 2) == wp >> 8):
