@@ -1614,6 +1614,7 @@ role_fig:
 
 ; --- μεταβλητές ------------------------------------------------------------
 ob_idx:     db OB_IX_ALL        ; ποια ευρετήρια θέλουν ξαναχτίσιμο (OB_IX_*)
+d_id:       db 0                ; ο θόλος στο d_rec (ob_getdome)· 255 = κανένας
 ob_meas:    db 0                ; 1 = μέτρα, μη ζωγραφίζεις (oi_build)
 oi_nd:      db 0                ; εγγραφές ευρετηρίου: θόλοι,
 oi_nc:      db 0                ; διάδρομοι,
@@ -1656,7 +1657,6 @@ cl_skip:    db 0
 cl_n:       db 0
 cl_start:   db 0
 
-d_id:       db 0
 d_rec:      defs DOME_REC
 d_geo:      dw 0
 d_fx:       dw 0
