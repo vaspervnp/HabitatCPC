@@ -11,100 +11,59 @@
 ; παιχνίδι από πάνω της. Δες DESIGN §4.2.
 
 M_OXYGEN    equ 0
-M_BEDS      equ 10
 
 NG_SEED     equ #ACE1
+; οι πίνακες οντοτήτων της τράπεζας 6, ένα συνεχές μπλοκ (src/layout)
+NG_B6_LEN   equ G_corr_tbl + MAX_CORR * CORR_REC - G_agent_fields
 
 ; ---------------------------------------------------------------------------
 ; game_new — από το μηδέν ως το πρώτο frame.
+;
+; ΜΙΑ ΡΟΗ (βήμα 74): το σκούπισμα, η αποικία, οι άνθρωποι και τα αποθέματα
+; ήταν τέσσερις ρουτίνες με έναν καλούντα, αυτόν εδώ. Η σειρά είναι η ίδια.
 ; ---------------------------------------------------------------------------
 game_new:
-        call    ng_wipe
-        call    ng_colony
-        call    ng_people
-        call    ng_stock
-        call    wheel_reset
-        call    rt_mark
-        jp      ui_init
-
-; ---------------------------------------------------------------------------
-; ng_wipe — κάθε πίνακας στην τιμή που σημαίνει «άδειο», και αυτή ΔΕΝ είναι
-; πάντα το μηδέν.
-; ---------------------------------------------------------------------------
-ng_wipe:
-        ; --- η οικονομία (τράπεζα 2, πάντα ορατή) ---
+        ; --- κάθε πίνακας στην τιμή που σημαίνει «άδειο», και αυτή ΔΕΝ είναι
+        ; πάντα το μηδέν. Η οικονομία και ο γράφος: τράπεζα 2, πάντα ορατή.
         ld      hl,G_econ_state
-        ld      de,G_econ_state+1
         ld      bc,85
-        ld      (hl),0
-        ldir
+        call    ng_zero
+        ld      hl,NODE_DEG
+        ld      bc,127
+        call    ng_zero
         ; --- ο πίνακας εργασιών: 255, όχι 0 ---
         ld      hl,G_job_tbl
+        ld      de,JOB_REC
+        ld      a,NO_JOB
         ld      b,MAX_JOB
 ngw_job:
-        ld      (hl),NO_JOB
-        push    bc
-        ld      bc,JOB_REC
-        add     hl,bc
-        pop     bc
+        ld      (hl),a
+        add     hl,de
         djnz    ngw_job
-        ; --- ο γράφος ---
-        ld      hl,NODE_DEG
-        ld      de,NODE_DEG+1
-        ld      bc,127
-        ld      (hl),0
-        ldir
-        ; --- οι πίνακες οντοτήτων, στην τράπεζα 6 ---
+        ; --- οι πίνακες οντοτήτων: ΕΝΑ μπλοκ στην τράπεζα 6, από τους
+        ; πράκτορες ως το τέλος των διαδρόμων (τα assert στο τέλος).
         ld      bc,GA_PORT + PAGE_B6
         out     (c),c
-        ld      hl,G_node_occ
-        ld      de,G_node_occ+1
-        ld      bc,255
-        ld      (hl),0
-        ldir
-        ld      hl,G_dome_tbl
-        ld      de,G_dome_tbl+1
-        ld      bc,MAX_DOME*DOME_REC - 1
-        ld      (hl),0
-        ldir
-        ld      hl,G_struct_tbl
-        ld      de,G_struct_tbl+1
-        ld      bc,MAX_STRUCT*STRUCT_REC - 1
-        ld      (hl),0
-        ldir
-        ld      hl,G_corr_tbl
-        ld      de,G_corr_tbl+1
-        ld      bc,MAX_CORR*CORR_REC - 1
-        ld      (hl),0
-        ldir
         ld      hl,G_agent_fields
-        ld      de,G_agent_fields+1
-        ld      bc,8*256 - 1
-        ld      (hl),0
-        ldir
-        ; Τρεις στήλες πρακτόρων θέλουν 255, όχι 0: μια ακμή 0 σημαίνει «στον
-        ; δρόμο για τον πρώτο γείτονα», μια θέση 0 «στην πρώτη θέση του
-        ; δακτυλίου», και μια εργασία 0 «κρατάει την εργασία μηδέν».
-        ld      hl,AG_DEST + 128
-        call    ng_ff
+        ld      bc,NG_B6_LEN - 1
+        call    ng_zero
+        ; Τρεις στήλες πρακτόρων θέλουν 255, όχι 0: μια θέση 0 σημαίνει «στην
+        ; πρώτη θέση του δακτυλίου», μια ακμή 0 «στον δρόμο για τον πρώτο
+        ; γείτονα», και μια εργασία 0 «κρατάει την εργασία μηδέν». Είναι οι
+        ; στήλες +128 τριών διαδοχικών σελίδων: AG_NODE, AG_DEST, AG_PROG.
         ld      hl,AG_NODE + 128
-        call    ng_ff
-        ld      hl,AG_PROG + 128
-        call    ng_ff
-        ld      bc,GA_PORT + PAGE_B1
-        out     (c),c
-        ret
-
-ng_ff:
+        ld      c,3                     ; το A είναι ακόμη 255
+ngw_ff:
         ld      b,128
-ngf_lp:
-        ld      (hl),255
+ngw_fl:
+        ld      (hl),a
         inc     hl
-        djnz    ngf_lp
-        ret
+        djnz    ngw_fl
+        set     7,l                     ; η στήλη +128 της επόμενης σελίδας
+        dec     c
+        jr      nz,ngw_ff
 
-; ---------------------------------------------------------------------------
-; ng_colony — τρεις μικροί θόλοι σε Γ, δύο διάδρομοι, και η πλατφόρμα.
+; --- η αποικία: τρεις μικροί θόλοι σε Γ, η πλατφόρμα, δύο διάδρομοι ---------
 ;
 ; ΚΥΛΙΚΕΙΟ, ΟΧΙ ΑΠΟΘΗΚΗ, και αυτό είναι απόκλιση από το §10.1. Το πέρασμα
 ; αναγκών ψάχνει ΜΟΝΟ ιατρείο, κυλικείο και καταλύματα (§6.6): χωρίς κυλικείο
@@ -117,154 +76,68 @@ ngf_lp:
 ; θόλους βγαίνει 8 - 2 - 2 = 4 πλακίδια διαδρόμου, ακέραιο, όπως απαιτεί το
 ; §9.4. Μικρότερη απόσταση δεν αφήνει διάδρομο· μεγαλύτερη σκορπίζει την
 ; αποικία πριν καν αρχίσει.
-; ---------------------------------------------------------------------------
-ng_colony:
-        ld      bc,GA_PORT + PAGE_B6
-        out     (c),c
-        ld      hl,ng_domes
-        ld      b,3
-        ld      c,0
+;
+; Οι πίνακες είναι ήδη μηδέν: γράφεται μόνο ό,τι δεν είναι.
+        ld      hl,ng_sites
+        ld      de,G_dome_tbl
+        ld      a,3
 ngc_lp:
-        push    bc
-        push    hl
-        ld      a,c
-        call    ob_domeadr
-        ex      de,hl                   ; DE = εγγραφή, HL = πρότυπο
-        pop     hl
-        push    hl
-        ld      bc,4                    ; cx, cy, size, room
-        ldir
+        call    ngc_rec                 ; cx, cy, μέγεθος, δωμάτιο, DS_ACTIVE, 255
         ex      de,hl
-        ld      (hl),DS_ACTIVE
         inc     hl
-        ld      (hl),255                ; ακεραιότητα: χτισμένος
-        inc     hl
-        ld      (hl),0                  ; ρεύμα
-        inc     hl
-        ld      (hl),0                  ; χειριστές
-        inc     hl
+        inc     hl                      ; ρεύμα και χειριστές: 0
         ld      b,8
 ngc_m:
         ld      (hl),NO_MACH
         inc     hl
         djnz    ngc_m
-        pop     hl                      ; πίσω στο πρότυπο
-        ld      de,5
-        add     hl,de                   ; το επόμενο
-        pop     bc
-        inc     c
-        djnz    ngc_lp
-        ; --- οι μηχανές, χωριστά: το πρότυπο είναι πέντε bytes και η υποδοχή
-        ; είναι μέσα στην εγγραφή, όχι δίπλα της.
-        ld      hl,ng_domes+4
-        ld      b,3
-        ld      c,0
-ngc_ml:
-        push    bc
-        push    hl
-        ld      a,(hl)
-        cp      NO_MACH
-        jr      z,ngc_mn
-        ld      e,a
-        ld      a,c
-        push    de                      ; το ob_domeadr ΧΑΛΑΕΙ το DE (§6.1) και
-        call    ob_domeadr              ; αυτό εδώ κρατούσε τη ΜΗΧΑΝΗ μέσα του:
-        pop     de                      ; κάθε θόλος της αρχικής αποικίας έπαιρνε
-        ld      bc,D_MACH               ; το χαμηλό byte του G_dome_tbl, δηλαδή 0,
-                                        ; δηλαδή ΓΕΝΝΗΤΡΙΑ ΟΞΥΓΟΝΟΥ. Τα κρεβάτια
-                                        ; του καταλύματος ήταν δεύτερη γεννήτρια:
-                                        ; διπλάσιο νερό (23 αντί 12 το sol) και
-                                        ; διπλάσια ζήτηση ρεύματος. Φάνηκε στο
-                                        ; tools/balance.py, όχι διαβάζοντας.
-        add     hl,bc
-        ld      (hl),e                  ; υποδοχή 0
-        ld      bc,D_HEALTH - D_MACH
-        add     hl,bc
-        ld      (hl),200
-ngc_mn:
-        pop     hl
-        ld      de,5
-        add     hl,de
-        pop     bc
-        inc     c
-        djnz    ngc_ml
-        ; --- η πλατφόρμα προσγείωσης ---
-        ld      hl,G_struct_tbl
-        ld      (hl),-16                ; cx
-        inc     hl
-        ld      (hl),16                 ; cy
-        inc     hl
-        ld      (hl),K_PAD
-        inc     hl
-        ld      (hl),0                  ; ένα μέγεθος μόνο
-        inc     hl
-        ld      (hl),DS_ACTIVE
-        inc     hl
-        ld      (hl),255
-        ; --- οι δύο διάδρομοι, γραμμένοι κατευθείαν: στο νέο παιχνίδι δεν
-        ; πληρώνονται και δεν χτίζονται.
-        ld      hl,G_corr_tbl
-        ld      de,ng_corrs
+        ld      bc,DOME_REC - D_HEALTH
+        add     hl,bc                   ; η επόμενη εγγραφή
         ex      de,hl
-        ld      bc,2*CORR_REC
-        ldir
-        ld      bc,GA_PORT + PAGE_B1
-        out     (c),c
-        ; --- ο κόσμος κάτω από την αποικία ---
-        call    ng_stamp
-        ; --- ο γράφος: δύο διάδρομοι και μία εξωτερική ακμή ως την πλατφόρμα ---
-        ld      b,0
-        ld      c,1
-        call    cr_edge
-        ld      b,1
-        ld      c,0
-        call    cr_edge
-        ld      b,0
-        ld      c,2
-        call    cr_edge
-        ld      b,2
-        ld      c,0
-        call    cr_edge
-        ; Η πλατφόρμα ΔΕΝ συνδέεται με διάδρομο: το §6.2 λέει ότι οι εξωτερικές
-        ; δομές έχουν «ακμή εξωτερικού χώρου» και ο κόμβος τους είναι 64+δομή.
-        ld      b,2
-        ld      c,MAX_DOME
-        call    cr_edge
-        ld      b,MAX_DOME
-        ld      c,2
-        jp      cr_edge
+        dec     a
+        jr      nz,ngc_lp
+        ld      de,G_struct_tbl
+        call    ngc_rec                 ; η πλατφόρμα: cx, cy, K_PAD, μέγεθος 0,
+                                        ; DS_ACTIVE, 255
+        ld      de,G_corr_tbl
+        ld      bc,2 * CORR_REC
+        ldir                            ; οι δύο διάδρομοι: στο νέο παιχνίδι δεν
+                                        ; πληρώνονται και δεν χτίζονται
+        ; Η ΜΟΝΗ ΜΗΧΑΝΗ είναι η γεννήτρια οξυγόνου του πρώτου θόλου, στην
+        ; υποδοχή 0 και καινούργια. Ως το βήμα 73 κάθε θόλος είχε στήλη μηχανής
+        ; στο πρότυπο, και η εγγραφή της κάποτε κατέληγε σε ΓΕΝΝΗΤΡΙΑ ΟΞΥΓΟΝΟΥ
+        ; και στο κατάλυμα: το ob_domeadr χαλάει το DE, που κρατούσε τη μηχανή
+        ; — διπλάσιο νερό και ρεύμα, φάνηκε στο tools/balance.py.
+        xor     a                       ; M_OXYGEN
+        ld      (G_dome_tbl + D_MACH),a
+        ld      a,200
+        ld      (G_dome_tbl + D_HEALTH),a
 
-; ---------------------------------------------------------------------------
-; ng_stamp — θεμέλιο και κατοχή κάτω από κάθε θόλο, την πλατφόρμα και τους
-; διαδρόμους. Απαιτεί τράπεζα 1 στην είσοδο.
-; ---------------------------------------------------------------------------
-ng_stamp:
-        ld      hl,ng_rects
-        ld      b,4
-ngs_lp:
-        push    bc
-        ld      a,(hl)
-        ld      (ngs_x),a
-        inc     hl
-        ld      a,(hl)
-        ld      (ngs_y),a
-        inc     hl
-        ld      a,(hl)
-        ld      (ngs_n),a
-        inc     hl
-        push    hl
+        ; --- ο κόσμος κάτω από την αποικία: θεμέλιο και κατοχή, 4x4 στο
+        ; κέντρο κάθε θόλου και της πλατφόρμας. Το decor μένει.
         ld      bc,GA_PORT + PAGE_B4
         out     (c),c
-        ld      a,(ngs_n)
-        ld      (ngs_r),a
+        ld      de,ng_sites
+        ld      a,4
+ngs_lp:
+        push    af
+        ld      a,(de)
+        sra     a
+        sub     2
+        ld      b,a                     ; το αριστερό tile
+        inc     de
+        ld      a,(de)
+        sra     a
+        sub     2
+        ld      c,a                     ; το πάνω
+        inc     de
+        inc     de
+        inc     de
+        call    tile_addr               ; κρατά BC, DE
+        ld      c,4
 ngs_rl:
-        ld      a,(ngs_x)
-        ld      b,a
-        ld      a,(ngs_y)
-        ld      c,a
-        call    tile_addr
-        ld      a,(ngs_n)
-        ld      b,a
+        push    hl
+        ld      b,4
 ngs_cl:
         ld      a,(hl)
         and     #C0
@@ -272,124 +145,136 @@ ngs_cl:
         ld      (hl),a
         inc     hl
         djnz    ngs_cl
-        ld      a,(ngs_y)
-        inc     a
-        ld      (ngs_y),a
-        ld      a,(ngs_r)
-        dec     a
-        ld      (ngs_r),a
-        jr      nz,ngs_rl
-        ld      bc,GA_PORT + PAGE_B1
-        out     (c),c
         pop     hl
-        pop     bc
-        djnz    ngs_lp
+        ld      a,l                     ; η επόμενη σειρά: +128 (tile_addr)
+        add     a,128
+        ld      l,a
+        adc     a,h
+        sub     l
+        ld      h,a
+        dec     c
+        jr      nz,ngs_rl
+        pop     af
+        dec     a
+        jr      nz,ngs_lp
         ; --- και οι δύο διάδρομοι, με τον ίδιο κώδικα που χρησιμοποιεί ο
-        ; παίκτης: ο δρομολογητής ξέρει ποια πλακίδια πατά η διαδρομή.
-        ld      a,0
-        ld      (cr_a),a
+        ; παίκτης: ο δρομολογητής ξέρει ποια πλακίδια πατά η διαδρομή. Από τον
+        ; θόλο 0 προς τον 1 και προς τον 2· το cr_plan αλλάζει θέσεις στα άκρα
+        ; όταν δοκιμάζει από την άλλη μεριά, οπότε ο 0 ξαναγράφεται κάθε φορά.
         ld      a,1
+ngr_lp:
         ld      (cr_b),a
+        push    af
+        xor     a
+        ld      (cr_a),a
         call    cr_plan
         or      a
         call    nz,cr_stamp
-        ld      a,0
-        ld      (cr_a),a
-        ld      a,2
-        ld      (cr_b),a
-        call    cr_plan
-        or      a
-        ret     z
-        jp      cr_stamp
+        pop     af
+        inc     a
+        cp      3
+        jr      nz,ngr_lp
+        ; --- ο γράφος: δύο διάδρομοι και μία εξωτερική ακμή ως την πλατφόρμα.
+        ; Η πλατφόρμα ΔΕΝ συνδέεται με διάδρομο: το §6.2 λέει ότι οι εξωτερικές
+        ; δομές έχουν «ακμή εξωτερικού χώρου» και ο κόμβος τους είναι 64+δομή.
+        ; Το cr_link_bc τελειώνει σε rt_mark· το wheel_reset πιο κάτω σβήνει το
+        ; rt_dirty και το rt_mark μετά από αυτό το ξανανάβει.
+        ld      bc,0 * 256 + 1
+        call    cr_link_bc
+        ld      bc,0 * 256 + 2
+        call    cr_link_bc
+        ld      bc,2 * 256 + MAX_DOME
+        call    cr_link_bc
 
-; ---------------------------------------------------------------------------
-; ng_people — τέσσερις άποικοι: δύο εργάτες, ένας μηχανικός, μία βιολόγος.
-; ---------------------------------------------------------------------------
-ng_people:
+        ; --- τέσσερις άποικοι: δύο εργάτες, ένας μηχανικός, μία βιολόγος ---
         ld      bc,GA_PORT + PAGE_B6
         out     (c),c
-        ld      hl,ng_roles
-        ld      b,4
-        ld      c,0
+        ld      de,ng_roles
+        ld      c,0                     ; ο πράκτορας
 ngp_lp:
-        push    bc
-        push    hl
-        ld      a,(hl)
-        ld      e,a                     ; ρόλος
-        inc     hl
-        ld      a,(hl)                  ; κόμβος
-        ld      d,a
         ld      h,AG_PG
         ld      l,c
         ld      (hl),F_ALIVE + F_INDOORS
         set     7,l
-        ld      (hl),e                  ; ρόλος
-        ld      h,AG_PG + 1
-        ld      l,c
-        ld      (hl),d                  ; κόμβος
-        ld      h,AG_PG + 2
-        ld      l,c
-        ld      (hl),d                  ; προορισμός = εκεί που είναι
-        ld      a,d
+        ld      a,(de)
+        inc     de
+        ld      (hl),a                  ; ρόλος
+        ld      a,(de)
+        inc     de
+        res     7,l
+        inc     h
+        ld      (hl),a                  ; κόμβος
+        inc     h
+        ld      (hl),a                  ; προορισμός = εκεί που είναι
         push    bc
-        call    ent_claim               ; A = κόμβος
+        push    de
+        call    ent_claim               ; A = κόμβος -> A = θέση
+        pop     de
         pop     bc
         ld      h,AG_PG + 1
         ld      l,c
         set     7,l
         ld      (hl),a                  ; η θέση στον δακτύλιο
-        ; --- οι ανάγκες γεμάτες: ένας άποικος που ξεκινά στο μηδέν πεθαίνει
-        ; πριν προλάβει να περπατήσει ως το ψυγείο.
+        ; οι ανάγκες γεμάτες, και οι δύο στήλες τριών σελίδων: ένας άποικος
+        ; που ξεκινά στο μηδέν πεθαίνει πριν προλάβει να περπατήσει ως το ψυγείο.
         ld      h,AG_PG + 4
-        call    ng_full
-        ld      h,AG_PG + 5
-        call    ng_full
-        ld      h,AG_PG + 6
-        call    ng_full
-        pop     hl
-        inc     hl
-        inc     hl
-        pop     bc
-        inc     c
-        djnz    ngp_lp
-        ld      a,4
-        ld      (EC_ALIVE),a
-        ld      a,8
-        ld      (EC_POPCAP),a           ; τρεις μικροί θόλοι
-        ld      bc,GA_PORT + PAGE_B1
-        out     (c),c
-        ret
-
-; ng_full — και οι δύο στήλες της σελίδας H στο 255, για τον πράκτορα C.
-ng_full:
-        ld      l,c
+        ld      b,3
+ngp_n:
+        ld      (hl),255
+        res     7,l
         ld      (hl),255
         set     7,l
+        inc     h
+        djnz    ngp_n
+        inc     c
+        ld      a,c
+        cp      4
+        jr      nz,ngp_lp
+        ld      bc,GA_PORT + PAGE_B1
+        out     (c),c
+
+        ; --- τα αποθέματα του §10.1, το ρολόι, και ό,τι άλλο δεν ξεκινά από το
+        ; μηδέν: ζευγάρια (χαμηλό byte διεύθυνσης, τιμή) στη σελίδα της οικονομίας.
+        ld      hl,ng_econ
+        ld      d,G_econ_state >> 8
+        ld      b,(ng_econ_end - ng_econ) / 2
+nge_lp:
+        ld      e,(hl)
+        inc     hl
+        ld      a,(hl)
+        inc     hl
+        ld      (de),a
+        djnz    nge_lp
+        call    wheel_reset
+        call    rt_mark
+        jp      ui_init
+
+; ngc_rec — HL = πρότυπο (cx, cy, και δύο bytes), DE = εγγραφή: τα τέσσερα,
+; και DS_ACTIVE, 255 (ακεραιότητα: χτισμένο). HL += 4, DE += 6.
+ngc_rec:
+        ld      bc,4
+        ldir
+        ex      de,hl
+        ld      (hl),DS_ACTIVE
+        inc     hl
         ld      (hl),255
+        inc     hl
+        ex      de,hl
         ret
 
-; ---------------------------------------------------------------------------
-; ng_stock — τα αποθέματα του §10.1, και το ρολόι.
-; ---------------------------------------------------------------------------
-ng_stock:
-        ld      hl,ng_start_stock
-        ld      de,EC_STOCK
-        ld      bc,14*2
+; ng_zero — HL = αρχή, BC = μήκος - 1: μηδέν.
+ng_zero:
+        ld      d,h
+        ld      e,l
+        inc     de
+        ld      (hl),0
         ldir
-        ld      hl,12000
-        ld      (EC_SOLLEN),hl
-        ld      hl,7200
-        ld      (EC_DAYLEN),hl
-        ld      hl,NG_SEED
-        ld      (EC_RND),hl
-        ld      a,1
-        ld      (EC_DAY),a
-        ld      (EC_POK),a
-        ld      (EC_O2OK),a
         ret
 
 ; --- δεδομένα --------------------------------------------------------------
-; cx, cy (μισά tiles), μέγεθος, δωμάτιο, μηχανή υποδοχής 0
+; cx, cy (μισά tiles), και δύο bytes: μέγεθος και δωμάτιο για θόλο, είδος και
+; μέγεθος για δομή — οι δύο εγγραφές αρχίζουν ίδια (§6.1).
+;
 ; ΤΟ ΚΑΤΑΛΥΜΑ ΔΕΝ ΕΧΕΙ ΜΗΧΑΝΗ, και τα κρεβάτια ήταν λάθος δωμάτιο: το
 ; mach_beds είναι έπιπλο ΙΑΤΡΕΙΟΥ (θέλει γιατρό από πάνω του, βλ. RECIPE στο
 ; tools/econ.py) και το room_machines δεν το δίνει ποτέ σε κατάλυμα — ο θόλος
@@ -397,22 +282,17 @@ ng_stock:
 ; χειριστή και δεν παράγει ΤΙΠΟΤΑ κρατούσε μόνιμα έναν από τους τέσσερις
 ; αποίκους να στρώνει κρεβάτια: μετρημένο, 96% του χρόνου στελεχωμένο
 ; κατάλυμα ενώ το κυλικείο περίμενε μαγείρα. Ο ύπνος τον δίνει το ΔΩΜΑΤΙΟ.
-ng_domes:
-        db   0,  0, 0, R_OXYGEN,   M_OXYGEN
-        db  16,  0, 0, R_QUARTERS, NO_MACH
-        db   0, 16, 0, R_CANTEEN,  NO_MACH
+ng_sites:
+        db   0,  0, 0, R_OXYGEN
+        db  16,  0, 0, R_QUARTERS
+        db   0, 16, 0, R_CANTEEN
+        db -16, 16, K_PAD, 0            ; η πλατφόρμα προσγείωσης, ένα μέγεθος
 
-; a, b, dir, len, state — 8 tiles κέντρο σε κέντρο μείον δύο ακτίνες = 4
+; a, b, dir, len, state — 8 tiles κέντρο σε κέντρο μείον δύο ακτίνες = 4.
+; Αμέσως μετά τα ng_sites: το ldir τα παίρνει από εκεί που σταμάτησε.
 ng_corrs:
         db 0, 1, 2, 4, DS_ACTIVE        ; ανατολή
         db 0, 2, 4, 4, DS_ACTIVE        ; νότος
-
-; αριστερό tile, πάνω tile, πλευρά — τρεις θόλοι 4x4 και η πλατφόρμα 4x4
-ng_rects:
-        db  -2, -2, 4
-        db   6, -2, 4
-        db  -2,  6, 4
-        db -10,  6, 4
 
 ; ρόλος, κόμβος
 ng_roles:
@@ -440,10 +320,38 @@ ng_roles:
 ; ο κύκλος του κλείνει με τρεις: μικρό εργοστάσιο (10), θερμοκήπιο (10) για το
 ; άμυλο και μεσαίο εργοστάσιο (20), που έχει τέσσερις υποδοχές και άρα παίρνει
 ; και mach_bioplastic. Με 30 έλειπαν ακριβώς δέκα και ο κύκλος δεν έκλεινε.
-ng_start_stock:
-        dw 60, 40, 60, 75, 45, 0, 4, 0, 0, 0, 0, 0, 0, 0
+;
+; ΜΟΝΟ ΟΤΙ ΔΕΝ ΕΙΝΑΙ ΜΗΔΕΝ, ως (διεύθυνση, τιμή) — ως το βήμα 73 ήταν ένας
+; πίνακας 14 λέξεων, οι μισές μηδέν, και δέκα εντολές για τα υπόλοιπα.
+macro   NG_BYTE adr, val
+        assert  ({adr}) >> 8 == G_econ_state >> 8
+        db      ({adr}) & 255, {val}
+mend
+macro   NG_WORD adr, val
+        NG_BYTE {adr}, ({val}) & 255
+        NG_BYTE ({adr}) + 1, ({val}) >> 8
+mend
+ng_econ:
+        NG_BYTE EC_STOCK + 2 * S_WATER, 60
+        NG_BYTE EC_STOCK + 2 * S_FOOD, 40
+        NG_BYTE EC_STOCK + 2 * S_ORE, 60
+        NG_BYTE EC_STOCK + 2 * S_METAL, 75
+        NG_BYTE EC_STOCK + 2 * S_BIOPL, 45
+        NG_BYTE EC_STOCK + 2 * S_SPARE, 4
+        NG_WORD EC_SOLLEN, 12000
+        NG_WORD EC_DAYLEN, 7200
+        NG_WORD EC_RND, NG_SEED
+        NG_BYTE EC_DAY, 1
+        NG_BYTE EC_POK, 1
+        NG_BYTE EC_O2OK, 1
+        NG_BYTE EC_ALIVE, 4
+        NG_BYTE EC_POPCAP, 8            ; τρεις μικροί θόλοι
+ng_econ_end:
 
-ngs_x:      db 0
-ngs_y:      db 0
-ngs_n:      db 0
-ngs_r:      db 0
+        assert  G_node_occ == G_agent_fields + 8 * 256
+        assert  G_dome_tbl == G_node_occ + 256
+        assert  G_struct_tbl == G_dome_tbl + MAX_DOME * DOME_REC
+        assert  G_corr_tbl == G_struct_tbl + MAX_STRUCT * STRUCT_REC
+        assert  AG_DEST == AG_NODE + 256 && AG_PROG == AG_DEST + 256
+        assert  D_MACH == 8 && D_HEALTH == 16 && M_OXYGEN == 0
+        assert  ng_corrs == ng_sites + 16

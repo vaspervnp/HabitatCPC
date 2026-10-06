@@ -1007,6 +1007,8 @@ cr_link:
         ld      b,a
         ld      a,(cr_to)
         ld      c,a
+; cr_link_bc — η ακμή B <-> C, και οι δύο κατευθύνσεις (και το newgame.asm).
+cr_link_bc:
         call    cr_edge                 ; κρατά τα BC
         ld      a,b
         ld      b,c
