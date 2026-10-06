@@ -14,6 +14,8 @@
 
 ; ---------------------------------------------------------------------------
 ; oi_build — το ευρετήριο αντικειμένων στην τράπεζα 5, πάνω από το NEXTHOP.
+; In: A = οι κατηγορίες που ξαναχτίζονται, OB_IX_* >> 1 (το ob_index έχει
+; ήδη βγάλει το bit των φιγούρων). Απαιτεί τράπεζα 6.
 ;
 ; ΜΕ ΤΗΝ ΚΑΜΕΡΑ ΣΤΟ (0, 0), όπου η οθόνη ΕΙΝΑΙ ο κόσμος: οι ίδιες ρουτίνες
 ; που ζωγραφίζουν δίνουν τις θέσεις, και το ob_meas τις κάνει να τις ΜΕΤΡΑΝΕ
@@ -27,47 +29,45 @@
 ; ΜΟΝΟ Η ΚΑΤΗΓΟΡΙΑ ΠΟΥ ΑΛΛΑΞΕ. Ως να μπει αυτό, κάθε τοποθέτηση ξανάχτιζε
 ; ολόκληρο το ευρετήριο, και η πρώτη σειρά ενός εργοταξίου — που δεν περνά
 ; καν από το ob_draw_all — πλήρωνε 56 ms για διαδρόμους που δεν άλλαξαν.
+; Οι κατηγορίες βγαίνουν από το A με rra, και το A περιμένει στη στοίβα όσο
+; τρέχει το πέρασμα.
 oi_build:
         ld      hl,(cam_tx)
         push    hl
         ld      hl,0
         ld      (cam_tx),hl
-        inc     l
-        ld      a,l
-        ld      (ob_meas),a
-        ld      hl,oi_mask
-        srl     (hl)                    ; ήδη: το bit των φιγούρων
-        srl     (hl)
+        ld      hl,ob_meas              ; 0 έξω από εδώ
+        inc     (hl)
+        rra
+        push    af
         jr      nc,oib_c
         ld      hl,OI_DOME
-        ld      (oi_ptr),hl
-        ld      hl,oi_nd
         ld      de,ob_shell
         ld      b,MAX_DOME
         call    oi_pass
+        ld      (oi_nd),a
 oib_c:
-        ld      hl,oi_mask
-        srl     (hl)
+        pop     af
+        rra
+        push    af
         jr      nc,oib_s
         ld      hl,OI_CORR
-        ld      (oi_ptr),hl
-        ld      hl,oi_nc
         ld      de,ob_corr
         ld      b,MAX_CORR
         call    oi_pass
+        ld      (oi_nc),a
 oib_s:
-        ld      hl,oi_mask
-        srl     (hl)
+        pop     af
+        rra
         jr      nc,oib_end
-        ld      hl,OI_STRUCT
-        ld      (oi_ptr),hl
         call    ob_struct_sort
-        ld      hl,oi_ns
-        ld      de,ob_struct
+        ld      hl,OI_STRUCT
+        ld      de,oi_st
         ld      a,(st_n)
         ld      b,a
-        ld      a,1                     ; τα id από το st_ord
-        call    oi_pass_a
+        or      a
+        call    nz,oi_pass              ; καμία δομή: A = 0
+        ld      (oi_ns),a
 oib_end:
         xor     a
         ld      (ob_meas),a
@@ -75,30 +75,18 @@ oib_end:
         ld      (cam_tx),hl
         ret
 
-; oi_pass — B εγγραφές, id 0..B-1· oi_pass_a με A = 1: τα id από το st_ord.
-; HL = ο μετρητής (oi_nd/nc/ns), DE = η ρουτίνα σε τρόπο μέτρησης.
+; oi_pass — B > 0 εγγραφές, id 0..B-1. HL = η πρώτη εγγραφή του ευρετηρίου,
+; DE = η ρουτίνα σε τρόπο μέτρησης (A = id). Out: A = πόσες γράφτηκαν· τον
+; μετρητή της κατηγορίας τον γράφει αυτός που καλεί.
 oi_pass:
-        xor     a
-oi_pass_a:
-        ld      (oi_tab),a
-        ld      (hl),0
-        ld      (oi_cnt),hl
+        ld      (oi_ptr),hl
         ld      (oiw_fn),de
-        ld      a,b
-        or      a
-        ret     z
-        ld      c,0
+        xor     a
+        ld      (oi_k),a
+        ld      c,a
 oip_lp:
         push    bc
-        ld      a,(oi_tab)
-        or      a
         ld      a,c
-        jr      z,oip_id
-        ld      hl,st_ord
-        ld      b,0
-        add     hl,bc
-        ld      a,(hl)
-oip_id:
         ld      (oi_e + 4),a
         ld      hl,#00FF                ; άδειο: x0 = 255, x1 = 0
         ld      (oi_e),hl
@@ -107,35 +95,49 @@ oip_id:
         ld      a,(oi_e + 1)
         or      a
         jr      z,oip_nx                ; τίποτα δεν θα ζωγραφιζόταν
-        ld      hl,(oi_cnt)
-        inc     (hl)
         ld      bc,GA_PORT + PAGE_B5
         out     (c),c
         ld      hl,oi_e
         ld      de,(oi_ptr)
         ld      bc,OI_REC
         ldir
-        ld      (oi_ptr),de
-        ld      bc,GA_PORT + PAGE_B6
-        out     (c),c
+        ld      (hl),e                  ; HL = oi_ptr
+        inc     hl
+        ld      (hl),d
+        inc     hl
+        inc     (hl)                    ; oi_k
+        call    ob_b6
 oip_nx:
         pop     bc
         inc     c
         djnz    oip_lp
+        ld      a,(oi_k)
         ret
 
+; oi_st — η ρουτίνα του περάσματος των δομών: A = θέση στο st_ord -> το id,
+; και αυτό μπαίνει στην εγγραφή.
+oi_st:
+        ld      e,a
+        ld      d,0
+        ld      hl,st_ord
+        add     hl,de
+        ld      a,(hl)
+        ld      (oi_e + 4),a
+        jp      ob_struct
+
 ; oi_gx8 / oi_gy8 — HL = αρχή, A = μήκος (byte). oi_gx / oi_gy — DE = μήκος.
-; Το περίγραμμα (oi_e) μεγαλώνει ως τα tiles που αγγίζει το [αρχή, αρχή+μήκος).
+; Το περίγραμμα (oi_e) μεγαλώνει ως τα tiles που αγγίζει το [αρχή, αρχή+μήκος):
+; από το tile της αρχής ως ΕΝΑ ΜΕΤΑ το tile του τελευταίου byte ή γραμμής,
+; ⌈e/n⌉ = ⌊(e-1)/n⌋ + 1, με το ίδιο oi_t για τα δύο άκρα.
 oi_gx8:
         ld      e,a
         ld      d,0
 oi_gx:
         push    hl
         add     hl,de
-        inc     hl
-        inc     hl
-        inc     hl
-        call    oi_t4                   ; το τέλος, προς τα πάνω
+        dec     hl
+        call    oi_t4                   ; το τελευταίο byte
+        inc     a                       ; ... και ένα μετά
         ld      c,a
         pop     hl
         call    oi_t4
@@ -147,9 +149,9 @@ oi_gy8:
 oi_gy:
         push    hl
         add     hl,de
-        ld      bc,15
-        add     hl,bc
+        dec     hl
         call    oi_t16
+        inc     a
         ld      c,a
         pop     hl
         call    oi_t16
@@ -166,25 +168,32 @@ oig_hi:
         ld      (hl),c
         ret
 
-; oi_t16 / oi_t4 — HL προσημασμένο (bytes ή γραμμές) -> A = tile + 128.
+; oi_t16 / oi_t4 — HL προσημασμένο (γραμμές ή bytes) -> A = tile + 128.
+; Το tile είναι τα bits 4-11 ή 2-9 του HL: τέσσερα add hl,hl τα φέρνουν στο
+; H, δύο rr h / rra στο A. Τα bits που μπαίνουν από πάνω δεν τα φτάνουν.
 oi_t16:
-        sra     h
-        rr      l
-        sra     h
-        rr      l
+        add     hl,hl
+        add     hl,hl
+        add     hl,hl
+        add     hl,hl
+        ld      a,h
+        jr      oit_b
 oi_t4:
-        sra     h
-        rr      l
-        sra     h
-        rr      l
         ld      a,l
+        rr      h
+        rra
+        rr      h
+        rra
+oit_b:
         xor     #80
         ret
 
 ; --- τα άγκιστρα του object.asm, σε τρόπο μέτρησης ---
-; ov_meas — το πλαίσιο στο περίγραμμα του ευρετηρίου (oi_build), και «δεν
-; φαίνεται»: τίποτα δεν ζωγραφίζεται.
+; ov_meas — το πλαίσιο στο περίγραμμα του ευρετηρίου (oi_build), και τίποτα
+; στην οθόνη. Ο θόλος δεν έχει τίποτα άλλο να πει: το pop αφήνει την
+; επιστροφή στο ob_shell, και το oi_gy8 γυρίζει κατευθείαν στο oi_pass.
 ov_meas:
+        pop     af
         ld      hl,(d_fx)
         ld      a,(d_qw)
         add     a,a
@@ -192,9 +201,7 @@ ov_meas:
         ld      hl,(d_fy)
         ld      a,(d_qh)
         add     a,a
-        call    oi_gy8
-        xor     a
-        ret
+        jp      oi_gy8
 
 
 ; oc_meas — το oc_run όταν χτίζεται το ευρετήριο: το κουτί του τρεξίματος
@@ -222,7 +229,7 @@ os_meas:
         ld      a,(ob_h)
         jp      oi_gy8
 
-oi_ptr:     dw 0
-oi_cnt:     dw 0
-oi_tab:     db 0
 oi_e:       defs OI_REC         ; η εγγραφή που μετριέται: x0, x1, y0, y1, id
+oi_ptr:     dw 0                ; πού πάει η επόμενη (τράπεζα 5)
+oi_k:       db 0                ; πόσες γράφτηκαν σε αυτό το πέρασμα
+        assert  oi_ptr == oi_e + OI_REC && oi_k == oi_ptr + 2

@@ -1448,11 +1448,12 @@ ob_index:
         or      a
         ret     z
         ld      (hl),0
-        ld      (oi_mask),a
-        rrca
+        rra                             ; το or μηδένισε το carry
         jp      nc,oi_build             ; src/objindex.asm, τράπεζα 2
+        push    af                      ; οι κατηγορίες, για το oi_build
         call    ob_conn_scan
         call    ob_fig_scan
+        pop     af
         jp      oi_build
 
 ; ---------------------------------------------------------------------------
@@ -1613,7 +1614,6 @@ role_fig:
 
 ; --- μεταβλητές ------------------------------------------------------------
 ob_idx:     db OB_IX_ALL        ; ποια ευρετήρια θέλουν ξαναχτίσιμο (OB_IX_*)
-oi_mask:    db 0
 ob_meas:    db 0                ; 1 = μέτρα, μη ζωγραφίζεις (oi_build)
 oi_nd:      db 0                ; εγγραφές ευρετηρίου: θόλοι,
 oi_nc:      db 0                ; διάδρομοι,
