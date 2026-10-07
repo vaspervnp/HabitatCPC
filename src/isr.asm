@@ -214,23 +214,28 @@ is_end:
 ; ---------------------------------------------------------------------------
 ; is_flat — μία οθόνη χωρίς σπασίματα, για όσο οι διακοπές είναι κλειστές:
 ; Mode 0 και τα pens του κάδρου παντού. Ο καλών σβήνει πρώτα τις λωρίδες
-; (hud_inval), αλλιώς φαίνονται ως θόρυβος Mode 0. Χαλάει A, BC.
+; (hud_inval), αλλιώς φαίνονται ως θόρυβος Mode 0. Χαλάει A, BC, HL.
+; is_m1 — το ανάποδο: Mode 1 και τα pens της κάτω λωρίδας παντού, για την
+; οθόνη βοήθειας (src/help.asm, βήμα 84).
 ; ---------------------------------------------------------------------------
+is_m1:
+        ld      bc,GA_PORT + RMR_MODE1
+        ld      hl,is_pal + 6
+        jr      isf_go
 is_flat:
         ld      bc,GA_PORT + RMR_MODE0
+        ld      hl,is_pal + 3
+isf_go:
         out     (c),c
         ld      c,1
-        out     (c),c
-        ld      a,(is_pal + 3)
-        out     (c),a
+isf_lp:
+        out     (c),c                   ; το pen
+        ld      a,(hl)
+        inc     hl
+        out     (c),a                   ; το χρώμα του
         inc     c
-        out     (c),c
-        ld      a,(is_pal + 4)
-        out     (c),a
-        inc     c
-        out     (c),c
-        ld      a,(is_pal + 5)
-        out     (c),a
+        bit     2,c
+        jr      z,isf_lp
         ret
 
 ; Τα pens 1-3, σε τιμές του Gate Array (με το GA_INK): πάνω λωρίδα, κάδρο, κάτω

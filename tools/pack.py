@@ -18,6 +18,9 @@ import os, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from sprites import load_map, load_bin, ROOT
+import buttons
+
+TEXT_MAX = 2048                 # = TEXT_MAX του src/uitext.asm (assert εκεί)
 
 # --- γεωμετρία ------------------------------------------------------------
 PAGE2_BASE  = 0x8000                # τράπεζα 2: επίπεδη, πάντα ορατή
@@ -303,7 +306,9 @@ def build_runs(smap, blob):
     # 1.280 από το βήμα 79: τα 1.024 είχαν μείνει με επτά ελεύθερα, και το
     # «τι έχει κάτω ο κέρσορας» θέλει τα ονόματα των εδαφών. Η γραμματοσειρά
     # ανεβαίνει 256 bytes· η τράπεζα 7 έχει 952 ελεύθερα από πάνω της.
-    bank7.append(Run("text", 1280, None, note="ΔΕΣΜΕΥΣΗ — τα κείμενα (src/uitext.asm)"))
+    # 2.048 από το βήμα 84: η οθόνη βοήθειας λέει όνομα και μια γραμμή για
+    # καθένα από τα 33 κουμπιά (790 bytes).
+    bank7.append(Run("text", TEXT_MAX, None, note="ΔΕΣΜΕΥΣΗ — τα κείμενα (src/uitext.asm)"))
     # Η ΓΡΑΜΜΑΤΟΣΕΙΡΑ, ΕΚΕΙ ΟΠΟΥ ΗΤΑΝ Η ΔΕΣΜΕΥΣΗ «audio» (βήμα 33). Τα 2.048
     # bytes κρατιούνταν από το §4.2 για μουσική μέσα στο παιχνίδι, και το §9.5
     # αποφάσισε ρητά ΟΧΙ μουσική· δεν τα διάβασε ποτέ τίποτα. Η γραματοσειρά
@@ -326,6 +331,11 @@ def build_runs(smap, blob):
     font = mode1_font(blob[s.off:s.off + s.size]) + HUD_CELLS
     bank7.append(Run("font_m1", len(font), font, align=8,
                      note="παράγεται από το font_gfx"))       # (ch-32)*8
+    # ΤΑ ΣΥΜΒΟΛΑ ΤΩΝ ΚΟΥΜΠΙΩΝ (βήμα 84, §9.3): 33 x 17 bytes, ένα bit το pixel,
+    # από το tools/buttons.py. Τα διαβάζει μόνο το src/bar.asm, με την τράπεζα 7
+    # μέσα όπως για τον γλύφο.
+    gfx = buttons.gfx()
+    bank7.append(Run("btn_gfx", len(gfx), gfx, note="παράγεται από το tools/buttons.py"))
 
     return arena, bank1, bank6, bank7, ptr
 

@@ -17,7 +17,8 @@
 ; του rasm θα τα έδινε κατευθείαν σωστά, αλλά δεν συνδυάζεται με το `bankset 1`
 ; που στήνει τις τράπεζες 4-7 πιο πάνω.)
 
-TEXT_MAX    equ 1280                    ; η δέσμευση του §4.2 (1.024 ως το βήμα 79)
+TEXT_MAX    equ 2048                    ; η δέσμευση του §4.2 (1.280 ως το βήμα 83,
+                                        ; 1.024 ως το 79)
 TEXT_IMG    equ #C000 + G_text - #4000
 
         org     TEXT_IMG
@@ -103,11 +104,48 @@ x_t_i_cls:    db "GROUND    ",0, "DUST      ",0, "ROCK      ",0, "MOUNTAIN  ",0
               db "WATER     ",0, "DEEP WATER",0, "CRATER    ",0, "FOUNDATION",0
 x_t_i_ore:    db " ORE VEIN",0
 
-; Το μενού ενεργειών (src/act.asm, βήμα 80): ΕΠΤΑ bytes το όνομα, με τη σειρά
-; των AI_*· το ac_name τα βρίσκει με x7.
-x_t_a_names:  db "BUILD",0,0, "FIT",0,0,0,0, "INFO",0,0,0, "SHIP",0,0,0
-              db "SAVE",0,0,0, "LOAD",0,0,0, "CENTRE",0
+; Τα κουμπιά (src/bar.asm, βήμα 84): για ΚΑΘΕ κουμπί, με τη σειρά του αριθμού
+; του (tools/buttons.py), το όνομα και μία γραμμή για την οθόνη βοήθειας.
+; Ως 12 και 20 χαρακτήρες. Το bt_text τα βρίσκει μετρώντας μηδενικά: δεν
+; υπάρχει πίνακας δεικτών, και κάθε κείμενο είναι ΔΥΟ συμβολοσειρές.
+; (Ως το βήμα 83 εδώ ζούσαν τα ονόματα του μενού ενεργειών, επτά bytes το
+; καθένα· τα λένε πια αυτά.)
+x_t_help:     db "DOMES",0, "LIVE AND WORK INSIDE",0
+              db "SMALL DOME",0, "4X4, ANY ROOM",0
+              db "MEDIUM DOME",0, "6X6, NO OXYGEN",0
+              db "LARGE DOME",0, "8X8, NO OXYGEN",0
+              db "OXYGEN",0, "AIR FOR THE COLONY",0
+              db "CANTEEN",0, "COOKS MEALS",0
+              db "QUARTERS",0, "BEDS TO SLEEP IN",0
+              db "GREENHOUSE",0, "GROWS PLANTS",0
+              db "FACTORY",0, "METAL AND PARTS",0
+              db "LAB",0, "MEAT AND CHIPS",0
+              db "MEDBAY",0, "HEALS THE SICK",0
+              db "CONTROL",0, "MORE COLONISTS",0
+              db "STORAGE",0, "ROOM FOR MORE GOODS",0
+              db "LOUNGE",0, "KEEPS MORALE UP",0
+              db "CORRIDOR",0, "LINKS TWO DOMES",0
+              db "POWER",0, "MAKE AND STORE POWER",0
+              db "SOLAR PANEL",0, "POWER BY DAY",0
+              db "WIND TURBINE",0, "POWER FROM WIND",0
+              db "COLLECTOR",0, "STORES POWER",0
+              db "RESOURCES",0, "WATER AND ORE",0
+              db "EXTRACTOR",0, "WATER FROM GROUND",0
+              db "MINE",0, "ORE FROM A VEIN",0
+              db "TRANSPORT",0, "COMING AND GOING",0
+              db "AIRLOCK",0, "WAY IN AND OUT",0
+              db "LANDING PAD",0, "SHIPS LAND HERE",0
+              db "SHIP",0, "CALL NEW COLONISTS",0
+              db "MANAGE",0, "INFO, DISC, VIEW",0
+              db "INFO",0, "WHAT IS HERE",0
+              db "FIT",0, "MACHINES IN A DOME",0
+              db "SAVE",0, "SAVE TO DISC",0
+              db "LOAD",0, "LOAD FROM DISC",0
+              db "CENTRE",0, "BACK TO THE MIDDLE",0
+              db "HELP",0, "THIS SCREEN",0
+x_t_help_end:
 x_t_a_keys:   db "FIRE=GO ESC=BACK",0
+x_t_hfoot:    db "THE LETTER ON A BUTTON IS ITS KEY.   PRESS ANY KEY TO GO BACK",0
 
 zz_text_end:
 
@@ -178,8 +216,9 @@ t_i_act   equ x_t_i_act - TEXT_IMG + G_text
 t_i_hp    equ x_t_i_hp - TEXT_IMG + G_text
 t_i_cls   equ x_t_i_cls - TEXT_IMG + G_text
 t_i_ore   equ x_t_i_ore - TEXT_IMG + G_text
-t_a_names equ x_t_a_names - TEXT_IMG + G_text
+t_help    equ x_t_help - TEXT_IMG + G_text
 t_a_keys  equ x_t_a_keys - TEXT_IMG + G_text
+t_hfoot   equ x_t_hfoot - TEXT_IMG + G_text
 
         ; Το κενό είναι 1.280 bytes και τελειώνει εκεί που αρχίζει το επόμενο
         ; πράγμα της τράπεζας 7. Χωρίς αυτόν τον έλεγχο, ένα κείμενο παραπάνω θα
@@ -190,7 +229,6 @@ t_a_keys  equ x_t_a_keys - TEXT_IMG + G_text
         assert  G_text + TEXT_MAX <= G_font_m1
         assert  x_t_f_slot - x_t_f_names == 18 * 8   ; fit_name: x8
         assert  x_t_i_ore - x_t_i_cls == 8 * 11      ; in_panel: x11
-        assert  x_t_a_keys - x_t_a_names == 7 * 7    ; ac_name: x7, AI_N ονόματα
 
         ; ΚΑΙ ΣΤΟΝ ΔΙΣΚΟ: η BANK7.BIN φτιάχνεται από το tools/pack.py, που δεν
         ; ξέρει τι λέει το παιχνίδι. Τα κείμενα πάνε ως δικό τους αρχείο και ο

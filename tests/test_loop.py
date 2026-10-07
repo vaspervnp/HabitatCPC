@@ -50,7 +50,9 @@ import cpc                                               # noqa: E402
 
 # Ο ελεύθερος χώρος της τράπεζας 0 κάτω από τη σκαλωσιά (#3EC0): stubs και
 # ημερολόγιο. Ο κώδικας του παιχνιδιού τελειώνει πριν από το STUBS (assert).
-STUBS, LOG, LOG_TOP = 0x3B00, 0x3C00, 0x3D00
+# Ενα #100 πιο πάνω από το βήμα 84, όταν τα κουμπιά έφεραν την τράπεζα 0 στο
+# #3B08· το ημερολόγιο τελειώνει ακόμη κάτω από τη σκαλωσιά του #3EC0.
+STUBS, LOG, LOG_TOP = 0x3C00, 0x3D00, 0x3E00
 HOOK, GO, PTR, CNT = 0x3EC0, 0x3EF0, 0x3EF2, 0x3EF4
 SFX_ALERT, SFX_METEOR = 6, 8                             # src/sound.asm
 TARGETS = ["WHEEL_TICK", "SND_PLAY", "DIRTY_RESET", "UI_HIDE", "VIEW_DRAW", "UI_SHOW",

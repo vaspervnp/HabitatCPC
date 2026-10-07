@@ -35,10 +35,11 @@ sys.path.insert(0, "/home/vasilhs/cpcemu")
 import test_game as TG                                   # noqa: E402
 import cpc                                               # noqa: E402
 
-# Πάνω από τον κώδικα της τράπεζας 0· 16 x 80 bytes, ως το PROBE ακριβώς. Ηταν
-# το #3500 ως το βήμα 82, και ο κώδικας το έφτασε στο 83 (#35A0).
-PROBE, BUF = 0x3E00, 0x3900
-assert BUF + 16 * 80 <= PROBE
+# Το probe πάνω από τον κώδικα της τράπεζας 0, και τα 16 x 80 bytes του στο
+# παράθυρο (τράπεζα 1): το παιχνίδι δεν τρέχει εδώ (start=False), και η
+# απόσταση DIST δεν χρειάζεται στο scr_addr. Ο buffer ήταν το #3500 ως το βήμα
+# 82, το #3900 ως το 83· τα κουμπιά (84) έφεραν τον κώδικα στο #3B69.
+PROBE, BUF = 0x3E00, 0x4000
 CAMS = [0, 2, 48, 876, 1920, 2008, 2046]
 # µs, με το probe: (scr_addr, scr_nextline ίδια σειρά, scr_nextline νέα σειρά)
 CEIL = (63, 21, 32)
@@ -55,7 +56,7 @@ def check(sym, patch=(), timing=True):
     m.run_frames(60)
     assert m.quickload(TG.SNA, start=False), "quickload απέτυχε"
     top = sym["ZZ_BANK0_END"]
-    assert top < BUF, f"ο κώδικας φτάνει ως #{top:04X}"
+    assert top < PROBE, f"ο κώδικας φτάνει ως #{top:04X}"
     for at, v in patch:
         m.poke(at, v)
     sa, sn = sym["SCR_ADDR"], sym["SCR_NEXTLINE"]

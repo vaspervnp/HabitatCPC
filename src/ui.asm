@@ -8,7 +8,10 @@
 ;   LINK   δύο θόλοι, και η διαδρομή του διαδρόμου ανάμεσά τους σαν φάντασμα
 ;   FIT    ο εξοπλισμός ενός θόλου, υποδοχή-υποδοχή (src/fit.asm)
 ;   INFO   το LOOK, με τις σειρές 3-4 να λένε τι έχει κάτω ο κέρσορας (info.asm)
-;   ACT    το μενού ενεργειών του SPACE: ό,τι γίνεται εδώ (act.asm)
+;   ACT    η μπάρα με εστίαση (SPACE), ή η ΔΙΑΧΕΙΡΙΣΗ (M) (act.asm)
+;
+; ΚΑΙ Η ΜΠΑΡΑ ΤΩΝ ΚΟΥΜΠΙΩΝ (βήμα 84, src/bar.asm): τα γράμματά της διαβάζονται
+; πριν από τον διαλογέα, σε όλες εκτός από SLOT και FIT.
 ;
 ; Η ΣΕΙΡΑ ΜΕΣΑ ΣΕ ΕΝΑ ΒΗΜΑ ΕΙΝΑΙ ΔΕΣΜΕΥΤΙΚΗ: πρώτα σβήνει το φάντασμα, μετά
 ; κινείται ο κέρσορας, μετά (αν χρειάζεται) σκρολάρει η κάμερα, και τελευταίο
@@ -65,11 +68,17 @@ ui_tick:
         ld      a,(ui_owed)
         or      a
         call    nz,ui_late
+        ifdef HAS_SIM
+        ld      a,(bs_pend)             ; κουμπιά που δεν πρόλαβαν (src/bar.asm)
+        or      a
+        call    nz,bar_more
+        endif
         call    in_read
         call    ui_speed
-        ld      a,A_HOME
-        call    in_hit
-        jr      z,uit_state
+        ; Το H με ένα rra, όχι in_hit (βήμα 84): ~50 us σε κάθε frame.
+        ld      a,(act_hit + 1)
+        rra                             ; A_HOME: το bit 8
+        jr      nc,uit_state
         call    ui_hide
 ; ui_home — ο κέρσορας στο κέντρο του κόσμου, η κάμερα μαζί του, όλα από την
 ; αρχή. Και το ui_init τελειώνει εδώ.
@@ -81,6 +90,19 @@ ui_home:
         call    ui_hudall
         jp      ui_show
 uit_state:
+        ifdef HAS_SIM
+        ; ΤΑ ΓΡΑΜΜΑΤΑ ΤΗΣ ΜΠΑΡΑΣ (src/bar.asm, βήμα 84), σε κάθε κατάσταση που
+        ; δείχνει κουμπιά για πάτημα: όχι στη θέση δίσκου και στον εξοπλισμό,
+        ; που έχουν δικά τους πλήκτρα και η μπάρα εκεί είναι μόνο εικόνα.
+        ld      a,(ui_state)
+        cp      UI_SLOT
+        jr      z,uit_nobar
+        cp      UI_FIT
+        jr      z,uit_nobar
+        call    bk_scan
+        jp      c,bt_key                ; src/act.asm, τράπεζα 2
+uit_nobar:
+        endif
         ld      a,(ui_state)
         ; ΠΡΩΤΑ ΤΟ LOOK, όπου κάθεται το παιχνίδι: ως το βήμα 80 περνούσε από
         ; πέντε συγκρίσεις για να φτάσει εδώ με πτώση.
@@ -137,6 +159,25 @@ usl_esc:
         jp      ui_goto
 usl_go:
         endif
+        ; ΤΑ ΥΠΟΛΟΙΠΑ ΠΛΗΚΤΡΑ ΤΟΥ LOOK ΜΕ ΔΥΟ and (βήμα 84). Ως τότε πέντε
+        ; in_hit σε ΚΑΘΕ frame — S, L, C, FIRE, SPACE — 50-68 us το καθένα,
+        ; σχεδόν 300 us για να μάθει ότι δεν πατήθηκε τίποτα. Τα γράμματα της
+        ; μπάρας που μπήκαν στη θέση τους κοστίζουν 9 us το καθένα (bk_scan).
+        ; Η σειρά προτεραιότητας μένει: δίσκος, πλοίο, FIRE, SPACE.
+        ld      a,(act_hit + 1)
+        and     1 << (A_SAVE - 8) | 1 << (A_LOAD - 8) | 1 << (A_SHIP - 8)
+        jr      nz,usl_rare
+        ld      a,(act_hit)
+        and     1 << A_FIRE | 1 << A_MENU
+        ret     z
+        and     1 << A_FIRE             ; πάνω σε θόλο: ο εξοπλισμός του
+        jp      nz,fit_enter
+        ifdef HAS_SIM
+        jp      ac_open                 ; η μπάρα (src/act.asm)
+        else
+        jr      ui_build
+        endif
+usl_rare:
         ; Ο δίσκος υπάρχει μόνο στο πλήρες παιχνίδι: τα tests/uitest.asm και
         ; tests/objtest.asm δένουν τον renderer χωρίς τροχό και χωρίς οδηγό
         ; δισκέτας, και δεν έχουν πού να σώσουν.
@@ -155,23 +196,13 @@ usv_load:
 usv_none:
         endif
         ifdef HAS_SIM
-        ld      a,A_SHIP
-        call    in_hit
-        jr      z,ush_none
-        jp      ui_ship
-ush_none:
+        jp      ui_ship                 ; ό,τι μένει είναι το C
+        else
+        ret
         endif
-        ld      a,A_FIRE                ; πάνω σε θόλο: ο εξοπλισμός του
-        call    in_hit
-        jp      nz,fit_enter
-        ld      a,A_MENU
-        call    in_hit
-        ret     z
-        ifdef HAS_SIM
-        jp      ac_open                 ; το μενού ενεργειών (src/act.asm)
-        endif
+        assert  A_SAVE >= 8 && A_LOAD >= 8 && A_SHIP >= 8 && A_FIRE < 8 && A_MENU < 8
 ; ui_build — ο κατάλογος χτισίματος. Από το SPACE στις δοκιμές χωρίς
-; προσομοίωση, από το BUILD του μενού ενεργειών στο παιχνίδι.
+; προσομοίωση, από το κουμπί μιας ομάδας στο παιχνίδι (src/act.asm, btk_group).
 ui_build:
         call    ui_hide
         ld      a,UI_MENU
@@ -192,6 +223,13 @@ ui_build:
 ; από λάθος θέση.
 ; ---------------------------------------------------------------------------
 ui_speed:
+        ; ΤΙΠΟΤΑ ΑΠΟ ΤΑ ΤΕΣΣΕΡΑ, ΤΙΠΟΤΑ ΝΑ ΓΙΝΕΙ (βήμα 84): τέσσερα in_hit ήταν
+        ; ~230 us σε κάθε frame κάθε κατάστασης, για ένα πλήκτρο που πατιέται
+        ; σπάνια. Ενα and τα ρωτά όλα μαζί· ό,τι κέρδισε εδώ πληρώνει τα
+        ; γράμματα της μπάρας (bk_scan).
+        ld      a,(act_hit + 1)
+        and     1 << (A_SPD1 - 8) | 1 << (A_SPD2 - 8) | 1 << (A_SPD3 - 8) | 1 << (A_SPD4 - 8)
+        ret     z
         ld      a,(ui_spd)
         ld      (uis_was),a
         ld      hl,ui_spd_tab
@@ -401,6 +439,12 @@ um_blank:
 
 ; --- MENU ------------------------------------------------------------------
 uist_menu:
+        ; ΚΑΘΕ πλήκτρο του MENU είναι ακμή (ESC, FIRE, τα βελάκια): χωρίς καμία,
+        ; τίποτα να ελεγχθεί (βήμα 84 — ως τότε πέντε in_hit ανά frame).
+        ld      hl,(act_hit)
+        ld      a,h
+        or      l
+        ret     z
         ld      a,A_CANCEL
         call    in_hit
         jr      z,uim_fire
@@ -519,15 +563,16 @@ ui_click:
 
 ; --- PLACE -----------------------------------------------------------------
 uist_place:
-        ld      a,A_CANCEL
-        call    in_hit
+        ; Ενα and για το ESC και το FIRE (βήμα 84): δύο in_hit ήταν ~105 us σε
+        ; κάθε frame του PLACE, και τα γράμματα της μπάρας κοστίζουν τώρα εκεί.
+        ld      a,(act_hit)
+        and     1 << A_CANCEL | 1 << A_FIRE
+        jp      z,ui_move
+        and     1 << A_CANCEL
         jr      z,uip_fire
         ld      a,UI_MENU
         jr      ui_goto
 uip_fire:
-        ld      a,A_FIRE
-        call    in_hit
-        jp      z,ui_move
         call    ui_validate
         or      a
         jr      nz,uip_deny             ; άκυρη θέση — το FIRE δεν κάνει τίποτα
@@ -569,8 +614,10 @@ uip_deny:
 ; από την κατάσταση, γιατί το να χάνεις και τα δύο με ένα πάτημα είναι η
 ; συνηθέστερη αιτία να ξαναδιαλέγεις τα ίδια.
 uist_link:
-        ld      a,A_CANCEL
-        call    in_hit
+        ld      a,(act_hit)             ; όπως το PLACE (βήμα 84)
+        and     1 << A_CANCEL | 1 << A_FIRE
+        jp      z,ui_move
+        and     1 << A_CANCEL
         jr      z,uil_fire
         call    ui_hide
         ld      a,(ln_a)
@@ -581,9 +628,6 @@ uist_link:
         ld      (ln_a),a
         jp      ui_show
 uil_fire:
-        ld      a,A_FIRE
-        call    in_hit
-        jp      z,ui_move
         call    ui_dome
         cp      255
         ret     z                       ; ο κέρσορας δεν είναι πάνω σε θόλο
@@ -1072,6 +1116,11 @@ ui_rel:
 ; λωρίδες χωρίς να αλλάξει τίποτα από όσα λένε οι σειρές 3-4. (Ως το βήμα 82
 ; το ίδιο έκανε και κάθε ΒΗΜΑ κάμερας· από το 83 οι λωρίδες μετακινούνται.)
 ui_panel:
+        ifdef HAS_SIM
+        ; Η ΜΠΑΡΑ ΠΡΩΤΑ, έξω από το ui_hold: ένα μήνυμα κρατά τις σειρές 3-4,
+        ; όχι τα κουμπιά (src/bar.asm, βήμα 84).
+        call    bar_sync
+        endif
         ; ΤΟ ΜΗΝΥΜΑ ΚΡΑΤΙΕΤΑΙ. Χωρίς αυτό ζούσε ως το επόμενο ρολόι HUD — δεκαέξι
         ; frames, ένα τρίτο του δευτερολέπτου. Για ένα σώσιμο δύο δευτερολέπτων
         ; δεν φαινόταν (το μήνυμα έμενε όσο κρατούσε ο δίσκος), αλλά ένα «δεν
@@ -1084,19 +1133,64 @@ ui_panel:
         dec     (hl)
         ret
 uip_start:
-        call    ui_sig
+        ; ΣΥΓΚΡΙΣΗ ΚΑΘΩΣ ΔΙΑΒΑΖΕΙ (βήμα 84), όπως το bar_sync: ως τότε το ui_sig
+        ; έγραφε τα έντεκα bytes και ένας βρόχος τα σύγκρινε, ~150 us μόνο ο
+        ; βρόχος. Το ui_sig γράφει πια μόνο όταν κάτι διαφέρει.
         ld      hl,uip_sig
-        ld      de,uip_now
-        ld      b,UIP_NSIG
-uipc_lp:
-        ld      a,(de)
+        ld      a,(ui_state)
         cp      (hl)
         jr      nz,uipc_go
         inc     hl
-        inc     de
-        djnz    uipc_lp
-        ret                             ; τίποτα δεν άλλαξε
+        ld      a,(ui_sel)
+        cp      (hl)
+        jr      nz,uipc_go
+        inc     hl
+        ld      a,(ui_bad)
+        cp      (hl)
+        jr      nz,uipc_go
+        inc     hl
+        ld      a,(ln_a)
+        cp      (hl)
+        jr      nz,uipc_go
+        inc     hl
+        ld      a,(cr_n)
+        cp      (hl)
+        jr      nz,uipc_go
+        inc     hl
+        ld      a,(cr_l1)
+        ld      b,a
+        ld      a,(cr_l0)
+        add     a,b
+        cp      (hl)
+        jr      nz,uipc_go
+        inc     hl
+        push    hl
+        call    uis_aff
+        pop     hl
+        cp      (hl)
+        jr      nz,uipc_go
+        inc     hl
+        ld      a,(ui_spd)
+        cp      (hl)
+        jr      nz,uipc_go
+        inc     hl
+        ld      a,(hud_gen)
+        cp      (hl)
+        jr      nz,uipc_go
+        inc     hl
+        ifdef HAS_DISC
+        ld      a,(sl_pick)
+        else
+        xor     a
+        endif
+        cp      (hl)
+        jr      nz,uipc_go
+        inc     hl
+        ld      a,(bd_rsel)
+        cp      (hl)
+        ret     z                       ; τίποτα δεν άλλαξε
 uipc_go:
+        call    ui_sig
         ld      hl,uip_now
         ld      de,uip_sig
         ld      bc,UIP_NSIG
@@ -1350,14 +1444,7 @@ ui_sig:
         ld      (hl),a
         inc     hl
         push    hl
-        ld      a,(ui_state)
-        cp      UI_LINK
-        jr      z,uisg_link
-        call    bd_afford
-        jr      uisg_st
-uisg_link:
-        call    cr_afford
-uisg_st:
+        call    uis_aff
         pop     hl
         ld      (hl),a
         inc     hl
@@ -1377,6 +1464,13 @@ uisg_st:
         ld      a,(bd_rsel)             ; το δωμάτιο γράφεται στη σειρά 3
         ld      (hl),a
         ret
+
+; uis_aff — A = φτάνουν τα υλικά; του διαδρόμου στο LINK, του καταλόγου αλλού.
+uis_aff:
+        ld      a,(ui_state)
+        cp      UI_LINK
+        jp      nz,bd_afford
+        jp      cr_afford
 
 ; ui_dirty — «οι σειρές 3-4 δεν λένε πια αυτό που νομίζω».
 ui_dirty:
@@ -1420,3 +1514,4 @@ cur_hy:     db 0
         assert  ui_ty == ui_tx + 1 && ui_h == ui_w + 1 && uid_ty == uid_tx + 1
         assert  uid_cy == uid_cx + 1
         assert  gh_bh == gh_bw + 1 && UI_LOOK == 0
+        assert  A_HOME == 8 && A_SPD1 >= 8 && A_SPD4 < 16

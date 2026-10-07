@@ -231,6 +231,8 @@ mla_pok:
         include "ui.asm"
         include "fit.asm"               ; βήμα 45: ο εξοπλισμός, μία κατάσταση του ui
         include "rooms.asm"
+        include "bar.asm"               ; βήμα 84: τα κουμπιά — πλήκτρα και συγχρονισμός
+        include "help.asm"              ; βήμα 84: η οθόνη βοήθειας
         include "entity.asm"
         include "econ.asm"
         include "jobs.asm"
@@ -260,7 +262,8 @@ zz_page2_code:                          ; για το tools/mkdsk.py: πού φ�
         include "meteor.asm"            ; βήμα 38: ζει στον τροχό, σπάνια τρέχει
         include "objindex.asm"          ; βήμα 41: το χτίσιμο του ευρετηρίου
         include "info.asm"              ; βήμα 79: τι έχει κάτω ο κέρσορας (I)
-        include "act.asm"               ; βήμα 80: το μενού ενεργειών (SPACE)
+        include "act.asm"               ; βήμα 80: το μενού ενεργειών (SPACE)· 84: τα κουμπιά
+        include "button.asm"            ; βήμα 84: ένα κουμπί στην οθόνη
         ; ΚΡΥΟΣ ΚΩΔΙΚΑΣ, ΜΕΤΑΚΟΜΙΣΕ ΣΤΟ ΒΗΜΑ 30. Το save.asm τρέχει όταν ο
         ; παίκτης πατήσει S ή L, το hw.asm στην εκκίνηση και μετά ποτέ: καμία
         ; κλήση τους δεν είναι σε καρέ που μετράει, και εδώ πάνω ο χώρος
