@@ -201,7 +201,7 @@ def factory(sym, g):
     G = R.Game(sym, g)
     F = Fit(G, sym, g)
     F.set_stocks(STOCK, STOCK)
-    tx, ty = B.clear_spots(8, 1)[0]
+    tx, ty = B.clear_spots(8, 1, dome=True)[0]
     G.camera(tx - 6, ty - 1)                 # ο θόλος στις στήλες 6-13
     at = (2 * tx + 8, 2 * ty + 8)
     B.build(G.m, sym, I_DOME_L, g + 6, at=at, room=RM_FACTORY, fit=False)
@@ -362,7 +362,7 @@ def greenhouse(sym, g):
     G = R.Game(sym, g)
     F = Fit(G, sym, g)
     F.set_stocks(STOCK, STOCK)
-    tx, ty = B.clear_spots(8, 1)[0]
+    tx, ty = B.clear_spots(8, 1, dome=True)[0]
     G.camera(tx - 6, ty - 2)
     at = (2 * tx + 6, 2 * ty + 6)
     B.build(G.m, sym, I_DOME_M, g + 6, at=at, room=RM_GREEN, fit=False)

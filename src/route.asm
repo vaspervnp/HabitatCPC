@@ -103,22 +103,61 @@ crp_out:
         ld      (cr_far),a
         ret
 
-; cr_read — A = θόλος, DE = πού (cx, cy, size). CY αν η θέση είναι άδεια,
+; cr_read — A = κόμβος, DE = πού (cx, cy, size). CY αν η θέση είναι άδεια,
 ; αλλιώς DE += 3. Απαιτεί τράπεζα 6.
+;
+; ΚΑΙ ΤΟ AIRLOCK (βήμα 86): κόμβος 64 + δομή, μέγεθος AIRLOCK = 255. Καμία άλλη
+; δομή δεν είναι άκρο διαδρόμου, και για αυτές το CY λέει «όχι».
 cr_read:
+        cp      MAX_DOME
+        jr      nc,crd_st
         push    de                      ; το ob_domeadr ΧΑΛΑΕΙ το DE
         call    ob_domeadr
         pop     de
-        push    hl
-        ld      bc,D_STATE
-        add     hl,bc
+        ; ΠΡΩΤΑ Η ΑΝΤΙΓΡΑΦΗ, ΜΕΤΑ Η ΚΑΤΑΣΤΑΣΗ (βήμα 86): τρία ldi φέρνουν το HL
+        ; ένα byte πριν από το D_STATE, και ένα άδειο άκρο το αγνοούν όλοι οι
+        ; καλούντες. 56 T λιγότερα ανά ανάγνωση — όσο κόστισαν οι έλεγχοι του
+        ; airlock στο cr_side και εδώ, και το cr_plan μένει όσο ήταν.
+        ldi
+        ldi
+        ldi                             ; cx, cy, size
+        inc     hl                      ; D_STATE
         ld      a,(hl)
-        pop     hl
+        sub     1                       ; CY μόνο για DS_EMPTY
+        ret
+        assert  D_CX == 0 && D_CY == 1 && D_SIZE == 2 && D_STATE == 4
+crd_st:
+        sub     MAX_DOME
+        ld      l,a
+        ld      h,0
+        add     hl,hl
+        add     hl,hl
+        add     hl,hl                   ; STRUCT_REC = 8
+        ld      bc,G_struct_tbl
+        add     hl,bc
+        ld      a,(hl)                  ; ST_CX
+        ld      (de),a
+        inc     hl
+        inc     de
+        ld      a,(hl)                  ; ST_CY
+        ld      (de),a
+        inc     hl
+        inc     de
+        ld      a,(hl)                  ; ST_KIND
+        cp      K_AIRLOCK
+        scf
+        ret     nz
+        inc     hl
+        inc     hl                      ; ST_STATE
+        ld      a,(hl)
         sub     1                       ; CY μόνο για DS_EMPTY
         ret     c
-        ld      bc,3
-        ldir
-        ret
+        ld      a,AIRLOCK
+        ld      (de),a
+        inc     de
+        ret                             ; NC από το sub
+
+        assert  STRUCT_REC == 8 && ST_CX == 0 && ST_CY == 1 && ST_KIND == 2 && ST_STATE == 4
 
 ; crs_far / crs_sym — οι δύο αποτυχίες που ΔΕΝ εξαρτώνται από το ποιος θόλος
 ; είναι η αφετηρία: 64 tiles ή περισσότερο σε έναν άξονα (cr_far = 1, για τον
@@ -191,7 +230,14 @@ crs_y:
         ; πίνακες και τέσσερις αναζητήσεις, ως το 80 μια ρουτίνα με δύο κλήσεις.
         ld      a,(cr_fs)
 crs_rk:
-        add     a,2
+        ; ΑΠΟ AIRLOCK ΔΕΝ ΞΕΚΙΝΑ ΤΙΠΟΤΑ (βήμα 86): οι πόρτες του είναι βόρεια
+        ; και νότια, και καμία διαγώνιος δεν βγαίνει από εκεί. Ο κάθετος
+        ; βρίσκεται από την άλλη μεριά, από τον θόλο, που τον ζωγραφίζει. Εδώ
+        ; και όχι στην είσοδο: το add a,2 γίνεται δύο inc, και ο έλεγχος κοστίζει
+        ; 6 T αντί για 22 (το tests/test_corridor.py μετρά το cr_plan).
+        inc     a                       ; AIRLOCK = 255 -> 0
+        ret     z
+        inc     a                       ; = size + 2
         ld      (cr_ra),a
         sub     3                       ; CY μόνο για το S
         ld      a,3
@@ -219,6 +265,17 @@ crs_rk:
         ld      a,b
         or      a
         jr      z,crs_axial
+        ; ΣΕ AIRLOCK ΜΟΝΟ ΚΑΘΕΤΑ: ο κάθετος αξονικός πέρασε πιο πάνω (S = 0),
+        ; και από τα σχήματα με διαγώνιο μόνο η στροφή σε κάθετο (T > S).
+        ld      a,(cr_ts)
+        inc     a
+        jr      nz,crs_case
+        ld      a,(hl)                  ; T
+        cp      b
+        ret     c
+        ret     z
+        jr      crs_vert
+crs_case:
         ld      a,(hl)                  ; T
         or      a
         jr      z,crs_axial
@@ -386,9 +443,12 @@ crr_last:
         and     7
         ld      c,a
         ld      a,(cr_to)
+        cp      MAX_DOME
+        jr      nc,crr_lock             ; το airlock έχει τις πόρτες του (βήμα 86)
         ld      b,a
         ld      a,DK_CONN
         call    dirty_push
+crr_lock:
         ld      a,e
         rrca
         jr      c,crr_diag

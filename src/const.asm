@@ -104,6 +104,9 @@ RES_NEAR    equ 2
 K_AIRLOCK   equ 5
 K_PAD       equ 6
 K_SHIP      equ 7
+; Το airlock ως άκρο διαδρόμου (src/route.asm, βήμα 86): «μέγεθος» -1, ώστε
+; η ακτίνα μέγεθος + 2 να βγαίνει 1 tile, όσο το αποτύπωμά του 2x2.
+AIRLOCK     equ 255
 
 ; --- η κατάσταση της οικονομίας (§6.5). Εδώ επειδή τη διαβάζει και το HUD,
 ; σε κάθε frame, χωρίς να θέλει τίποτε άλλο από το econ.asm.
@@ -132,6 +135,7 @@ EC_GAMEOVER equ G_econ_state + 59       ; §10.3 — η μόνη συνθήκη 
 EC_GLOOM    equ G_econ_state + 60       ; πένθος: ανεβαίνει με κάθε θάνατο
 EC_STORM    equ G_econ_state + 61       ; περιστροφές αμμοθύελλας (§6.10)
 EC_AMENITY  equ G_econ_state + 62       ; δέντρα και σαλόνια (§6.6)
+EC_FREELK   equ G_econ_state + 63       ; airlock μόνα τους, χωρίς διάδρομο (βήμα 86)
 EC_SOLLEN   equ G_econ_state + 64       ; frames ανά sol — ΔΕΔΟΜΕΝΟ (§6.11)
 EC_DAYLEN   equ G_econ_state + 66
 EC_PRODM    equ G_econ_state + 68       ; ποια αποθέματα φτιάχτηκαν ΕΔΩ

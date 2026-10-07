@@ -639,16 +639,18 @@ def main():
     rr = sym["CRR_ROWS"]
     iv = m.read_ram(rr, 40).find(bytes([0xC6, 2, 0xFE, VIEW_TW + 2]))   # add a,2 · cp
     iy = m.read_ram(ck, 12).find(bytes([0x79, 0xC6, 64, 0xB3]))   # ld a,c · add a,64 · or e
-    i2 = m.read_ram(rk, 8).find(bytes([0xC6, 2]))                # add a,2
+    # η ακτίνα size + 2 είναι δύο inc από το βήμα 86, με τον έλεγχο του airlock
+    # (μέγεθος 255) ανάμεσα: inc a · ret z · inc a
+    i2 = m.read_ram(rk, 8).find(bytes([0x3C, 0xC8, 0x3C]))
     i4 = m.read_ram(dr, 8).find(bytes([0xC6]))                   # add a,cr_dtab+4
     ik = m.read_ram(ki, 8).find(bytes([0x7E, 0xC6, 2]))          # ld a,(hl) · add a,2
     cs = sym["CR_SIDE"]
     ipe = m.read_ram(cs, 20).find(bytes([0x96, 0xEA]))          # sub (hl) · jp pe
     i64 = m.read_ram(cs, 120).find(bytes([0xCB, 0x77, 0xC2]))    # bit 6,a · jp nz
     assert min(i2, i4, ik, iy, im, il, iv, ipe, i64) >= 0, \
-        "δεν βρέθηκαν τα add a,2 / add a,cr_dtab+4 / ld a,c / ret m / jr z / cp VIEW_TW+2" \
+        "δεν βρέθηκαν τα inc a,ret z,inc a / add a,cr_dtab+4 / ld a,c / ret m / jr z / cp VIEW_TW+2" \
         " / jp pe / bit 6,a"
-    for label, patch in (("ακτίνα size+3", [(rk + i2 + 1, 3)]),
+    for label, patch in (("ακτίνα size+3", [(rk + i2 + 1, 0x3C)]),
                          ("το x χωρίς όριο (αναδιπλώνεται, βήμα 80)",
                           [(cs + ipe + 1, 0), (cs + ipe + 2, 0), (cs + ipe + 3, 0)]),
                          ("το -64 κοντά (bit 7 αντί για 6)", [(cs + i64 + 1, 0x7F)]),

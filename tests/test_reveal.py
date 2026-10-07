@@ -321,7 +321,7 @@ def dome(sym, g, cut_ghost=False, short=False):
         else:
             raise SystemExit(f"το ghr_put δεν ξεκινά από #{want:04X}: το GH_LOG "
                              f"δεν είναι {RED_L}")
-    tx, ty = B.clear_spots(8, 1)[0]
+    tx, ty = B.clear_spots(8, 1, dome=True)[0]
     G.camera(tx - 6, ty - 1)                 # ο θόλος στις στήλες 6-13
     G.inside = interior(6 * 4, 1 * 16)
     B.build(G.m, sym, I_DOME_L, g + 6, at=(2 * tx + 8, 2 * ty + 8),

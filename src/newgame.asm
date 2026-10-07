@@ -99,9 +99,12 @@ ngc_m:
         ld      de,G_struct_tbl
         call    ngc_rec                 ; η πλατφόρμα: cx, cy, K_PAD, μέγεθος 0,
                                         ; DS_ACTIVE, 255
+        inc     de
+        inc     de                      ; STRUCT_REC = 8
+        call    ngc_rec                 ; το airlock (βήμα 86), κόμβος 65
         ld      de,G_corr_tbl
-        ld      bc,2 * CORR_REC
-        ldir                            ; οι δύο διάδρομοι: στο νέο παιχνίδι δεν
+        ld      bc,3 * CORR_REC
+        ldir                            ; οι τρεις διάδρομοι: στο νέο παιχνίδι δεν
                                         ; πληρώνονται και δεν χτίζονται
         ; Η ΜΟΝΗ ΜΗΧΑΝΗ είναι η γεννήτρια οξυγόνου του πρώτου θόλου, στην
         ; υποδοχή 0 και καινούργια. Ως το βήμα 73 κάθε θόλος είχε στήλη μηχανής
@@ -114,30 +117,38 @@ ngc_m:
         ld      (G_dome_tbl + D_HEALTH),a
 
         ; --- ο κόσμος κάτω από την αποικία: θεμέλιο και κατοχή, 4x4 στο
-        ; κέντρο κάθε θόλου και της πλατφόρμας. Το decor μένει.
+        ; κέντρο κάθε θόλου και της πλατφόρμας, 2x2 του airlock. Το decor μένει.
         ld      bc,GA_PORT + PAGE_B4
         out     (c),c
         ld      de,ng_sites
-        ld      a,4
+        ld      a,5
 ngs_lp:
         push    af
+        cp      1                       ; το τελευταίο είναι το airlock
+        ld      a,2
+        jr      nz,ngs_r
+        dec     a
+ngs_r:
+        ld      (ng_r),a                ; η ακτίνα σε tiles
         ld      a,(de)
-        sra     a
-        sub     2
+        call    ngs_lo
         ld      b,a                     ; το αριστερό tile
         inc     de
         ld      a,(de)
-        sra     a
-        sub     2
+        call    ngs_lo
         ld      c,a                     ; το πάνω
         inc     de
         inc     de
         inc     de
         call    tile_addr               ; κρατά BC, DE
-        ld      c,4
+        ld      a,(ng_r)
+        add     a,a
+        ld      c,a
 ngs_rl:
         push    hl
-        ld      b,4
+        ld      a,(ng_r)
+        add     a,a
+        ld      b,a
 ngs_cl:
         ld      a,(hl)
         and     #C0
@@ -157,22 +168,24 @@ ngs_cl:
         pop     af
         dec     a
         jr      nz,ngs_lp
-        ; --- και οι δύο διάδρομοι, με τον ίδιο κώδικα που χρησιμοποιεί ο
+        ; --- και οι τρεις διάδρομοι, με τον ίδιο κώδικα που χρησιμοποιεί ο
         ; παίκτης: ο δρομολογητής ξέρει ποια πλακίδια πατά η διαδρομή. Από τον
-        ; θόλο 0 προς τον 1 και προς τον 2· το cr_plan αλλάζει θέσεις στα άκρα
-        ; όταν δοκιμάζει από την άλλη μεριά, οπότε ο 0 ξαναγράφεται κάθε φορά.
-        ld      a,1
+        ; θόλο 0 προς τον 1, τον 2 και το airlock· το cr_plan αλλάζει θέσεις στα
+        ; άκρα όταν δοκιμάζει από την άλλη μεριά, οπότε ο 0 ξαναγράφεται κάθε φορά.
+        ld      hl,ng_cto
 ngr_lp:
+        ld      a,(hl)
+        push    hl
         ld      (cr_b),a
-        push    af
         xor     a
         ld      (cr_a),a
         call    cr_plan
         or      a
         call    nz,cr_stamp
-        pop     af
-        inc     a
-        cp      3
+        pop     hl
+        inc     hl
+        ld      a,(hl)
+        or      a
         jr      nz,ngr_lp
         ; --- ο γράφος: δύο διάδρομοι και μία εξωτερική ακμή ως την πλατφόρμα.
         ; Η πλατφόρμα ΔΕΝ συνδέεται με διάδρομο: το §6.2 λέει ότι οι εξωτερικές
@@ -185,6 +198,8 @@ ngr_lp:
         call    cr_link_bc
         ld      bc,2 * 256 + MAX_DOME
         call    cr_link_bc
+        ld      bc,0 * 256 + MAX_DOME + 1
+        call    cr_link_bc              ; και το airlock, με τον διάδρομό του
 
         ; --- τέσσερις άποικοι: δύο εργάτες, ένας μηχανικός, μία βιολόγος ---
         ld      bc,GA_PORT + PAGE_B6
@@ -249,6 +264,13 @@ nge_lp:
         call    rt_mark
         jp      ui_init
 
+; ngs_lo — A = κέντρο σε μισά tiles -> A = το πρώτο tile του αποτυπώματος.
+ngs_lo:
+        sra     a
+        ld      hl,ng_r
+        sub     (hl)
+        ret
+
 ; ngc_rec — HL = πρότυπο (cx, cy, και δύο bytes), DE = εγγραφή: τα τέσσερα,
 ; και DS_ACTIVE, 255 (ακεραιότητα: χτισμένο). HL += 4, DE += 6.
 ngc_rec:
@@ -287,12 +309,22 @@ ng_sites:
         db  16,  0, 0, R_QUARTERS
         db   0, 16, 0, R_CANTEEN
         db -16, 16, K_PAD, 0            ; η πλατφόρμα προσγείωσης, ένα μέγεθος
+; ΤΟ AIRLOCK ΒΟΡΕΙΑ ΤΟΥ ΘΟΛΟΥ ΟΞΥΓΟΝΟΥ (βήμα 86): οι δομές δένονται πια μόνο με
+; airlock ή άλλη δομή, και από εκεί είναι το νερό του βορρά (στήλες -1..4 από
+; τη σειρά -8 και πάνω) και η φλέβα της δύσης. Ο διάδρομος είναι κάθετος, δύο
+; πλακίδια (σειρές -3, -4), και το airlock πιάνει τα (-1..0, -6..-5).
+        db   0,-10, K_AIRLOCK, 0
 
 ; a, b, dir, len, state — 8 tiles κέντρο σε κέντρο μείον δύο ακτίνες = 4.
 ; Αμέσως μετά τα ng_sites: το ldir τα παίρνει από εκεί που σταμάτησε.
 ng_corrs:
         db 0, 1, 2, 4, DS_ACTIVE        ; ανατολή
         db 0, 2, 4, 4, DS_ACTIVE        ; νότος
+        db 0, MAX_DOME + 1, 0, 2, DS_ACTIVE     ; βορράς, ως το airlock
+
+; οι προορισμοί των τριών διαδρόμων, από τον θόλο 0
+ng_cto:     db 1, 2, MAX_DOME + 1, 0
+ng_r:       db 0
 
 ; ρόλος, κόμβος
 ng_roles:
@@ -354,4 +386,4 @@ ng_econ_end:
         assert  G_corr_tbl == G_struct_tbl + MAX_STRUCT * STRUCT_REC
         assert  AG_DEST == AG_NODE + 256 && AG_PROG == AG_DEST + 256
         assert  D_MACH == 8 && D_HEALTH == 16 && M_OXYGEN == 0
-        assert  ng_corrs == ng_sites + 16
+        assert  ng_corrs == ng_sites + 20

@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from sprites import load_map, load_bin, ROOT
 import buttons
 
-TEXT_MAX = 2064                 # = TEXT_MAX του src/uitext.asm (assert εκεί)
+TEXT_MAX = 2080                 # = TEXT_MAX του src/uitext.asm (assert εκεί)
 
 # --- γεωμετρία ------------------------------------------------------------
 PAGE2_BASE  = 0x8000                # τράπεζα 2: επίπεδη, πάντα ορατή

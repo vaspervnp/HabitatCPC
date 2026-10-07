@@ -114,33 +114,69 @@ al_find:
         xor     a
         ld      (al_why),a
         ld      (al_any),a
-        ld      a,(bd_kind)
-        or      a                       ; BK_DOME
-        jr      nz,alf_path
-        ; --- ένας θόλος: διάδρομος προς κάθε θόλο σε απόσταση ---
-        ld      hl,al_cor1
-        call    al_scand
-        ld      hl,al_cunt              ; οι προσωρινές σφραγίδες φεύγουν
-        call    al_each
-        ld      a,(al_n)
-        or      a
-        jr      z,alf_path
-        xor     a
-        ret
-        ; --- αλλιώς μονοπάτι, προς το κοντινότερο κτίσμα ---
-alf_path:
         ld      a,AL_RANGE + 1
         ld      (al_best),a
+        ld      a,(bd_kind)
+        or      a                       ; BK_DOME
+        jr      nz,alf_st
+        ; --- ένας θόλος: διάδρομος προς κάθε θόλο σε απόσταση, και προς κάθε
+        ; airlock που δεν έχει ακόμη τον δικό του (το πρώτο κτίσμα του κόσμου,
+        ; βήμα 86). «Κάτι υπάρχει» είναι μόνο οι θόλοι: ένας θόλος χωρίς άλλο
+        ; θόλο στον κόσμο μπαίνει μόνος του, όσα ηλιακά κι αν στέκονται.
+        ld      hl,al_cor1
+        call    al_scand
+        ; ΜΟΝΟ ΑΝ ΥΠΑΡΧΕΙ τέτοιο airlock (EC_FREELK, al_commit): μπαίνει μόνο του
+        ; μόνο όταν δεν υπάρχει θόλος, άρα σχεδόν ποτέ — και το πέρασμα των 32
+        ; δομών κόστιζε 740 µs σε κάθε βήμα κέρσορα με θόλο στο χέρι.
+        ld      a,(EC_FREELK)
+        or      a
+        jr      z,alf_d
+        ld      a,(al_any)
+        push    af
+        ld      hl,al_cor1a
+        call    al_scans
+        pop     af
+        ld      (al_any),a
+alf_d:
+        ld      hl,al_cunt              ; οι προσωρινές σφραγίδες φεύγουν
+        call    al_each
+        jr      alf_n
+alf_st:
+        ld      a,(bd_param)
+        cp      K_AIRLOCK
+        jr      nz,alf_path
+        ; --- ένα airlock: ΕΝΑΣ διάδρομος, προς τον κοντινότερο θόλο ---
+        ld      hl,al_lck
+        call    al_scand
+alf_n:
+        ld      a,(al_n)
+        or      a
+        jr      z,alf_no
+        xor     a
+        ret
+        ; --- μια δομή: μονοπάτι προς το κοντινότερο airlock ή δομή, ΠΟΤΕ σε
+        ; θόλο — όποιος βγαίνει, βγαίνει από airlock (βήμα 86).
+alf_path:
         ld      hl,al_try
-        call    al_scan
+        call    al_scans
         ld      a,(al_pt)
         inc     a
         jr      nz,alf_ok
+alf_no:
         ld      a,(al_any)
         or      a
-        ret     z                       ; τίποτα χτισμένο: το πρώτο, όπου θέλει
+        ret     z                       ; τίποτα του είδους του: όπου θέλει
+        ; Ο λόγος: κομμένο (bit 0) πριν από «δεν χωρά» (bit 1), αλλιώς μακριά.
         ld      a,(al_why)
-        add     a,3                     ; 3 TOO FAR, 4 PATH BLOCKED
+        ld      b,4                     ; PATH BLOCKED
+        rra
+        jr      c,alf_r
+        inc     b                       ; 5: NO CORRIDOR FITS
+        rra
+        jr      c,alf_r
+        ld      b,3                     ; TOO FAR
+alf_r:
+        ld      a,b
         ld      (bd_nres),a
         ld      a,1
         ret
@@ -165,8 +201,8 @@ alf_ok:
 ; ---------------------------------------------------------------------------
 AL_REACH    equ 2 * (AL_RANGE + 8)
 
-al_scan:
-        call    al_scand
+al_scans:
+        ld      (al_fn),hl
         ld      hl,G_struct_tbl + ST_STATE
         ld      de,STRUCT_REC
         ld      bc,MAX_STRUCT * 256 + MAX_DOME
@@ -258,28 +294,104 @@ al_cor1:
         ld      (hl),a
         ret
 
-; al_cor — A = θόλος: διάδρομος ως εκεί; Z αν ναι — και τότε τα tiles του
+; al_cor1a — A = δομή σε απόσταση: στη λίστα του θόλου μόνο αν είναι airlock
+; ΧΩΡΙΣ ακμή — ένα airlock ενώνεται με ΕΝΑ κτίριο (βήμα 86). Η τράπεζα 6 είναι
+; ακόμη μέσα (al_scans).
+al_cor1a:
+        ld      c,a
+        ld      h,NODEPG
+        ld      l,a
+        ld      a,(hl)                  ; ο βαθμός του
+        or      a
+        ret     nz
+        ld      a,c
+        sub     MAX_DOME
+        add     a,a
+        add     a,a
+        add     a,a                     ; STRUCT_REC, κάτω από 256
+        ld      l,a
+        ld      h,0
+        ld      de,G_struct_tbl + ST_KIND
+        add     hl,de
+        ld      a,(hl)
+        cp      K_AIRLOCK
+        ret     nz
+        ld      a,c
+        jr      al_cor1
+
+; al_lck — A = θόλος σε απόσταση, για ένα NEO airlock: κρατά τον θόλο με τον
+; κοντύτερο διάδρομο· σε ισοπαλία τον πρώτο. Χωρίς προσωρινή σφραγίδα: ο
+; διάδρομος είναι ένας.
+al_lck:
+        ld      c,a
+        push    bc
+        call    al_cor0
+        pop     bc
+        ret     nz
+        call    cr_pcs
+        ld      hl,al_best
+        cp      (hl)
+        ret     nc
+        ld      (hl),a
+        ld      (al_len),a
+        ld      a,c
+        ld      (al_lst),a
+        ld      a,1
+        ld      (al_n),a
+        ret
+
+; al_cor — A = κόμβος: διάδρομος ως εκεί; Z αν ναι — και τότε τα tiles του
 ; σφραγίζονται προσωρινά, ώστε ο επόμενος να μην περάσει από πάνω του.
 al_cor:
-        call    al_set
-        jr      z,alc_no                ; άδεια θέση, ή δεν υπάρχει σχήμα
-        call    cr_pcs
-        cp      AL_RANGE + 1
-        jr      nc,alc_no
-        call    cr_check
-        or      a
+        call    al_cor0
         ret     nz
         ld      hl,al_ctmp
         call    crw_b4
         xor     a
         ret
+; al_cor0 — το ίδιο, χωρίς τη σφραγίδα. Θυμάται στο al_why ΓΙΑΤΙ όχι: bit 0
+; όταν ο διάδρομος πατά κάτι, bit 1 όταν δεν υπάρχει σχήμα αν και ένας
+; αξονικός ως εκεί θα χωρούσε στα AL_RANGE (η ζώνη «σχεδόν διαγώνιο» του
+; §9.4) — ο πίνακας λέει τότε NO CORRIDOR FITS, όχι TOO FAR.
+al_cor0:
+        call    al_set
+        jr      z,alc_shape
+        call    cr_pcs
+        cp      AL_RANGE + 1
+        jr      nc,alc_no
+        call    cr_check
+        or      a
+        ret     z
+        ld      hl,al_why
+        set     0,(hl)
+        ret                             ; NZ από το or
+alc_shape:
+        ld      hl,cr_ds
+        ld      a,(hl)                  ; S
+        inc     hl
+        cp      (hl)                    ; T
+        jr      nc,alc_m
+        ld      a,(hl)
+alc_m:
+        ld      hl,cr_ra
+        sub     (hl)
+        inc     hl                      ; cr_rb
+        sub     (hl)
+        jp      m,alc_fit               ; πιο κοντά κι από έναν αξονικό
+        cp      AL_RANGE + 1
+        jr      nc,alc_no
+alc_fit:
+        ld      hl,al_why
+        set     1,(hl)
 alc_no:
         or      1
         ret
 
-; al_set — A = θόλος b: η διαδρομή από το κτίσμα του κέρσορα ως τον b.
+; al_set — A = κόμβος b: η διαδρομή από το κτίσμα του κέρσορα ως τον b.
 ; NZ αν υπάρχει (A = cr_n). Το άκρο a είναι ο κέρσορας, όχι ο πίνακας: στον
-; έλεγχο το κτίσμα δεν υπάρχει ακόμη, και μετά το bd_commit είναι το ίδιο.
+; έλεγχο το κτίσμα δεν υπάρχει ακόμη, και μετά το bd_commit είναι το ίδιο. Ενα
+; νέο airlock είναι άκρο μεγέθους AIRLOCK: το cr_pair δεν βρίσκει τίποτα από
+; αυτό και αλλάζει τα άκρα, οπότε ο διάδρομος βγαίνει από τον θόλο.
 al_set:
         ld      (cr_b),a
         ld      bc,GA_PORT + PAGE_B6
@@ -293,7 +405,12 @@ al_set:
         ld      (cr_a),a
         ld      hl,(cur_hx)
         ld      (cr_fx),hl              ; και το cr_fy
+        ld      a,(bd_kind)
+        or      a                       ; BK_DOME: το μέγεθος
         ld      a,(bd_param)
+        jr      z,als_sz
+        ld      a,AIRLOCK               ; η μόνη δομή που φτάνει εδώ
+als_sz:
         ld      (cr_fs),a
         jp      cr_pair
 als_no:
@@ -750,13 +867,20 @@ alc_cor:
         ld      (bd_metal),hl
         ld      a,(al_n)
         or      a
-        jr      z,alc_out
+        jr      z,alc_none
         ld      b,a
         ld      hl,al_lst
 alc_lp:
         push    bc
         push    hl
         ld      a,(hl)
+        cp      MAX_DOME
+        jr      c,alc_d
+        ld      de,EC_FREELK            ; ένα airlock που ήταν μόνο του
+        ex      de,hl
+        dec     (hl)
+        ex      de,hl
+alc_d:
         call    al_set
         call    cr_commit               ; A = 0: μπήκε
         or      a
@@ -769,6 +893,17 @@ alc_out:
         pop     hl
         ld      (bd_metal),hl
         ret
+alc_none:
+        ; Χωρίς διάδρομο: ένα airlock που μπήκε μόνο του περιμένει τον θόλο του.
+        ld      a,(bd_kind)
+        or      a                       ; BK_DOME
+        jr      z,alc_out
+        ld      a,(bd_param)
+        cp      K_AIRLOCK
+        jr      nz,alc_out
+        ld      hl,EC_FREELK
+        inc     (hl)
+        jr      alc_out
 
 ; --- η κατάσταση -------------------------------------------------------------
 al_n:       db 0                ; πόσοι διάδρομοι

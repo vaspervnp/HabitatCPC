@@ -43,6 +43,15 @@
 RADIUS = [4, 6, 8]              # μισά tiles — το μισό πλάτος του θόλου
 DIAG_K = [2, 3, 3]              # από ποιο βήμα πλέγματος ξεκινά η διαγώνιος
 
+# ΤΟ AIRLOCK ΕΙΝΑΙ ΑΚΡΟ ΜΕΓΕΘΟΥΣ -1 (βήμα 86). Η ακτίνα σε tiles είναι
+# μέγεθος + 2, άρα 1: όσο το αποτύπωμά του, 2x2. Εχει πόρτες μόνο βόρεια και
+# νότια (assets/SPRITES.md), οπότε ένας διάδρομος:
+#   * ΠΟΤΕ δεν ξεκινά από airlock — καμία διαγώνιος δεν βγαίνει από πόρτα του·
+#   * φτάνει σε airlock μόνο ΚΑΘΕΤΑ: αξονικός βόρεια-νότια, ή διαγώνιος που
+#     στρίβει σε κάθετο. Ποτέ οριζόντιος, ποτέ καθαρή διαγώνιος.
+# Ο διάδρομος ζωγραφίζεται πάντα από την πλευρά του a, άρα από τον θόλο.
+AIRLOCK = -1
+
 N, NE, E, SE, S, SW, W, NW = range(8)
 
 # (ux, uy) ανά κατεύθυνση, σε tiles
@@ -64,13 +73,17 @@ def _one_side(ax, ay, sa, bx, by, sb):
         return None                         # δεν πέφτει στο πλέγμα
     sx, sy = dx // 2, dy // 2               # tiles
     S, T = abs(sx), abs(sy)
-    ra, rb = RADIUS[sa] // 2, RADIUS[sb] // 2   # ακτίνες σε tiles
+    if sa == AIRLOCK:
+        return None                         # από πόρτα airlock δεν ξεκινά τίποτα
+    ra, rb = sa + 2, sb + 2                 # ακτίνες σε tiles (RADIUS / 2)
     ka = DIAG_K[sa]
     ux = (sx > 0) - (sx < 0)
     uy = (sy > 0) - (sy < 0)
 
     if S == 0 and T == 0:
         return None
+    if sb == AIRLOCK and S and T <= S:
+        return None                         # σε airlock μόνο κάθετα
     if S == 0 or T == 0:                    # --- αξονικός, ένα τρέξιμο ---
         n = max(S, T) - ra - rb
         if n < 1:

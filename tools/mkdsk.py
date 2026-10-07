@@ -104,9 +104,10 @@ def boot_equ(name):
 
 
 # ΤΟ ΠΡΟΧΕΙΡΟ ΤΟΥ ΦΟΡΤΩΤΗ. Τα δύο αρχεία που πατάνε πάνω στο AMSDOS — τα
-# δεδομένα της τράπεζας 2 και ο κώδικάς της — φορτώνονται ΣΤΗΝ ΙΔΙΑ ΤΡΑΠΕΖΑ 5,
-# το ένα στο SCRATCH και το άλλο στο SCRATCH_G2, και τα αντιγράφει το επίμετρο.
-# Αν το πρώτο φτάνει ως το δεύτερο, το δεύτερο το σβήνει χωρίς κανένα λάθος.
+# δεδομένα της τράπεζας 2 και ο κώδικάς της — φορτώνονται σε πρόχειρο, το ένα
+# στο SCRATCH και το άλλο στο SCRATCH_G2, και τα αντιγράφει το επίμετρο. Ως το
+# βήμα 85 και τα δύο ΣΤΗΝ ΙΔΙΑ ΤΡΑΠΕΖΑ 5: αν το πρώτο έφτανε ως το δεύτερο, το
+# δεύτερο το έσβηνε χωρίς κανένα λάθος.
 #
 # ΑΥΤΟ ΣΥΝΕΒΑΙΝΕ ΩΣ ΤΟ ΒΗΜΑ 33: το page2.bin ήταν 11.384 bytes απέναντι σε
 # 11.264, και τα τελευταία 120 — ακριβώς η κρυφή μνήμη του HUD — έφταναν στο
@@ -114,8 +115,8 @@ def boot_equ(name):
 # μνήμη ακυρώνεται πριν διαβαστεί· ένα byte πραγματικών δεδομένων από κάτω της
 # θα ήταν σφάλμα που φαίνεται μόνο από τον δίσκο και ποτέ από το snapshot.
 SCRATCH = boot_equ("SCRATCH")
-SCRATCH_B5 = boot_equ("SCRATCH_B5")
 SCRATCH_G2 = boot_equ("SCRATCH_G2")
+ICONS = boot_equ("ICONS")
 
 # Τα slots του §11 ζουν στα tracks 24-41, ΧΩΡΙΣ αρχείο AMSDOS από πάνω τους: ο
 # δίσκος είναι του παιχνιδιού. Αυτό ισχύει όσο τα αρχεία δεν φτάνουν ως εκεί —
@@ -218,23 +219,32 @@ def check_saves():
     return track
 
 
+def b5_base():
+    """Πού αρχίζουν οι μηχανές στην τράπεζα 5, από το layout."""
+    for line in open(os.path.join(BUILD, "layout.asm"), encoding="utf-8"):
+        m = re.match(r"B5_BASE\s+equ\s+#([0-9A-Fa-f]+)", line)
+        if m:
+            return int(m.group(1), 16)
+    sys.exit("δεν βρέθηκε το B5_BASE στο build/layout.asm")
+
+
 def check_scratch():
     n2 = os.path.getsize(os.path.join(BUILD, "page2.bin"))
-    n5 = os.path.getsize(os.path.join(BUILD, "bank5.bin"))
     ng = os.path.getsize(os.path.join(BUILD, "game2.bin"))
-    # Τρία στη σειρά από το βήμα 85: δεδομένα τράπεζας 2, οι μηχανές της
-    # τράπεζας 5, κώδικας τράπεζας 2.
-    if SCRATCH + n2 > SCRATCH_B5:
+    # Από το βήμα 86 σε δύο τράπεζες: τα δεδομένα της τράπεζας 2 στη βασική
+    # τράπεζα 1 κάτω από τα εικονίδια, ο κώδικάς της στην τράπεζα 5 κάτω από
+    # τις μηχανές, που φορτώνονται κατευθείαν στη θέση τους. Στην τράπεζα 5 και
+    # τα τρία μαζί ήταν 16.475 bytes — 91 πάνω από ολόκληρη την τράπεζα.
+    if SCRATCH + n2 > ICONS:
         sys.exit(f"το page2.bin ({n2} bytes) φτάνει από το #{SCRATCH:04X} ως το "
-                 f"#{SCRATCH + n2:04X} και σβήνεται από το bank5.bin στο "
-                 f"#{SCRATCH_B5:04X} ({SCRATCH + n2 - SCRATCH_B5} bytes)")
-    if SCRATCH_B5 + n5 > SCRATCH_G2:
-        sys.exit(f"το bank5.bin ({n5} bytes) φτάνει ως το #{SCRATCH_B5 + n5:04X} "
-                 f"και σβήνεται από το game2.bin στο #{SCRATCH_G2:04X}")
-    if SCRATCH_G2 + ng > 0x8000:
-        sys.exit(f"το game2.bin ({ng} bytes) βγαίνει από το πρόχειρο της "
-                 f"τράπεζας 5 ({SCRATCH_G2 + ng - 0x8000} bytes πάνω από το #8000)")
-    return SCRATCH_B5 - SCRATCH - n2
+                 f"#{SCRATCH + n2:04X} και σβήνεται από το bank1.bin στο "
+                 f"#{ICONS:04X} ({SCRATCH + n2 - ICONS} bytes)")
+    base = b5_base()
+    if SCRATCH_G2 + ng > base:
+        sys.exit(f"το game2.bin ({ng} bytes) φτάνει ως το #{SCRATCH_G2 + ng:04X} "
+                 f"και σβήνει τις μηχανές στο #{base:04X} "
+                 f"({SCRATCH_G2 + ng - base} bytes πάνω)")
+    return ICONS - SCRATCH - n2
 
 
 def build():

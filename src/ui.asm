@@ -1379,7 +1379,10 @@ uip_blocked:
         dec     a
         ld      hl,t_far                ; 3: κανένα κτίσμα σε απόσταση (βήμα 85)
         jr      z,uip_say
+        dec     a
         ld      hl,t_path               ; 4: κάποιο, αλλά ο δρόμος κομμένος
+        jr      z,uip_say
+        ld      hl,t_nofit              ; 5: κανένα σχήμα διαδρόμου (βήμα 86)
         jr      uip_say
 uip_poor:
         ld      hl,t_poor

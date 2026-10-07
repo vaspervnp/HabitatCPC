@@ -1,21 +1,31 @@
-"""Πώς ένα νέο κτίσμα δένεται με την αποικία — ο κανόνας του βήματος 85
+"""Πώς ένα νέο κτίσμα δένεται με την αποικία — ο κανόνας των βημάτων 85 και 86
 (DESIGN §9.3), σε εκτελέσιμη μορφή. Η αναφορά των δοκιμών και του
 tools/balance.py· γραμμένη από την πρόζα, όχι από τον Z80.
 
-  * Το πρώτο κτίσμα του κόσμου μπαίνει όπου το επιτρέπει το έδαφος.
-  * Κάθε επόμενο θέλει κάποιο κτίσμα ως RANGE = 12 tiles μακριά:
-      - ένας θόλος παίρνει σκεπαστό διάδρομο (tools/route.py) προς ΚΑΘΕ θόλο,
-        με τη σειρά του πίνακα, που ο διάδρομος φτάνει με το πολύ 12 πλακίδια
-        και πατά μόνο tiles που χτίζονται — ή tiles των δύο άκρων — ως MAX = 4.
-        Κάθε διάδρομος που διαλέγεται πιάνει τα tiles του για τους επόμενους.
-      - μια δομή, ή ένας θόλος χωρίς διάδρομο, παίρνει μονοπάτι στο έδαφος
-        προς το κοντινότερο κτίσμα (θόλοι 0-63 και μετά δομές, 64 + δομή): ένα
-        Γ από το κεντρικό tile του νέου στο κεντρικό tile του άλλου, πρώτα κατά
-        x και μετά κατά y, ή ανάποδα· μετρούν τα tiles έξω από τα δύο
-        αποτυπώματα, το πολύ 12, όλα να χτίζονται. Το κοντύτερο· σε ισοπαλία το
-        πρώτο που βρέθηκε.
-  * Αλλιώς: «TOO FAR» αν κανένα δεν φτάνει, «PATH BLOCKED» αν κάποιο Γ ως 12
-    tiles βρήκε έδαφος που δεν χτίζεται.
+  * Κάθε κτίσμα θέλει κάποιο του σωστού είδους ως RANGE = 12 tiles μακριά. Αν
+    δεν υπάρχει ΚΑΝΕΝΑ τέτοιο σε όλο τον κόσμο, μπαίνει όπου το επιτρέπει το
+    έδαφος (το πρώτο κτίσμα).
+  * ΘΟΛΟΣ: σκεπαστός διάδρομος (tools/route.py) προς ΚΑΘΕ θόλο, με τη σειρά του
+    πίνακα, και μετά προς κάθε airlock που δεν έχει ακόμη ακμή, που ο διάδρομος
+    φτάνει με το πολύ 12 πλακίδια και πατά μόνο tiles που χτίζονται — ή tiles
+    των δύο άκρων — ως MAX = 4. Κάθε διάδρομος που διαλέγεται πιάνει τα tiles
+    του για τους επόμενους. «Υπάρχει» = υπάρχει θόλος. Χωρίς διάδρομο: κόκκινος
+    (βήμα 86· ως το 85 έπαιρνε μονοπάτι).
+  * AIRLOCK: ΕΝΑΣ διάδρομος, προς τον θόλο με τον κοντύτερο (σε ισοπαλία τον
+    πρώτο του πίνακα). Το airlock είναι άκρο μεγέθους -1 και ο διάδρομος βγαίνει
+    από τον θόλο. «Υπάρχει» = υπάρχει θόλος.
+  * ΔΟΜΗ: μονοπάτι στο έδαφος προς το κοντινότερο airlock ή άλλη δομή (64 +
+    δομή), ποτέ σε θόλο: ένα Γ από το κεντρικό tile της νέας στο κεντρικό tile
+    της άλλης, πρώτα κατά x και μετά κατά y, ή ανάποδα· μετρούν τα tiles έξω από
+    τα δύο αποτυπώματα, το πολύ 12, όλα να χτίζονται. Το κοντύτερο· σε ισοπαλία
+    το πρώτο που βρέθηκε. «Υπάρχει» = υπάρχει δομή.
+  * Αλλιώς ο λόγος: 4 PATH BLOCKED αν κάποιος διάδρομος ή Γ ως 12 βρήκε έδαφος
+    που δεν χτίζεται· αλλιώς 5 NO CORRIDOR FITS αν ένας υποψήφιος θόλος ήταν
+    τόσο κοντά που ένας αξονικός θα χωρούσε (max(S, T) - ακτίνες <= 12) αλλά
+    σχήμα δεν βγαίνει· αλλιώς 3 TOO FAR.
+
+Υποψήφιος είναι ό,τι το κέντρο του απέχει ως REACH μισά tiles σε κάθε άξονα
+(το al_far: διαφορά σε 8 bits, και ό,τι ξεχειλίζει είναι μακριά).
 
 Οι συντεταγμένες είναι του Z80: κέντρα σε μισά tiles σε ένα byte, tiles
 προσημασμένα. Ένα «έξω από τον κόσμο» σε τυχαίο πίνακα κάνει ό,τι και το byte
@@ -25,6 +35,8 @@ import route
 
 RANGE = 12
 MAX = 4
+REACH = 2 * (RANGE + 8)         # μισά tiles: το al_far
+K_AIRLOCK = 5
 CORR_M, CORR_B = 6, 3           # ο διάδρομος ανά πλακίδιο (κατάλογος του build.asm)
 W_OCC_PATH = 0x20
 FOUNDATION = 7
@@ -130,92 +142,130 @@ def lwalk(p, q, ori):
     return out
 
 
-def plan(world, domes, structs, dims, kind, param, w, h, cx, cy):
+def near(a, b):
+    """Το al_far: |b - a| <= REACH μισά tiles, με τη διαφορά σε 8 bits."""
+    d = sb(b) - sb(a)
+    return -128 <= d <= 127 and abs(d) <= REACH
+
+
+def plan(world, domes, structs, dims, kind, param, w, h, cx, cy, deg=None):
     """Ο κανόνας για ένα αποτύπωμα που ΗΔΗ πατά.
 
     world: 16 KB, το επίπεδο (δεν αλλάζει)· domes: 64 x (cx, cy, size, state)·
-    structs: 32 x (cx, cy, kind, size, state)· dims: το struct_dims.
-    Out: dict με ok, reason (0, 3 TOO FAR, 4 PATH BLOCKED), corridors
-    [(θόλος, από_κέντρο, μέγεθος, προς, runs, tiles)], pieces, path (κόμβος, ori,
-    tiles) ή None, και any (υπάρχει χτισμένο).
+    structs: 32 x (cx, cy, kind, size, state)· dims: το struct_dims· deg: ο
+    βαθμός κάθε κόμβου (128), για τα airlock χωρίς ακμή.
+    Out: dict με ok, reason (0, 3 TOO FAR, 4 PATH BLOCKED, 5 NO CORRIDOR FITS),
+    corridors [(κόμβος, από, προς, runs, tiles)], pieces, path (κόμβος, ori,
+    tiles) ή None, και any (υπάρχει κάτι του είδους του).
     """
+    deg = deg or [0] * 128
     wl = bytearray(world)
     out = {"corridors": [], "pieces": 0, "path": None, "reason": 0, "any": False}
+    why = {"blocked": False, "shape": False}
     new = ((sb(cx) - w) >> 1, (sb(cy) - h) >> 1, w, h)
+    lock = kind != 0 and param == K_AIRLOCK
+
+    def corridor(node, a, bb, hold):
+        """Ο διάδρομος ανάμεσα στο a και στο bb (cx, cy, size), ή None. Θυμάται
+        γιατί όχι στο why."""
+        r = route.plan(sb(a[0]), sb(a[1]), a[2], sb(bb[0]), sb(bb[1]), bb[2])
+        if r is None:
+            S = abs(sb(bb[0]) - sb(a[0])) // 2
+            T = abs(sb(bb[1]) - sb(a[1])) // 2
+            if max(S, T) - (a[2] + 2) - (bb[2] + 2) <= RANGE:
+                why["shape"] = True
+            return None
+        side, runs = r
+        pieces = sum(n for _, n in runs)
+        if pieces > RANGE:
+            return None
+        f, t = (a, bb) if side == 0 else (bb, a)
+        tl = corridor_tiles(f[:2], f[2], t[:2], runs)
+        for x, y in tl:
+            if not (-64 <= x < 64 and -64 <= y < 64):
+                why["blocked"] = True
+                return None
+            if ok_tile(wl[widx(x, y)]):
+                continue
+            if in_dome(*a, x, y) or in_dome(*bb, x, y):
+                continue
+            why["blocked"] = True
+            return None
+        if hold:                            # πιάνει τα tiles του, έξω από τα άκρα
+            for x, y in tl:
+                if not (in_dome(*a, x, y) or in_dome(*bb, x, y)):
+                    wl[widx(x, y)] |= 0x20
+        return (node, f, t, runs, tl), pieces
+
     if kind == 0:
+        a = (cx, cy, param)
+        targets = [(b, (bcx, bcy, bs)) for b, (bcx, bcy, bs, st) in
+                   ((b, domes[b][:4]) for b in range(64)) if st]
+        out["any"] = bool(targets)
+        targets += [(64 + k, (scx, scy, route.AIRLOCK)) for k, (scx, scy, kd, _, st) in
+                    ((k, structs[k][:5]) for k in range(32))
+                    if st and kd == K_AIRLOCK and not deg[64 + k]]
+        for node, bb in targets:
+            if len(out["corridors"]) == MAX:
+                break
+            if not (near(cx, bb[0]) and near(cy, bb[1])):
+                continue
+            c = corridor(node, a, bb, True)
+            if c:
+                out["corridors"].append(c[0])
+                out["pieces"] += c[1]
+    elif lock:
+        a = (cx, cy, route.AIRLOCK)
+        best = None
         for b in range(64):
             bcx, bcy, bs, st = domes[b][:4]
             if not st:
                 continue
-            r = route.plan(sb(cx), sb(cy), param, sb(bcx), sb(bcy), bs)
-            if r is None:
+            out["any"] = True
+            if not (near(cx, bcx) and near(cy, bcy)):
                 continue
-            side, runs = r
-            pieces = sum(n for _, n in runs)
-            if pieces > RANGE:
+            c = corridor(b, a, (bcx, bcy, bs), False)
+            if c and (best is None or c[1] < best[1]):
+                best = c
+        if best:
+            out["corridors"].append(best[0])
+            out["pieces"] = best[1]
+    else:
+        p = (sb(cx) >> 1, sb(cy) >> 1)
+        best = RANGE + 1
+        for node in range(64, 96):
+            fp = footprint(node, domes, structs, dims)
+            if fp is None:
                 continue
-            a = (cx, cy, param)
-            bb = (bcx, bcy, bs)
-            f, t = (a, bb) if side == 0 else (bb, a)
-            tl = corridor_tiles(f[:2], f[2], t[:2], runs)
-            bad = False
-            for x, y in tl:
-                if not (-64 <= x < 64 and -64 <= y < 64):
-                    bad = True
-                    break
-                if ok_tile(wl[widx(x, y)]):
-                    continue
-                if in_dome(*a, x, y) or in_dome(*bb, x, y):
-                    continue
-                bad = True
-                break
-            if bad:
+            out["any"] = True
+            rc, q = fp
+            if abs(q[0] - p[0]) > RANGE + 8 or abs(q[1] - p[1]) > RANGE + 8:
                 continue
-            for x, y in tl:                 # πιάνει τα tiles του, έξω από τα άκρα
-                if not (in_dome(*a, x, y) or in_dome(*bb, x, y)):
-                    wl[widx(x, y)] |= 0x20
-            out["corridors"].append((b, f, t, runs, tl))
-            out["pieces"] += pieces
-            if len(out["corridors"]) == MAX:
-                break
-        if out["corridors"]:
-            out["ok"] = True
-            return out
-    p = (sb(cx) >> 1, sb(cy) >> 1)
-    best, why = RANGE + 1, False
-    for node in range(96):
-        fp = footprint(node, domes, structs, dims)
-        if fp is None:
-            continue
-        out["any"] = True
-        rc, q = fp
-        if abs(q[0] - p[0]) > RANGE + 8 or abs(q[1] - p[1]) > RANGE + 8:
-            continue
-        for ori in (0, 1):
-            cnt, bad = 0, False
-            tl = []
-            for x, y in lwalk(p, q, ori):
-                if in_rect(new, x, y) or in_rect(rc, x, y):
-                    continue
-                if not ok_tile(world[widx(x, y)]):
-                    bad = True
-                cnt += 1
-                tl.append((x, y))
+            for ori in (0, 1):
+                cnt, bad = 0, False
+                tl = []
+                for x, y in lwalk(p, q, ori):
+                    if in_rect(new, x, y) or in_rect(rc, x, y):
+                        continue
+                    if not ok_tile(world[widx(x, y)]):
+                        bad = True
+                    cnt += 1
+                    tl.append((x, y))
+                    if cnt > RANGE:
+                        break
                 if cnt > RANGE:
-                    break
-            if cnt > RANGE:
-                continue
-            if bad:
-                why = True
-                continue
-            if cnt < best:
-                best = cnt
-                out["path"] = (node, ori, tl)
-    if out["path"] or not out["any"]:
+                    continue
+                if bad:
+                    why["blocked"] = True
+                    continue
+                if cnt < best:
+                    best = cnt
+                    out["path"] = (node, ori, tl)
+    if out["corridors"] or out["path"] or not out["any"]:
         out["ok"] = True
         return out
     out["ok"] = False
-    out["reason"] = 4 if why else 3
+    out["reason"] = 4 if why["blocked"] else 5 if why["shape"] else 3
     return out
 
 

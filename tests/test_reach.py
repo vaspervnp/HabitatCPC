@@ -1,46 +1,58 @@
 #!/usr/bin/env python3
-"""Κάθε κτίσμα δένεται με ένα κοντινό (βήμα 85, DESIGN §9.3), στο main.sna.
+"""Κάθε κτίσμα δένεται με ένα κοντινό (βήματα 85-86, DESIGN §9.3), στο main.sna.
 
 Ο ΚΑΝΟΝΑΣ, όπως τον ζήτησε ο παίκτης (η αναφορά είναι το tools/reach.py):
 
-  * Το πρώτο κτίσμα του κόσμου μπαίνει όπου το επιτρέπει το έδαφος.
-  * Κάθε επόμενο θέλει κάποιο κτίσμα ως 12 tiles μακριά. Ένας θόλος παίρνει
-    σκεπαστό διάδρομο προς ΚΑΘΕ θόλο που ο διάδρομος φτάνει με το πολύ 12
+  * Κάθε κτίσμα θέλει κάποιο του σωστού είδους ως 12 tiles μακριά· αν δεν
+    υπάρχει κανένα τέτοιο στον κόσμο, μπαίνει όπου το επιτρέπει το έδαφος.
+  * Ένας θόλος παίρνει σκεπαστό διάδρομο προς ΚΑΘΕ θόλο — και προς κάθε airlock
+    που δεν έχει ακόμη τον δικό του — που ο διάδρομος φτάνει με το πολύ 12
     πλακίδια (ως τέσσερις, με τη σειρά του πίνακα), χωρίς δύο διαδρόμους στα
-    ίδια tiles. Μια δομή — ή ένας θόλος χωρίς διάδρομο — παίρνει μονοπάτι στο
-    έδαφος, ένα Γ κέντρο-κέντρο προς το κοντινότερο κτίσμα, με το πολύ 12
-    tiles έξω από τα δύο αποτυπώματα, όλα σε έδαφος που χτίζεται.
-  * Αλλιώς κόκκινο, και ο πίνακας λέει TOO FAR ή PATH BLOCKED.
+    ίδια tiles. Χωρίς διάδρομο είναι κόκκινος (βήμα 86).
+  * Ένα airlock παίρνει ΕΝΑΝ διάδρομο, προς τον κοντινότερο θόλο, που το
+    συναντά από βορρά ή νότο (βήμα 86).
+  * Μια δομή παίρνει μονοπάτι στο έδαφος προς το κοντινότερο airlock ή άλλη
+    δομή, ποτέ σε θόλο: ένα Γ κέντρο-κέντρο, με το πολύ 12 tiles έξω από τα δύο
+    αποτυπώματα, όλα σε έδαφος που χτίζεται. Οποιος βγαίνει, βγαίνει από airlock.
+  * Αλλιώς κόκκινο, και ο πίνακας λέει TOO FAR, PATH BLOCKED ή NO CORRIDOR FITS.
 
-  ΚΑΝΟΝΕΣ   Τυχαίες σκηνές — κόσμος με εμπόδια, θόλοι και δομές γύρω από τον
-            κέρσορα, κάθε αντικείμενο του καταλόγου — και ο Z80 (ui_validate)
-            συμφωνεί με το reach.py: ui_bad (το πλήθος κακών tiles, 255, ή #F0 +
-            λόγος), οι διάδρομοι και το μήκος τους, το μονοπάτι και το σχήμα
-            του, το bd_nres, το σύνολο του κόστους (cr_metal, cr_biop)· και ο
-            κόσμος μένει ΙΔΙΟΣ: οι προσωρινές σφραγίδες φεύγουν.
+  ΚΑΝΟΝΕΣ   Τυχαίες σκηνές — κόσμος με εμπόδια, θόλοι, δομές και airlock γύρω
+            από τον κέρσορα με τα αποτυπώματά τους κατειλημμένα, βαθμοί κόμβων,
+            κάθε αντικείμενο του καταλόγου — και σκηνές στο όριο, και ο Z80
+            (ui_validate) συμφωνεί με το reach.py: ui_bad (το πλήθος κακών
+            tiles, 255, ή #F0 + λόγος), οι διάδρομοι και το μήκος τους, το
+            μονοπάτι και το σχήμα του, το bd_nres, το σύνολο του κόστους
+            (cr_metal, cr_biop)· και ο κόσμος μένει ΙΔΙΟΣ: οι προσωρινές
+            σφραγίδες φεύγουν.
   ΦΑΝΤΑΣΜΑ  Στο ui_show, ένα σημάδι σε κάθε ορατό tile των διαδρόμων ή του
             μονοπατιού και πουθενά αλλού· το αρχείο αναίρεσης γυρίζει την οθόνη
             όπως ήταν.
   FIRE      Το uist_place χτίζει ό,τι έδειξε το φάντασμα: τα tiles του
             μονοπατιού θεμέλιο με κατοχή 2 και το decor τους, οι διάδρομοι
-            στον πίνακα, οι ακμές στον γράφο, το κόστος πληρωμένο ακριβώς, και
-            η οθόνη byte προς byte η πλήρης σχεδίαση — και όταν η διαγώνιος
-            ξεκινά από τη γωνία του νέου θόλου, που τη ζωγραφίζει και η σειρά
-            του εργοταξίου (το test_fit το βρήκε). Ο χειρότερος γύρος του FIRE
-            κάτω από 200 ms, όπως η τοποθέτηση του L στο test_reveal· με
-            μονοπάτι κάτω από 140, γιατί ξαναζωγραφίζονται μόνο τα tiles του
+            στον πίνακα με τον θόλο ως άκρο a (από εκεί ζωγραφίζονται, και ένα
+            airlock δεν είναι ποτέ), οι ακμές στον γράφο, το κόστος πληρωμένο
+            ακριβώς, και η οθόνη byte προς byte η πλήρης σχεδίαση — και όταν η
+            διαγώνιος ξεκινά από τη γωνία του νέου θόλου, που τη ζωγραφίζει και
+            η σειρά του εργοταξίου (το test_fit το βρήκε). Ο χειρότερος γύρος
+            του FIRE κάτω από 200 ms, όπως η τοποθέτηση του L στο test_reveal·
+            με μονοπάτι κάτω από 140, γιατί ξαναζωγραφίζονται μόνο τα tiles του
             (171 ms με το ορθογώνιο κέντρο-γωνία-κέντρο, που έπιανε και τον
             θόλο απέναντι).
+  ΠΡΩΤΟ     Σε κόσμο χωρίς θόλο ένα airlock μπαίνει μόνο του (EC_FREELK = 1), και
+  AIRLOCK   ο θόλος που έρχεται μετά του δίνει τον διάδρομό του (EC_FREELK = 0).
   ΠΙΝΑΚΑΣ   Στο παιχνίδι: το σύνολο του κόστους στη σειρά 3, ο λόγος στη 4 —
             και ο λόγος αλλάζει ακόμη κι όταν το ui_bad έμενε ίδιο ως το βήμα 84.
   ΧΡΟΝΟΣ    Ένα βήμα κέρσορα (ui_validate) δίπλα στην αποικία, όχι πιο αργό από
-            όσο μετρήθηκε στο βήμα 85.
+            όσο μετρήθηκε στο βήμα 86.
 
 Αρνητικά, με το snapshot πειραγμένο: εμβέλεια 13, χωρίς την προσωρινή
 σφραγίδα, χωρίς το ξεσφράγισμα, μόνο το πρώτο Γ, το γρήγορο «όχι» ένα tile πιο
-κοντά, το μονοπάτι με κατοχή 1, οι διάδρομοι στη λίστα αλλαγών πριν από τις
-σειρές του εργοταξίου, το bd_nres που μένει από την προηγούμενη θέση,
-το ui_bad χωρίς τον λόγο, και ο πίνακας χωρίς το κόστος στην υπογραφή του.
+κοντά, το μονοπάτι με κατοχή 1, σε airlock και οριζόντια ή διαγώνια, διάδρομος
+που ξεκινά από airlock, η δομή δένεται σε θόλο, airlock με ακμή δέχεται κι
+άλλον, το NO CORRIDOR FITS λέγεται TOO FAR, το airlock κρατά τον τελευταίο θόλο,
+το airlock που μπαίνει μόνο του δεν μετριέται, οι διάδρομοι στη λίστα αλλαγών
+πριν από τις σειρές του εργοταξίου, το bd_nres που μένει από την προηγούμενη
+θέση, το ui_bad χωρίς τον λόγο, και ο πίνακας χωρίς το κόστος στην υπογραφή του.
 """
 import ctypes, os, random, sys
 
@@ -116,15 +128,50 @@ def scene(rnd, G, sym):
             dx, dy = 2 * rnd.randrange(-40, 41), 2 * rnd.randrange(-40, 41)
         domes[d] = [(bx + dx) & 255, (by + dy) & 255, size, rnd.choice([1, 2])]
     for s_ in rnd.sample(range(32), ns):
-        kd = rnd.randrange(7)
+        kd = rnd.choice([0, 1, 2, 3, 4, 5, 5, 5, 6])
         size = rnd.randrange(3) if kd < 4 else 0
+        if kd == reach.K_AIRLOCK and rnd.random() < 0.6:
+            # Ενα airlock στην ίδια στήλη με τον κέρσορα, ή κοντά της: εκεί
+            # ένας νέος θόλος του φτάνει κάθετα (το μόνο σχήμα που δέχεται).
+            dx = 2 * rnd.randrange(-6, 7) if rnd.random() < 0.5 else 0
+            dy = rnd.choice([-1, 1]) * 2 * rnd.randrange(3, 20)
+            structs[s_] = [((cx & ~1) + dx) & 255, ((cy & ~1) + dy) & 255, kd, 0,
+                           rnd.choice([1, 2])]
+            continue
         dx, dy = rnd.randrange(-44, 45), rnd.randrange(-44, 45)
+        if kd == reach.K_AIRLOCK:
+            # ΖΥΓΟ ΚΕΝΤΡΟ, όπως κάθε 2x2 που βάζει ο κέρσορας (§3.4): ένα μονό
+            # δεν πέφτει στο πλέγμα του διαδρόμου, και ο Z80 θα έκρινε το «δεν
+            # χωρά» με τις διαφορές του προηγούμενου υποψηφίου.
+            dx, dy = dx - ((cx + dx) & 1), dy - ((cy + dy) & 1)
         structs[s_] = [(cx + dx) & 255, (cy + dy) & 255, kd, size, rnd.choice([1, 2])]
-    return i, cx & 255, cy & 255, bytes(wl), domes, structs
+    # Οι βαθμοί: ένα airlock με ακμή δεν δέχεται άλλον διάδρομο (βήμα 86).
+    deg = [rnd.randrange(3) for _ in range(64)] + [rnd.choice([0, 0, 1]) for _ in range(64)]
+    # ΤΑ ΑΠΟΤΥΠΩΜΑΤΑ ΚΑΤΕΙΛΗΜΜΕΝΑ, όπως τα αφήνει το bd_commit. Ως το βήμα 85 η
+    # σκηνή τα άφηνε στην τύχη, και ένας διάδρομος μπορούσε να περάσει μέσα από
+    # τρίτο θόλο — ο Z80 και ο κανόνας συμφωνούσαν, αλλά το φάντασμα έβγαζε το
+    # ίδιο tile από δύο διαδρόμους, κάτι που στο παιχνίδι δεν γίνεται.
+    dims = G.m.read_ram(layout("G_struct_dims"), 64)
+    for node in range(96):
+        fp = reach.footprint(node, domes, structs, dims)
+        if fp is None:
+            continue
+        x0, y0, fw, fh = fp[0]
+        for y in range(y0, y0 + fh):
+            for x in range(x0, x0 + fw):
+                if -64 <= x < 64 and -64 <= y < 64:
+                    wl[reach.widx(x, y)] = 0x17
+    return i, cx & 255, cy & 255, bytes(wl), domes, structs, deg
 
 
-def put_scene(G, world, domes, structs):
+def put_scene(G, world, domes, structs, deg=None):
     G.put(4, 0, world)
+    deg = deg or [0] * 128
+    G.m.write_ram(G.nodes, bytes(deg))                  # NODE_DEG, τράπεζα 2
+    # Και το EC_FREELK, όπως θα το είχε κρατήσει το al_commit: πόσα airlock
+    # χωρίς ακμή υπάρχουν.
+    G.m.poke(G.g + 63, sum(1 for k, s in enumerate(structs)
+                           if s[4] and s[2] == reach.K_AIRLOCK and not deg[64 + k]))
     d6 = bytearray(G.bank(6, G.gd, 64 * 24))
     for d, (x, y, s, st) in enumerate(domes):
         d6[24 * d:24 * d + 5] = bytes([x, y, s, 0, st])
@@ -135,7 +182,7 @@ def put_scene(G, world, domes, structs):
     G.put(6, G.gs, s6)
 
 
-def expect(G, i, cx, cy, world, domes, structs, dims):
+def expect(G, i, cx, cy, world, domes, structs, dims, deg=None):
     """(ui_bad, bd_nres, reach-αποτέλεσμα ή None) από την πρόζα."""
     kind, param, w, h = G.items[i][:4]
     tx, ty, out = TP.rect_rule(cx, cy, w, h)
@@ -148,7 +195,7 @@ def expect(G, i, cx, cy, world, domes, structs, dims):
     a, nres = res_model(world, kind, param, w, h, tx, ty)
     if a:
         return 0xF0 + nres, nres, None
-    res = reach.plan(world, domes, structs, dims, kind, param, w, h, cx, cy)
+    res = reach.plan(world, domes, structs, dims, kind, param, w, h, cx, cy, deg)
     if res["ok"]:
         return 0, 0, res
     return 0xF0 + res["reason"], res["reason"], res
@@ -184,18 +231,31 @@ def plain():
 
 
 def edges():
-    """Οι σκηνές στο ΟΡΙΟ, όπου τα αρνητικά της εμβέλειας δαγκώνουν πάντα:
-    (αντικείμενο, κέρσορας, θόλοι, τι πρέπει να βγει)."""
+    """Οι σκηνές στο ΟΡΙΟ, όπου τα αρνητικά δαγκώνουν πάντα: (αντικείμενο,
+    κέρσορας, θόλοι, δομές, βαθμοί {κόμβος: βαθμός}, τι πρέπει να βγει)."""
     E = [[0, 0, 0, 0]] * 63
-    S = [[0, 0, 0, 0, 0]] * 32
+    S = [[0, 0, 0, 0, 0]] * 31
+    lock0 = [[0, 0, reach.K_AIRLOCK, 0, 2]]
     return [
         # θόλος L στο (0, 0) και θόλος L 20 tiles ανατολικά: 20 - 4 - 4 = 12
         # πλακίδια — και τα κέντρα απέχουν ακριβώς AL_REACH μισά tiles.
-        (2, (0, 0), [[40, 0, 2, 2]] + E, S, "1 διάδρομος"),
-        (2, (0, 0), [[42, 0, 2, 2]] + E, S, "TOO FAR"),            # 13
-        # ηλιακός ανατολικά ενός θόλου S: μονοπάτι 12 tiles, και 13
-        (4, (31, 1), [[0, 0, 0, 2]] + E, S, "μονοπάτι"),
-        (4, (33, 1), [[0, 0, 0, 2]] + E, S, "TOO FAR")]
+        (2, (0, 0), [[40, 0, 2, 2]] + E, S + [[0] * 5], {}, "1 διάδρομος"),
+        (2, (0, 0), [[42, 0, 2, 2]] + E, S + [[0] * 5], {}, "TOO FAR"),          # 13
+        # ηλιακός ανατολικά ενός airlock: μονοπάτι 12 tiles, και 13
+        (4, (29, 1), [[0] * 4] + E, lock0 + S, {}, "μονοπάτι"),
+        (4, (31, 1), [[0] * 4] + E, lock0 + S, {}, "TOO FAR"),
+        # airlock κάτω από θόλο L: 17 - 4 - 1 = 12 πλακίδια κάθετα, και 13
+        (9, (0, 34), [[0, 0, 2, 2]] + E, S + [[0] * 5], {}, "1 διάδρομος"),
+        (9, (0, 36), [[0, 0, 2, 2]] + E, S + [[0] * 5], {}, "TOO FAR"),
+        # δύο θόλοι S στη ζώνη «σχεδόν διαγώνιο»: S = 6, T = 5, κανένα σχήμα
+        (0, (12, 10), [[0, 0, 0, 2]] + E, S + [[0] * 5], {}, "NO FIT"),
+        # θόλος πάνω από airlock χωρίς ακμή: διάδρομος· με ακμή: τίποτα, και
+        # χωρίς άλλον θόλο μπαίνει μόνος του
+        (0, (0, 0), [[0] * 4] + E, [[0, 12, reach.K_AIRLOCK, 0, 2]] + S, {}, "1 διάδρομος"),
+        (0, (0, 0), [[0] * 4] + E, [[0, 12, reach.K_AIRLOCK, 0, 2]] + S, {64: 1}, "μόνος"),
+        # airlock ανάμεσα σε δύο θόλους S: ο πρώτος του πίνακα 3 πλακίδια, ο
+        # δεύτερος 6 — ο κοντινότερος, όχι ο τελευταίος
+        (9, (0, 12), [[0, 0, 0, 2], [0, 30, 0, 2]] + E[1:], S + [[0] * 5], {}, "1 διάδρομος")]
 
 
 def rules(sym, patch=(), n=500, seed=8585):
@@ -205,24 +265,26 @@ def rules(sym, patch=(), n=500, seed=8585):
     rnd = random.Random(seed)
     dims = m.read_ram(sym["G_STRUCT_DIMS"] if "G_STRUCT_DIMS" in sym else layout("G_struct_dims"), 64)
     seen = {"πρώτο κτίριο": 0, "1 διάδρομος": 0, "2+ διάδρομοι": 0, "4 διάδρομοι": 0,
-            "μονοπάτι δομής": 0, "μονοπάτι θόλου": 0, "TOO FAR": 0, "PATH BLOCKED": 0,
+            "μονοπάτι δομής": 0, "θόλος -> airlock": 0, "airlock -> θόλος": 0,
+            "TOO FAR": 0, "PATH BLOCKED": 0, "NO CORRIDOR FITS": 0,
             "κακά tiles": 0, "έξω": 0, "σχήμα y": 0}
     fixed = edges()
     for case in range(n + len(fixed)):
         G.restore()
         if case < len(fixed):
-            i, (cx, cy), domes, structs, what = fixed[case]
+            i, (cx, cy), domes, structs, dd, what = fixed[case]
             world = plain()
+            deg = [dd.get(k, 0) for k in range(128)]
         else:
-            i, cx, cy, world, domes, structs = scene(rnd, G, sym)
+            i, cx, cy, world, domes, structs, deg = scene(rnd, G, sym)
             what = None
         G.item(i)
         G.cursor(cx, cy)
-        put_scene(G, world, domes, structs)
+        put_scene(G, world, domes, structs, deg)
         m.poke(sym["UI_STATE"], UI_PLACE)
-        m.poke(sym["BD_NRES"], rnd.randrange(5))
+        m.poke(sym["BD_NRES"], rnd.randrange(6))
         _, A, _ = G.run("UI_VALIDATE")
-        bad, nres, res = expect(G, i, cx, cy, world, domes, structs, dims)
+        bad, nres, res = expect(G, i, cx, cy, world, domes, structs, dims, deg)
         got, want = got_of(G, sym), want_of(G, i, res if bad == 0 or bad >= 0xF3 else None, nres)
         got["A"], want["A"] = A, bad
         w_after = G.bank(4)
@@ -238,7 +300,8 @@ def rules(sym, patch=(), n=500, seed=8585):
         if what:                            # η σκηνή του ορίου κάνει ό,τι λέει
             ok = {"1 διάδρομος": bad == 0 and res and len(res["corridors"]) == 1,
                   "μονοπάτι": bad == 0 and res and res["path"] and len(res["path"][2]) == 12,
-                  "TOO FAR": bad == 0xF3}[what]
+                  "TOO FAR": bad == 0xF3, "NO FIT": bad == 0xF5,
+                  "μόνος": bad == 0 and res and not res["any"] and not res["corridors"]}[what]
             if not ok:
                 return f"η σκηνή ορίου {case} δεν βγάζει «{what}»: ui_bad #{bad:02X}"
         if bad == 255:
@@ -249,6 +312,8 @@ def rules(sym, patch=(), n=500, seed=8585):
             seen["TOO FAR"] += 1
         elif bad == 0xF4:
             seen["PATH BLOCKED"] += 1
+        elif bad == 0xF5:
+            seen["NO CORRIDOR FITS"] += 1
         elif bad == 0:
             if res and not res["any"] and not res["corridors"]:
                 seen["πρώτο κτίριο"] += 1
@@ -259,8 +324,12 @@ def rules(sym, patch=(), n=500, seed=8585):
                 seen["2+ διάδρομοι"] += 1
             if k == 4:
                 seen["4 διάδρομοι"] += 1
+            if any(c[0] >= 64 for c in res["corridors"]):
+                seen["θόλος -> airlock"] += 1
+            if k and G.items[i][0] and G.items[i][1] == reach.K_AIRLOCK:
+                seen["airlock -> θόλος"] += 1
             if res["path"] and not k:
-                seen["μονοπάτι θόλου" if G.items[i][0] == 0 else "μονοπάτι δομής"] += 1
+                seen["μονοπάτι δομής"] += 1
                 if res["path"][1]:
                     seen["σχήμα y"] += 1
     if not patch and min(seen.values()) < 3:
@@ -300,14 +369,14 @@ def ghost(sym, patch=(), n=160, seed=8686):
     case = 0
     while case < n:
         G.restore()
-        i, cx, cy, world, domes, structs = scene(rnd, G, sym)
-        bad, nres, res = expect(G, i, cx, cy, world, domes, structs, dims)
+        i, cx, cy, world, domes, structs, deg = scene(rnd, G, sym)
+        bad, nres, res = expect(G, i, cx, cy, world, domes, structs, dims, deg)
         if bad or not (res["corridors"] or res["path"]):
             continue
         case += 1
         G.item(i)
         G.cursor(cx, cy)
-        put_scene(G, world, domes, structs)
+        put_scene(G, world, domes, structs, deg)
         m.poke(sym["UI_STATE"], UI_PLACE)
         # η κάμερα: ο κέρσορας κάπου μέσα στο κάδρο, και καμιά φορά στην άκρη
         ctx = (sb(cx) >> 1) - rnd.randrange(2, VIEW_TW - 2)
@@ -374,23 +443,28 @@ def panel(sym, patch=()):
     for y in range(-2, 2):
         for x in range(-2, 2):
             world[reach.widx(x, y)] = 0x17
-    domes = [[0, 0, 0, 2]] + [[0, 0, 0, 0]] * 63
-    structs = [[0, 0, 0, 0, 0]] * 32
+    dome = [[0, 0, 0, 2]] + [[0, 0, 0, 0]] * 63
+    none = [[0, 0, 0, 0]] * 64
+    nost = [[0, 0, 0, 0, 0]] * 32
+    lock = [[0, 0, reach.K_AIRLOCK, 0, 2]] + [[0, 0, 0, 0, 0]] * 31
     rock = bytearray(world)                 # ένας τοίχος από βράχο, x = 2..8
     for y in range(-3, 4):
         for x in range(2, 9):
             rock[reach.widx(x, y)] = 2
     one = bytearray(world)                  # ένα κακό tile κάτω από τον ηλιακό
     one[reach.widx(30, 0)] = 2
-    # (αντικείμενο, κέρσορας, κόσμος, σειρά 3 περιέχει, σειρά 4 αρχίζει)
-    steps = [(0, (16, 0), world, ["FE 36", "BI 20"], "READY"),          # 4 πλακίδια
-             (0, (18, 0), world, ["FE 42", "BI 23"], "READY"),          # 5: μόνο το κόστος
-             (4, (61, 1), world, ["FE 15", "BI  0"], "TOO FAR"),
-             (4, (21, 1), rock, ["FE 15"], "PATH BLOCKED"),
-             (4, (61, 1), one, ["FE 15"], "BLOCKED"),
-             (4, (61, 1), world, ["FE 15"], "TOO FAR"),                 # ο λόγος μόνο
-             (1, (20, 0), world, ["FE 54", "BI 29"], "READY")]          # M: 10 - 0 - 3 - 2 = 5
-    for k, (i, (cx, cy), wl, r3, r4) in enumerate(steps):
+    # (αντικείμενο, κέρσορας, κόσμος, θόλοι, δομές, σειρά 3 περιέχει, σειρά 4 αρχίζει).
+    # Οι θόλοι δένονται με τον θόλο S στο (0, 0)· οι δομές με ένα airlock εκεί.
+    steps = [(0, (16, 0), world, dome, nost, ["FE 36", "BI 20"], "READY"),     # 4 πλακίδια
+             (0, (18, 0), world, dome, nost, ["FE 42", "BI 23"], "READY"),     # 5: μόνο το κόστος
+             (4, (61, 1), world, none, lock, ["FE 15", "BI  0"], "TOO FAR"),
+             (4, (21, 1), rock, none, lock, ["FE 15"], "PATH BLOCKED"),
+             (4, (61, 1), one, none, lock, ["FE 15"], "BLOCKED"),
+             (4, (61, 1), world, none, lock, ["FE 15"], "TOO FAR"),            # ο λόγος μόνο
+             (0, (12, 10), world, dome, nost, ["FE 12", "BI  8"], "NO CORRIDOR FITS"),
+             (9, (0, 12), world, dome, nost, ["FE 28", "BI 15"], "READY"),     # airlock: 6 - 2 - 1 = 3
+             (1, (20, 0), world, dome, nost, ["FE 54", "BI 29"], "READY")]     # M: 10 - 0 - 3 - 2 = 5
+    for k, (i, (cx, cy), wl, domes, structs, r3, r4) in enumerate(steps):
         G.item(i)
         G.cursor(cx, cy)
         put_scene(G, bytes(wl), domes, structs)
@@ -405,12 +479,17 @@ def panel(sym, patch=()):
 
 
 # --- ο χρόνος ------------------------------------------------------------------
-# µs του ui_validate με το probe, βήμα 85, στην αποικία του §10.1 (μετρημένα:
-# 9.124, 14.684, 6.956, 3.558· ως το βήμα 84 μόνο το bd_check, 610-820).
-CEIL = {"θόλος, διάδρομος": 9700, "θόλος χωρίς διάδρομο": 15500,
-        "ηλιακός, μονοπάτι": 7400, "ηλιακός μακριά": 3800}
+# µs του ui_validate με το probe, στην αποικία του §10.1. Βήμα 86 (μετρημένα):
+# θόλος με διάδρομο 9.180 (9.124 στο 85: +56, τα airlock μόνα τους ελέγχονται
+# μόνο όταν υπάρχουν, EC_FREELK — χωρίς αυτό ~740 ακόμη)· θόλος χωρίς διάδρομο
+# 6.790 (14.684: δεν ψάχνει πια μονοπάτι)· ηλιακός με μονοπάτι 7.525 (6.956, αλλά
+# προς το airlock, όχι προς τον θόλο)· ηλιακός μακριά 2.249 (3.558: μόνο οι
+# δομές)· airlock 6.441. Ως το βήμα 84 μόνο το bd_check, 610-820.
+CEIL = {"θόλος, διάδρομος": 9700, "θόλος χωρίς διάδρομο": 7300,
+        "ηλιακός, μονοπάτι": 7900, "ηλιακός μακριά": 2400, "airlock, διάδρομος": 6700}
 TIME_AT = [("θόλος, διάδρομος", 0, 16, -12), ("θόλος χωρίς διάδρομο", 0, 8, -10),
-           ("ηλιακός, μονοπάτι", 4, -9, -11), ("ηλιακός μακριά", 4, -37, -23)]
+           ("ηλιακός, μονοπάτι", 4, -9, -11), ("ηλιακός μακριά", 4, -37, -23),
+           ("airlock, διάδρομος", 9, 16, -10)]
 
 
 def costs(sym, patch=()):
@@ -450,7 +529,9 @@ FIRE_AT = [("θόλος S", 0, (16, -12), (4, -9), None),
            ("ηλιακός", 4, (-9, -11), (-12, -9), None),
            ("θόλος M, διαγώνιος", 1, (-18, 30), (-18, 10), diag(-18, 30, 1)),
            ("θόλος S, τρεις διάδρομοι", 0, (8, 8), (-6, -2),
-            lambda res: len(res["corridors"]) == 3)]
+            lambda res: len(res["corridors"]) == 3),
+           ("airlock νότια του κυλικείου", 9, (0, 26), (-10, 4),
+            lambda res: [c[0] for c in res["corridors"]] == [2])]
 
 
 def fire(sym, g, patch=()):
@@ -475,7 +556,8 @@ def fire(sym, g, patch=()):
         b6 = bytes(G.bank(6)[:0x4000])
         domes = [list(b6[R.DOME_TBL + 24 * d:R.DOME_TBL + 24 * d + 4]) for d in range(64)]
         structs = [list(b6[R.STRUCT_TBL + 8 * k:R.STRUCT_TBL + 8 * k + 5]) for k in range(32)]
-        res = reach.plan(b4, domes, structs, dims, kind, param, w, h, cx, cy)
+        res = reach.plan(b4, domes, structs, dims, kind, param, w, h, cx, cy,
+                         list(m.read_ram(nodes, 128)))
         if not res["ok"] or not (res["corridors"] or res["path"]):
             return f"{name} στο ({cx}, {cy}): ο κανόνας δεν το δένει πουθενά — {res['reason']}"
         if need and not need(res):
@@ -517,8 +599,21 @@ def fire(sym, g, patch=()):
                 return f"{name}: λείπει η ακμή {node} <-> {e}: {nb(node)} / {nb(e)}"
         if deg[node] != len(ends) or sum(deg) - sum(deg0) != 2 * len(ends):
             return f"{name}: βαθμοί {deg[node]} και +{sum(deg) - sum(deg0)}, ο κανόνας {len(ends)}"
-        # --- οι διάδρομοι στον πίνακα, και το κόστος
+        # --- οι διάδρομοι στον πίνακα: ΠΟΙΟ άκρο είναι το a (από εκεί ζωγραφίζεται,
+        # και ένα airlock δεν είναι ποτέ), η κατεύθυνση, το μήκος, η συνέχεια
+        b6_0 = b6
         b6 = bytes(G.bank(6)[:0x4000])
+        recs = sorted(list(b6[corr + 5 * k:corr + 5 * k + 5]) for k in range(96)
+                      if b6[corr + 5 * k + 4] and not b6_0[corr + 5 * k + 4])
+        me = (cx, cy, param if kind == 0 else reach.route.AIRLOCK)
+        want_r = []
+        for c in res["corridors"]:
+            frm, to = (node, c[0]) if c[1] == me else (c[0], node)
+            want_r.append([frm, to, c[3][0][0], c[3][0][1], 2])
+            if len(c[3]) > 1:
+                want_r.append([255, 255, c[3][1][0], c[3][1][1], 2])
+        if recs != sorted(want_r):
+            return f"{name}: οι εγγραφές διαδρόμων {recs}, ο κανόνας λέει {sorted(want_r)}"
         ncorr = sum(1 for k in range(96) if b6[corr + 5 * k + 4])
         want_c = sum(len(c[3]) for c in res["corridors"])
         stock = (G.m.peek(g + 6) | G.m.peek(g + 7) << 8, G.m.peek(g + 8) | G.m.peek(g + 9) << 8)
@@ -534,6 +629,55 @@ def fire(sym, g, patch=()):
             return f"{name}: η οθόνη διαφέρει από την πλήρη σχεδίαση στο byte {k % 80}, γραμμή {k // 80}"
         print(f"    {name}: {len(ends)} δεσμός/οί ({'διάδρομος' if res['corridors'] else 'μονοπάτι'}), "
               f"πληρωμή {paid}, χειρότερος γύρος {laid:.0f} ms")
+    return None
+
+
+# --- το πρώτο airlock ------------------------------------------------------------
+def first_lock(sym, g, patch=()):
+    """Σε κόσμο χωρίς θόλο ένα airlock μπαίνει μόνο του, και το EC_FREELK το
+    θυμάται· ο θόλος που έρχεται μετά, κάτω του, του δίνει τον διάδρομό του, και
+    το EC_FREELK γυρίζει στο 0. Η πρώτη διαφορά, ή None."""
+    import test_reveal as R
+    import balance as B
+    from cpc import JOY_FIRE
+    G = R.Game(sym, g)
+    m = G.m
+    for at, v in patch:
+        m.poke(at, v)
+    b6 = G.bank(6)
+    for d in range(64):                     # κανένας θόλος: η αποικία χωρίς στέγη
+        b6[R.DOME_TBL + 24 * d + 4] = 0
+    b4 = G.bank(4)
+    for y in range(18, 35):                 # ένα χωράφι από χώμα
+        for x in range(-52, -43):
+            b4[reach.widx(x, y)] = 0
+    G.camera(-58, 20)
+    nodes, corr = layout("G_rt_nodes"), layout("G_corr_tbl") - 0x4000
+    lock = None
+    # (αντικείμενο, κέρσορας, EC_FREELK μετά, οι νέες εγγραφές διαδρόμων)
+    for item, at, free, recs in ((9, (-96, 44), 1, 0), (0, (-96, 60), 0, 1)):
+        c0 = bytes(G.bank(6)[corr:corr + 480])
+        B.build(m, sym, item, g + 6, at=at, place=False)
+        G.settle()
+        G.stick(JOY_FIRE)
+        G.run(5_000_000, until=lambda: not (m.peek(sym["RV_PEND"]) or m.peek(sym["UI_OWED"])
+                                            or m.peek(sym["DIRTY_NUM"])))
+        node = m.peek(sym["BD_NODE"])
+        c1 = bytes(G.bank(6)[corr:corr + 480])
+        new = [list(c1[5 * k:5 * k + 5]) for k in range(96) if c1[5 * k + 4] and not c0[5 * k + 4]]
+        if m.peek(g + 63) != free or len(new) != recs:
+            return (f"αντικείμενο {item} στο {at}: EC_FREELK {m.peek(g + 63)} (θέλει {free}), "
+                    f"{len(new)} νέοι διάδρομοι (θέλει {recs})")
+        if item == 9:
+            lock = node
+            if node < 64 or m.peek(nodes + node):
+                return f"το airlock: κόμβος {node}, βαθμός {m.peek(nodes + node)}"
+        elif new != [[node, lock, 0, 5, 2]]:
+            return f"ο θόλος {node}: διάδρομος {new}, θέλει [[{node}, {lock}, 0, 5, 2]]"
+    pic, ref = G.truth()
+    if pic != ref:
+        k = next(k for k in range(len(pic)) if pic[k] != ref[k])
+        return f"η οθόνη διαφέρει από την πλήρη σχεδίαση στο byte {k % 80}, γραμμή {k // 80}"
     return None
 
 
@@ -561,6 +705,22 @@ def negatives(sym, g):
         ("μόνο το πρώτο Γ", rules, [(sym["AL_LTRY"] - 2, 0xC9), (sym["AL_LTRY"] - 1, 0)]),
         ("το γρήγορο «όχι» ένα tile πιο κοντά", rules, [(far + 1, 39)]),
         ("το μονοπάτι με κατοχή 1", "fire", [(find(m, sym["AL_CBS"], [0xF6, 0x27]) + 1, 0x17)]),
+        # --- βήμα 86 ---
+        ("σε airlock και οριζόντια ή διαγώνια", rules,
+         [(find(m, sym["CR_SIDE"], [0x3A] + w(sym["CR_TS"]) + [0x3C, 0x20], 200) + 4, 0x18)]),
+        ("διάδρομος που ξεκινά από airlock", "fire",
+         [(find(m, sym["CR_SIDE"], [0x3A] + w(sym["CR_FS"]) + [0x3C, 0xC8], 200) + 4, 0)]),
+        ("η δομή δένεται σε θόλο", rules,
+         [(a, v) for a, v in zip(range(find(m, sym["AL_FIND"], [0x21] + w(sym["AL_TRY"]) + [0xCD], 200) + 4, 10**6),
+                                 w(sym["AL_SCAND"]))]),
+        ("airlock με ακμή δέχεται κι άλλον", rules,
+         [(find(m, sym["AL_COR1A"], [0x7E, 0xB7, 0xC0], 12) + 2, 0)]),
+        ("το NO CORRIDOR FITS λέγεται TOO FAR", rules,
+         [(find(m, sym["AL_COR0"], [0xCB, 0xCE], 60) + k, 0) for k in (0, 1)]),
+        ("το airlock κρατά τον τελευταίο θόλο", rules,
+         [(find(m, sym["AL_LCK"], [0xBE, 0xD0], 20) + 1, 0)]),
+        ("το airlock που μπαίνει μόνο του δεν μετριέται", first_lock,
+         [(find(m, sym["AL_COMMIT"], [0x21] + w(g + 63) + [0x34], 200) + 3, 0)]),
         # Η σειρά ως το test_fit: al_commit πριν από το bd_redraw, χωρίς push/pop.
         ("οι διάδρομοι πριν από το εργοτάξιο", "fire",
          list(zip(range(find(m, sym["UIP_FIRE"], [0xCD] + w(sym["BD_REDRAW"]) + [0xF5, 0xCD]
@@ -575,7 +735,8 @@ def negatives(sym, g):
                                  [0x7E, 0, 0])]),
     ]
     for name, fn, patch in neg:
-        err = fire(sym, g, patch) if fn == "fire" else fn(sym, patch)
+        err = (fire(sym, g, patch) if fn == "fire" else fn(sym, g, patch) if fn is first_lock
+               else fn(sym, patch))
         check(err is not None, f"αρνητικό «{name}»: " + (err or "ΔΕΝ το έπιασε τίποτα"))
 
 
@@ -587,6 +748,8 @@ def main():
     check(err is None, err or "το φάντασμα δείχνει ακριβώς τα tiles των δεσμών, και φεύγει καθαρά")
     err = fire(sym, g)
     check(err is None, err or "το FIRE χτίζει ό,τι έδειξε το φάντασμα, και η οθόνη είναι η πλήρης σχεδίαση")
+    err = first_lock(sym, g)
+    check(err is None, err or "το πρώτο airlock μπαίνει μόνο του, και ο θόλος που έρχεται του δίνει διάδρομο")
     err = panel(sym)
     check(err is None, err or "ο πίνακας λέει το σύνολο του κόστους και τον λόγο, και αλλάζει με τον λόγο")
     t = costs(sym)

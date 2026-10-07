@@ -19,6 +19,14 @@
   4. Ο κόσμος είναι ΠΑΡΑΓΜΕΝΟΣ: η γεννήτρια έτρεξε ως ξεχωριστό φόρτωμα και
      γέμισε την τράπεζα 4. Το snapshot φορτώνει έτοιμο επίπεδο· ο δίσκος δεν
      έχει τέτοιο αρχείο.
+  5. Το πρόχειρο του φορτωτή (βήμα 86). Τα δεδομένα της τράπεζας 2 περιμένουν
+     στη βασική τράπεζα 1, εκεί που θα σταθεί το DIST, και ο κώδικάς της στην
+     τράπεζα 5, εκεί που θα σταθεί το NEXTHOP. Τη στιγμή που το επίμετρο
+     πηδά στο #0100 (δεύτερο φόρτωμα, πιασμένο με βήματα 10 µs): η τράπεζα 2,
+     οι μηχανές και τα εικονίδια είναι byte προς byte όπως βγήκαν από το
+     build, και τα δύο πρόχειρα μηδέν, όπως στο snapshot. Αρνητικό: ένας
+     δίσκος με τα δύο σβησίματα του επιμέτρου κομμένα αφήνει γραφικά και
+     κώδικα σε αυτά.
 """
 import os, subprocess, sys
 
@@ -63,6 +71,68 @@ def build():
         if line.startswith("G_econ_state"):
             g = int(line.split("#")[1].strip(), 16)
     return sym, g
+
+
+# Αντιγράφει όλη την τράπεζα 5 στην οθόνη, για να διαβαστεί με read_ram: το
+# read_ram βλέπει μόνο τη βασική RAM. Σκοτώνει το παιχνίδι (jr $).
+DUMP_B5 = bytes([0xF3,                      # di
+                 0x01, 0xC5, 0x7F,          # ld bc,#7FC5
+                 0xED, 0x49,                # out (c),c
+                 0x21, 0x00, 0x40,          # ld hl,#4000
+                 0x11, 0x00, 0xC0,          # ld de,#C000
+                 0x01, 0x00, 0x40,          # ld bc,#4000
+                 0xED, 0xB0,                # ldir
+                 0x01, 0xC0, 0x7F,          # ld bc,#7FC0
+                 0xED, 0x49,                # out (c),c
+                 0x18, 0xFE])               # jr $
+ENDGAME = 0x3FC0
+
+
+def endgame(code):
+    """Τα bytes του επιμέτρου μέσα στο boot.bin: από το «ld hl,SCRATCH_G2 ·
+    ld de,PAGE2_CODE · ldir» ως το «jp #0100»."""
+    boot = open(os.path.join(ROOT, "build", "boot.bin"), "rb").read()
+    a = boot.find(bytes([0x21, 0x00, 0x40, 0x11, code & 0xFF, code >> 8,
+                         0xED, 0xB0]))
+    b = boot.find(bytes([0xC3, 0x00, 0x01]), a)
+    return boot[a:b + 3] if a >= 0 and b >= 0 else b""
+
+
+def handover(m, disc, eg):
+    """Από το BASIC ως το ΠΡΩΤΟ μισό χιλιοστό του παιχνιδιού: τη μνήμη όπως
+    την παραδίδει το επίμετρο, πριν γράψει το παιχνίδι οτιδήποτε στις
+    τράπεζες 1, 2 και 5. Γυρίζει (βασική RAM, τράπεζα 5) ή None.
+
+    Ο εξομοιωτής δεν έχει σημεία διακοπής. Το επίμετρο κρατά ~210 ms (40 KB
+    ldir), οπότε ένα δείγμα ανά frame το πιάνει σίγουρα — όταν ο PC είναι
+    μέσα του ΚΑΙ τα bytes του στο #3FC0 είναι τα δικά του (πριν αντιγραφεί
+    εκεί, ο PC στο #3FC0 είναι η κάτω ROM). Από εκεί βήματα των 10 µs ως να
+    βγει: λίγες εντολές του παιχνιδιού. ΟΧΙ «ο PC στην τράπεζα 0»: με βήματα
+    των 0,2 ms το παιχνίδι είχε ήδη μπει στο hw_clear της τράπεζας 2."""
+    m.run_frames(300)
+    m.insert_disc(disc)
+    m.type_text('|disc\n', hold_frames=4, gap_frames=8)
+    m.run_frames(60)
+    m.type_text('run"habitat\n', hold_frames=4, gap_frames=8)
+
+    def inside():
+        return (ENDGAME <= m.pc < ENDGAME + len(eg)
+                and m.read_ram(ENDGAME, len(eg)) == eg)
+    for _ in range(3000):
+        m.run_frames(1)
+        if inside():
+            break
+    else:
+        return None
+    for _ in range(30000):                       # 300 ms
+        m.run_us(10)
+        if not inside():
+            break
+    else:
+        return None
+    ram = m.read_ram(0, 0x10000)
+    m.run_code(0x3EC0, DUMP_B5, frames=8)        # 16 KB ldir = 86 ms
+    return ram, m.read_ram(0xC000, 0x4000)
 
 
 def main():
@@ -200,7 +270,77 @@ def main():
 
     m.screenshot(os.path.join(ROOT, "build", "disc.png"), aspect=True)
 
-    # --- 5. το σβήσιμο της οθόνης ----------------------------------------
+    # --- 5. το πρόχειρο του φορτωτή --------------------------------------
+    # Ως το βήμα 85 και τα τρία περίμεναν στην τράπεζα 5· στο 86 έγιναν 16.475
+    # bytes, 91 πάνω από την τράπεζα, και τα δεδομένα πήγαν στη βασική 1. Η
+    # μνήμη ελέγχεται τη στιγμή που το επίμετρο δίνει τη σκυτάλη: μετά, το
+    # παιχνίδι γράφει τις μεταβλητές του μέσα στα ίδια αρχεία και τη
+    # δρομολόγηση πάνω στο πρόχειρο.
+    def img(name):
+        return open(os.path.join(ROOT, "build", name), "rb").read()
+    page2, game2 = img("page2.bin"), img("game2.bin")
+    mach, icons = img("bank5.bin"), img("bank1.bin")
+    code = sym["ZZ_PAGE2_END"] - len(game2)
+    b5base = None
+    for line in open(os.path.join(ROOT, "build", "layout.asm"), encoding="utf-8"):
+        if line.startswith("B5_BASE"):
+            b5base = int(line.split("#")[1].split()[0], 16)
+    eg = endgame(code)
+
+    def diff(got, want):
+        return sum(x != y for x, y in zip(got, want)) + abs(len(got) - len(want))
+
+    def scratch_state(disc, eg):
+        """(διαφορές τράπεζας 2, μηχανών, εικονιδίων, μη μηδενικά του DIST
+        και του NEXTHOP) τη στιγμή της παράδοσης, ή None."""
+        h = CPC()
+        got = handover(h, disc, eg)
+        del h
+        if got is None:
+            return None
+        ram, b5 = got
+        return (diff(ram[0x8000:0x8000 + len(page2)], page2),
+                diff(ram[code:code + len(game2)], game2),
+                diff(b5[b5base - 0x4000:b5base - 0x4000 + len(mach)], mach),
+                diff(ram[0x7000:0x7000 + len(icons)], icons),
+                sum(1 for x in ram[0x4000:0x7000] if x),
+                sum(1 for x in b5[:b5base - 0x4000] if x))
+
+    st = scratch_state(DSK, eg) if eg else None
+    check(st is not None, f"το επίμετρο ({len(eg)} bytes) πιάστηκε τη στιγμή "
+                          f"που πηδά στο #0100")
+    if st:
+        d2, dg, dm, di, z1, z5 = st
+        check(d2 == 0 and dg == 0,
+              f"η τράπεζα 2 όπως βγήκε από το build: {len(page2)} bytes "
+              f"δεδομένων ({d2} διαφορετικά), {len(game2)} κώδικα στο "
+              f"#{code:04X} ({dg})")
+        check(dm == 0 and di == 0,
+              f"οι μηχανές στο #{b5base:04X} της τράπεζας 5 ({len(mach)} bytes, "
+              f"{dm} διαφορετικά) και τα εικονίδια στο #7000 ({len(icons)}, {di})")
+        check(z1 == 0 and z5 == 0,
+              f"το πρόχειρο σβήστηκε όπως στο snapshot: {z1} bytes μη μηδενικά "
+              f"στο DIST (#4000-#6FFF), {z5} στο NEXTHOP ως τις μηχανές")
+
+    # Αρνητικό: τα δύο ldir που σβήνουν το πρόχειρο γίνονται nop, μέσα στο
+    # LOADER.BIN του ίδιου δίσκου. Το επίμετρο ψάχνεται ολόκληρο, όχι το
+    # LOADER.BIN: οι τομείς ενός αρχείου δεν κάθονται απαραίτητα στη σειρά.
+    dsk = bytearray(open(DSK, "rb").read())
+    at = dsk.find(eg) if eg else -1
+    cut = 0
+    for n in (b5base - 0x4001, 0x7000 - 0x4001):
+        k = eg.find(bytes([0x01, n & 0xFF, n >> 8, 0xED, 0xB0]))
+        if at >= 0 and k >= 0:
+            dsk[at + k + 3:at + k + 5] = b"\0\0"
+            cut += 1
+    st = (scratch_state(bytes(dsk), bytes(dsk[at:at + len(eg)]))
+          if cut == 2 else None)
+    check(st is not None and st[4] > 4000 and st[5] > 4000,
+          f"ΑΡΝΗΤΙΚΟ: χωρίς τα δύο σβησίματα ({cut} από 2 κομμένα) μένουν "
+          f"{st[4] if st else '-'} bytes στο DIST και "
+          f"{st[5] if st else '-'} στο NEXTHOP")
+
+    # --- 6. το σβήσιμο της οθόνης ----------------------------------------
     # Ο φορτωτής αφήνει τη δική του οθόνη και το παιχνίδι ξεκινά ΠΑΝΩ της. Ως
     # το βήμα 21 το «run"habitat» φαινόταν γραμμένο μέσα στην αποικία μέχρι την
     # πρώτη πλήρη σχεδίαση. Εδώ ελέγχεται η ίδια η ρουτίνα, με σημάδι.

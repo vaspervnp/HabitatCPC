@@ -89,18 +89,24 @@ def colony_tiles():
         occ.update({(i, -1), (i, 0), (i, 1)})
     for j in range(1, 7):                    # και προς τον νότο
         occ.update({(-1, j), (0, j), (1, j)})
+    # Το airlock βόρεια του θόλου οξυγόνου (βήμα 86), 2x2 στα (-1..0, -6..-5),
+    # και ο κάθετος διάδρομός του στις σειρές -3, -4.
+    occ.update((x, y) for x in (-1, 0) for y in (-6, -5))
+    for j in (-4, -3):
+        occ.update({(-1, j), (0, j), (1, j)})
     return occ
 
 
 _REACH = None
 
 
-def reachable(tx, ty, size):
+def reachable(tx, ty, size, dome=False):
     """Θα δεχόταν το παιχνίδι ένα κτίσμα size x size με πάνω-αριστερά το (tx,
-    ty) δίπλα στην αποικία του §10.1; Ο κανόνας του βήματος 85 (tools/reach.py):
-    κάποιο κτίσμα ως 12 tiles μακριά, με μονοπάτι που πατά μόνο έδαφος που
-    χτίζεται. Ελέγχεται ΩΣ ΔΟΜΗ: ένας θόλος στο ίδιο αποτύπωμα δέχεται το ίδιο
-    μονοπάτι όταν δεν βρει διάδρομο, άρα ό,τι περνά εδώ περνά και για θόλο."""
+    ty) δίπλα στην αποικία του §10.1; Ο κανόνας των βημάτων 85-86
+    (tools/reach.py). Ως ΔΟΜΗ: μονοπάτι ως 12 tiles προς την πλατφόρμα ή το
+    airlock της αρχής. Ως ΘΟΛΟΣ (`dome`, size 4/6/8): διάδρομος ως 12 πλακίδια
+    προς έναν από τους τρεις θόλους — από το βήμα 86 ένας θόλος δεν παίρνει
+    μονοπάτι, οπότε το ένα δεν λέει τίποτα για το άλλο."""
     global _REACH
     import reach
     if _REACH is None:
@@ -111,11 +117,16 @@ def reachable(tx, ty, size):
         for x, y in colony_tiles():
             wl[reach.widx(x, y)] = wl[reach.widx(x, y)] & 0xC0 | 0x17
         domes = [[0, 0, 0, 2], [16, 0, 0, 2], [0, 16, 0, 2]] + [[0, 0, 0, 0]] * 61
-        structs = [[(-16) & 255, 16, 6, 0, 2]] + [[0, 0, 0, 0, 0]] * 31
-        _REACH = (bytes(wl), domes, structs, dims)
-    wl, domes, structs, dims = _REACH
+        structs = ([[(-16) & 255, 16, 6, 0, 2], [0, (-10) & 255, reach.K_AIRLOCK, 0, 2]]
+                   + [[0, 0, 0, 0, 0]] * 30)
+        deg = [3, 1, 2] + [0] * 61 + [1, 1] + [0] * 62
+        _REACH = (bytes(wl), domes, structs, dims, deg)
+    wl, domes, structs, dims, deg = _REACH
+    if dome:
+        return reach.plan(wl, domes, structs, dims, 0, (size - 4) // 2, size, size,
+                          2 * tx + size, 2 * ty + size, deg)["ok"]
     return reach.plan(wl, domes, structs, dims, 1, 0, size, size,
-                      2 * tx + size, 2 * ty + size)["ok"]
+                      2 * tx + size, 2 * ty + size, deg)["ok"]
 
 
 def res_spots(kind, size=3, n=2, avoid=()):
@@ -158,7 +169,7 @@ def res_spots(kind, size=3, n=2, avoid=()):
     return out
 
 
-def clear_spots(size=3, n=4):
+def clear_spots(size=3, n=4, dome=False):
     """Θέσεις κέρσορα όπου το bd_ok του src/build.asm λέει ναι, από το ΙΔΙΟ
     επίπεδο κόσμου που θα δει το παιχνίδι (build/world_new.bin).
 
@@ -196,6 +207,9 @@ def clear_spots(size=3, n=4):
             return False
         # ΚΑΙ ΣΕ ΑΠΟΣΤΑΣΗ από την αποικία (βήμα 85), για κάθε πλάτος που μπορεί
         # να μπει εδώ: ένας ηλιακός 3x3 στη θέση ενός θόλου 6x6 έχει άλλο κέντρο.
+        # Για θόλο (`dome`, βήμα 86), ο κανόνας του θόλου στο ίδιο το μέγεθος.
+        if dome:
+            return not reach or reachable(tx, ty, size, True)
         return not reach or all(reachable(tx, ty, k) for k in range(3, size + 1))
 
     # ΤΡΙΑ ΠΕΡΑΣΜΑΤΑ (βήμα 85). Τα δαχτυλίδια 12-29, όπως πάντα, ώστε οι πρώτες
@@ -374,8 +388,10 @@ def live_plan(m, sym, item, at):
     domes = [list(b6[gd + 24 * d:gd + 24 * d + 4]) for d in range(64)]
     structs = [list(b6[gs + 8 * k:gs + 8 * k + 5]) for k in range(32)]
     dims = m.read_ram(L["G_struct_dims"], 64)
+    deg = list(m.read_ram(L["G_rt_nodes"], 128))      # NODE_DEG
     rec = m.read_ram(sym["BLD_ITEMS"] + 8 * item, 4)
-    return reach.plan(b4, domes, structs, dims, rec[0], rec[1], rec[2], rec[3], at[0], at[1])
+    return reach.plan(b4, domes, structs, dims, rec[0], rec[1], rec[2], rec[3], at[0], at[1],
+                      deg)
 
 
 def live_spot(m, sym, item, at):
@@ -396,6 +412,7 @@ def live_spot(m, sym, item, at):
     domes = [list(b6[gd + 24 * d:gd + 24 * d + 4]) for d in range(64)]
     structs = [list(b6[gs + 8 * k:gs + 8 * k + 5]) for k in range(32)]
     dims = m.read_ram(L["G_struct_dims"], 64)
+    deg = list(m.read_ram(L["G_rt_nodes"], 128))      # NODE_DEG
     rec = m.read_ram(sym["BLD_ITEMS"] + 8 * item, 4)
     kind, param, w, h = rec[0], rec[1], rec[2], rec[3]
 
@@ -406,7 +423,7 @@ def live_spot(m, sym, item, at):
         if item in NEED and not has_near(b4, tx, ty, w, NEED[item][0]):
             return False
         return reach.plan(b4, domes, structs, dims, kind, param, w, h,
-                          2 * tx + w, 2 * ty + h)["ok"]
+                          2 * tx + w, 2 * ty + h, deg)["ok"]
 
     tx0, ty0 = (at[0] - w) >> 1, (at[1] - h) >> 1
     if ok(tx0, ty0):

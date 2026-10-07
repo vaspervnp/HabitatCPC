@@ -60,7 +60,9 @@ def main():
     # --- οι θέσεις, από τον ίδιο κανόνα που ελέγχει το παιχνίδι -----------
     pl = B.plane()
     shore = B.res_spots("water", 3, 1)
-    vein = B.res_spots("ore", 4, 1)
+    # Η φλέβα ΜΑΚΡΙΑ από την όχθη: από το βήμα 86 και οι δύο είναι στο airlock
+    # βόρεια της αποικίας, και η αντλία που χτίζεται πρώτη έπιανε το ορυχείο.
+    vein = B.res_spots("ore", 4, 1, avoid=shore)
     dry3 = [s for s in B.clear_spots(4, 6) if not B.has_near(pl, *s, 3, "water")]
     dry4 = [s for s in B.clear_spots(4, 6) if not B.has_near(pl, *s, 4, "ore")]
     if not (shore and vein and dry3 and dry4):

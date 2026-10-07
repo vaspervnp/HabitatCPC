@@ -1161,91 +1161,73 @@ ob_conn_scan:
         ld      bc,63
         ld      (hl),0
         ldir
-        ld      hl,G_corr_tbl
+        ; ΜΕ ΤΟ IX ΠΑΝΩ ΣΤΗΝ ΕΓΓΡΑΦΗ (βήμα 86). Ως τότε το HL περπατούσε τον
+        ; πίνακα και πηγαινοερχόταν από τη στοίβα τρεις φορές ανά εγγραφή, και
+        ; το ocs_set έβγαζε το bit με βρόχο: ο έλεγχος του airlock πρόσθεσε
+        ; 265 us στο χειρότερο ευρετήριο, και αυτό εδώ τα πληρώνει.
+        push    ix
+        ld      ix,G_corr_tbl
         ld      b,MAX_CORR
 ocs_lp:
-        push    bc
-        push    hl
-        ld      de,C_CSTATE
-        add     hl,de
-        ld      a,(hl)
+        ld      a,(ix+C_CSTATE)
         or      a
         jr      z,ocs_next
-        pop     hl
-        push    hl
-        ld      a,(hl)
+        ld      a,(ix+C_A)
+        ld      c,a
         inc     a
         jr      z,ocs_next              ; C_A = 255: ΣΥΝΕΧΕΙΑ διαδρομής — δεν
                                         ; ξεκινά από θόλο και δεν έχει πόρτα.
                                         ; Χωρίς αυτό το ocs_set γράφει στο
                                         ; dome_conn+255, 191 bytes έξω.
-        ld      c,(hl)                  ; a
-        inc     hl
-        ld      e,(hl)                  ; b
-        inc     hl
-        ld      a,(hl)                  ; dir
-        and     7
-        push    de
+        ld      a,(ix+C_DIR)
         call    ocs_set                 ; a, dir
-        pop     de
-        ld      d,a
+        ld      a,(ix+C_B)
+        cp      MAX_DOME
+        jr      nc,ocs_next             ; ο b είναι airlock: πόρτα δική του (βήμα 86)
+        ld      c,a
         ; Η ΠΟΡΤΑ ΤΟΥ b ΕΙΝΑΙ ΤΟΥ ΤΕΛΕΥΤΑΙΟΥ ΤΡΕΞΙΜΑΤΟΣ. Μια διαδρομή με στροφή
         ; φτάνει στον b με την κατεύθυνση της συνέχειας, όχι της διαγωνίου: ως
         ; το βήμα 36 ο b έπαιρνε πόρτα στο αντίθετο της διαγωνίου, εκεί όπου
         ; δεν φτάνει τίποτα, και ο οριζόντιος έφτανε σε δακτύλιο χωρίς πόρτα.
         ; Η συνέχεια είναι πάντα η ΕΠΟΜΕΝΗ εγγραφή (cr_commit)· η τελευταία
         ; εγγραφή του πίνακα δεν έχει επόμενη.
-        pop     hl
-        pop     bc
-        push    bc
-        push    hl
-        dec     b
-        jr      z,ocs_b
-        ld      bc,CORR_REC
-        add     hl,bc
-        ld      a,(hl)
+        ld      a,b
+        dec     a
+        jr      z,ocs_own
+        ld      a,(ix+CORR_REC+C_A)
         inc     a
-        jr      nz,ocs_b                ; δεν είναι συνέχεια
-        inc     hl
-        inc     hl
-        ld      a,(hl)                  ; C_DIR της συνέχειας
-        and     7
-        ld      d,a
+        jr      nz,ocs_own              ; δεν είναι συνέχεια
+        ld      a,(ix+CORR_REC+C_DIR)   ; C_DIR της συνέχειας
+        jr      ocs_b
+ocs_own:
+        ld      a,(ix+C_DIR)
 ocs_b:
-        ld      a,d
-        ld      c,e
         add     a,4                     ; η αντίθετη φορά για τον b
-        and     7
         call    ocs_set
 ocs_next:
-        pop     hl
         ld      de,CORR_REC
-        add     hl,de
-        pop     bc
+        add     ix,de
         djnz    ocs_lp
+        pop     ix
         ret
 
-; ocs_set — C = θόλος, A = κατεύθυνση· ανάβει το bit. Γυρίζει A = dir.
+; ocs_set — C = θόλος, A = κατεύθυνση (μόνο τα bits 0-2)· ανάβει το bit.
+; Κρατά B, C και IX.
 ocs_set:
-        push    af
-        push    hl
-        ld      b,a
-        ld      a,1
-        inc     b
-        jr      ocss_e
-ocss_lp:
-        add     a,a
-ocss_e:
-        djnz    ocss_lp
-        ld      l,c
-        ld      h,0
-        ld      de,dome_conn
+        and     7
+        ld      e,a
+        ld      d,0
+        ld      hl,ocs_bit
+        add     hl,de
+        ld      a,(hl)
+        ld      e,c
+        ld      hl,dome_conn
         add     hl,de
         or      (hl)
         ld      (hl),a
-        pop     hl
-        pop     af
         ret
+
+ocs_bit:    db 1,2,4,8,16,32,64,128
 
 ; ---------------------------------------------------------------------------
 ; ob_fig_scan — DOME_FIG[64][8]: ποια φιγούρα σε ποια θέση ποιου θόλου.
