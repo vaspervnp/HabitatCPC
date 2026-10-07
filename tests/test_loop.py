@@ -208,8 +208,16 @@ def scenario(i):
 def run(sym, g, patch=(), timing=False, n=400):
     """Οι κανόνες (ή ο χρόνος) σε n γύρους. Η πρώτη διαφορά, ή None· με timing
     ένα dict είδος -> µs."""
+    if timing:
+        # Ο ΧΡΟΝΟΣ ΜΕΤΡΙΕΤΑΙ ΧΩΡΙΣ ΔΙΑΚΟΠΕΣ (βήμα 83). Μια διακοπή που πέφτει
+        # ενώ ο Z80 είναι στον κώδικα του βρόχου χρεώνει σε αυτόν την αποδοχή
+        # της (5 µs), και ο x1 έβγαινε 78 με τον ίδιο κώδικα. Το ei του βρόχου
+        # γίνεται nop· το κόστος της διακοπής το μετρά το test_split.
+        patch = list(patch) + [(sym["MAIN_LOOP"], 0x00)]
     L = Loop(sym, g, patch, log=not timing)
     m = L.m
+    if timing:
+        assert L.m.read_ram(sym["MAIN_LOOP"], 1) == b"\x00"
     if L.hook0 != sym["DIRTY_PUSH"]:
         return f"το wh_hook στο snapshot είναι #{L.hook0:04X}, όχι το dirty_push"
     L.first()

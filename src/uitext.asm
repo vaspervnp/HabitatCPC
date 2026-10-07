@@ -187,7 +187,7 @@ t_a_keys  equ x_t_a_keys - TEXT_IMG + G_text
         assert  zz_text_end - TEXT_IMG <= TEXT_MAX
         ; Και το TEXT_MAX ΣΥΜΦΩΝΕΙ με την τρύπα του tools/pack.py, που βάζει τη
         ; γραμματοσειρά αμέσως μετά: αλλιώς τα κείμενα γράφουν πάνω της.
-        assert  G_text + TEXT_MAX <= G_font_gfx
+        assert  G_text + TEXT_MAX <= G_font_m1
         assert  x_t_f_slot - x_t_f_names == 18 * 8   ; fit_name: x8
         assert  x_t_i_ore - x_t_i_cls == 8 * 11      ; in_panel: x11
         assert  x_t_a_keys - x_t_a_names == 7 * 7    ; ac_name: x7, AI_N ονόματα

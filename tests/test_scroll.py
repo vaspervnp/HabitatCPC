@@ -44,7 +44,12 @@ def main():
         m.poke(sym["CAM_TX"], tx & 0xFF)
         m.poke(sym["CAM_TY"], ty & 0xFF)
         m.poke(sym["HUD_ON"], 0)        # εδώ μετριέται ο ΚΟΣΜΟΣ· το HUD το
-        m.set_pc(sym["START"])           # μετράει το test_hud, χωριστά
+        # μετράει το test_hud, και από το βήμα 83 το βήμα κάμερας των λωρίδων
+        # του (hud_move, ~0,9 frames) και το σβήσιμό τους στο άλμα (hud_inval)
+        # το test_split: εδώ δεν κάνουν τίποτα.
+        m.poke(sym["HUD_MOVE"], 0xC9)
+        m.poke(sym["HUD_INVAL"], 0xC9)
+        m.set_pc(sym["START"])
         n = 0
         while m.peek(sym["DONE_FLAG"]) != 0x5A and n < 400:
             m.run_frames(1)
@@ -103,7 +108,8 @@ def main():
           f"{full_frames*19968/1000:.0f} ms")
     hi = max(cost.values()) / 19968
     lo = min(openc.values()) / 19968
-    print("   (χωρίς το HUD: το ξαναγράψιμό του είναι άλλα 2,6 frames ανά βήμα)")
+    print("   (χωρίς το HUD: από το βήμα 83 οι λωρίδες του ΜΕΤΑΚΙΝΟΥΝΤΑΙ σε κάθε βήμα, "
+          "άλλα ~0,9 frames — το test_split· ως το βήμα 82 ξαναγράφονταν, 2,6)")
     print(f"σκρολάρισμα ανά tile:  ανοιχτό έδαφος {lo:.1f} - "
           f"{max(openc.values())/19968:.1f} frames"
           f"   ·  μέσα στη βάση {min(cost.values())/19968:.1f} - {hi:.1f}")

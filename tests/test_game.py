@@ -24,6 +24,7 @@ sys.path.insert(0, os.path.join(ROOT, "tools"))
 sys.path.insert(0, "/home/vasilhs/cpcemu")
 
 from sprites import load_map, load_bin                                  # noqa: E402
+import hudread                                                          # noqa: E402
 
 RASM = os.path.expanduser("~/rasm/rasm.exe")
 SNA = os.path.join(ROOT, "build", "main.sna")
@@ -69,11 +70,6 @@ SK_COLONIST = 0                          # src/ship.asm
 def main():
     sym, g = build()
     from cpc import CPC, KEY_SPACE, KEY_RIGHT, KEY_LEFT, KEY_UP, KEY_DOWN
-    smap, blob = load_map(), load_bin()
-    f = smap["font_gfx"]
-    font = blob[f.off:f.off + f.size]
-    glyph = {bytes(font[i * 16:(i + 1) * 16]): chr(32 + i) for i in range(96)}
-
     m = CPC()
     m.run_frames(60)
     assert m.quickload(SNA), "quickload απέτυχε"
@@ -83,23 +79,7 @@ def main():
         return m.peek(a) | (m.peek(a + 1) << 8)
 
     def hud(row):
-        off = m.peek(sym["CAM_OFF"]) | (m.peek(sym["CAM_OFF"] + 1) << 8)
-        ram = m.read_ram(0xC000, 0x4000)
-
-        def byte(x, y):
-            return ram[(y & 7) * 0x800 + (((y >> 3) * 80 + x + 2 * off) & 0x7FF)]
-        return "".join(glyph.get(bytes(byte(c * 2 + k, 160 + row * 8 + l)
-                                       for l in range(8) for k in range(2)), "#")
-                       for c in range(40))
-
-    def hudrow_bytes(row):
-        """Η σειρά του HUD ως ωμά bytes — οι μπάρες δεν είναι γλύφοι."""
-        off = m.peek(sym["CAM_OFF"]) | (m.peek(sym["CAM_OFF"] + 1) << 8)
-        ram = m.read_ram(0xC000, 0x4000)
-        return bytes(ram[(y & 7) * 0x800 +
-                         (((y >> 3) * 80 + x + 2 * off) & 0x7FF)]
-                     for y in range(160 + row * 8, 160 + row * 8 + 8)
-                     for x in range(80))
+        return hudread.text(m, sym, row)
 
     # --- 1. η κατάσταση εκκίνησης ----------------------------------------
     stock = [w16(g + i * 2) for i in range(7)]

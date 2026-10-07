@@ -35,7 +35,10 @@ sys.path.insert(0, "/home/vasilhs/cpcemu")
 import test_game as TG                                   # noqa: E402
 import cpc                                               # noqa: E402
 
-PROBE, BUF = 0x3E00, 0x3500             # πάνω από τον κώδικα της τράπεζας 0
+# Πάνω από τον κώδικα της τράπεζας 0· 16 x 80 bytes, ως το PROBE ακριβώς. Ηταν
+# το #3500 ως το βήμα 82, και ο κώδικας το έφτασε στο 83 (#35A0).
+PROBE, BUF = 0x3E00, 0x3900
+assert BUF + 16 * 80 <= PROBE
 CAMS = [0, 2, 48, 876, 1920, 2008, 2046]
 # µs, με το probe: (scr_addr, scr_nextline ίδια σειρά, scr_nextline νέα σειρά)
 CEIL = (63, 21, 32)

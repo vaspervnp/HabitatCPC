@@ -68,11 +68,6 @@ def build():
 def main():
     sym, g = build()
     from cpc import CPC
-    smap, blob = load_map(), load_bin()
-    f = smap["font_gfx"]
-    font = blob[f.off:f.off + f.size]
-    glyph = {bytes(font[i * 16:(i + 1) * 16]): chr(32 + i) for i in range(96)}
-
     m = CPC()
     m.run_frames(300)                    # το BASIC θέλει τον χρόνο του
     m.insert_disc(DSK)
@@ -185,15 +180,9 @@ def main():
           f"§10.1 από τον δίσκο: {stock} πληθυσμός {pop}")
 
     # --- 3. το HUD είναι γραμμένο ----------------------------------------
-    off = w16(sym["CAM_OFF"])
-    ram = m.read_ram(0xC000, 0x4000)
-
-    def byte(x, y):
-        return ram[(y & 7) * 0x800 + (((y >> 3) * 80 + x + 2 * off) & 0x7FF)]
-
-    row2 = "".join(glyph.get(bytes(byte(c * 2 + k, 176 + l)
-                                   for l in range(8) for k in range(2)), "#")
-                   for c in range(40))
+    sys.path.insert(0, HERE)
+    import hudread
+    row2 = hudread.text(m, sym, 2)
     check(row2.startswith("POP  4/"), f"το HUD σχεδιάστηκε: |{row2}|")
 
     # --- 4. ο κόσμος είναι παραγμένος ------------------------------------

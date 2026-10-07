@@ -2,31 +2,77 @@
 
 Σαράντα στήλες, πέντε σειρές, γραμματοσειρά 4x8. Οι ροές είναι μπάρες γιατί
 σημασία έχει το περιθώριο· τα αποθέματα αριθμοί γιατί σημασία έχει η ποσότητα.
+
+ΣΕ MODE 1 ΑΠΟ ΤΟ ΒΗΜΑ 83, στις δύο λωρίδες πάνω και κάτω από το κάδρο: οι
+σειρές 0 και 1 μοιράζονται τη σειρά οθόνης 0, η 2 είναι η σειρά 1, οι 3 και 4
+μοιράζονται τη σειρά 24. Ενα byte ανά γραμμή γλύφου.
+
+Η γραμματοσειρά Mode 1 γράφεται ΕΔΩ από τα pixel του font_gfx, όχι με τον
+κώδικα του tools/pack.py: το test_pack συγκρίνει τα δύο, και το tests/hudread.py
+τη χρησιμοποιεί για να διαβάζει την οθόνη.
 """
 import os, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from sprites import load_map, load_bin
 
-HUD_TOP = 160
 COLS, ROWS = 40, 5
 BAR_CELLS = 6
-PEN_FULL, PEN_EMPTY, PEN_LOW = 9, 1, 8
 CAP = 600
 P_ESS = 2                       # src/const.asm — μόνο η υποστήριξη ζωής
+# Η θέση κάθε λογικής σειράς: (γραμμή οθόνης της γραμμής 0 του γλύφου, στήλη byte)
+ROW_AT = ((0, 0), (0, 40), (8, 0), (192, 0), (192, 40))
+BAND_LINES = list(range(16)) + list(range(176, 200))
 
-# Το byte ενός συμπαγούς pen στο Mode 0: τα bits του αριστερού pixel είναι τα
-# 7,3,5,1 και του δεξιού τα 6,2,4,0.
-def solid(p):
-    return (((p) & 1) * 0xC0 | ((p >> 1) & 1) * 0x0C
-            | ((p >> 2) & 1) * 0x30 | ((p >> 3) & 1) * 0x03)
+
+def m0_pens(b):
+    """Τα δύο pixel ενός byte Mode 0: bits 7,3,5,1 το αριστερό, 6,2,4,0 το δεξί."""
+    left = (b >> 7 & 1) | (b >> 3 & 1) << 1 | (b >> 5 & 1) << 2 | (b >> 1 & 1) << 3
+    right = (b >> 6 & 1) | (b >> 2 & 1) << 1 | (b >> 4 & 1) << 2 | (b & 1) << 3
+    return left, right
+
+
+def m1_pens(b):
+    """Τα τέσσερα pixel ενός byte Mode 1: το pixel i είναι τα bits 7-i και 3-i."""
+    return [(b >> (7 - i) & 1) | (b >> (3 - i) & 1) << 1 for i in range(4)]
+
+
+def m1_byte(pens):
+    return sum((p & 1) << (7 - i) | (p >> 1 & 1) << (3 - i) for i, p in enumerate(pens))
+
+
+def font_m1():
+    """Οι 96 γλύφοι του font_gfx σε Mode 1, 8 bytes ο καθένας: μελάνι -> pen 3."""
+    smap, blob = load_map(), load_bin()
+    f = smap["font_gfx"]
+    font = blob[f.off:f.off + f.size]
+    out = []
+    for i in range(96):
+        g = bytearray()
+        for ln in range(8):
+            px = list(m0_pens(font[i * 16 + 2 * ln])) + list(m0_pens(font[i * 16 + 2 * ln + 1]))
+            g.append(m1_byte([3 if p else 0 for p in px]))
+        out.append(bytes(g))
+    return out
+
+
+# Τα κελιά της μπάρας (κωδικοί #80-#84 του src/hud.asm): στις γραμμές 1-5, όσο
+# το σώμα των κεφαλαίων. Γεμάτο πράσινο (pen 2), λίγο κόκκινο (pen 1), και το
+# άδειο ως περίγραμμα πάνω-κάτω σε pen 3.
+def _cell(top, mid, bot):
+    return bytes([0, top, mid, mid, mid, bot, 0, 0])
+
+
+_P = {p: m1_byte([p] * 4) for p in range(4)}
+CELLS = {"blank": bytes(8), "low": _cell(_P[1], _P[1], _P[1]),
+         "full": _cell(_P[2], _P[2], _P[2]), "white": _cell(_P[3], _P[3], _P[3]),
+         "empty": _cell(_P[3], 0, _P[3])}
+PEN_FULL, PEN_EMPTY, PEN_LOW = "full", "empty", "low"
 
 
 class Hud:
     def __init__(self):
-        self.smap, self.blob = load_map(), load_bin()
-        f = self.smap["font_gfx"]
-        self.font = self.blob[f.off:f.off + f.size]
+        self.font = font_m1()
         self.cells = [[None] * COLS for _ in range(ROWS)]   # (kind, value)
         self.col = self.row = 0
 
@@ -119,21 +165,18 @@ class Hud:
 
     # --- σε γραμμικά bytes -------------------------------------------
     def to_lines(self):
-        """{γραμμή οθόνης: bytes[80]} για τις γραμμές 160..199."""
-        out = {}
+        """{γραμμή οθόνης: bytes[80]} για τις 40 γραμμές των λωρίδων: 0-15 και
+        176-199. Ό,τι δεν είναι σειρά του HUD (το δεξί μισό της T1, η B0 και η
+        B1) είναι μαύρο."""
+        out = {y: bytearray(80) for y in BAND_LINES}
         for r in range(ROWS):
-            for l in range(8):
-                row = bytearray(80)
-                for c in range(COLS):
-                    kind, v = self.cells[r][c]
-                    if kind == "c":
-                        o = (v - 32) * 16 + l * 2
-                        row[c * 2] = self.font[o]
-                        row[c * 2 + 1] = self.font[o + 1]
-                    else:
-                        row[c * 2] = row[c * 2 + 1] = solid(v)
-                out[HUD_TOP + r * 8 + l] = bytes(row)
-        return out
+            y0, x0 = ROW_AT[r]
+            for c in range(COLS):
+                kind, v = self.cells[r][c]
+                g = self.font[v - 32] if kind == "c" else CELLS[v]
+                for ln in range(8):
+                    out[y0 + ln][x0 + c] = g[ln]
+        return {y: bytes(b) for y, b in out.items()}
 
 
 def num_leading(v, n):

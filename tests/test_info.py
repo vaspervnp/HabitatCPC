@@ -38,6 +38,7 @@ sys.path.insert(0, "/home/vasilhs/cpcemu")
 import test_game as TG                                   # noqa: E402
 import cpc                                               # noqa: E402
 from sprites import load_map, load_bin                   # noqa: E402
+import hudread                                           # noqa: E402
 import scene as S                                        # noqa: E402
 
 FAIL = []
@@ -71,10 +72,6 @@ class Game:
         for at, v in patch:
             m.poke(at, v)
         self.tap("1")                       # παύση: ο τροχός δεν αλλάζει τίποτα
-        smap, blob = load_map(), load_bin()
-        f = smap["font_gfx"]
-        font = blob[f.off:f.off + f.size]
-        self.glyph = {bytes(font[i * 16:(i + 1) * 16]): chr(32 + i) for i in range(96)}
         self.b4 = cpc._lib.cpcemu_ram_ptr(m._h, 4)
         self.b6 = cpc._lib.cpcemu_ram_ptr(m._h, 6)
 
@@ -86,15 +83,7 @@ class Game:
             self.m.run_frames(6)
 
     def hud(self, row):
-        m = self.m
-        off = m.peek(self.sym["CAM_OFF"]) | (m.peek(self.sym["CAM_OFF"] + 1) << 8)
-        ram = m.read_ram(0xC000, 0x4000)
-
-        def byte(x, y):
-            return ram[(y & 7) * 0x800 + (((y >> 3) * 80 + x + 2 * off) & 0x7FF)]
-        return "".join(self.glyph.get(bytes(byte(c * 2 + k, 160 + row * 8 + l)
-                                            for l in range(8) for k in range(2)), "#")
-                       for c in range(40))
+        return hudread.text(self.m, self.sym, row)
 
     def world(self, tx, ty):
         return self.b4[(ty + 64) * 128 + tx + 64]

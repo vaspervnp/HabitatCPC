@@ -104,8 +104,13 @@ def main():
         m.run_code(0x3EC0, blob)
         m.run_frames(2)
         plane = bytes(m.read_ram(0x3F00, 256))
-        m.set_pc(sym["MAIN_LOOP"])
-        m.run_frames(2)
+        # Το probe κράτησε τις διακοπές κλειστές τρία frames: πίσω στον βρόχο
+        # μέσα από το is_on, όπως ο ίδιος ο δίσκος (src/isr.asm, βήμα 83) —
+        # αλλιώς οι λωρίδες χρειάζονται ως δύο frames να ξαναβρούν το βήμα, και
+        # η φωτογραφία πέφτει πάνω τους.
+        io, top = sym["IS_ON"], sym["MAIN_LOOP"]
+        m.run_code(0x3EA0, bytes([0xCD, io & 255, io >> 8, 0xC3, top & 255, top >> 8]),
+                   frames=2)
         off = w16(sym["CAM_OFF"])
         ram = m.read_ram(0xC000, 0x4000)
         play = bytes(ram[(y & 7) * 0x800 + (((y >> 3) * 80 + x + 2 * off) & 0x7FF)]
@@ -120,13 +125,14 @@ def main():
         ΧΩΡΙΣ ΤΟ HUD, για δύο λόγους που δεν έχουν σχέση με την παλέτα: μετά
         το φόρτωμα η σειρά 3 γράφει «LOADED SLOT 1», και από το βήμα 18 το HUD
         ξαναγράφεται με δικό του ρολόι — μια φωτογραφία μπορεί να πέσει στη
-        μέση του. Το κάδρο είναι οι πρώτες 160 γραμμές, δηλαδή ό,τι είναι πάνω
-        από τη γραμμή 200 της εικόνας."""
+        μέση του. Από το βήμα 83 το HUD είναι λωρίδες πάνω ΚΑΙ κάτω από το
+        κάδρο, και η εικόνα αρχίζει στη σάρωση 13 (R7 = 33): το κάδρο είναι οι
+        σαρώσεις 29-188, οι γραμμές 16-175 της οθόνης."""
         from PIL import Image
         path = os.path.join(ROOT, "build", f"save_{tag}.png")
         m.screenshot(path)
         im = Image.open(path).convert("RGB")
-        return list(im.crop((0, 0, im.size[0], 200)).getdata())
+        return list(im.crop((0, 13 + 16, im.size[0], 13 + 176)).getdata())
 
     # --- η επιλογή θέσης (§11) --------------------------------------------
     # Από το βήμα 22 το S και το L ΔΕΝ σώζουν κατευθείαν: ανοίγουν επιλογή και
@@ -135,20 +141,10 @@ def main():
     # γι' αυτό ανάβει και σβήνει γύρω από κάθε πάτημα.
     from sprites import load_map, load_bin
     from cpc import KEY_RIGHT, KEY_ESC
-    smap, sblob = load_map(), load_bin()
-    _f = smap["font_gfx"]
-    _font = sblob[_f.off:_f.off + _f.size]
-    GLYPH = {bytes(_font[i * 16:(i + 1) * 16]): chr(32 + i) for i in range(96)}
+    import hudread
 
     def hud_row(row):
-        off = w16(sym["CAM_OFF"])
-        ram = m.read_ram(0xC000, 0x4000)
-
-        def byte(x, y):
-            return ram[(y & 7) * 0x800 + (((y >> 3) * 80 + x + 2 * off) & 0x7FF)]
-        return "".join(GLYPH.get(bytes(byte(c * 2 + k, 160 + row * 8 + l)
-                                       for l in range(8) for k in range(2)), "#")
-                       for c in range(40))
+        return hudread.text(m, sym, row)
 
     def press(key, frames=24):
         # 4 + 24 > 16: ΤΟ ΡΟΛΟΙ ΤΟΥ HUD. Ο πίνακας ξαναγράφεται ανά δεκαέξι

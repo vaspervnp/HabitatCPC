@@ -165,7 +165,9 @@ class Game:
             if self.top <= m.pc < self.top + 13:
                 break
             m.run_us(50)
-        code = []
+        # di πρώτα (βήμα 83): αλλιώς η διακοπή των λωρίδων τρέχει πάνω στο jr $,
+        # και ο έλεγχος του PC την πετυχαίνει μέσα της. Το ei το ξανακάνει ο βρόχος.
+        code = [0xF3]
         for n in names:
             code += [0xCD, self.sym[n] & 0xFF, self.sym[n] >> 8]
         m.run_code(PROBE, bytes(code + [0x18, 0xFE]), frames=frames)
@@ -403,7 +405,7 @@ def twice(G, sym, node):
     φόρτωμα)· εδώ στήνεται επίτηδες, για να μην εξαρτάται από το πού έτυχε να
     περπατήσει ένας άποικος.
     """
-    code = []
+    code = [0xF3]                            # di: βλ. το probe
     for _ in range(2):
         code += [0x3E, 2, 0x06, node, 0x0E, 0,          # DK_ICON, θόλος, 0
                  0xCD, sym["DIRTY_PUSH"] & 0xFF, sym["DIRTY_PUSH"] >> 8]

@@ -101,11 +101,24 @@ def main():
                   f"{tab}[{i}] -> #{got:04X}, περίμενα #{want:04X} ({n})")
 
     # 7. ό,τι δεικτοδοτείται με πολλαπλασιασμό πρέπει να είναι ΣΥΝΕΧΟΜΕΝΟ
-    for grp, stride, count in (("font_gfx", 16, 96), ("connectors", 32, 8),
+    for grp, stride, count in (("font_m1", 8, 96 + 5), ("connectors", 32, 8),
                                ("corr_slot_gfx", 16, 216)):
         r = by_name[grp]
         check(r.size == stride * count,
               f"{grp}: {r.size} B, περίμενα {stride*count}")
+
+    # 7β. Η γραμματοσειρά Mode 1 του HUD (βήμα 83) δεν είναι sprite: τη γράφει
+    #     το pack.py από το font_gfx. Εδώ ξαναβγαίνει από τα PIXEL, με τον
+    #     αναγνώστη των δοκιμών (tests/hudread.py), και τα πέντε κελιά της
+    #     μπάρας από την περιγραφή τους· στοίχιση 8, για το inc e του hc_line.
+    sys.path.insert(0, HERE)
+    import hudread
+    r = by_name["font_m1"]
+    img, base = image_of(r)
+    want = b"".join(hudread.font_m1()) + b"".join(
+        hudread.CELLS[k] for k in ("blank", "low", "full", "white", "empty"))
+    check(img[r.addr - base:r.addr - base + r.size] == want and r.addr % 8 == 0,
+          f"font_m1 στο #{r.addr:04X}: δεν είναι το font_gfx σε Mode 1 και τα κελιά της μπάρας")
 
     # 8. κάθε κλάση εδάφους συνεχόμενη, ώστε tile_ptr[class] + variant*64
     for cls, n in (("ground", 4), ("dust", 4), ("rock", 4), ("mountain", 16),

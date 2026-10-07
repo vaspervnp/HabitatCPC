@@ -165,21 +165,11 @@ def colony():
     def w16(a):
         return m.peek(a) | (m.peek(a + 1) << 8)
 
-    smap, blob = load_map(), load_bin()
-    f = smap["font_gfx"]
-    font = blob[f.off:f.off + f.size]
-    glyph = {bytes(font[i * 16:(i + 1) * 16]): chr(32 + i) for i in range(96)}
+    import hudread
 
     def alert():
         # Η γραμμή συναγερμού: το δεξί μισό της σειράς 2 του HUD.
-        off = m.peek(sym["CAM_OFF"]) | (m.peek(sym["CAM_OFF"] + 1) << 8)
-        ram = m.read_ram(0xC000, 0x4000)
-
-        def byte(x, y):
-            return ram[(y & 7) * 0x800 + (((y >> 3) * 80 + x + 2 * off) & 0x7FF)]
-        return "".join(glyph.get(bytes(byte(c * 2 + k, 176 + l)
-                                       for l in range(8) for k in range(2)), "#")
-                       for c in range(20, 40)).strip()
+        return hudread.text(m, sym, 2)[20:40].strip()
 
     shed = dark = said = 0
     o2_zero, minox, water = 0, 255, []

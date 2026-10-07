@@ -75,6 +75,34 @@ def pack_flat(runs, base, size, label):
 
 # --- η διάταξη ------------------------------------------------------------
 
+# Τα κελιά της μπάρας του HUD (§9.2), ως γλύφοι Mode 1 μετά τον χαρακτήρα 127.
+# Πέντε γραμμές (1-5), όσο το σώμα των κεφαλαίων: η 0, η 6 και η 7 μένουν κενές
+# όπως στα γράμματα. Η άδεια μπάρα είναι περίγραμμα, πάνω και κάτω: δίπλα-δίπλα
+# τα κελιά της κάνουν ένα κούφιο ορθογώνιο.
+def _cell(top, mid, bot):
+    return bytes([0, top, mid, mid, mid, bot, 0, 0])
+
+
+HUD_CELLS = (bytes(8)                      # #80 κενό
+             + _cell(0xF0, 0xF0, 0xF0)     # #81 pen 1 — κόκκινο, λίγο
+             + _cell(0x0F, 0x0F, 0x0F)     # #82 pen 2 — πράσινο, γεμάτο
+             + _cell(0xFF, 0xFF, 0xFF)     # #83 pen 3 — λευκό
+             + _cell(0xFF, 0x00, 0xFF))    # #84 άδειο
+
+
+def mode1_font(m0):
+    """Η γραμματοσειρά 4x8 του Mode 0 (2 bytes ανά γραμμή) σε Mode 1 (1 byte).
+
+    Στο Mode 0 το αριστερό pixel ενός byte είναι τα bits 7,5,3,1 και το δεξί
+    τα 6,4,2,0· στο Mode 1 το pixel i (0-3) είναι τα bits 7-i και 3-i, και
+    pen 3 σημαίνει και τα δύο. Μελάνι = οποιοδήποτε pen εκτός από το 0."""
+    out = bytearray()
+    for k in range(0, len(m0), 2):
+        px = [m0[k] & 0xAA, m0[k] & 0x55, m0[k + 1] & 0xAA, m0[k + 1] & 0x55]
+        out.append(sum(0x88 >> i for i in range(4) if px[i]))
+    return bytes(out)
+
+
 def build_runs(smap, blob):
     def spr(name):
         s = smap.get(name)
@@ -282,7 +310,22 @@ def build_runs(smap, blob):
     # έχει ΕΝΑΝ αναγνώστη (το hc_draw του src/hud.asm), που σελιδοποιεί την 7
     # γύρω από τα δεκαέξι bytes του γλύφου — και τα 1.536 bytes που αφήνει στην
     # τράπεζα 2 γίνονται χώρος κώδικα, αφού ό,τι ακολουθεί την αρένα κατεβαίνει.
-    bank7.append(spr("font_gfx"))                                    # (ch-32)*16
+    #
+    # ΣΕ MODE 1 ΑΠΟ ΤΟ ΒΗΜΑ 83 (§9.2). Το HUD ζει πια στις λωρίδες Mode 1 πάνω
+    # και κάτω από το κάδρο, και ο γλύφος είναι ένα byte ανά γραμμή αντί για
+    # δύο: 768 bytes. Βγαίνει ΕΔΩ από το font_gfx των assets (δεν αγγίζουμε τα
+    # assets): ό,τι pixel έχει μελάνι γίνεται pen 3, τα άλλα pen 0. Στοίχιση 8,
+    # ώστε οι οκτώ γραμμές του γλύφου να μη διασχίζουν σελίδα (inc e).
+    #
+    # ΚΑΙ ΤΑ ΚΕΛΙΑ ΤΗΣ ΜΠΑΡΑΣ είναι γλύφοι, οι κωδικοί #80-#84 (HUD_CELLS): κενό,
+    # pen 1, 2, 3, και η άδεια μπάρα. Πέφτουν ακριβώς μετά τον 127, οπότε ο
+    # hud_char βρίσκει κάθε κωδικό με τον ίδιο πολλαπλασιασμό.
+    s = smap.get("font_gfx")
+    if s is None:
+        raise Fail("λείπει sprite: font_gfx")
+    font = mode1_font(blob[s.off:s.off + s.size]) + HUD_CELLS
+    bank7.append(Run("font_m1", len(font), font, align=8,
+                     note="παράγεται από το font_gfx"))       # (ch-32)*8
 
     return arena, bank1, bank6, bank7, ptr
 

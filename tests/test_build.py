@@ -20,7 +20,8 @@ sys.path.insert(0, os.path.join(ROOT, "tools"))
 sys.path.insert(0, HERE)
 sys.path.insert(0, "/home/vasilhs/cpcemu")
 
-from sprites import load_map, load_bin                                  # noqa: E402
+from sprites import load_map, load_bin
+import hudread                                  # noqa: E402
 
 RASM = os.path.expanduser("~/rasm/rasm.exe")
 SNA = os.path.join(ROOT, "build", "uitest.sna")
@@ -170,11 +171,6 @@ def rooms_check(sym, patch=(), n=24):
 def main():
     sym, g = build()
     from cpc import CPC, KEY_SPACE, KEY_RIGHT, KEY_LEFT, KEY_UP, KEY_DOWN, KEY_ESC
-    smap, blob = load_map(), load_bin()
-    f = smap["font_gfx"]
-    font = blob[f.off:f.off + f.size]
-    glyph = {bytes(font[i * 16:(i + 1) * 16]): chr(32 + i) for i in range(96)}
-
     def boot():
         m = CPC()
         m.run_frames(60)
@@ -198,19 +194,7 @@ def main():
             m.run_frames(3)
 
     def hud(m, row):
-        off = m.peek(sym["CAM_OFF"]) | (m.peek(sym["CAM_OFF"] + 1) << 8)
-        ram = m.read_ram(0xC000, 0x4000)
-
-        def byte(x, y):
-            hi = (y & 7) * 0x800
-            base = (y >> 3) * 80
-            return ram[hi + ((base + x + 2 * off) & 0x7FF)]
-        out = ""
-        for c in range(40):
-            cell = bytes(byte(c * 2 + k, 160 + row * 8 + l)
-                         for l in range(8) for k in range(2))
-            out += glyph.get(cell, "#")
-        return out
+        return hudread.text(m, sym, row)
 
     def play(m):
         """Η περιοχή παιχνιδιού, ως γραμμικά bytes."""
@@ -280,24 +264,14 @@ def main():
               f"η κάμερα ακολούθησε {cam0} -> {cam1}")
 
     # --- 1β. οι σειρές 3-4 ΜΕΤΑ το σκρολάρισμα ---------------------------
-    # Σημαδεύουμε ΠΡΩΤΑ τη μνήμη των σειρών 3-4 και μετά σκρολάρουμε ένα tile:
-    # ό,τι δεν ξαναγράψει ο πίνακας μένει #AA και βγαίνει «#» στην ανάγνωση.
-    # Χωρίς το σημάδι η δοκιμή δεν έχει δόντια — στο uitest η μνήμη εκεί είναι
-    # ήδη μαύρη, οπότε μια παράλειψη φαίνεται σωστή.
-    def mark_hud(mm, rows=(3, 4), val=0xAA):
-        off = mm.peek(sym["CAM_OFF"]) | (mm.peek(sym["CAM_OFF"] + 1) << 8)
-        for row in rows:
-            for y in range(160 + row * 8, 168 + row * 8):
-                hi = (y & 7) * 0x800
-                base = (y >> 3) * 80
-                # 88 και όχι 80: μετά το βήμα το παράθυρο του HUD μετακινείται
-                # τέσσερα bytes μέσα στο δαχτυλίδι, και τα θέλουμε σημαδεμένα.
-                for x in range(88):
-                    mm.poke(0xC000 + hi + ((base + x + 2 * off) & 0x7FF), val)
-
+    # Από το βήμα 83 ένα βήμα κάμερας ΜΕΤΑΚΙΝΕΙ τις λωρίδες του HUD μαζί με το
+    # δαχτυλίδι (hud_move) και ο πίνακας δεν ξαναγράφεται. Αν η μετακίνηση
+    # λείπει, οι σειρές διαβάζονται τέσσερα bytes μετατοπισμένες — τέσσερις
+    # στήλες — και η σύγκριση των σαράντα στηλών το πιάνει. (Ως το βήμα 82
+    # σημαδεύαμε εδώ τη μνήμη, για να φανεί ότι ο πίνακας ξαναγράφτηκε.)
+    #
     # και το βήμα πρέπει να είναι ΒΗΜΑ ΚΑΜΕΡΑΣ: αν ο κέρσορας κουνηθεί μέσα στο
-    # κάδρο, ο πίνακας σωστά δεν ξαναγράφεται και η δοκιμή θα έλεγε ψέματα.
-    mark_hud(m)
+    # κάδρο, τίποτα δεν μετακινείται και η δοκιμή θα έλεγε ψέματα.
     cam_a = sb(m.peek(sym["CAM_TX"]))
     m.key_down(KEY_RIGHT)
     for _ in range(60):
@@ -310,12 +284,10 @@ def main():
     assert cam_b != cam_a, "η κάμερα δεν κουνήθηκε — η δοκιμή δεν δοκιμάζει"
 
     # Το HUD ζει μέσα στο ίδιο δαχτυλίδι με το κάδρο: ένα βήμα κάμερας δεν το
-    # κουνάει στην οθόνη αλλά αλλάζει τα bytes του, οπότε οι σειρές 3-4
-    # δείχνουν έδαφος ώσπου να τις ξαναγράψει ο πίνακας. Απο το βήμα 19 ο
-    # πίνακας τις κρατά μόνος του και ξαναγράφει ΜΟΝΟ όταν αλλάζει η υπογραφή
-    # του — και η υπογραφή δεν ήξερε από κάμερα: δεκαεπτά tiles αργότερα ο
-    # πίνακας ήταν ΕΔΑΦΟΣ και δεν επρόκειτο να ξαναγραφεί ποτέ. Φάνηκε σε
-    # screenshot, όχι σε δοκιμή· αυτή εδώ είναι η δοκιμή.
+    # κουνάει στην οθόνη αλλά αλλάζει τη θέση των bytes του. Στο βήμα 19 ο
+    # πίνακας δεν το ήξερε: δεκαεπτά tiles αργότερα ήταν ΕΔΑΦΟΣ και δεν
+    # επρόκειτο να ξαναγραφεί ποτέ. Φάνηκε σε screenshot, όχι σε δοκιμή· αυτή
+    # εδώ είναι η δοκιμή.
     #
     # Η σύγκριση είναι με ΟΛΟΚΛΗΡΕΣ τις σαράντα στήλες, γιατί το ίδιο
     # screenshot έδειξε και το δεύτερο: το uip_row4 καθάριζε 40-24 στήλες για

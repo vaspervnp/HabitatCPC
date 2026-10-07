@@ -3,15 +3,20 @@
 
 Τρεις ισχυρισμοί, τρεις έλεγχοι:
 
-  1. ΤΟ ΣΥΝΟΡΟ. Το πέρασμα αντικειμένων δεν γράφει ποτέ κάτω από τη γραμμή 160.
-     Γεμίζουμε τις γραμμές 160-199 με σημάδι, σχεδιάζουμε ΧΩΡΙΣ HUD, και το
-     σημάδι πρέπει να είναι ακέραιο. Χωρίς αυτό, ένας θόλος στο κάτω χείλος
-     γράφει πάνω στους αριθμούς και κανείς δεν το προσέχει μέχρι να παίξει.
+  1. ΤΟ ΣΥΝΟΡΟ. Το πέρασμα αντικειμένων δεν γράφει ποτέ έξω από το κάδρο. Από
+     το βήμα 83 το HUD είναι ΔΥΟ λωρίδες Mode 1 (src/hud.asm): οι 160 bytes
+     πριν από το cam_p και οι 240 μετά το cam_p+1600, σε κάθε μία από τις οκτώ
+     γραμμές. Γεμίζουμε και τις δύο με σημάδι, σχεδιάζουμε ΧΩΡΙΣ HUD, και το
+     σημάδι πρέπει να είναι ακέραιο. Χωρίς αυτό, ένας θόλος στο χείλος γράφει
+     πάνω στους αριθμούς και κανείς δεν το προσέχει μέχρι να παίξει.
 
-  2. ΤΟ ΠΕΡΙΕΧΟΜΕΝΟ, byte προς byte με αναφορά γραμμένη από τη διάταξη του §9.2.
+  2. ΤΟ ΠΕΡΙΕΧΟΜΕΝΟ, byte προς byte με αναφορά γραμμένη από τη διάταξη του §9.2
+     (tools/hudref.py): οι 40 γραμμές των λωρίδων, και ό,τι δεν είναι σειρά του
+     HUD (το δεξί μισό της πάνω δεύτερης σειράς, οι δύο πρώτες της κάτω) μαύρο.
 
-  3. ΤΟ ΚΟΣΤΟΣ. Το §8.1 εκτιμούσε 0,4 frames «όταν υπάρξει ο renderer του HUD».
-     Υπάρχει τώρα, και το HUD ξαναγράφεται μετά από ΚΑΘΕ βήμα σκρολαρίσματος.
+  3. ΤΟ ΚΟΣΤΟΣ. Κρύο: μετά από ΑΛΜΑ κάμερας (σπίτι, φόρτωμα), όπου οι λωρίδες
+     σβήνονται και ξαναγράφονται· ένα ΒΗΜΑ κάμερας δεν ξαναγράφει πια τίποτα,
+     τις μετακινεί (το μετρά το test_split). Ζεστό: κάθε τικ HUD.
 """
 import os, sys
 
@@ -22,6 +27,7 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, "/home/vasilhs/cpcemu")
 
 import hudref                                                           # noqa: E402
+import hudread                                                          # noqa: E402
 import scene as S                                                       # noqa: E402
 from test_object import build                                           # noqa: E402
 
@@ -114,29 +120,31 @@ def main():
 
     # --- 1. το σύνορο ---------------------------------------------------
     m = load(sym, g, STATE, hud=False)
-    off = 0
-    # σημάδεψε τις γραμμές 160-199 ΠΡΙΝ τη σχεδίαση, στις διευθύνσεις που θα
-    # έχουν με το offset της τελικής κάμερας
+    # σημάδεψε τις λωρίδες ΠΡΙΝ τη σχεδίαση, στις διευθύνσεις που θα έχουν με
+    # το offset της τελικής κάμερας
     m.poke(sym["REP_N"], 1)
     run(m, sym, "START")
-    off = m.peek(sym["CAM_OFF"]) | (m.peek(sym["CAM_OFF"] + 1) << 8)
+    cp = hudread.cam_p(m, sym)
     m2 = load(sym, g, STATE, hud=False)
-    for y in range(160, 200):
-        hi = (y & 7) * 0x800
-        row = (y >> 3) * 80
-        for x in range(80):
-            m2.poke(0xC000 + hi + ((row + x + 2 * off) & 0x7FF), MARK)
+    addrs = hudread.band_addrs(cp)
+    for a in addrs:
+        m2.poke(a, MARK)
     m2.poke(sym["REP_N"], 1)
     run(m2, sym, "START")
-    ram = m2.read_ram(0xC000, 0x4000)
-    dirty = [(x, y) for y in range(160, 200)
-             for x, b in enumerate(screen_line(ram, y, off)) if b != MARK]
-    if dirty:
-        print(f"ΑΠΟΤΥΧΙΑ σύνορο: το κάδρο έγραψε {len(dirty)} bytes μέσα στο HUD, "
-              f"πρώτο {dirty[0]}")
+    # Το view_draw της πρώτης σχεδίασης ΣΒΗΝΕΙ τις λωρίδες όταν πηδά η κάμερα
+    # (hud_inval): το σημάδι μπαίνει ξανά, και η σχεδίαση γίνεται στην ίδια θέση.
+    for a in addrs:
+        m2.poke(a, MARK)
+    m2.poke(sym["REP_N"], 1)
+    run(m2, sym, "START")
+    dirty = [a for a in addrs if m2.peek(a) != MARK]
+    if dirty or hudread.cam_p(m2, sym) != cp:
+        print(f"ΑΠΟΤΥΧΙΑ σύνορο: το κάδρο έγραψε {len(dirty)} bytes μέσα στις λωρίδες, "
+              f"πρώτο #{dirty[0] if dirty else 0:04X}")
         fails += 1
     else:
-        print("OK σύνορο: το πέρασμα αντικειμένων σταματά στη γραμμή 160")
+        print(f"OK σύνορο: το πέρασμα αντικειμένων δεν αγγίζει κανένα από τα {len(addrs)} "
+              f"bytes των λωρίδων")
 
     # --- 2. το περιεχόμενο ----------------------------------------------
     for name, st in (("κανονική", STATE), ("μηδενικά + συναγερμός", STATE2),
@@ -145,20 +153,17 @@ def main():
         m = load(sym, g, st)
         m.poke(sym["REP_N"], 1)
         run(m, sym, "START")
-        off = m.peek(sym["CAM_OFF"]) | (m.peek(sym["CAM_OFF"] + 1) << 8)
-        ram = m.read_ram(0xC000, 0x4000)
+        got = hudread.band_lines(m.read_ram(0xC000, 0x4000), hudread.cam_p(m, sym))
         want = hudref.Hud().draw(st).to_lines()
         bad = []
         for y, row in want.items():
-            got = screen_line(ram, y, off)
-            bad += [(x, y) for x in range(80) if got[x] != row[x]]
+            bad += [(x, y) for x in range(80) if got[y][x] != row[x]]
         if bad:
             fails += 1
-            cols = sorted({x // 2 for x, _ in bad})
             print(f"ΑΠΟΤΥΧΙΑ περιεχόμενο ({name}): {len(bad)} bytes, "
-                  f"στήλες {cols[:8]}")
+                  f"π.χ. (στήλη, γραμμή) {bad[:6]}")
         else:
-            print(f"OK περιεχόμενο ({name}): 40 στήλες x 5 σειρές ταυτόσημες")
+            print(f"OK περιεχόμενο ({name}): οι 40 γραμμές των δύο λωρίδων ταυτόσημες")
 
     # --- 3. το κόστος ----------------------------------------------------
     costs = {}
@@ -171,7 +176,7 @@ def main():
         n = run(m, sym, "DO_HUD")
         costs[cold] = n * 19968 / REPS
     us = costs[1]
-    print(f"\nκόστος HUD, κρύο (μετά από βήμα κάμερας): {costs[1]:.0f} us = "
+    print(f"\nκόστος HUD, κρύο (μετά από άλμα κάμερας): {costs[1]:.0f} us = "
           f"{costs[1]/19968:.2f} frames")
     print(f"           ζεστό (κάθε τικ, τίποτα δεν άλλαξε): {costs[0]:.0f} us = "
           f"{costs[0]/19968:.2f} frames")

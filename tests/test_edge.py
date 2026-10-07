@@ -75,7 +75,9 @@ class Game:
             if top <= m.pc < top + 13:
                 break
             m.run_us(50)
-        code = []
+        # di πρώτα (βήμα 83): αλλιώς η διακοπή των λωρίδων τρέχει πάνω στο jr $,
+        # και ο έλεγχος του PC την πετυχαίνει μέσα της. Το ei το ξανακάνει ο βρόχος.
+        code = [0xF3]
         for n in names:
             code += [0xCD, self.sym[n] & 0xFF, self.sym[n] >> 8]
         m.run_code(PROBE, bytes(code + [0x18, 0xFE]), frames=100)

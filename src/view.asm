@@ -52,15 +52,20 @@ view_cam:
         ld      (cam_off),hl
         add     hl,hl                   ; σε bytes
         ld      (cam_p),hl
-        ; Το δαχτυλίδι γύρισε: τα bytes του HUD δεν είναι πια εκεί που τα
-        ; άφησε η κρυφή μνήμη του (§9.2), κι ας μην κουνήθηκε στην οθόνη.
-        call    hud_inval
         ; --- R12 / R13: επιλογή στο #BC, τιμή στο #BD — το κάτω byte της
         ; θύρας ο CRTC δεν το κοιτά, οπότε η τιμή βγαίνει με out (c),r ---
+        ;
+        ; Η ΟΘΟΝΗ ΑΡΧΙΖΕΙ 80 ΛΕΞΕΙΣ ΠΙΣΩ (βήμα 83): οι δύο πρώτες σειρές της
+        ; είναι η πάνω λωρίδα του HUD (src/hud.asm), και το κάδρο αρχίζει στη
+        ; γραμμή 16. Το cam_p μένει η αρχή του ΚΑΔΡΟΥ — όλοι οι υπολογισμοί
+        ; θέσης του κόσμου μένουν ίδιοι.
         ld      hl,(cam_off)
+        ld      de,-HUD_TOPB / 2
+        add     hl,de
         ld      bc,CRTC_SEL + 12
         out     (c),c
         ld      a,h
+        and     3
         or      PLAY_PAGE*16
         inc     b                       ; CRTC_VAL
         out     (c),a
@@ -110,7 +115,13 @@ view_scroll:
         ldi
         ldi                             ; td_r0, td_nr
         call    view_cliprect
+        ld      hl,(cam_p)
+        push    hl
         call    view_cam
+        pop     de
+        ; Οι λωρίδες του HUD ακολουθούν το δαχτυλίδι ΠΡΙΝ από τη λωρίδα του
+        ; κόσμου: στον νότο το κάτω κομμάτι της πατά εκεί που ήταν η B0.
+        call    hud_move
         call    vr_paint
         jr      vr_objs
 
@@ -157,7 +168,18 @@ vs_tab:
 ; ---------------------------------------------------------------------------
 view_draw:
         call    ob_touch
+        ld      hl,(cam_p)
+        push    hl
         call    view_cam
+        pop     de
+        ; Η ΚΑΜΕΡΑ ΠΗΔΗΞΕ (σπίτι, φόρτωμα): εκεί που κάθονται τώρα οι λωρίδες
+        ; του HUD είναι έδαφος. Σβήνονται, και το ui_hudall που ακολουθεί τις
+        ; ξαναγράφει. Χωρίς άλμα (μια πλήρης σχεδίαση στην ίδια θέση, ml_kept)
+        ; το HUD μένει όπως είναι.
+        ld      hl,(cam_p)
+        or      a
+        sbc     hl,de
+        call    nz,hud_inval
         ld      bc,GA_PORT + PAGE_B4
         out     (c),c
         call    tile_draw_all
