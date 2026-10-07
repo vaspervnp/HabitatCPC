@@ -1081,9 +1081,22 @@ crm_done:
         out     (c),c
         call    cr_stamp
         call    cr_pay
-        call    cr_link
+        ; ΟΧΙ ΑΚΜΗ ΕΔΩ (βήμα 87). Στην τοποθέτηση (al_commit) η μία άκρη είναι
+        ; πάντα το νέο εργοτάξιο, χωρίς αέρα: η ακμή γίνεται όταν τελειώσει
+        ; (lk_done, src/door.asm). Μόνο το LINK ενώνει δύο θόλους που ίσως
+        ; είναι ήδη έτοιμοι, και ρωτά — cr_commit_ln, πιο κάτω.
         ld      a,OB_IX_FIG + OB_IX_CORR    ; οι πόρτες και οι διάδρομοι
         call    ob_touch_a
+        xor     a
+        ret
+
+; cr_commit_ln — το cr_commit του LINK (src/ui.asm): και αν οι δύο θόλοι είναι
+; ήδη έτοιμοι, ο διάδρομος γίνεται ακμή αμέσως. A = 0 αν μπήκε.
+cr_commit_ln:
+        call    cr_commit
+        or      a
+        ret     nz
+        call    cr_lnk
         xor     a
         ret
 
@@ -1118,6 +1131,22 @@ cr_pay:
         ld      (EC_STOCK + S_BIOPL*2),hl
         ret
 
+; cr_lnk — η ακμή, ΜΟΝΟ αν και οι δύο άκρες είναι έτοιμες (βήμα 87). Ενας
+; διάδρομος προς εργοτάξιο δεν έχει αέρα στη μία του άκρη· γίνεται ακμή όταν
+; τελειώσει το κτίσμα (lk_done, src/door.asm). Ως το cr_commit κόστιζε 133 us
+; σε κάθε διάδρομο κάθε τοποθέτησης, για μια ερώτηση με γνωστή απάντηση.
+cr_lnk:
+        ld      bc,GA_PORT + PAGE_B6
+        out     (c),c
+        ld      a,(cr_from)
+        call    gr_live
+        jr      nz,crl_no
+        ld      a,(cr_to)
+        call    gr_live
+crl_no:
+        ld      bc,GA_PORT + PAGE_B1
+        out     (c),c
+        ret     nz
 ; ---------------------------------------------------------------------------
 ; cr_link — η ακμή μπαίνει στον γράφο κόμβων και ξαναχτίζεται η δρομολόγηση.
 ; Ο γράφος ζει στην τράπεζα 2, που είναι πάντα ορατή (§4.3).
@@ -1127,38 +1156,7 @@ cr_link:
         ld      b,a
         ld      a,(cr_to)
         ld      c,a
-; cr_link_bc — η ακμή B <-> C, και οι δύο κατευθύνσεις (και το newgame.asm).
-cr_link_bc:
-        call    cr_edge                 ; κρατά τα BC
-        ld      a,b
-        ld      b,c
-        ld      c,a
-        call    cr_edge
-        ; Οχι rt_begin: αυτό μόνο μηδενίζει τον μετρητή πηγών. Το rt_dirty
-        ; είναι που κάνει τον τροχό να ΤΡΕΞΕΙ την ανοικοδόμηση.
-        jp      rt_mark
-
-; cr_edge — προσθέτει τον C στους γείτονες του B, αν χωράει. Κρατά τα BC.
-cr_edge:
-        ld      h,NODEPG
-        ld      l,b
-        ld      a,(hl)
-        cp      MAX_DEGREE
-        ret     nc
-        inc     (hl)
-        ld      l,b
-        ld      h,0
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl
-        add     a,l                     ; ο βαθμός < 8: χωρά στα τρία bits
-        ld      l,a
-        ld      de,G_node_adj
-        add     hl,de
-        ld      (hl),c
-        ret
-
-        assert  MAX_DEGREE <= 8
+        jp      cr_link_bc              ; src/edges.asm (βήμα 87)
 
 cr_bad:     db 0
 cr_metal:   dw 0

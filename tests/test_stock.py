@@ -39,7 +39,7 @@ def check(sym, g, patch=(), timing=True):
     """Η πρώτη διαφορά από τον κανόνα, ή None."""
     m = cpc.CPC()
     m.run_frames(60)
-    assert m.quickload(TG.SNA, start=False), "quickload απέτυχε"
+    assert m.quickload(TG.COLONY, start=False), "quickload απέτυχε"
     for at, v in patch:
         m.poke(at, v)
     stock, prodm = g, g + 68                             # EC_STOCK, EC_PRODM (src/const.asm)
@@ -114,7 +114,7 @@ def main():
     # --- αρνητικά ---
     m = cpc.CPC()
     m.run_frames(60)
-    assert m.quickload(TG.SNA, start=False)
+    assert m.quickload(TG.COLONY, start=False)
     mk, ad, pt = sym["EC_MAKE"], sym["EC_ADD_STOCK"], sym["EC_STOCK_PTR"]
     i80 = m.read_ram(mk, 24).find(bytes([0x3E, 0x80]))
     icap = m.read_ram(ad, 24).find(bytes([0x01, EC_CAP & 255, EC_CAP >> 8]))

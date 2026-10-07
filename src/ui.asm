@@ -656,7 +656,7 @@ uil_second:
         call    cr_afford
         jr      nz,uip_deny
         call    ui_hide
-        call    cr_commit
+        call    cr_commit_ln            ; και η ακμή, αν είναι έτοιμοι (βήμα 87)
         or      a
         jr      nz,uip_nospace
         ld      a,255

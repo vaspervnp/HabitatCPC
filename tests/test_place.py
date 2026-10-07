@@ -84,7 +84,7 @@ class Game:
         self.sym = sym
         m = self.m = cpc.CPC()
         m.run_frames(60)
-        assert m.quickload(TG.SNA, start=False), "quickload απέτυχε"
+        assert m.quickload(TG.COLONY, start=False), "quickload απέτυχε"
         m.run_frames(150)                                # game_new
         if stubs:
             patch = list(patch) + redraw_stubs(sym)
@@ -503,7 +503,7 @@ def main():
     # --- αρνητικά ---
     m = cpc.CPC()
     m.run_frames(60)
-    assert m.quickload(TG.SNA, start=False)
+    assert m.quickload(TG.COLONY, start=False)
 
     def find(label, pat, span=64):
         i = m.read_ram(sym[label], span).find(bytes(pat))

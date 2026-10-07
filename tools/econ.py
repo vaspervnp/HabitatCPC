@@ -334,14 +334,16 @@ def production_slice(e, count=PROD_DOMES, plant_class=None):
             e.acc_o2 = 0
 
 
-def flow_balance(e, alive):
-    """Θέση 12: παραγωγή απέναντι σε κατανάλωση, και η μπαταρία."""
+def flow_balance(e, alive, inside):
+    """Θέση 12: παραγωγή απέναντι σε κατανάλωση, και η μπαταρία. `inside` =
+    οι ζωντανοί με F_INDOORS: μόνο αυτοί αναπνέουν τον αέρα της αποικίας
+    (βήμα 87)· οι άλλοι είναι στη στολή."""
     e.flow_div -= 1
     if e.flow_div == 0:
         e.flow_div = FLOW_DIV
         flow_cycle(e)
     # Η μέτρηση ζωντανών είναι η συνθήκη ήττας (§10.3): κάθε περιστροφή.
-    e.o2_use = alive * O2_PER_COLONIST
+    e.o2_use = inside * O2_PER_COLONIST
     e.o2_ok = 1 if e.o2_prod >= e.o2_use else 0
     e.alive = alive
     if alive == 0:
@@ -581,11 +583,23 @@ def _impact(e):
         rec[base + D_INTEG] = 0             # εργοτάξιο: χάνει την πρόοδο
     elif n < MAX_DOME:
         break_one(e, n + 64 * s)            # μία μηχανή σταματά
+    elif rec[base + ST_KIND] == K_SHIP:
+        return                              # το σκάφος δεν είναι κτίριο (βήμα 87)
     else:
         rec[base + ST_STATE] = DS_BUILDING  # ξανά εργοτάξιο
         rec[base + ST_INTEG] = 0
         e.flow_div = 1
         post_build(e, n)
+
+
+def indoor_node(e, n):
+    """Το en_in του src/entity.asm (βήμα 87): μέρος με αέρα είναι ένας έτοιμος
+    θόλος ή ένα έτοιμο airlock. Το εργοτάξιο, η δομή και το σκάφος είναι έξω."""
+    if n < MAX_DOME:
+        return e.dome[n * DOME_REC + D_STATE] == DS_ACTIVE
+    b = (n - MAX_DOME) * STRUCT_REC
+    return (e.struct[b + ST_KIND] == K_AIRLOCK
+            and e.struct[b + ST_STATE] == DS_ACTIVE)
 
 
 def post_build(e, node):
@@ -833,6 +847,18 @@ def jobs_tick(e, a, F_ALIVE, F_WORKING):
             if v != 255:
                 continue
             rec[rb + D_STATE] = DS_ACTIVE
+            # Το lk_done του src/door.asm (βήμα 87). Ενας θόλος με σύνδεση
+            # εδάφους σφραγίζεται: φεύγει και ο χτίστης βγαίνει — αυτό θέλει
+            # τον γράφο, και το ελέγχει το tests/test_outside.py στο ίδιο το
+            # παιχνίδι. Μια δομή: ο χτίστης μένει, μέσα αν είναι airlock.
+            if node < MAX_DOME:
+                # Η αναφορά δεν έχει γράφο εδώ: οι σκηνές της είναι θόλοι με
+                # διαδρόμους ως ακμές, που το lk_done αφήνει όπως είναι.
+                pass
+            elif indoor_node(e, node):
+                a.flags[i] |= 2                 # F_INDOORS
+            else:
+                a.flags[i] &= ~2 & 0xFF
             e.flow_div = 1
             a.task[i] = NO_TASK
             jb[b + J_KIND] = NO_JOB

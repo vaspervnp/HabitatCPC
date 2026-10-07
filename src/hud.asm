@@ -63,7 +63,7 @@ hud_goc:
 hg_row: add     a,40
 hg_t:   djnz    hg_row                  ; A = σειρά*40 + στήλη
         ld      l,a
-        ld      h,G_hud_shadow / 256
+        ld      h,G_hud_shadow >> 8
 hg_sp:  ld      (hud_sp),hl
         pop     af
         ; p = cam_p + hg_off[σειρά] + στήλη, mod 2048, στη γραμμή 0

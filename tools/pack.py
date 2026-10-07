@@ -51,9 +51,10 @@ class Fail(SystemExit):
 class Run:
     """Ένα κομμάτι που πρέπει να μείνει ΕΝΙΑΙΟ."""
 
-    def __init__(self, name, size, data=None, align=1, note=""):
+    def __init__(self, name, size, data=None, align=1, note="", page=0):
         self.name, self.size, self.data = name, size, data
         self.align, self.note = align, note
+        self.page = page        # τόσα bytes από την αρχή να μη περνούν σελίδα
         self.addr = None
         self.bin = None
         self.members = []       # [(όνομα sprite, μετατόπιση μέσα στο run)]
@@ -72,6 +73,8 @@ def pack_flat(runs, base, size, label):
     for r in runs:
         if r.align > 1:
             a = (a + r.align - 1) & ~(r.align - 1)
+        if r.page and (a & 255) + r.page > 256:
+            a = (a + 255) & ~255
         r.addr = a
         a += r.size
     used = a - base
@@ -164,12 +167,14 @@ def build_runs(smap, blob):
     # bytes ΣΥΝΕΧΟΜΕΝΑ — δεν χωράνε σε αρένα 1.648. Με πίνακα δεικτών κάθε
     # εικονίδιο μπαίνει όπου βρεθεί χώρος, και η αναζήτηση είναι ΚΑΙ πιο
     # γρήγορη: το *200 και το *72 δεν είναι ολισθήσεις.
-    # Τα m και l πάνε στην ΤΡΑΠΕΖΑ 1, πάνω από τον πίνακα DIST· τα s μένουν
-    # στη 2. Οι πίνακες δεικτών μένουν και οι τρεις στη 2 — διαβάζονται όσο το
-    # παράθυρο έχει την 6 μέσα, και η 2 φαίνεται πάντα.
+    # Τα m και l πάνε στην ΤΡΑΠΕΖΑ 1, πάνω από τον πίνακα DIST· τα s στην
+    # ΤΡΑΠΕΖΑ 5 από το βήμα 87, πάνω από τις μηχανές — 864 bytes κώδικα για την
+    # τράπεζα 2, όπως οι μηχανές στο 85. Το ob_icon (src/object.asm) διαλέγει
+    # τράπεζα κατά μέγεθος. Οι πίνακες δεικτών μένουν και οι τρεις στη 2 —
+    # διαβάζονται όσο το παράθυρο έχει την 6 μέσα, και η 2 φαίνεται πάντα.
     for size in ("s", "m", "l"):
         names = [f"icon_{size}_{r}" for r in ROOMS]
-        dest = arena if size == "s" else bank1
+        dest = bank5 if size == "s" else bank1
         for n in names:
             dest.append(spr(n))
         ptr[f"icon_{size}_ptr"] = names
@@ -192,11 +197,21 @@ def build_runs(smap, blob):
     # --- πίνακες που έρχονται έτοιμοι από τα assets -------------------------
     # Το tile_base ΔΕΝ περνάει: κρατά μετατοπίσεις από την αρχή ενός ενιαίου
     # μπλοκ που πλέον δεν υπάρχει. Το ξαναφτιάχνουμε ως tile_ptr.
+    # ΟΣΟΙ ΔΙΑΒΑΖΟΝΤΑΙ ΜΕ ΤΟ ΚΑΤΩ BYTE ΔΕΝ ΠΕΡΝΟΥΝ ΣΕΛΙΔΑ (τα asserts στα
+    # src/rooms.asm, needs.asm, econ.asm, jobs.asm, tiles.asm, entity.asm).
+    # Ως το βήμα 86 έπεφταν σωστά από τύχη· στο 87 τα εικονίδια s έφυγαν από
+    # μπροστά τους και το machine_rules έπεσε πάνω στο #9200. Το page= το λέει
+    # ρητά: ο packer πηδά στην επόμενη σελίδα μόνο όταν χρειάζεται.
+    flat = {"corr_fill", "plant_class", "machine_count", "machine_rules",
+            "room_machines", "tile_variants"}
     for n in ("corr_slots", "corr_fill", "plant_class", "machine_count",
               "machine_slots", "machine_rules", "room_machines",
               "interior_ofs", "tile_variants",
               "planet_pens", "conn_points", "struct_dims", "palette_fw"):
-        arena.append(spr(n))
+        r = spr(n)
+        if n in flat:
+            r.page = r.size
+        arena.append(r)
 
     # struct_ptr[kind*4 + size]: τέσσερις θέσεις ανά είδος, με κενά. Το ορυχείο,
     # ο αεροθάλαμος, η πλατφόρμα και το σκάφος υπάρχουν σε ΕΝΑ μέγεθος — το 0 —
@@ -212,7 +227,8 @@ def build_runs(smap, blob):
     for tab, names in ptr.items():
         if tab != "plant_ptr":
             arena.append(Run(tab, len(names) * 2, bytes(len(names) * 2),
-                             note="παράγεται"))
+                             note="παράγεται",
+                             page=len(names) * 2 if tab == "tile_ptr" else 0))
 
     # Το ui_cursor (256 bytes, «δεν έχει παραδοθεί») ΕΦΥΓΕ στο βήμα 33: ο
     # κέρσορας είναι το πλαίσιο του φαντάσματος (gh_box) από το βήμα 6b, κανείς
@@ -230,7 +246,8 @@ def build_runs(smap, blob):
     # ακριβότερο κομμάτι της δημοσίευσης.
     arena.append(Run("mach_op", len(econ.RECIPE),
                      bytes(1 if r[9] & econ.MF_OPERATOR else 0
-                           for r in econ.RECIPE), note="παράγεται από econ.py"))
+                           for r in econ.RECIPE), note="παράγεται από econ.py",
+                     page=len(econ.RECIPE)))
 
     # Η οικονομία και ο πίνακας εργασιών ΕΚΤΟΣ παραθύρου, για δύο λόγους:
     # ο πίνακας εργασιών διαβάζει το DIST (τράπεζα 1) ενώ αναθέτει, και τα
@@ -238,9 +255,12 @@ def build_runs(smap, blob):
     # σελιδοποιημένο πίνακα δεν μπορεί να ζει στο παράθυρο — το ίδιο μάθημα
     # με τον πάγκο της BFS.
     arena.append(Run("econ_state", econ.ECON_BYTES, None,
-                     note="ΔΕΣΜΕΥΣΗ — αποθέματα και ροές"))
+                     note="ΔΕΣΜΕΥΣΗ — αποθέματα και ροές",
+                     page=econ.ECON_BYTES))  # src/stock.asm: EC_STOCK με το κάτω byte
     arena.append(Run("job_tbl", 32 * 5, None, note="ΔΕΣΜΕΥΣΗ — 32 εργασίες"))
-    arena.append(Run("room_n", 12, None, note="ΔΕΣΜΕΥΣΗ — θόλοι ανά είδος δωματίου"))
+    arena.append(Run("room_n", 12, None, note="ΔΕΣΜΕΥΣΗ — θόλοι ανά είδος δωματίου",
+                     page=12 + 12 * 8))     # μαζί με το room_list
+
     arena.append(Run("room_list", 12 * 8, None, note="ΔΕΣΜΕΥΣΗ — ως 8 ο καθένας"))
 
     # --- ο γράφος κόμβων και ο πάγκος της BFS -------------------------------

@@ -54,7 +54,7 @@ def check(sym, patch=(), timing=True):
     """Η πρώτη διαφορά από τον τύπο, ή None."""
     m = cpc.CPC()
     m.run_frames(60)
-    assert m.quickload(TG.SNA, start=False), "quickload απέτυχε"
+    assert m.quickload(TG.COLONY, start=False), "quickload απέτυχε"
     top = sym["ZZ_BANK0_END"]
     assert top < PROBE, f"ο κώδικας φτάνει ως #{top:04X}"
     for at, v in patch:
@@ -138,7 +138,7 @@ def main():
     sa, sn = sym["SCR_ADDR"], sym["SCR_NEXTLINE"]
     m = cpc.CPC()
     m.run_frames(60)
-    assert m.quickload(TG.SNA, start=False)
+    assert m.quickload(TG.COLONY, start=False)
     code, nl = m.read_ram(sa, 48), m.read_ram(sn, 20)
     assert code[1:3] == bytes([0xE6, 0xF8]), "το scr_addr δεν ξεκινά με ld l,a / and #F8"
     andc7 = nl.find(bytes([0xE6, 0xC7]))

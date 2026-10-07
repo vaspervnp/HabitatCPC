@@ -139,7 +139,7 @@ def rule():
 def colony():
     """2. Η αποικία: δύο αντλίες, και η νύχτα δεν παίρνει το οξυγόνο."""
     sym, g = T.build()
-    m = B.boot(sym, T.SNA)
+    m = B.boot(sym, T.COLONY)
     for k in (3, 4):                             # RICH: υλικά για την αλυσίδα
         m.poke(g + B.EC["STOCK"] + k * 2, 500 & 255)
         m.poke(g + B.EC["STOCK"] + k * 2 + 1, 500 >> 8)

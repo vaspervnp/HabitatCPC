@@ -249,6 +249,11 @@ mla_pok:
         ; ώστε ο λόγος να μη χαθεί μέσα στο build.asm.
         include "terrain.asm"
 zz_bank0_end:
+        ; Η ΑΠΟΙΚΙΑ ΔΟΚΙΜΩΝ (βήμα 87): μετά το τέλος του game.bin, στη σκαλωσιά
+        ; των tests. Στον δίσκο δεν γράφεται· το παιχνίδι δεν την καλεί ποτέ.
+        include "colony.asm"
+zz_colony_end:
+        assert  zz_colony_end <= #3E00  ; το PROBE των tests (test_newgame κ.ά.)
 
 ; --- ό,τι τρέχει από την ΤΡΑΠΕΖΑ 2 -----------------------------------------
 ; Η τράπεζα 2 φαίνεται πάντα στο &8000, άρα ο κώδικας εκεί είναι απλώς κώδικας.
@@ -259,6 +264,8 @@ zz_page2_code:                          ; για το tools/mkdsk.py: πού φ�
         include "build.asm"
         include "route.asm"
         include "link.asm"              ; βήμα 85: κάθε κτίσμα δένεται με ένα κοντινό
+        include "door.asm"              ; βήμα 87: ένα κτίσμα τελειώνει
+        include "edges.asm"             ; βήμα 87: οι ακμές, για όλες τις εκδόσεις
         include "sound.asm"
         include "meteor.asm"            ; βήμα 38: ζει στον τροχό, σπάνια τρέχει
         include "objindex.asm"          ; βήμα 41: το χτίσιμο του ευρετηρίου

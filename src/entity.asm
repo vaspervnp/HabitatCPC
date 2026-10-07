@@ -37,14 +37,95 @@ ent_move_slice:
         inc     b                       ; φέτα μηδέν: το djnz θα έκανε 256 γύρους
         dec     b
         ret     z
-ems_lp:
+        ; Ο ΜΕΤΡΗΤΗΣ ΚΑΙ ΤΟ ID ΣΤΟ ΣΚΙΩΔΕΣ BC (βήμα 87). Το push/pop γύρω από
+        ; κάθε πράκτορα ήταν 7 us· δύο exx είναι 2. Ο βρόχος βγαίνει 4 us
+        ; φθηνότερος ανά πράκτορα, 48 ανά φέτα: τα μισά από τα ~97 που
+        ; κόστισε το μέσα-έξω. Το ent_move_one και ό,τι καλεί δεν αγγίζουν
+        ; σκιώδεις, και το ISR ούτε (src/isr.asm).
         push    bc
-        ld      l,c
-        call    ent_move_one
+        exx
         pop     bc
+ems_lp:
+        ld      a,c
         inc     c
         res     7,c                     ; mod N_AGENT
+        exx
+        ld      l,a
+        call    ent_move_one
+        exx
         djnz    ems_lp
+        exx
+        ret
+
+; Το ταξίδι ΠΡΙΝ από το ent_move_one, για να το φτάνει το jr: με το μέσα-έξω
+; (βήμα 87) η αναχώρηση μεγάλωσε, και ένα jp εκεί κόστιζε 1 us σε κάθε
+; πράκτορα που στέκεται.
+; --- ΤΑΞΙΔΕΥΕΙ. A = edge + 1, H = AG_PG + 2, L = id + 128. ---
+em_trans:
+        ld      b,a                     ; B = edge + 1
+        ld      h,AG_PG
+        ld      a,(hl)                  ; role
+        and     7
+        ld      de,role_speed
+        add     a,e
+        ld      e,a
+        adc     a,d
+        sub     e
+        ld      d,a
+        ld      a,(de)                  ; ταχύτητα
+        ld      h,AG_PG + 3
+        res     7,l
+        add     a,(hl)                  ; + progress
+        jr      c,em_arrive
+        ld      (hl),a                  ; ακόμη στον σωλήνα
+        ret
+
+em_arrive:
+        ; ο κόμβος στην άλλη άκρη: node_adj[node*8 + edge]
+        ld      c,l                     ; C = id
+        ld      h,AG_PG + 1
+        ld      a,(hl)                  ; node
+        add     a,(G_node_adj >> 3) & 255
+        ld      l,a
+        ld      h,G_node_adj >> 11
+        add     hl,hl
+        add     hl,hl
+        add     hl,hl
+        dec     b                       ; edge < 8: χωρίς κρατούμενο
+        ld      a,l
+        add     a,b
+        ld      l,a
+        ld      a,(hl)                  ; ο κόμβος-στόχος
+        ld      b,a                     ; B = στόχος, C = id
+
+        ; Μπαίνει ΠΑΝΤΑ, με θέση ή χωρίς. Το δαχτυλίδι έχει οκτώ θέσεις
+        ; επειδή τόσες ζωγραφίζει το sprite — δεν είναι πόρτα. Οσο ήταν,
+        ; ένας γεμάτος θόλος με χαλασμένη μηχανή δεν επισκευαζόταν ποτέ.
+        push    bc
+        call    ent_claim               ; A = θέση, ή 255 αν δεν χωρά
+        pop     bc
+        ld      l,c
+        ld      h,AG_PG + 1
+        ld      (hl),b                  ; node = στόχος
+        set     7,l
+        ld      (hl),a                  ; slot
+        inc     h
+        ld      (hl),NO_EDGE
+        inc     h
+        res     7,l
+        ld      (hl),0                  ; progress = 0
+        ; Οποιος ταξίδευε μέσα φτάνει μέσα: η αναχώρηση ρώτησε ήδη το en_in
+        ; του στόχου. Μόνο όποιος ερχόταν απ' έξω ρωτά — μπαίνει σε airlock;
+        ; (βήμα 87· H = AG_PG + 3, L = id)
+        ld      h,AG_PG
+        bit     1,(hl)                  ; F_INDOORS
+        ret     nz
+        ld      a,b
+        call    en_in                   ; κρατά BC
+        ret     nc                      ; έξω, και μένει
+        ld      l,c
+        ld      h,AG_PG
+        set     1,(hl)                  ; μπήκε
         ret
 
 ; ---------------------------------------------------------------------------
@@ -115,6 +196,7 @@ ent_move_one:
 em_have:
         ; --- ποια θέση της λίστας γειτνίασης είναι ο nh; ---
         ld      e,a                     ; E = nh
+        ld      (em_nh),a
         ld      a,l
         ld      (em_id),a
         ld      a,(em_node)
@@ -127,9 +209,9 @@ em_have:
         ld      b,0
         ; G_node_adj + node*8 = (G_node_adj/8 + node) * 8, χωρίς κρατούμενο
         ; στο κάτω byte (assert)
-        add     a,(G_node_adj / 8) & 255
+        add     a,(G_node_adj >> 3) & 255
         ld      l,a
-        ld      h,G_node_adj / 2048
+        ld      h,G_node_adj >> 11
         add     hl,hl
         add     hl,hl
         add     hl,hl
@@ -166,63 +248,29 @@ emf_rel:
         dec     h
         set     7,l
         ld      (hl),c                  ; edge = k
-        ret
-
-; --- ΤΑΞΙΔΕΥΕΙ. A = edge + 1, H = AG_PG + 2, L = id + 128. ---
-em_trans:
-        ld      b,a                     ; B = edge + 1
+        ; --- ΜΕΣΑ Ή ΕΞΩ (βήμα 87). Οποιος ξεκινά έξω μένει έξω. Οποιος
+        ; ξεκινά μέσα μένει μέσα μόνο σε διάδρομο προς έτοιμο μέρος με αέρα,
+        ; και όχι από δομή σε δομή: δύο airlock τα ενώνει μόνο το έδαφος. Το
+        ; «ξεκινά μέσα» είναι η σημαία, όχι ξανά το en_in του κόμβου. ---
+        res     7,l
         ld      h,AG_PG
-        ld      a,(hl)                  ; role
-        and     7
-        ld      de,role_speed
-        add     a,e
-        ld      e,a
-        adc     a,d
-        sub     e
-        ld      d,a
-        ld      a,(de)                  ; ταχύτητα
-        ld      h,AG_PG + 3
-        res     7,l
-        add     a,(hl)                  ; + progress
-        jr      c,em_arrive
-        ld      (hl),a                  ; ακόμη στον σωλήνα
+        bit     1,(hl)                  ; F_INDOORS
+        ret     z
+        ld      a,(em_node)
+        ld      hl,em_nh
+        and     (hl)
+        and     MAX_DOME                ; και οι δύο 64 ή πάνω: δομή με δομή
+        jr      nz,emd_put              ; το and άφησε CY = 0: έξω
+        ld      a,(hl)
+        call    en_in                   ; src/door.asm
+        ret     c                       ; μέσα, και μένει
+emd_put:
+        ld      a,(em_id)
+        ld      l,a
+        ld      h,AG_PG
+        res     1,(hl)                  ; F_INDOORS: βγαίνει
         ret
 
-em_arrive:
-        ; ο κόμβος στην άλλη άκρη: node_adj[node*8 + edge]
-        ld      c,l                     ; C = id
-        ld      h,AG_PG + 1
-        ld      a,(hl)                  ; node
-        add     a,(G_node_adj / 8) & 255
-        ld      l,a
-        ld      h,G_node_adj / 2048
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl
-        dec     b                       ; edge < 8: χωρίς κρατούμενο
-        ld      a,l
-        add     a,b
-        ld      l,a
-        ld      a,(hl)                  ; ο κόμβος-στόχος
-        ld      b,a                     ; B = στόχος, C = id
-
-        ; Μπαίνει ΠΑΝΤΑ, με θέση ή χωρίς. Το δαχτυλίδι έχει οκτώ θέσεις
-        ; επειδή τόσες ζωγραφίζει το sprite — δεν είναι πόρτα. Οσο ήταν,
-        ; ένας γεμάτος θόλος με χαλασμένη μηχανή δεν επισκευαζόταν ποτέ.
-        push    bc
-        call    ent_claim               ; A = θέση, ή 255 αν δεν χωρά
-        pop     bc
-        ld      l,c
-        ld      h,AG_PG + 1
-        ld      (hl),b                  ; node = στόχος
-        set     7,l
-        ld      (hl),a                  ; slot
-        inc     h
-        ld      (hl),NO_EDGE
-        inc     h
-        res     7,l
-        ld      (hl),0                  ; progress = 0
-        ret
 
 ; ---------------------------------------------------------------------------
 ; ent_claim — A = κόμβος. Επιστρέφει A = θέση, ή 255 αν γέμισε.
@@ -318,8 +366,9 @@ role_speed: db 96,96,88,104,112,128,144,120
 
 em_id:      db 0
 em_node:    db 0
+em_nh:      db 0                ; ο επόμενος κόμβος, για το μέσα-έξω (βήμα 87)
 
         assert  F_ALIVE == 1 && N_AGENT == 128 && DK_SLOT == 0
         assert  NO_EDGE == 255 && (PAGE_B5 >> 8) == (PAGE_B6 >> 8)
-        assert  (G_node_adj & 7) == 0 && ((G_node_adj / 8) & 255) + 128 <= 256
+        assert  (G_node_adj & 7) == 0 && ((G_node_adj >> 3) & 255) + 128 <= 256
         assert  (G_corr_fill & 255) <= 256 - 8

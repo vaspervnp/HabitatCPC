@@ -46,7 +46,7 @@ def check(sym, patch=(), timing=True):
     """Η πρώτη διαφορά από τον κανόνα, ή None."""
     m = cpc.CPC()
     m.run_frames(60)
-    assert m.quickload(TG.SNA, start=False), "quickload απέτυχε"
+    assert m.quickload(TG.COLONY, start=False), "quickload απέτυχε"
     for at, v in patch:
         m.poke(at, v)
     tbl, jp = job_tbl(), sym["JB_POST_BUILD"]
@@ -120,7 +120,7 @@ def main():
     # --- αρνητικά ---
     m = cpc.CPC()
     m.run_frames(60)
-    assert m.quickload(TG.SNA, start=False)
+    assert m.quickload(TG.COLONY, start=False)
     jp = sym["JB_POST_BUILD"]
     code = m.read_ram(jp, 32)
     ib = code.find(bytes([0x06, MAX_JOB]))                       # ld b,MAX_JOB

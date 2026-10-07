@@ -14,7 +14,7 @@ ec_stock_ptr:
         add     a,a
         add     a,EC_STOCK & 255
         ld      e,a
-        ld      d,EC_STOCK / 256
+        ld      d,EC_STOCK >> 8
         ret
 
         assert  (EC_STOCK & 255) + 2 * 14 <= 256  ; 14 αποθέματα, μία σελίδα

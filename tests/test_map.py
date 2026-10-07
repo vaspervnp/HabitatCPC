@@ -47,7 +47,7 @@ def main():
     sym, g = T.build()
     g_metal = g + 3 * 2
 
-    m = B.boot(sym, T.SNA)
+    m = B.boot(sym, T.COLONY)
 
     def hud(row):
         return hudread.text(m, sym, row)

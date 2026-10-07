@@ -88,7 +88,7 @@ class Rig:
         self.sym, self.L = sym, layout()
         m = self.m = cpc.CPC()
         m.run_frames(60)
-        assert m.quickload(TG.SNA, start=False), "quickload απέτυχε"
+        assert m.quickload(TG.COLONY, start=False), "quickload απέτυχε"
         m.run_frames(400)
         for at, v in patch:
             m.poke(at, v)
@@ -342,7 +342,7 @@ def main():
 
     m = cpc.CPC()
     m.run_frames(60)
-    assert m.quickload(TG.SNA, start=False)
+    assert m.quickload(TG.COLONY, start=False)
 
     def find(at, pat, span=400):
         i = m.read_ram(sym[at], span).find(bytes(pat))
@@ -356,11 +356,15 @@ def main():
            ("θόλους με πλευρά 2 + 2*μέγεθος", [(find("MSC_NEAR", [0x87, 0xC6, 0x04]) + 2, 2)]),
            ("τη μηχανή από το λάθος byte",
             [(find("MT_TICK", [0x3A, mr1 & 255, mr1 >> 8]) + 1, (mr1 - 1) & 255)]),
-           ("το «κοντινό» κέντρο στα 3 tiles",
-            [(find("MSC_LP", [0xC6, 0x04, 0xFE, 0x09]) + 1, 3),
-             (find("MSC_LP", [0xC6, 0x04, 0xFE, 0x09]) + 3, 7)])]
+           # βήμα 87: το B είναι ήδη x - 4, οπότε ένα παράθυρο 0..7 αντί για
+           # 0..8 χάνει τα κέντρα 4 tiles δεξιά
+           ("το «κοντινό» κέντρο στα 3 tiles από τη μία μεριά",
+            [(find("MSC_LP", [0x90, 0xFE, 0x09]) + 2, 8)]),
+           # βήμα 87: cp K_SHIP στο mth_struct γίνεται cp 255 — το σκάφος ξανά
+           # εργοτάξιο. Οι τυχαίες σκηνές έχουν σκάφος σε 1 στις 8 δομές.
+           ("το σκάφος σαν κτίριο", [(find("MTH_STRUCT", [0xFE, 7]) + 1, 255)])]
     for label, patch in neg:
-        why = run(sym, patch, n=120)
+        why = run(sym, patch, n=400 if "σκάφος" in label else 120)
         if why:
             print(f"OK ΑΡΝΗΤΙΚΟ: με {label} αποτυγχάνει ({why[:90]})")
         else:

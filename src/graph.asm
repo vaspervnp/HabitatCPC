@@ -20,8 +20,8 @@
 ; Οτιδήποτε διαβάζει η BFS πρέπει να είναι εκτός παραθύρου, και η τράπεζα 2
 ; είναι πάντα ορατή.
 
-ROWPG       equ G_rt_row / 256
-NODEPG      equ G_rt_nodes / 256
+ROWPG       equ G_rt_row >> 8
+NODEPG      equ G_rt_nodes >> 8
 
 RT_DIST     equ G_rt_row                ; [0..127]
 RT_NEXT     equ G_rt_row + 128          ; [128..255]
@@ -196,9 +196,9 @@ rt_node:
 
         ; --- DE = G_node_adj + u*8 = (G_node_adj/8 + u) * 8 (assert) ---
         ld      a,l
-        add     a,(G_node_adj / 8) & 255
+        add     a,(G_node_adj >> 3) & 255
         ld      l,a
-        ld      h,G_node_adj / 2048
+        ld      h,G_node_adj >> 11
         add     hl,hl
         add     hl,hl
         add     hl,hl
@@ -272,7 +272,7 @@ rt_flush:
         ret
 
         assert  (G_rt_row & 255) == 0 && (G_rt_nodes & 255) == 0
-        assert  (G_node_adj & 7) == 0 && ((G_node_adj / 8) & 255) + 128 <= 256
+        assert  (G_node_adj & 7) == 0 && ((G_node_adj >> 3) & 255) + 128 <= 256
         assert  NODEPG != 0 && RT_NODES <= 128
 
 rt_n:       db RT_NODES             ; ανώτατο id + 1 — βλ. rt_begin

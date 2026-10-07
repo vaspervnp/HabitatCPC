@@ -117,16 +117,16 @@ def reachable(tx, ty, size, dome=False):
         for x, y in colony_tiles():
             wl[reach.widx(x, y)] = wl[reach.widx(x, y)] & 0xC0 | 0x17
         domes = [[0, 0, 0, 2], [16, 0, 0, 2], [0, 16, 0, 2]] + [[0, 0, 0, 0]] * 61
-        structs = ([[(-16) & 255, 16, 6, 0, 2], [0, (-10) & 255, reach.K_AIRLOCK, 0, 2]]
+        # το airlock με τον διάδρομό του (ST_JOINED, βήμα 87)
+        structs = ([[(-16) & 255, 16, 6, 0, 2], [0, (-10) & 255, reach.K_AIRLOCK, 0, 2, 255, 1]]
                    + [[0, 0, 0, 0, 0]] * 30)
-        deg = [3, 1, 2] + [0] * 61 + [1, 1] + [0] * 62
-        _REACH = (bytes(wl), domes, structs, dims, deg)
-    wl, domes, structs, dims, deg = _REACH
+        _REACH = (bytes(wl), domes, structs, dims)
+    wl, domes, structs, dims = _REACH
     if dome:
         return reach.plan(wl, domes, structs, dims, 0, (size - 4) // 2, size, size,
-                          2 * tx + size, 2 * ty + size, deg)["ok"]
+                          2 * tx + size, 2 * ty + size)["ok"]
     return reach.plan(wl, domes, structs, dims, 1, 0, size, size,
-                      2 * tx + size, 2 * ty + size, deg)["ok"]
+                      2 * tx + size, 2 * ty + size)["ok"]
 
 
 def res_spots(kind, size=3, n=2, avoid=()):
@@ -386,12 +386,10 @@ def live_plan(m, sym, item, at):
     b6 = bytes(cpc._lib.cpcemu_ram_ptr(m._h, 6)[:0x4000])
     gd, gs = L["G_dome_tbl"] - 0x4000, L["G_struct_tbl"] - 0x4000
     domes = [list(b6[gd + 24 * d:gd + 24 * d + 4]) for d in range(64)]
-    structs = [list(b6[gs + 8 * k:gs + 8 * k + 5]) for k in range(32)]
+    structs = [list(b6[gs + 8 * k:gs + 8 * k + 7]) for k in range(32)]
     dims = m.read_ram(L["G_struct_dims"], 64)
-    deg = list(m.read_ram(L["G_rt_nodes"], 128))      # NODE_DEG
     rec = m.read_ram(sym["BLD_ITEMS"] + 8 * item, 4)
-    return reach.plan(b4, domes, structs, dims, rec[0], rec[1], rec[2], rec[3], at[0], at[1],
-                      deg)
+    return reach.plan(b4, domes, structs, dims, rec[0], rec[1], rec[2], rec[3], at[0], at[1])
 
 
 def live_spot(m, sym, item, at):
@@ -410,9 +408,8 @@ def live_spot(m, sym, item, at):
     b6 = bytes(cpc._lib.cpcemu_ram_ptr(m._h, 6)[:0x4000])
     gd, gs = L["G_dome_tbl"] - 0x4000, L["G_struct_tbl"] - 0x4000
     domes = [list(b6[gd + 24 * d:gd + 24 * d + 4]) for d in range(64)]
-    structs = [list(b6[gs + 8 * k:gs + 8 * k + 5]) for k in range(32)]
+    structs = [list(b6[gs + 8 * k:gs + 8 * k + 7]) for k in range(32)]
     dims = m.read_ram(L["G_struct_dims"], 64)
-    deg = list(m.read_ram(L["G_rt_nodes"], 128))      # NODE_DEG
     rec = m.read_ram(sym["BLD_ITEMS"] + 8 * item, 4)
     kind, param, w, h = rec[0], rec[1], rec[2], rec[3]
 
@@ -423,7 +420,7 @@ def live_spot(m, sym, item, at):
         if item in NEED and not has_near(b4, tx, ty, w, NEED[item][0]):
             return False
         return reach.plan(b4, domes, structs, dims, kind, param, w, h,
-                          2 * tx + w, 2 * ty + h, deg)["ok"]
+                          2 * tx + w, 2 * ty + h)["ok"]
 
     tx0, ty0 = (at[0] - w) >> 1, (at[1] - h) >> 1
     if ok(tx0, ty0):
@@ -675,7 +672,7 @@ def main():
     if pick:
         scen = [scen[int(i)] for i in pick.split(",")]
     for name, items in scen:
-        rows, dead = run(name, sym, g, T.SNA, sols=sols, items=items)
+        rows, dead = run(name, sym, g, T.COLONY, sols=sols, items=items)
         report(name, rows, dead)
     return 0
 

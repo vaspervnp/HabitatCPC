@@ -434,7 +434,7 @@ def north_patch(sym):
     from cpc import CPC
     m = CPC()
     m.run_frames(60)
-    assert m.quickload(R.T.SNA, start=False)
+    assert m.quickload(R.T.COLONY, start=False)
     for k in range(40):
         if (m.peek(at + k) == 0xED and m.peek(at + k + 1) == 0x43
                 and m.peek(at + k + 2) == ly & 0xFF and m.peek(at + k + 3) == ly >> 8):

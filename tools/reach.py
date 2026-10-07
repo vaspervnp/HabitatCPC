@@ -6,7 +6,8 @@ tools/balance.py· γραμμένη από την πρόζα, όχι από το
     δεν υπάρχει ΚΑΝΕΝΑ τέτοιο σε όλο τον κόσμο, μπαίνει όπου το επιτρέπει το
     έδαφος (το πρώτο κτίσμα).
   * ΘΟΛΟΣ: σκεπαστός διάδρομος (tools/route.py) προς ΚΑΘΕ θόλο, με τη σειρά του
-    πίνακα, και μετά προς κάθε airlock που δεν έχει ακόμη ακμή, που ο διάδρομος
+    πίνακα, και μετά προς κάθε airlock που δεν έχει ακόμη τον διάδρομό του
+    (ST_JOINED, βήμα 87· ως το 86 «χωρίς ακμή»), που ο διάδρομος
     φτάνει με το πολύ 12 πλακίδια και πατά μόνο tiles που χτίζονται — ή tiles
     των δύο άκρων — ως MAX = 4. Κάθε διάδρομος που διαλέγεται πιάνει τα tiles
     του για τους επόμενους. «Υπάρχει» = υπάρχει θόλος. Χωρίς διάδρομο: κόκκινος
@@ -19,10 +20,17 @@ tools/balance.py· γραμμένη από την πρόζα, όχι από το
     της άλλης, πρώτα κατά x και μετά κατά y, ή ανάποδα· μετρούν τα tiles έξω από
     τα δύο αποτυπώματα, το πολύ 12, όλα να χτίζονται. Το κοντύτερο· σε ισοπαλία
     το πρώτο που βρέθηκε. «Υπάρχει» = υπάρχει δομή.
+  * ΤΟ ΣΚΑΦΟΣ (βήμα 87) δεν είναι κτίριο: δεν είναι «κοντά», ούτε κάνει μια
+    δομή να μην είναι η πρώτη. Στέκεται στη θέση 0 των δομών.
   * Αλλιώς ο λόγος: 4 PATH BLOCKED αν κάποιος διάδρομος ή Γ ως 12 βρήκε έδαφος
     που δεν χτίζεται· αλλιώς 5 NO CORRIDOR FITS αν ένας υποψήφιος θόλος ήταν
     τόσο κοντά που ένας αξονικός θα χωρούσε (max(S, T) - ακτίνες <= 12) αλλά
     σχήμα δεν βγαίνει· αλλιώς 3 TOO FAR.
+
+Ο,τι ΔΕΝ πήρε μονοπάτι (θόλος, airlock, η πρώτη δομή) παίρνει στο FIRE μια
+σύνδεση εδάφους ως την «άγκυρα» (anchor): το κοντινότερο σκάφος ή airlock, σε
+max(|dx|, |dy|) μισά tiles. Οι διάδρομοι γράφονται τότε, αλλά γίνονται ακμές
+μόνο όταν είναι έτοιμες και οι δύο άκρες τους (βήμα 87).
 
 Υποψήφιος είναι ό,τι το κέντρο του απέχει ως REACH μισά tiles σε κάθε άξονα
 (το al_far: διαφορά σε 8 bits, και ό,τι ξεχειλίζει είναι μακριά).
@@ -37,6 +45,8 @@ RANGE = 12
 MAX = 4
 REACH = 2 * (RANGE + 8)         # μισά tiles: το al_far
 K_AIRLOCK = 5
+K_SHIP = 7
+MAX_DEGREE = 8
 CORR_M, CORR_B = 6, 3           # ο διάδρομος ανά πλακίδιο (κατάλογος του build.asm)
 W_OCC_PATH = 0x20
 FOUNDATION = 7
@@ -148,17 +158,27 @@ def near(a, b):
     return -128 <= d <= 127 and abs(d) <= REACH
 
 
-def plan(world, domes, structs, dims, kind, param, w, h, cx, cy, deg=None):
+def joined(s):
+    """Το ST_JOINED μιας εγγραφής δομής (cx, cy, kind, size, state[, integ,
+    joined]): το airlock έχει ήδη τον διάδρομό του."""
+    return s[6] if len(s) > 6 else 0
+
+
+def ship0(structs):
+    """Η θέση 0 είναι το σκάφος: το πέρασμα των δομών ξεκινά από την 1."""
+    return 1 if structs[0][2] == K_SHIP else 0
+
+
+def plan(world, domes, structs, dims, kind, param, w, h, cx, cy):
     """Ο κανόνας για ένα αποτύπωμα που ΗΔΗ πατά.
 
     world: 16 KB, το επίπεδο (δεν αλλάζει)· domes: 64 x (cx, cy, size, state)·
-    structs: 32 x (cx, cy, kind, size, state)· dims: το struct_dims· deg: ο
-    βαθμός κάθε κόμβου (128), για τα airlock χωρίς ακμή.
+    structs: 32 x (cx, cy, kind, size, state[, integ, joined])· dims: το
+    struct_dims.
     Out: dict με ok, reason (0, 3 TOO FAR, 4 PATH BLOCKED, 5 NO CORRIDOR FITS),
     corridors [(κόμβος, από, προς, runs, tiles)], pieces, path (κόμβος, ori,
     tiles) ή None, και any (υπάρχει κάτι του είδους του).
     """
-    deg = deg or [0] * 128
     wl = bytearray(world)
     out = {"corridors": [], "pieces": 0, "path": None, "reason": 0, "any": False}
     why = {"blocked": False, "shape": False}
@@ -202,9 +222,10 @@ def plan(world, domes, structs, dims, kind, param, w, h, cx, cy, deg=None):
         targets = [(b, (bcx, bcy, bs)) for b, (bcx, bcy, bs, st) in
                    ((b, domes[b][:4]) for b in range(64)) if st]
         out["any"] = bool(targets)
-        targets += [(64 + k, (scx, scy, route.AIRLOCK)) for k, (scx, scy, kd, _, st) in
-                    ((k, structs[k][:5]) for k in range(32))
-                    if st and kd == K_AIRLOCK and not deg[64 + k]]
+        targets += [(64 + k, (structs[k][0], structs[k][1], route.AIRLOCK))
+                    for k in range(ship0(structs), 32)
+                    if structs[k][4] and structs[k][2] == K_AIRLOCK
+                    and not joined(structs[k])]
         for node, bb in targets:
             if len(out["corridors"]) == MAX:
                 break
@@ -233,7 +254,7 @@ def plan(world, domes, structs, dims, kind, param, w, h, cx, cy, deg=None):
     else:
         p = (sb(cx) >> 1, sb(cy) >> 1)
         best = RANGE + 1
-        for node in range(64, 96):
+        for node in range(64 + ship0(structs), 96):
             fp = footprint(node, domes, structs, dims)
             if fp is None:
                 continue
@@ -266,6 +287,27 @@ def plan(world, domes, structs, dims, kind, param, w, h, cx, cy, deg=None):
         return out
     out["ok"] = False
     out["reason"] = 4 if why["blocked"] else 5 if why["shape"] else 3
+    return out
+
+
+def anchor(structs, deg, node, cx, cy):
+    """Το lk_anchor: το κοντινότερο σκάφος ή airlock (ζωντανό ή εργοτάξιο),
+    όχι ο ίδιος ο `node`, με βαθμό κάτω από MAX_DEGREE· απόσταση max(|dx|,
+    |dy|) σε μισά tiles από το (cx, cy), με τη διαφορά σε 8 bits (254 αν
+    ξεχειλίζει). Σε ισοπαλία το πρώτο. 255 αν κανένα."""
+    best, out = 255, 255
+    for k in range(32):
+        s = structs[k]
+        n = 64 + k
+        if not s[4] or s[2] not in (K_SHIP, K_AIRLOCK) or n == node \
+                or deg[n] >= MAX_DEGREE:
+            continue
+        d = 0
+        for a, b in ((s[0], cx), (s[1], cy)):
+            v = sb(a) - sb(b)
+            d = max(d, 254 if not -128 <= v <= 127 else abs(v))
+        if d < best:
+            best, out = d, n
     return out
 
 

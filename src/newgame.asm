@@ -63,153 +63,49 @@ ngw_fl:
         dec     c
         jr      nz,ngw_ff
 
-; --- η αποικία: τρεις μικροί θόλοι σε Γ, η πλατφόρμα, δύο διάδρομοι ---------
+; --- ΑΔΕΙΑ ΑΡΧΗ (βήμα 87): μόνο το σκάφος, οι άνθρωποι και τα αποθέματα --
 ;
-; ΚΥΛΙΚΕΙΟ, ΟΧΙ ΑΠΟΘΗΚΗ, και αυτό είναι απόκλιση από το §10.1. Το πέρασμα
-; αναγκών ψάχνει ΜΟΝΟ ιατρείο, κυλικείο και καταλύματα (§6.6): χωρίς κυλικείο
-; κανείς δεν πίνει και δεν τρώει ποτέ, και τα «δύο sols χωρίς να κάνεις τίποτα»
-; δεν υπάρχουν — η αποικία πεθαίνει από δίψα με γεμάτες αποθήκες. Το δωμάτιο
-; «αποθήκη» δεν το διαβάζει κανένα πέρασμα ακόμη, οπότε ήταν το φθηνότερο να
-; θυσιαστεί.
-;
-; Η απόσταση είναι 16 μισά tiles = 8 tiles: το κενό ανάμεσα σε δύο μικρούς
-; θόλους βγαίνει 8 - 2 - 2 = 4 πλακίδια διαδρόμου, ακέραιο, όπως απαιτεί το
-; §9.4. Μικρότερη απόσταση δεν αφήνει διάδρομο· μεγαλύτερη σκορπίζει την
-; αποικία πριν καν αρχίσει.
-;
-; Οι πίνακες είναι ήδη μηδέν: γράφεται μόνο ό,τι δεν είναι.
-        ld      hl,ng_sites
-        ld      de,G_dome_tbl
-        ld      a,3
-ngc_lp:
-        call    ngc_rec                 ; cx, cy, μέγεθος, δωμάτιο, DS_ACTIVE, 255
-        ex      de,hl
-        inc     hl
-        inc     hl                      ; ρεύμα και χειριστές: 0
-        ld      b,8
-ngc_m:
-        ld      (hl),NO_MACH
-        inc     hl
-        djnz    ngc_m
-        ld      bc,DOME_REC - D_HEALTH
-        add     hl,bc                   ; η επόμενη εγγραφή
-        ex      de,hl
-        dec     a
-        jr      nz,ngc_lp
-        ld      de,G_struct_tbl
-        call    ngc_rec                 ; η πλατφόρμα: cx, cy, K_PAD, μέγεθος 0,
-                                        ; DS_ACTIVE, 255
-        inc     de
-        inc     de                      ; STRUCT_REC = 8
-        call    ngc_rec                 ; το airlock (βήμα 86), κόμβος 65
-        ld      de,G_corr_tbl
-        ld      bc,3 * CORR_REC
-        ldir                            ; οι τρεις διάδρομοι: στο νέο παιχνίδι δεν
-                                        ; πληρώνονται και δεν χτίζονται
-        ; Η ΜΟΝΗ ΜΗΧΑΝΗ είναι η γεννήτρια οξυγόνου του πρώτου θόλου, στην
-        ; υποδοχή 0 και καινούργια. Ως το βήμα 73 κάθε θόλος είχε στήλη μηχανής
-        ; στο πρότυπο, και η εγγραφή της κάποτε κατέληγε σε ΓΕΝΝΗΤΡΙΑ ΟΞΥΓΟΝΟΥ
-        ; και στο κατάλυμα: το ob_domeadr χαλάει το DE, που κρατούσε τη μηχανή
-        ; — διπλάσιο νερό και ρεύμα, φάνηκε στο tools/balance.py.
-        xor     a                       ; M_OXYGEN
-        ld      (G_dome_tbl + D_MACH),a
-        ld      a,200
-        ld      (G_dome_tbl + D_HEALTH),a
+; Ο παίκτης χτίζει τα πάντα, και το πρώτο του κτίσμα το φτάνουν από το σκάφος
+; (lk_ground, src/link.asm). Η αποικία των βημάτων 12-86 μένει πιο κάτω ως
+; ΑΠΟΙΚΙΑ ΔΟΚΙΜΩΝ: τη στήνει μόνο ένα ng_colony = 1, που το γράφουν τα tests
+; στο build/colony.sna (tests/test_game.py). Το παιχνίδι δεν το αγγίζει ποτέ.
+        ld      a,(ng_colony)
+        or      a
+        jp      nz,ngt_colony           ; src/colony.asm
 
-        ; --- ο κόσμος κάτω από την αποικία: θεμέλιο και κατοχή, 4x4 στο
-        ; κέντρο κάθε θόλου και της πλατφόρμας, 2x2 του airlock. Το decor μένει.
+; --- ΤΟ ΣΚΑΦΟΣ: η δομή 0, κόμβος 64, στο (0, 0). Δεν είναι κτίριο — δεν
+; χτίζεται, δεν είναι «κοντά» (al_scans), δεν το χτυπά μετεωρίτης — αλλά
+; ζωγραφίζεται σαν δομή και πιάνει τα 2x2 tiles του: κατοχή, όχι θεμέλιο. ---
+ng_ship:
+        ld      hl,ng_shiprec           ; η τράπεζα 6 είναι μέσα από το σκούπισμα
+        ld      de,G_struct_tbl
+        call    ngc_rec                 ; 0, 0, K_SHIP, 0, DS_ACTIVE, 255
         ld      bc,GA_PORT + PAGE_B4
         out     (c),c
-        ld      de,ng_sites
-        ld      a,5
-ngs_lp:
-        push    af
-        cp      1                       ; το τελευταίο είναι το airlock
-        ld      a,2
-        jr      nz,ngs_r
-        dec     a
-ngs_r:
-        ld      (ng_r),a                ; η ακτίνα σε tiles
-        ld      a,(de)
-        call    ngs_lo
-        ld      b,a                     ; το αριστερό tile
-        inc     de
-        ld      a,(de)
-        call    ngs_lo
-        ld      c,a                     ; το πάνω
-        inc     de
-        inc     de
-        inc     de
-        call    tile_addr               ; κρατά BC, DE
-        ld      a,(ng_r)
-        add     a,a
-        ld      c,a
-ngs_rl:
-        push    hl
-        ld      a,(ng_r)
-        add     a,a
-        ld      b,a
-ngs_cl:
-        ld      a,(hl)
-        and     #C0
-        or      W_FOUNDATION + W_OCC_STRUCT
-        ld      (hl),a
+        ld      bc,#FFFF                ; το tile (-1, -1)
+        call    tile_addr
+        set     4,(hl)                  ; W_OCC_STRUCT
         inc     hl
-        djnz    ngs_cl
-        pop     hl
-        ld      a,l                     ; η επόμενη σειρά: +128 (tile_addr)
-        add     a,128
-        ld      l,a
-        adc     a,h
-        sub     l
-        ld      h,a
-        dec     c
-        jr      nz,ngs_rl
-        pop     af
-        dec     a
-        jr      nz,ngs_lp
-        ; --- και οι τρεις διάδρομοι, με τον ίδιο κώδικα που χρησιμοποιεί ο
-        ; παίκτης: ο δρομολογητής ξέρει ποια πλακίδια πατά η διαδρομή. Από τον
-        ; θόλο 0 προς τον 1, τον 2 και το airlock· το cr_plan αλλάζει θέσεις στα
-        ; άκρα όταν δοκιμάζει από την άλλη μεριά, οπότε ο 0 ξαναγράφεται κάθε φορά.
-        ld      hl,ng_cto
-ngr_lp:
-        ld      a,(hl)
-        push    hl
-        ld      (cr_b),a
-        xor     a
-        ld      (cr_a),a
-        call    cr_plan
-        or      a
-        call    nz,cr_stamp
-        pop     hl
+        set     4,(hl)
+        ld      de,127
+        add     hl,de                   ; η επόμενη σειρά (tile_addr)
+        set     4,(hl)
         inc     hl
-        ld      a,(hl)
-        or      a
-        jr      nz,ngr_lp
-        ; --- ο γράφος: δύο διάδρομοι και μία εξωτερική ακμή ως την πλατφόρμα.
-        ; Η πλατφόρμα ΔΕΝ συνδέεται με διάδρομο: το §6.2 λέει ότι οι εξωτερικές
-        ; δομές έχουν «ακμή εξωτερικού χώρου» και ο κόμβος τους είναι 64+δομή.
-        ; Το cr_link_bc τελειώνει σε rt_mark· το wheel_reset πιο κάτω σβήνει το
-        ; rt_dirty και το rt_mark μετά από αυτό το ξανανάβει.
-        ld      bc,0 * 256 + 1
-        call    cr_link_bc
-        ld      bc,0 * 256 + 2
-        call    cr_link_bc
-        ld      bc,2 * 256 + MAX_DOME
-        call    cr_link_bc
-        ld      bc,0 * 256 + MAX_DOME + 1
-        call    cr_link_bc              ; και το airlock, με τον διάδρομό του
-
-        ; --- τέσσερις άποικοι: δύο εργάτες, ένας μηχανικός, μία βιολόγος ---
+        set     4,(hl)
         ld      bc,GA_PORT + PAGE_B6
         out     (c),c
-        ld      de,ng_roles
+        ld      de,ng_crew
+        ld      a,F_ALIVE               ; έξω, δίπλα στο σκάφος
+
+        ; --- τέσσερις άποικοι: δύο εργάτες, ένας μηχανικός, μία βιολόγος ---
+ng_people:
+        ld      (ng_r),a                ; οι σημαίες τους
         ld      c,0                     ; ο πράκτορας
 ngp_lp:
         ld      h,AG_PG
         ld      l,c
-        ld      (hl),F_ALIVE + F_INDOORS
+        ld      a,(ng_r)
+        ld      (hl),a
         set     7,l
         ld      a,(de)
         inc     de
@@ -250,9 +146,21 @@ ngp_n:
 
         ; --- τα αποθέματα του §10.1, το ρολόι, και ό,τι άλλο δεν ξεκινά από το
         ; μηδέν: ζευγάρια (χαμηλό byte διεύθυνσης, τιμή) στη σελίδα της οικονομίας.
+        ; Η αποικία δοκιμών ξαναγράφει μετά τα δικά της.
         ld      hl,ng_econ
-        ld      d,G_econ_state >> 8
         ld      b,(ng_econ_end - ng_econ) / 2
+        call    nge_set
+        ld      a,(ng_colony)
+        or      a
+        ld      b,(ng_econ_col_end - ng_econ_end) / 2   ; από εκεί που έμεινε
+        call    nz,nge_set
+        call    wheel_reset
+        call    rt_mark
+        jp      ui_init
+
+; nge_set — HL = ζευγάρια (χαμηλό byte, τιμή), B = πόσα. HL μετά το τελευταίο.
+nge_set:
+        ld      d,G_econ_state >> 8
 nge_lp:
         ld      e,(hl)
         inc     hl
@@ -260,15 +168,6 @@ nge_lp:
         inc     hl
         ld      (de),a
         djnz    nge_lp
-        call    wheel_reset
-        call    rt_mark
-        jp      ui_init
-
-; ngs_lo — A = κέντρο σε μισά tiles -> A = το πρώτο tile του αποτυπώματος.
-ngs_lo:
-        sra     a
-        ld      hl,ng_r
-        sub     (hl)
         ret
 
 ; ngc_rec — HL = πρότυπο (cx, cy, και δύο bytes), DE = εγγραφή: τα τέσσερα,
@@ -294,44 +193,18 @@ ng_zero:
         ret
 
 ; --- δεδομένα --------------------------------------------------------------
-; cx, cy (μισά tiles), και δύο bytes: μέγεθος και δωμάτιο για θόλο, είδος και
-; μέγεθος για δομή — οι δύο εγγραφές αρχίζουν ίδια (§6.1).
-;
-; ΤΟ ΚΑΤΑΛΥΜΑ ΔΕΝ ΕΧΕΙ ΜΗΧΑΝΗ, και τα κρεβάτια ήταν λάθος δωμάτιο: το
-; mach_beds είναι έπιπλο ΙΑΤΡΕΙΟΥ (θέλει γιατρό από πάνω του, βλ. RECIPE στο
-; tools/econ.py) και το room_machines δεν το δίνει ποτέ σε κατάλυμα — ο θόλος
-; του παίκτη δεν θα το είχε. Στην αρχική αποικία το είχε, και επειδή θέλει
-; χειριστή και δεν παράγει ΤΙΠΟΤΑ κρατούσε μόνιμα έναν από τους τέσσερις
-; αποίκους να στρώνει κρεβάτια: μετρημένο, 96% του χρόνου στελεχωμένο
-; κατάλυμα ενώ το κυλικείο περίμενε μαγείρα. Ο ύπνος τον δίνει το ΔΩΜΑΤΙΟ.
-ng_sites:
-        db   0,  0, 0, R_OXYGEN
-        db  16,  0, 0, R_QUARTERS
-        db   0, 16, 0, R_CANTEEN
-        db -16, 16, K_PAD, 0            ; η πλατφόρμα προσγείωσης, ένα μέγεθος
-; ΤΟ AIRLOCK ΒΟΡΕΙΑ ΤΟΥ ΘΟΛΟΥ ΟΞΥΓΟΝΟΥ (βήμα 86): οι δομές δένονται πια μόνο με
-; airlock ή άλλη δομή, και από εκεί είναι το νερό του βορρά (στήλες -1..4 από
-; τη σειρά -8 και πάνω) και η φλέβα της δύσης. Ο διάδρομος είναι κάθετος, δύο
-; πλακίδια (σειρές -3, -4), και το airlock πιάνει τα (-1..0, -6..-5).
-        db   0,-10, K_AIRLOCK, 0
-
-; a, b, dir, len, state — 8 tiles κέντρο σε κέντρο μείον δύο ακτίνες = 4.
-; Αμέσως μετά τα ng_sites: το ldir τα παίρνει από εκεί που σταμάτησε.
-ng_corrs:
-        db 0, 1, 2, 4, DS_ACTIVE        ; ανατολή
-        db 0, 2, 4, 4, DS_ACTIVE        ; νότος
-        db 0, MAX_DOME + 1, 0, 2, DS_ACTIVE     ; βορράς, ως το airlock
-
-; οι προορισμοί των τριών διαδρόμων, από τον θόλο 0
-ng_cto:     db 1, 2, MAX_DOME + 1, 0
-ng_r:       db 0
-
-; ρόλος, κόμβος
-ng_roles:
-        db 0, 0
-        db 0, 1
-        db 1, 0
-        db 2, 2
+; και στην άδεια αρχή, όλοι στο σκάφος (κόμβος 64)
+ng_crew:
+        db 0, MAX_DOME
+        db 0, MAX_DOME
+        db 1, MAX_DOME
+        db 2, MAX_DOME
+; το σκάφος: cx, cy, είδος, μέγεθος (ngc_rec)
+ng_shiprec:
+        db 0, 0, K_SHIP, 0
+; 1 = η αποικία δοκιμών· μόνο τα tests το γράφουν (build/colony.sna)
+ng_colony:  db 0
+ng_r:       db 0                ; οι σημαίες των αποίκων· η ακτίνα στο colony.asm
 
 ; ΜΕΤΑΛΛΟ 75, ΒΙΟΠΛΑΣΤΙΚΟ 45 ΚΑΙ ΕΞΗΝΤΑ ΜΕΤΑΛΛΕΥΜΑ — όχι 30 και 10 (§10.1).
 ; Δύο πράγματα αγοράζουν αυτά τα νούμερα, και τα δύο μετρημένα στο
@@ -363,12 +236,18 @@ macro   NG_WORD adr, val
         NG_BYTE {adr}, ({val}) & 255
         NG_BYTE ({adr}) + 1, ({val}) >> 8
 mend
+;
+; ΣΤΗΝ ΑΔΕΙΑ ΑΡΧΗ (βήμα 87) το σκάφος φέρνει και την αποικία που ως τότε
+; ήταν δωρεάν, σε υλικά: τρεις μικροί θόλοι (36/24) με τη γεννήτρια
+; οξυγόνου (8/2), δέκα πλακίδια διαδρόμου (60/30) και το airlock (10/6) —
+; 114 μέταλλο και 62 βιοπλαστικό πάνω στα 75 και 45: 189 και 107. Η πίστα
+; (45) όχι: χτίζεται όταν ο παίκτης θέλει πλοία. Αυτό το διάλεξε ο χρήστης.
 ng_econ:
         NG_BYTE EC_STOCK + 2 * S_WATER, 60
         NG_BYTE EC_STOCK + 2 * S_FOOD, 40
         NG_BYTE EC_STOCK + 2 * S_ORE, 60
-        NG_BYTE EC_STOCK + 2 * S_METAL, 75
-        NG_BYTE EC_STOCK + 2 * S_BIOPL, 45
+        NG_BYTE EC_STOCK + 2 * S_METAL, 189
+        NG_BYTE EC_STOCK + 2 * S_BIOPL, 107
         NG_BYTE EC_STOCK + 2 * S_SPARE, 4
         NG_WORD EC_SOLLEN, 12000
         NG_WORD EC_DAYLEN, 7200
@@ -377,8 +256,13 @@ ng_econ:
         NG_BYTE EC_POK, 1
         NG_BYTE EC_O2OK, 1
         NG_BYTE EC_ALIVE, 4
-        NG_BYTE EC_POPCAP, 8            ; τρεις μικροί θόλοι
+        NG_BYTE EC_POPCAP, 4            ; κανένα Control: η βάση των τεσσάρων
 ng_econ_end:
+; η αποικία δοκιμών: τα 75 και 45 των βημάτων 31-86, και οι τρεις θόλοι της
+        NG_BYTE EC_STOCK + 2 * S_METAL, 75
+        NG_BYTE EC_STOCK + 2 * S_BIOPL, 45
+        NG_BYTE EC_POPCAP, 8
+ng_econ_col_end:
 
         assert  G_node_occ == G_agent_fields + 8 * 256
         assert  G_dome_tbl == G_node_occ + 256
@@ -386,4 +270,4 @@ ng_econ_end:
         assert  G_corr_tbl == G_struct_tbl + MAX_STRUCT * STRUCT_REC
         assert  AG_DEST == AG_NODE + 256 && AG_PROG == AG_DEST + 256
         assert  D_MACH == 8 && D_HEALTH == 16 && M_OXYGEN == 0
-        assert  ng_corrs == ng_sites + 20
+        assert  W_OCC_STRUCT == 1 << 4 && ST_JOINED == 6

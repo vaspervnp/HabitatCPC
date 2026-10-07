@@ -28,6 +28,11 @@ import hudread                                                          # noqa: 
 
 RASM = os.path.expanduser("~/rasm/rasm.exe")
 SNA = os.path.join(ROOT, "build", "main.sna")
+# Η ΑΠΟΙΚΙΑ ΔΟΚΙΜΩΝ (βήμα 87): το main.sna με το ng_colony = 1. Το παιχνίδι
+# ξεκινά πια άδειο, δίπλα στο σκάφος· τα tests που χτίζουν δίπλα στην αποικία
+# των βημάτων 12-86, ή μετρούν την οικονομία της, ξεκινούν από αυτό. Το
+# src/colony.asm τη στήνει μέσα στο game_new.
+COLONY = os.path.join(ROOT, "build", "colony.sna")
 FAIL = []
 
 
@@ -61,7 +66,16 @@ def build():
     for line in open(os.path.join(ROOT, "build", "layout.asm"), encoding="utf-8"):
         if line.startswith("G_econ_state"):
             g = int(line.split("#")[1].strip(), 16)
+    colony(sym)
     return sym, g
+
+
+def colony(sym):
+    """build/colony.sna: το main.sna με ένα byte αλλαγμένο, το ng_colony. Το
+    SNA v2 είναι κεφαλίδα 256 bytes και μετά η μνήμη, η βασική 64 KB πρώτα."""
+    d = bytearray(open(SNA, "rb").read())
+    d[0x100 + sym["NG_COLONY"]] = 1
+    open(COLONY, "wb").write(bytes(d))
 
 
 SK_COLONIST = 0                          # src/ship.asm
@@ -72,7 +86,7 @@ def main():
     from cpc import CPC, KEY_SPACE, KEY_RIGHT, KEY_LEFT, KEY_UP, KEY_DOWN
     m = CPC()
     m.run_frames(60)
-    assert m.quickload(SNA), "quickload απέτυχε"
+    assert m.quickload(COLONY), "quickload απέτυχε"
     m.run_frames(120)                    # το game_new κάνει πλήρη σχεδίαση
 
     def w16(a):
@@ -451,7 +465,7 @@ def live(sym, g):
     from cpc import CPC
     m = CPC()
     m.run_frames(60)
-    assert m.quickload(SNA), "quickload απέτυχε"
+    assert m.quickload(COLONY), "quickload απέτυχε"
     m.run_frames(120)
 
     def play():

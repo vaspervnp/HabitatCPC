@@ -123,7 +123,7 @@ ec_run_dome:
         ld      a,(ix+D_SIZE-D_STATE)
         add     a,G_machine_count & 255
         ld      e,a
-        ld      d,G_machine_count / 256
+        ld      d,G_machine_count >> 8
         ld      a,(de)
         ld      b,a                     ; B = πόσες υποδοχές
         ld      de,D_MACH - D_STATE
@@ -195,7 +195,7 @@ ec_run_plant:
         ld      a,(ed_m)                ; η κατηγορία του φυτού, 0-3
         add     a,G_plant_class & 255
         ld      l,a
-        ld      h,G_plant_class / 256
+        ld      h,G_plant_class >> 8
         ld      a,(hl)
         add     a,a                     ; *2 στον πίνακα εξόδου
         ld      hl,plant_out
@@ -581,18 +581,9 @@ ef_setp:
         call    nz,ec_make
 
 ef_o2:
-        ld      hl,G_agent_fields       ; η σελίδα των flags
-        ld      b,128
-        ld      c,0
-ef_cnt_lp:
-        ld      a,(hl)
-        and     F_ALIVE
-        jr      z,ef_cnt_n
-        inc     c
-ef_cnt_n:
-        inc     l
-        djnz    ef_cnt_lp
-
+        ; ΑΝΑΠΝΕΟΥΝ ΜΟΝΟ ΟΣΟΙ ΕΙΝΑΙ ΜΕΣΑ (βήμα 87): ο E μετρά τους ζωντανούς με
+        ; F_INDOORS, και η ζήτηση οξυγόνου είναι αυτοί. Οι άλλοι είναι στη στολή.
+        call    en_count                ; src/door.asm: C ζωντανοί, E μέσα
         ld      a,c
         ld      (EC_ALIVE),a
         or      a
@@ -600,7 +591,7 @@ ef_cnt_n:
         inc     a
         ld      (EC_GAMEOVER),a         ; κανείς ζωντανός: τέλος (§10.3)
 ef_alive:
-        ld      l,c
+        ld      l,e
         ld      h,0
         add     hl,hl                   ; O2_PER_COL = 2
         ld      (EC_O2USE),hl
@@ -840,7 +831,7 @@ ec_break_d:
         ld      a,(ix+D_SIZE)
         add     a,G_machine_count & 255
         ld      l,a
-        ld      h,G_machine_count / 256
+        ld      h,G_machine_count >> 8
         ld      a,(hl)
         dec     a                       ; 1/4/8 -> μάσκα
         ld      hl,eb_s

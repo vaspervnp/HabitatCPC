@@ -140,7 +140,7 @@ do_link:
         call    cr_plan
         or      a
         jr      z,dl_done
-        call    cr_commit
+        call    cr_commit_ln            ; ό,τι και το LINK (βήμα 87)
 dl_done:
         ld      a,#5A
         ld      (done_flag),a
@@ -237,6 +237,7 @@ goto_st:    db 0
         include "../src/graph.asm"
         include "../src/route.asm"
         include "../src/link.asm"           ; βήμα 85: το ui.asm το καλεί
+        include "../src/edges.asm"          ; βήμα 87: οι ακμές
         include "../src/ui.asm"
         include "../src/fit.asm"
         include "../src/rooms.asm"

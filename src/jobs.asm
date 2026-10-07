@@ -200,6 +200,12 @@ jab_st:
         jr      nz,ja_next              ; ακόμη χτίζεται· η εργασία μένει
         dec     hl                      ; D_STATE
         ld      (hl),DS_ACTIVE
+        ; Ο ΓΡΑΦΟΣ ΑΛΛΑΖΕΙ (βήμα 87): ένας θόλος σφραγίζεται και ο χτίστης
+        ; βγαίνει, και οι διάδρομοί του γίνονται ακμές (src/door.asm).
+        push    bc
+        ld      a,c
+        call    lk_done
+        pop     bc
         ; ΤΟ ΚΤΙΡΙΟ ΠΡΕΠΕΙ ΝΑ ΦΑΝΕΙ — και η σκηνή μαθαίνει ΠΟΙΟ. Ως το βήμα 34
         ; ήταν μια σημαία, και ο βρόχος ξαναζωγράφιζε ολόκληρο το κάδρο γιατί
         ; δεν ήξερε τι άλλαξε: 0,36-0,92 s παγωμένη οθόνη ανά κτίριο (§6.9).
@@ -351,7 +357,7 @@ jb_slots:
         ld      a,(ix+D_SIZE-D_STATE)
         add     a,G_machine_count & 255
         ld      e,a
-        ld      d,G_machine_count / 256
+        ld      d,G_machine_count >> 8
         ld      a,(de)
         ld      b,a
         ld      de,D_MACH - D_STATE
@@ -402,7 +408,7 @@ jn_lp:
         ld      a,e
         add     a,G_mach_op & 255
         ld      e,a
-        ld      d,G_mach_op / 256
+        ld      d,G_mach_op >> 8
         ld      a,(de)
         or      a
         jr      z,jn_next

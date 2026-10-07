@@ -120,6 +120,10 @@ def move_one(a, i, g, nexthop, occ, e=None):
         a.slot[i] = s
         a.edge[i] = NO_EDGE
         a.progress[i] = 0
+        # Οποιος ταξίδευε μέσα φτάνει μέσα — η αναχώρηση ρώτησε ήδη τον
+        # στόχο. Μόνο όποιος ερχόταν απ' έξω ρωτά (βήμα 87).
+        if not a.flags[i] & F_INDOORS:
+            set_in(a, i, EC.indoor_node(e, dst))
         return
 
     # --- ΣΤΑΘΕΡΟΣ ---
@@ -145,9 +149,22 @@ def move_one(a, i, g, nexthop, occ, e=None):
             a.slot[i] = NO_SLOT
             a.edge[i] = k
             a.progress[i] = 0
+            # Οποιος ξεκινά έξω μένει έξω. Οποιος ξεκινά μέσα μένει μέσα μόνο
+            # σε διάδρομο προς έτοιμο μέρος με αέρα, και όχι από δομή σε δομή
+            # (δύο airlock τα ενώνει το έδαφος). Το «ξεκινά μέσα» είναι η
+            # σημαία, όχι ξανά το en_in του κόμβου: ένα en_in λιγότερο.
+            x = a.node[i]
+            if a.flags[i] & F_INDOORS:
+                set_in(a, i, not (x >= EC.MAX_DOME and nh >= EC.MAX_DOME)
+                       and EC.indoor_node(e, nh))
             return
     # το NEXTHOP δείχνει γείτονα που δεν υπάρχει στη λίστα: ο πίνακας είναι
     # μπαγιάτικος ΚΑΙ λάθος. Δεν συμβαίνει· αν συμβεί, δεν κουνιέται.
+
+
+def set_in(a, i, inside):
+    """Το en_put: το F_INDOORS του i."""
+    a.flags[i] = (a.flags[i] | F_INDOORS) if inside else (a.flags[i] & ~F_INDOORS & 0xFF)
 
 
 def move_slice(a, g, nexthop, occ, first, count, e=None):
@@ -189,13 +206,17 @@ def needs_slice(a, e, occ, first, count):
 
 
 def need_one(a, e, occ, i):
-    # 1. φθορά
+    inside = a.flags[i] & F_INDOORS
+    # 1. φθορά. Το οξυγόνο μόνο μέσα (βήμα 87): έξω αναπνέει από τη στολή, και
+    #    ως το βήμα 89 η στολή δεν αδειάζει.
     for f, r in zip(NEED_FIELDS, NEED_RATE):
+        if f == "o2" and not inside:
+            continue
         arr = getattr(a, f)
         arr[i] = sub_sat(arr[i], r)
 
     # 2. το οξυγόνο είναι ροή, όχι ταξίδι: το αναπνέει όποιος είναι μέσα
-    if e.o2_ok:
+    if e.o2_ok and inside:
         a.o2[i] = min(255, a.o2[i] + O2_REFILL)
 
     # 3. αν στέκεται στο σωστό δωμάτιο, το παίρνει
@@ -210,9 +231,9 @@ def need_one(a, e, occ, i):
         dmg += 2
     if a.food[i] < NEED_CRIT:
         dmg += 1
-    # Η αμμοθύελλα χτυπά όποιον είναι έξω — και έξω σημαίνει «σε εξωτερική
-    # δομή», γιατί αυτό ακριβώς κάνει τους αεροφράκτες απόφαση (§6.2).
-    if e.storm and a.node[i] >= EC.MAX_DOME:
+    # Η αμμοθύελλα χτυπά όποιον είναι έξω, γιατί αυτό ακριβώς κάνει τους
+    # αεροφράκτες απόφαση (§6.2). Από το βήμα 87 «έξω» είναι το F_INDOORS.
+    if e.storm and not inside:
         dmg += 4
     if dmg:
         a.health[i] = sub_sat(a.health[i], dmg)
@@ -361,7 +382,9 @@ class Sim:
         elif s == 12:
             alive = sum(1 for i in range(MAXAGENT)
                         if self.a.flags[i] & F_ALIVE)
-            EC.flow_balance(self.e, alive)
+            inside = sum(1 for i in range(MAXAGENT)
+                         if self.a.flags[i] & F_ALIVE and self.a.flags[i] & F_INDOORS)
+            EC.flow_balance(self.e, alive, inside)
         elif s == 14:
             EC.rooms_rebuild(self.e, self.pc)
         elif s == 13:
@@ -419,4 +442,8 @@ def populate(sim, n_agents=96, seed=7):
             a.water[i] = 4
         if a.flags[i] & F_ALIVE:
             a.slot[i] = claim(sim.occ, node)          # μπορεί να γυρίσει 255
+            # Μέσα, όπως θα τους άφηνε το en_put (βήμα 87). Χωρίς αυτό οι
+            # θόλοι της σκηνής ήταν «έξω» ως την πρώτη μετακίνηση: κανείς δεν
+            # ανέπνεε, και η θέση των αναγκών μετρούσε τη φτηνή της διαδρομή.
+            set_in(a, i, EC.indoor_node(sim.e, node))
     return sim

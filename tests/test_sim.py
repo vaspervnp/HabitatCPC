@@ -611,7 +611,9 @@ def flow_branches(sym, g, nexthop, sim0, patch=(), quiet=False):
         got = m.read_ram(sym["G_ECON_STATE"], EC.ECON_BYTES)
 
         alive = sum(1 for i in range(128) if sim.a.flags[i] & E.F_ALIVE)
-        EC.flow_balance(e, alive)
+        inside = sum(1 for i in range(128)
+                     if sim.a.flags[i] & E.F_ALIVE and sim.a.flags[i] & E.F_INDOORS)
+        EC.flow_balance(e, alive, inside)
         want = EC.to_bytes(e)
         if got != want:
             diff = [k for k in range(len(want)) if got[k] != want[k]]
@@ -755,6 +757,51 @@ def need_branches(sym, g, nexthop, sim0):
     print(f"OK ανάγκες:  {len(NEED_CASES)} περιπτώσεις σε {len(alive)} άποικους — "
           f"{hurt} χτυπήθηκαν, {died} πέθαναν, {healed} γιατρεύτηκαν — ίδια bytes "
           f"στον Z80 και στην αναφορά. ΑΡΝΗΤΙΚΟ: χωρίς το bit του οξυγόνου διαφέρουν")
+    return o2_branches(sym, g, nexthop, sim0)
+
+
+def o2_branches(sym, g, nexthop, sim0):
+    """ΜΕΣΑ ΚΑΙ ΕΞΩ, ΜΕ ΟΞΥΓΟΝΟ ΚΑΙ ΧΩΡΙΣ (βήμα 87). Το κοινό τρέξιμο πέφτει
+    σε έλλειμμα από τη δεύτερη περιστροφή, και κανείς δεν είναι στο 0 μέσα
+    σε θόλο όταν το οξυγόνο φτάνει: η μία πρόσθεση του nd_ok, «max(o2 - 1, 0)
+    + R», έμενε αδοκίμαστη ακριβώς στη γωνία της. Εδώ οι πρώτοι 64 στημένοι:
+    οξυγόνο 0, 255, 254, 1, και κάθε πέμπτος έξω. Δύο ΑΡΝΗΤΙΚΑ: χωρίς το
+    «ήταν 0» του nd_ok, και χωρίς τον έλεγχο «έξω» του nd_def."""
+    base = fresh(g, nexthop, sim0)
+    k = 0
+    for i in range(64):
+        if base.a.flags[i] & E.F_ALIVE:
+            base.a.o2[i] = (0, 255, 254, 1)[k % 4]
+            if k % 5 == 4:
+                E.set_in(base.a, i, False)
+            k += 1
+    inside = sum(1 for i in range(64) if base.a.flags[i] & 3 == 3)
+    outside = sum(1 for i in range(64) if base.a.flags[i] & 3 == 1)
+    ok_at = def_at = None
+    at = sym["ND_OK"]
+    code = run_peek(sym, at, 32)
+    # cp O2_REFILL - 1 / jr nz / inc a — το «ήταν 0»
+    ok_at = next(at + j + 4 for j in range(28)
+                 if code[j] == 0xFE and code[j + 2] == 0x20 and code[j + 4] == 0x3C)
+    code = run_peek(sym, sym["ND_DEF"], 16)
+    # rr e / jr nc — ο έλεγχος «έξω»
+    def_at = next(sym["ND_DEF"] + j + 2 for j in range(12)
+                  if code[j:j + 2] == [0xCB, 0x1B] and code[j + 2] == 0x30)
+    for ok, name, neg in ((1, "φτάνει", [(ok_at, 0)]),
+                          (0, "έλλειμμα", [(def_at, 0), (def_at + 1, 0)])):
+        st = fresh(g, nexthop, base)
+        st.e.o2_ok = ok
+        st.e.o2_prod = st.e.acc_o2 = 400 * ok
+        if same(sym, g, nexthop, st, 128, f"οξυγόνο που {name}") is None:
+            return 1
+        if same(sym, g, nexthop, st, 128, "", quiet=True, patch=neg) is not None:
+            print(f"ΑΠΟΤΥΧΙΑ οξυγόνο που {name}: ΑΡΝΗΤΙΚΟ — με πειραγμένο "
+                  f"κώδικα ο Z80 βγαίνει ακόμη ίδιος με την αναφορά")
+            return 1
+    print(f"OK οξυγόνο: {inside} μέσα και {outside} έξω, στο 0, 1, 254, 255, "
+          f"με οξυγόνο που φτάνει και σε έλλειμμα — ίδια bytes στον Z80 και "
+          f"στην αναφορά. ΑΡΝΗΤΙΚΑ: χωρίς το «ήταν 0» του nd_ok και χωρίς το "
+          f"«έξω» του nd_def διαφέρουν")
     return 0
 
 
@@ -932,7 +979,7 @@ def move_state(rnd, g):
 def move_ref(a, occ, dome, g, nexthop, first, count):
     """Η αναφορά, πράκτορα προς πράκτορα — και οι wh_push που πρέπει να βγουν:
     όποιος άφησε θέση θόλου, όποιος πήρε θέση θόλου."""
-    e, out = types.SimpleNamespace(dome=dome), []
+    e, out = types.SimpleNamespace(dome=dome, struct=STRUCTS), []
     for k in range(count):
         i = (first + k) % 128
         node, slot, edge = a.node[i], a.slot[i], a.edge[i]
@@ -946,12 +993,17 @@ def move_ref(a, occ, dome, g, nexthop, first, count):
     return out
 
 
+STRUCTS = None                          # ο πίνακας δομών της κίνησης (move_branches)
+
+
 def move_branches(sym, sim0, n=12, patch=(), quiet=False):
     """Το ent_move_slice απευθείας, σε φτιαγμένες καταστάσεις, απέναντι στο
     tools/entity.py: πεδία, κατοχή, πίνακας θόλων και οι wh_push μετά από ΚΑΘΕ
     φέτα. Γυρίζει την πρώτη διαφορά ή None."""
     import cpc
     from cpc import CPC
+    global STRUCTS
+    STRUCTS = sim0.e.struct             # το en_in τις διαβάζει (βήμα 87)
     g = move_graph()
     _, nexthop = G.all_pairs(g)
     for at, v in MOVE_STALE:
@@ -1167,15 +1219,17 @@ def edges(sym, g, nexthop, base):
         print(f"ΑΠΟΤΥΧΙΑ άκρες: {LONG_N} κρούσεις ({edge} στην άκρη θόλου L), "
               f"διαφέρουν τα {bad}")
         return 1
-    # ΑΡΝΗΤΙΚΟ: ADD A,4 / CP 9 μετά το SUB B του msc_lp -> ADD A,3 / CP 7
+    # ΑΡΝΗΤΙΚΟ: CP 9 μετά το SUB B του msc_lp -> CP 8. Από το βήμα 87 το B
+    # είναι ήδη x - MT_REACH (χωρίς το ADD A,4 σε κάθε εγγραφή), οπότε ένα
+    # παράθυρο 0..7 είναι MT_REACH 3 στην αριστερή μεριά — εκεί που πέφτουν.
     at = sym["MSC_LP"]
-    code = [0x7E, 0xCB, 0x2F, 0x90, 0xC6, 0x04, 0xFE, 0x09]
+    code = [0x7E, 0xCB, 0x2F, 0x90, 0xFE, 0x09]
     m_code = list(base_code(sym, at, len(code)))
     if m_code != code:
         print(f"ΑΠΟΤΥΧΙΑ άκρες: το msc_lp δεν είναι αυτό που περιμένει η δοκιμή "
               f"{[hex(v) for v in m_code]}")
         return 1
-    neg, _ = z80([(at + 5, 3), (at + 7, 7)])
+    neg, _ = z80([(at + 5, 8)])
     if neg == keys(want):
         print(f"ΑΠΟΤΥΧΙΑ άκρες: με MT_REACH 3 ο Z80 συμφωνεί ακόμη — η δοκιμή "
               f"δεν βλέπει τις άκρες")

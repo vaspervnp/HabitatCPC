@@ -109,9 +109,9 @@ mt_impact:
         ld      e,a
         ld      hl,(EC_MCX)             ; L = το κέντρο x, H = y
         and     15
-        sub     8
+        sub     8 + MT_REACH
         add     a,l
-        ld      b,a
+        ld      b,a                     ; B = x - MT_REACH (mt_scan, βήμα 87)
         ld      a,e
         rrca
         rrca
@@ -120,12 +120,12 @@ mt_impact:
         and     15
         sub     8
         add     a,h
-        ld      c,a                     ; (B, C) = το tile της κρούσης
+        ld      c,a                     ; (B + MT_REACH, C) = το tile της κρούσης
         ; ΕΞΩ ΑΠΟ ΤΟΝ ΚΟΣΜΟ: x + 64 ή y + 64 με το bit 7 (-64..63 -> 0..127)
         add     a,64
         ld      l,a
         ld      a,b
-        add     a,64
+        add     a,64 + MT_REACH
         or      l
         ret     m
         ; --- ποιο κτίριο, αν κάποιο: οι θόλοι, και οι δομές αμέσως μετά ---
@@ -161,6 +161,15 @@ mth_live:
         ld      (eb_s),a
         jp      ec_break_d
 mth_struct:
+        dec     hl
+        dec     hl
+        dec     hl                      ; ST_KIND
+        ld      a,(hl)
+        cp      K_SHIP
+        ret     z                       ; το σκάφος δεν είναι κτίριο (βήμα 87)
+        inc     hl
+        inc     hl
+        inc     hl
         ld      (hl),0                  ; ακεραιότητα 0
         dec     hl
         ld      (hl),DS_BUILDING        ; ξανά εργοτάξιο
@@ -182,7 +191,7 @@ mt_ground:
         sbc     a,a
         and     #80
         add     a,b
-        add     a,64
+        add     a,64 + MT_REACH         ; το B είναι x - MT_REACH
         ld      l,a
         push    bc
         ld      bc,GA_PORT + PAGE_B4
@@ -204,14 +213,22 @@ mtg_back:
         out     (c),c
         pop     bc
         ret     nz                      ; δεν άλλαξε τίποτα στον χάρτη
+        ld      a,b
+        add     a,MT_REACH
+        ld      b,a                     ; ξανά το x του tile
         ld      a,DK_TILE               ; το tile και οι γείτονες (autotile)
         jp      wh_push
 
 ; ---------------------------------------------------------------------------
 ; mt_scan — ένας πίνακας κτιρίων. HL = η πρώτη εγγραφή, D = πόσες, E = μέγεθος
-; εγγραφής (DOME_REC ή STRUCT_REC: το bit 4 λέει ποιο), (B, C) = το tile. CY αν
-; το tile είναι σε κάποιο αποτύπωμα, και τότε HL = η εγγραφή και D = πόσες
-; έμεναν μαζί της. NC: HL = μετά την τελευταία. Κρατά BC.
+; εγγραφής (DOME_REC ή STRUCT_REC: το bit 4 λέει ποιο), (B + MT_REACH, C) = το
+; tile. CY αν το tile είναι σε κάποιο αποτύπωμα, και τότε HL = η εγγραφή και
+; D = πόσες έμεναν μαζί της. NC: HL = μετά την τελευταία. Κρατά BC.
+;
+; ΤΟ B ΕΙΝΑΙ x - MT_REACH (βήμα 87): το «κοντά» ήταν cx/2 - x + MT_REACH, ένα
+; add σε κάθε εγγραφή — 2 us επί 96 σε κάθε κρούση. Ο καλών το αφαιρεί μία
+; φορά (μηδενικό κόστος στο mt_impact, όπου το x βγαίνει από μια αφαίρεση
+; ούτως ή άλλως) και πλήρωσε με αυτό τον έλεγχο του σκάφους στο mth_struct.
 ;
 ; ΠΡΩΤΑ ΤΟ ΚΕΝΤΡΟ, ΜΕΤΑ ΤΟ ΑΠΟΤΥΠΩΜΑ. Το πρώτο γράψιμο ρωτούσε το αποτύπωμα
 ; κάθε ζωντανού κόμβου: ~165 µs ο ένας, 9,5 ms μια κρούση σε αποικία 54
@@ -225,8 +242,7 @@ mt_scan:
 msc_lp:
         ld      a,(hl)                  ; cx, μισά tiles
         sra     a
-        sub     b
-        add     a,MT_REACH
+        sub     b                       ; - (x - MT_REACH)
         cp      2 * MT_REACH + 1
         jr      c,msc_near
 msc_nx:
@@ -293,6 +309,7 @@ msn_go:
         sra     a
         neg
         add     a,b
+        add     a,MT_REACH              ; το B είναι x - MT_REACH
         cp      d
         jr      nc,msn_no
         inc     hl

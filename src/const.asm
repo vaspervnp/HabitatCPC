@@ -68,6 +68,7 @@ ST_KIND     equ 2
 ST_SIZE     equ 3
 ST_STATE    equ 4
 ST_INTEG    equ 5
+ST_JOINED   equ 6           ; airlock: έχει ήδη τον διάδρομό του (βήμα 87)
 CORR_REC    equ 5
 C_A         equ 0
 C_B         equ 1
@@ -226,7 +227,7 @@ MAX_DEGREE  equ 8
 ; Εδώ και όχι στο entity.asm: τα διαβάζει και ο renderer, και ο assembler δεν
 ; συγχωρεί δύο ορισμούς — αυτό ήταν το πρώτο που έσπασε όταν τα δύο μισά του
 ; παιχνιδιού μπήκαν για πρώτη φορά στο ίδιο binary.
-AG_PG       equ G_agent_fields / 256
+AG_PG       equ G_agent_fields >> 8
 AG_FLAGS    equ G_agent_fields               ; +0 flags   +128 role
 AG_NODE     equ G_agent_fields + 256         ; +0 node    +128 slot
 AG_DEST     equ G_agent_fields + 512         ; +0 dest    +128 edge
@@ -235,7 +236,7 @@ AG_O2       equ G_agent_fields + 1024        ; +0 o2      +128 water
 AG_FOOD     equ G_agent_fields + 1280        ; +0 food    +128 sleep
 AG_HEALTH   equ G_agent_fields + 1536        ; +0 health  +128 morale
 AG_SKILL    equ G_agent_fields + 1792        ; +0 skill   +128 spare
-OCCPG       equ G_node_occ / 256
+OCCPG       equ G_node_occ >> 8
 
 ; --- η ελεύθερη τράπεζα 2, μοιρασμένη (§4.3).
 ; Πρώτα οι δύο μεγάλοι buffers και μετά κώδικας. Η τράπεζα 2 φαίνεται πάντα,

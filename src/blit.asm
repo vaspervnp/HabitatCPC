@@ -108,7 +108,7 @@ blw_k:  jp      (iy)
 blt_mask_flip:
         push    hl
         pop     ix
-        ld      h,FLIPTAB / 256     ; ο πίνακας είναι σε όριο σελίδας
+        ld      h,FLIPTAB >> 8     ; ο πίνακας είναι σε όριο σελίδας
         ld      a,d
         or      #F8
         inc     a

@@ -203,16 +203,26 @@ AL_REACH    equ 2 * (AL_RANGE + 8)
 
 al_scans:
         ld      (al_fn),hl
+        call    asc_b6
         ld      hl,G_struct_tbl + ST_STATE
         ld      de,STRUCT_REC
         ld      bc,MAX_STRUCT * 256 + MAX_DOME
-        jr      asc_go
+        ; ΤΟ ΣΚΑΦΟΣ ΔΕΝ ΕΙΝΑΙ ΚΤΙΡΙΟ (βήμα 87): δεν είναι «κοντά», ούτε κάνει
+        ; τον ηλιακό να μην είναι ο πρώτος. Στέκεται πάντα στη θέση 0 — το
+        ; game_new το βάζει εκεί, και κτίριο δεν γκρεμίζεται — οπότε το πέρασμα
+        ; αρχίζει από την 1 όταν τη βρει σκάφος. Ενας έλεγχος, όχι ένας ανά δομή.
+        ld      a,(G_struct_tbl + ST_KIND)
+        cp      K_SHIP
+        jr      nz,asc_lp
+        add     hl,de
+        dec     b
+        inc     c
+        jr      asc_lp
 al_scand:
         ld      (al_fn),hl
         ld      hl,G_dome_tbl + D_STATE
         ld      de,DOME_REC
         ld      bc,MAX_DOME * 256       ; B = πόσες θέσεις, C = ο κόμβος
-asc_go:
         call    asc_b6
 asc_lp:
         ld      a,(hl)                  ; D_STATE = ST_STATE
@@ -299,12 +309,6 @@ al_cor1:
 ; ακόμη μέσα (al_scans).
 al_cor1a:
         ld      c,a
-        ld      h,NODEPG
-        ld      l,a
-        ld      a,(hl)                  ; ο βαθμός του
-        or      a
-        ret     nz
-        ld      a,c
         sub     MAX_DOME
         add     a,a
         add     a,a
@@ -315,6 +319,17 @@ al_cor1a:
         add     hl,de
         ld      a,(hl)
         cp      K_AIRLOCK
+        ret     nz
+        ; ΜΟΝΟ ΑΝ ΔΕΝ ΕΧΕΙ ΗΔΗ ΔΙΑΔΡΟΜΟ. Ως το βήμα 86 αυτό ήταν «βαθμός 0»· από
+        ; το 87 το airlock έχει από την αρχή τη σύνδεση εδάφους του, και ο
+        ; διάδρομός του γίνεται ακμή μόνο όταν τελειώσει — οπότε το λέει ένα
+        ; byte της εγγραφής του (al_commit).
+        inc     hl
+        inc     hl
+        inc     hl
+        inc     hl                      ; ST_JOINED
+        ld      a,(hl)
+        or      a
         ret     nz
         ld      a,c
         jr      al_cor1
@@ -805,7 +820,18 @@ al_ghost:
 al_commit:
         ld      a,(al_pt)
         inc     a
-        jr      z,alc_cor
+        jr      nz,alc_pth
+        ; --- ΤΟ ΠΕΡΠΑΤΗΜΑ ΣΤΟ ΕΔΑΦΟΣ (βήμα 87): ένα εργοτάξιο δεν έχει αέρα,
+        ; άρα φτάνεις σε αυτό από έξω. Ο,τι δεν έχει μονοπάτι — θόλος, airlock,
+        ; η πρώτη δομή — παίρνει σύνδεση εδάφους ως το κοντινότερο airlock ή
+        ; το σκάφος. Ο θόλος τη χάνει όταν τελειώσει (lk_done)· το airlock την
+        ; κρατά, γιατί είναι η πόρτα. Δεν ζωγραφίζεται: είναι έδαφος. (Το
+        ; al_plan αφήνει το al_pt στο 255 για ό,τι δεν είναι δομή με μονοπάτι.)
+        ld      a,(bd_node)
+        ld      b,a
+        call    lk_ground
+        jr      alc_cor
+alc_pth:
         ld      hl,al_cbs
         call    al_lgo
         ld      a,(bd_node)
@@ -880,6 +906,7 @@ alc_lp:
         ex      de,hl
         dec     (hl)
         ex      de,hl
+        call    alc_join                ; έχει πια τον διάδρομό του
 alc_d:
         call    al_set
         call    cr_commit               ; A = 0: μπήκε
@@ -889,9 +916,30 @@ alc_d:
         pop     bc
         inc     hl
         djnz    alc_lp
+        ; Ενα νέο airlock με τον διάδρομό του: κι αυτό δεν είναι πια μόνο.
+        ld      a,(bd_param)
+        cp      K_AIRLOCK
+        ld      a,(bd_node)
+        call    z,alc_join
 alc_out:
         pop     hl
         ld      (bd_metal),hl
+        ret
+; alc_join — A = κόμβος airlock: ST_JOINED = 1. Κρατά AF, BC, HL.
+alc_join:
+        push    af
+        push    hl
+        push    bc
+        call    asc_b6
+        call    gr_live                 ; HL -> ST_STATE
+        inc     hl
+        inc     hl                      ; ST_JOINED
+        ld      (hl),1
+        ld      bc,GA_PORT + PAGE_B1
+        out     (c),c
+        pop     bc
+        pop     hl
+        pop     af
         ret
 alc_none:
         ; Χωρίς διάδρομο: ένα airlock που μπήκε μόνο του περιμένει τον θόλο του.
@@ -905,7 +953,97 @@ alc_none:
         inc     (hl)
         jr      alc_out
 
+; ---------------------------------------------------------------------------
+; lk_ground — B = κόμβος: η σύνδεση εδάφους ως το κοντινότερο airlock ή το
+; σκάφος που έχει ελεύθερη ακμή, αν υπάρχει. Αν όχι, το εργοτάξιο μένει
+; απρόσιτο — με το σκάφος να υπάρχει πάντα, χρειάζεται οκτώ ακμές σε κάθε
+; πόρτα πρώτα.
+; ---------------------------------------------------------------------------
+lk_ground:
+        call    asc_b6
+        call    lk_anchor
+        push    bc
+        ld      bc,GA_PORT + PAGE_B1
+        out     (c),c
+        pop     bc
+        ld      c,a
+        inc     a
+        ret     z
+        jp      cr_link_bc
+
+; lk_anchor — B = ο νέος κόμβος, στον κέρσορα· τράπεζα 6 μέσα. A = το
+; κοντινότερο (max |dx|, |dy| σε μισά tiles) σκάφος ή airlock, έτοιμο ή
+; εργοτάξιο, όχι ο ίδιος, με βαθμό κάτω από MAX_DEGREE· 255 αν κανένα. Σε
+; ισοπαλία το πρώτο. Κρατά B.
+lk_anchor:
+        push    ix
+        ld      de,(cur_hx)             ; E = cx, D = cy: το νέο είναι στον κέρσορα
+        ld      ix,G_struct_tbl
+        ld      hl,#FFFF                ; L = η καλύτερη απόσταση, H = ο κόμβος
+        ld      c,MAX_DOME
+lka_lp:
+        ld      a,(ix+ST_STATE)
+        or      a
+        jr      z,lka_nx
+        ld      a,(ix+ST_KIND)
+        cp      K_SHIP
+        jr      z,lka_k
+        cp      K_AIRLOCK
+        jr      nz,lka_nx
+lka_k:
+        ld      a,c
+        cp      b
+        jr      z,lka_nx                ; όχι ο ίδιος
+        push    hl
+        ld      h,NODEPG
+        ld      l,a
+        ld      a,(hl)
+        pop     hl
+        cp      MAX_DEGREE
+        jr      nc,lka_nx               ; οι ακμές του γέμισαν
+        ld      a,(ix+ST_CX)
+        sub     e
+        call    lk_abs
+        ld      (lk_dt),a
+        ld      a,(ix+ST_CY)
+        sub     d
+        call    lk_abs
+        push    hl
+        ld      hl,lk_dt
+        cp      (hl)
+        jr      nc,lka_m
+        ld      a,(hl)                  ; το μεγαλύτερο από τα δύο
+lka_m:
+        pop     hl
+        cp      l
+        jr      nc,lka_nx
+        ld      l,a
+        ld      h,c
+lka_nx:
+        push    de
+        ld      de,STRUCT_REC
+        add     ix,de
+        pop     de
+        inc     c
+        ld      a,c
+        cp      MAX_NODE
+        jr      c,lka_lp
+        ld      a,h
+        pop     ix
+        ret
+
+; lk_abs — A = η διαφορά με τις σημαίες του sub -> |A|, 254 αν ξεχείλισε.
+lk_abs:
+        jp      pe,lka_far
+        ret     p
+        neg
+        ret
+lka_far:
+        ld      a,254
+        ret
+
 ; --- η κατάσταση -------------------------------------------------------------
+lk_dt:      db 0
 al_n:       db 0                ; πόσοι διάδρομοι
 al_len:     db 0                ; τα πλακίδιά τους, όλων μαζί
 al_pt:      db 255              ; το μονοπάτι: ο κόμβος στην άκρη, 255 = κανένα

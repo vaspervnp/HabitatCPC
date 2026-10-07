@@ -69,7 +69,7 @@ class Game:
         self.sym = sym
         m = self.m = cpc.CPC()
         m.run_frames(60)
-        assert m.quickload(TG.SNA), "quickload απέτυχε"
+        assert m.quickload(TG.COLONY), "quickload απέτυχε"
         m.run_frames(120)
         for at, v in patch:
             m.poke(at, v)

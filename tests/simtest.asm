@@ -149,6 +149,8 @@ rtr_lp:
         include "../src/wheel.asm"
         include "../src/sound.asm"
         include "../src/meteor.asm"
+        include "../src/door.asm"           ; βήμα 87: το ja_build το καλεί
+        include "../src/edges.asm"          ; βήμα 87: οι ακμές
 
 done_flag:   db 0
 tick_count:  dw 0

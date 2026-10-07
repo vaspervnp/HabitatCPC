@@ -6,7 +6,7 @@
   * Κάθε κτίσμα θέλει κάποιο του σωστού είδους ως 12 tiles μακριά· αν δεν
     υπάρχει κανένα τέτοιο στον κόσμο, μπαίνει όπου το επιτρέπει το έδαφος.
   * Ένας θόλος παίρνει σκεπαστό διάδρομο προς ΚΑΘΕ θόλο — και προς κάθε airlock
-    που δεν έχει ακόμη τον δικό του — που ο διάδρομος φτάνει με το πολύ 12
+    που δεν έχει ακόμη τον δικό του (ST_JOINED) — που ο διάδρομος φτάνει με το πολύ 12
     πλακίδια (ως τέσσερις, με τη σειρά του πίνακα), χωρίς δύο διαδρόμους στα
     ίδια tiles. Χωρίς διάδρομο είναι κόκκινος (βήμα 86).
   * Ένα airlock παίρνει ΕΝΑΝ διάδρομο, προς τον κοντινότερο θόλο, που το
@@ -15,6 +15,7 @@
     δομή, ποτέ σε θόλο: ένα Γ κέντρο-κέντρο, με το πολύ 12 tiles έξω από τα δύο
     αποτυπώματα, όλα σε έδαφος που χτίζεται. Οποιος βγαίνει, βγαίνει από airlock.
   * Αλλιώς κόκκινο, και ο πίνακας λέει TOO FAR, PATH BLOCKED ή NO CORRIDOR FITS.
+  * Το σκάφος (βήμα 87) δεν είναι κτίριο: ούτε «κοντά» ούτε «υπάρχει».
 
   ΚΑΝΟΝΕΣ   Τυχαίες σκηνές — κόσμος με εμπόδια, θόλοι, δομές και airlock γύρω
             από τον κέρσορα με τα αποτυπώματά τους κατειλημμένα, βαθμοί κόμβων,
@@ -30,7 +31,10 @@
   FIRE      Το uist_place χτίζει ό,τι έδειξε το φάντασμα: τα tiles του
             μονοπατιού θεμέλιο με κατοχή 2 και το decor τους, οι διάδρομοι
             στον πίνακα με τον θόλο ως άκρο a (από εκεί ζωγραφίζονται, και ένα
-            airlock δεν είναι ποτέ), οι ακμές στον γράφο, το κόστος πληρωμένο
+            airlock δεν είναι ποτέ), στον γράφο η ακμή του μονοπατιού — ή, για
+            ό,τι δεν έχει μονοπάτι, η σύνδεση εδάφους στο κοντινότερο airlock ή
+            σκάφος (reach.anchor) και ΚΑΜΙΑ ακμή διαδρόμου: γίνονται όταν
+            τελειώσει (βήμα 87) — το κόστος πληρωμένο
             ακριβώς, και η οθόνη byte προς byte η πλήρης σχεδίαση — και όταν η
             διαγώνιος ξεκινά από τη γωνία του νέου θόλου, που τη ζωγραφίζει και
             η σειρά του εργοταξίου (το test_fit το βρήκε). Ο χειρότερος γύρος
@@ -38,8 +42,10 @@
             με μονοπάτι κάτω από 140, γιατί ξαναζωγραφίζονται μόνο τα tiles του
             (171 ms με το ορθογώνιο κέντρο-γωνία-κέντρο, που έπιανε και τον
             θόλο απέναντι).
-  ΠΡΩΤΟ     Σε κόσμο χωρίς θόλο ένα airlock μπαίνει μόνο του (EC_FREELK = 1), και
-  AIRLOCK   ο θόλος που έρχεται μετά του δίνει τον διάδρομό του (EC_FREELK = 0).
+  ΠΡΩΤΟ     Σε κόσμο χωρίς θόλο ένα airlock μπαίνει μόνο του (EC_FREELK = 1), με
+  AIRLOCK   σύνδεση εδάφους στο κοντινότερο airlock, και ο θόλος που έρχεται μετά
+            του δίνει τον διάδρομό του (EC_FREELK = 0, ST_JOINED = 1) και δένεται
+            στο έδαφος με το ΝΕΟ, το κοντινότερο.
   ΠΙΝΑΚΑΣ   Στο παιχνίδι: το σύνολο του κόστους στη σειρά 3, ο λόγος στη 4 —
             και ο λόγος αλλάζει ακόμη κι όταν το ui_bad έμενε ίδιο ως το βήμα 84.
   ΧΡΟΝΟΣ    Ένα βήμα κέρσορα (ui_validate) δίπλα στην αποικία, όχι πιο αργό από
@@ -52,7 +58,9 @@
 άλλον, το NO CORRIDOR FITS λέγεται TOO FAR, το airlock κρατά τον τελευταίο θόλο,
 το airlock που μπαίνει μόνο του δεν μετριέται, οι διάδρομοι στη λίστα αλλαγών
 πριν από τις σειρές του εργοταξίου, το bd_nres που μένει από την προηγούμενη
-θέση, το ui_bad χωρίς τον λόγο, και ο πίνακας χωρίς το κόστος στην υπογραφή του.
+θέση, το ui_bad χωρίς τον λόγο, ο πίνακας χωρίς το κόστος στην υπογραφή του· και
+από το βήμα 87 το σκάφος που μετράει ως δομή, η άγκυρα που δεν διαλέγει τη
+μικρότερη απόσταση, και το airlock που δεν σημειώνεται ST_JOINED.
 """
 import ctypes, os, random, sys
 
@@ -69,6 +77,7 @@ import cpc                                               # noqa: E402
 
 UI_PLACE = 2
 FAIL = []
+SHIP_RND = random.Random(87)
 
 
 def check(ok, msg):
@@ -145,8 +154,20 @@ def scene(rnd, G, sym):
             # χωρά» με τις διαφορές του προηγούμενου υποψηφίου.
             dx, dy = dx - ((cx + dx) & 1), dy - ((cy + dy) & 1)
         structs[s_] = [(cx + dx) & 255, (cy + dy) & 255, kd, size, rnd.choice([1, 2])]
-    # Οι βαθμοί: ένα airlock με ακμή δεν δέχεται άλλον διάδρομο (βήμα 86).
+    # ΤΟ ΣΚΑΦΟΣ στη θέση 0, όπως στο παιχνίδι από το βήμα 87 — κάπου γύρω, όταν
+    # η θέση είναι άδεια. Από δική του γεννήτρια: οι σκηνές του βήματος 86
+    # μένουν ίδιες, και μαζί η κάλυψή τους.
+    if not structs[0][4] and SHIP_RND.random() < 0.5:
+        structs[0] = [(cx + SHIP_RND.randrange(-30, 31)) & 255,
+                      (cy + SHIP_RND.randrange(-30, 31)) & 255, reach.K_SHIP, 0, 2]
+    # Οι βαθμοί: ως το βήμα 86 «airlock με ακμή» ήταν «έχει διάδρομο»· από το
+    # 87 το λέει το ST_JOINED, και οι βαθμοί — τυχαίοι — δεν πρέπει να μετράνε.
     deg = [rnd.randrange(3) for _ in range(64)] + [rnd.choice([0, 0, 1]) for _ in range(64)]
+    # ...και το ST_JOINED κάθε airlock από τον ίδιο του τον βαθμό, όπως ως το 86
+    # το «έχει ακμή»: οι σκηνές μένουν ίδιες, μόνο η πηγή της απάντησης αλλάζει.
+    for k, st in enumerate(structs):
+        if st[2] == reach.K_AIRLOCK and st[4]:
+            structs[k] = st[:5] + [255, 1 if deg[64 + k] else 0]
     # ΤΑ ΑΠΟΤΥΠΩΜΑΤΑ ΚΑΤΕΙΛΗΜΜΕΝΑ, όπως τα αφήνει το bd_commit. Ως το βήμα 85 η
     # σκηνή τα άφηνε στην τύχη, και ένας διάδρομος μπορούσε να περάσει μέσα από
     # τρίτο θόλο — ο Z80 και ο κανόνας συμφωνούσαν, αλλά το φάντασμα έβγαζε το
@@ -169,20 +190,21 @@ def put_scene(G, world, domes, structs, deg=None):
     deg = deg or [0] * 128
     G.m.write_ram(G.nodes, bytes(deg))                  # NODE_DEG, τράπεζα 2
     # Και το EC_FREELK, όπως θα το είχε κρατήσει το al_commit: πόσα airlock
-    # χωρίς ακμή υπάρχουν.
-    G.m.poke(G.g + 63, sum(1 for k, s in enumerate(structs)
-                           if s[4] and s[2] == reach.K_AIRLOCK and not deg[64 + k]))
+    # χωρίς τον διάδρομό τους υπάρχουν.
+    G.m.poke(G.g + 63, sum(1 for s in structs
+                           if s[4] and s[2] == reach.K_AIRLOCK and not reach.joined(s)))
     d6 = bytearray(G.bank(6, G.gd, 64 * 24))
     for d, (x, y, s, st) in enumerate(domes):
         d6[24 * d:24 * d + 5] = bytes([x, y, s, 0, st])
     s6 = bytearray(G.bank(6, G.gs, 32 * 8))
-    for k, (x, y, kd, s, st) in enumerate(structs):
-        s6[8 * k:8 * k + 5] = bytes([x, y, kd, s, st])
+    for k, s in enumerate(structs):
+        s6[8 * k:8 * k + 5] = bytes(s[:5])
+        s6[8 * k + 6] = reach.joined(s)         # ST_JOINED (βήμα 87)
     G.put(6, G.gd, d6)
     G.put(6, G.gs, s6)
 
 
-def expect(G, i, cx, cy, world, domes, structs, dims, deg=None):
+def expect(G, i, cx, cy, world, domes, structs, dims):
     """(ui_bad, bd_nres, reach-αποτέλεσμα ή None) από την πρόζα."""
     kind, param, w, h = G.items[i][:4]
     tx, ty, out = TP.rect_rule(cx, cy, w, h)
@@ -195,7 +217,7 @@ def expect(G, i, cx, cy, world, domes, structs, dims, deg=None):
     a, nres = res_model(world, kind, param, w, h, tx, ty)
     if a:
         return 0xF0 + nres, nres, None
-    res = reach.plan(world, domes, structs, dims, kind, param, w, h, cx, cy, deg)
+    res = reach.plan(world, domes, structs, dims, kind, param, w, h, cx, cy)
     if res["ok"]:
         return 0, 0, res
     return 0xF0 + res["reason"], res["reason"], res
@@ -236,6 +258,7 @@ def edges():
     E = [[0, 0, 0, 0]] * 63
     S = [[0, 0, 0, 0, 0]] * 31
     lock0 = [[0, 0, reach.K_AIRLOCK, 0, 2]]
+    ship0 = [[0, 0, reach.K_SHIP, 0, 2]]
     return [
         # θόλος L στο (0, 0) και θόλος L 20 tiles ανατολικά: 20 - 4 - 4 = 12
         # πλακίδια — και τα κέντρα απέχουν ακριβώς AL_REACH μισά tiles.
@@ -249,10 +272,31 @@ def edges():
         (9, (0, 36), [[0, 0, 2, 2]] + E, S + [[0] * 5], {}, "TOO FAR"),
         # δύο θόλοι S στη ζώνη «σχεδόν διαγώνιο»: S = 6, T = 5, κανένα σχήμα
         (0, (12, 10), [[0, 0, 0, 2]] + E, S + [[0] * 5], {}, "NO FIT"),
-        # θόλος πάνω από airlock χωρίς ακμή: διάδρομος· με ακμή: τίποτα, και
-        # χωρίς άλλον θόλο μπαίνει μόνος του
+        # θόλος πάνω από airlock χωρίς διάδρομο: διάδρομος· με διάδρομο
+        # (ST_JOINED): τίποτα, και χωρίς άλλον θόλο μπαίνει μόνος του
         (0, (0, 0), [[0] * 4] + E, [[0, 12, reach.K_AIRLOCK, 0, 2]] + S, {}, "1 διάδρομος"),
-        (0, (0, 0), [[0] * 4] + E, [[0, 12, reach.K_AIRLOCK, 0, 2]] + S, {64: 1}, "μόνος"),
+        (0, (0, 0), [[0] * 4] + E, [[0, 12, reach.K_AIRLOCK, 0, 2, 255, 1]] + S, {64: 1}, "μόνος"),
+        # ...και το ίδιο με ένα δεύτερο airlock, μόνο του, μακριά: το EC_FREELK
+        # είναι 1, οπότε ο Z80 ψάχνει στις δομές — και πρέπει να προσπεράσει
+        # το πρώτο επειδή έχει ST_JOINED, όχι επειδή δεν έψαξε
+        (0, (0, 0), [[0] * 4] + E, [[0, 12, reach.K_AIRLOCK, 0, 2, 255, 1],
+                                     [100, 100, reach.K_AIRLOCK, 0, 2]] + S[1:], {64: 1}, "μόνος"),
+        # ΤΟ ΣΚΑΦΟΣ ΔΕΝ ΕΙΝΑΙ ΔΟΜΗ (βήμα 87): ένας ηλιακός 7 tiles από αυτό
+        # μπαίνει ως πρώτη δομή, χωρίς μονοπάτι· και δίπλα σε σκάφος και
+        # airlock πάει στο airlock, ακόμη κι αν το σκάφος είναι πιο κοντά
+        (4, (15, 1), [[0] * 4] + E, ship0 + S, {}, "μόνος"),
+        (4, (-11, 1), [[0] * 4] + E, ship0 + [[(-40) & 255, 0, reach.K_AIRLOCK, 0, 2]] + S[1:],
+         {}, "μονοπάτι στο airlock"),
+        # ΤΕΣΣΕΡΙΣ ΔΙΑΔΡΟΜΟΙ, το ταβάνι: σπάνιοι στις τυχαίες σκηνές (2-4 στις
+        # 500), οπότε και εδώ — ένας S σε σταυρό από S, ένας M σε σταυρό, και
+        # ένας S με πέμπτο θόλο στη διαγώνιο, που μένει έξω
+        (0, (0, 0), [[16, 0, 0, 2], [(-16) & 255, 0, 0, 2], [0, 16, 0, 2],
+                     [0, (-16) & 255, 0, 2]] + E[3:], S + [[0] * 5], {}, "4 διάδρομοι"),
+        (1, (0, 0), [[18, 0, 0, 2], [(-18) & 255, 0, 0, 2], [0, 18, 0, 2],
+                     [0, (-18) & 255, 0, 2]] + E[3:], S + [[0] * 5], {}, "4 διάδρομοι"),
+        (0, (0, 0), [[16, 0, 0, 2], [(-16) & 255, 0, 0, 2], [0, 16, 0, 2],
+                     [0, (-16) & 255, 0, 2], [16, 16, 0, 2]] + E[4:], S + [[0] * 5], {},
+         "4 διάδρομοι"),
         # airlock ανάμεσα σε δύο θόλους S: ο πρώτος του πίνακα 3 πλακίδια, ο
         # δεύτερος 6 — ο κοντινότερος, όχι ο τελευταίος
         (9, (0, 12), [[0, 0, 0, 2], [0, 30, 0, 2]] + E[1:], S + [[0] * 5], {}, "1 διάδρομος")]
@@ -267,7 +311,7 @@ def rules(sym, patch=(), n=500, seed=8585):
     seen = {"πρώτο κτίριο": 0, "1 διάδρομος": 0, "2+ διάδρομοι": 0, "4 διάδρομοι": 0,
             "μονοπάτι δομής": 0, "θόλος -> airlock": 0, "airlock -> θόλος": 0,
             "TOO FAR": 0, "PATH BLOCKED": 0, "NO CORRIDOR FITS": 0,
-            "κακά tiles": 0, "έξω": 0, "σχήμα y": 0}
+            "κακά tiles": 0, "έξω": 0, "σχήμα y": 0, "με σκάφος": 0}
     fixed = edges()
     for case in range(n + len(fixed)):
         G.restore()
@@ -282,9 +326,11 @@ def rules(sym, patch=(), n=500, seed=8585):
         G.cursor(cx, cy)
         put_scene(G, world, domes, structs, deg)
         m.poke(sym["UI_STATE"], UI_PLACE)
-        m.poke(sym["BD_NRES"], rnd.randrange(6))
+        # Οι σκηνές ορίου από άλλη γεννήτρια: μια καινούργια δεν μετακινεί
+        # τις τυχαίες, και μαζί την κάλυψή τους.
+        m.poke(sym["BD_NRES"], (SHIP_RND if what else rnd).randrange(6))
         _, A, _ = G.run("UI_VALIDATE")
-        bad, nres, res = expect(G, i, cx, cy, world, domes, structs, dims, deg)
+        bad, nres, res = expect(G, i, cx, cy, world, domes, structs, dims)
         got, want = got_of(G, sym), want_of(G, i, res if bad == 0 or bad >= 0xF3 else None, nres)
         got["A"], want["A"] = A, bad
         w_after = G.bank(4)
@@ -299,11 +345,16 @@ def rules(sym, patch=(), n=500, seed=8585):
                     f"(Z80, κανόνας) {diff}")
         if what:                            # η σκηνή του ορίου κάνει ό,τι λέει
             ok = {"1 διάδρομος": bad == 0 and res and len(res["corridors"]) == 1,
+                  "4 διάδρομοι": bad == 0 and res and len(res["corridors"]) == 4,
                   "μονοπάτι": bad == 0 and res and res["path"] and len(res["path"][2]) == 12,
+                  "μονοπάτι στο airlock": bad == 0 and res and res["path"]
+                  and len(res["path"][2]) == 12 and res["path"][0] == 65,
                   "TOO FAR": bad == 0xF3, "NO FIT": bad == 0xF5,
                   "μόνος": bad == 0 and res and not res["any"] and not res["corridors"]}[what]
             if not ok:
                 return f"η σκηνή ορίου {case} δεν βγάζει «{what}»: ui_bad #{bad:02X}"
+        if structs[0][2] == reach.K_SHIP and structs[0][4]:
+            seen["με σκάφος"] += 1
         if bad == 255:
             seen["έξω"] += 1
         elif 0 < bad < 0xF0:
@@ -370,7 +421,7 @@ def ghost(sym, patch=(), n=160, seed=8686):
     while case < n:
         G.restore()
         i, cx, cy, world, domes, structs, deg = scene(rnd, G, sym)
-        bad, nres, res = expect(G, i, cx, cy, world, domes, structs, dims, deg)
+        bad, nres, res = expect(G, i, cx, cy, world, domes, structs, dims)
         if bad or not (res["corridors"] or res["path"]):
             continue
         case += 1
@@ -555,9 +606,8 @@ def fire(sym, g, patch=()):
         b4 = bytes(G.bank(4)[:0x4000])
         b6 = bytes(G.bank(6)[:0x4000])
         domes = [list(b6[R.DOME_TBL + 24 * d:R.DOME_TBL + 24 * d + 4]) for d in range(64)]
-        structs = [list(b6[R.STRUCT_TBL + 8 * k:R.STRUCT_TBL + 8 * k + 5]) for k in range(32)]
-        res = reach.plan(b4, domes, structs, dims, kind, param, w, h, cx, cy,
-                         list(m.read_ram(nodes, 128)))
+        structs = [list(b6[R.STRUCT_TBL + 8 * k:R.STRUCT_TBL + 8 * k + 7]) for k in range(32)]
+        res = reach.plan(b4, domes, structs, dims, kind, param, w, h, cx, cy)
         if not res["ok"] or not (res["corridors"] or res["path"]):
             return f"{name} στο ({cx}, {cy}): ο κανόνας δεν το δένει πουθενά — {res['reason']}"
         if need and not need(res):
@@ -589,9 +639,16 @@ def fire(sym, g, patch=()):
             k = next(k for k in range(0x4000) if got[k] != want[k])
             return (f"{name}: ο κόσμος στο tile ({(k & 127) - 64}, {(k >> 7) - 64}) "
                     f"#{got[k]:02X}, ο κανόνας λέει #{want[k]:02X}")
-        # --- ο γράφος: ο νέος κόμβος με κάθε άκρη, και ανάποδα
+        # --- ο γράφος: η ακμή του μονοπατιού, ή η σύνδεση εδάφους στην άγκυρα.
+        # Οι διάδρομοι ΟΧΙ ακόμη: το εργοτάξιο δεν έχει αέρα (βήμα 87).
         node = m.peek(sym["BD_NODE"])
-        ends = [c[0] for c in res["corridors"]] or [res["path"][0]]
+        if res["path"] and not res["corridors"]:
+            ends = [res["path"][0]]
+        else:
+            a = reach.anchor(structs, list(deg0) + [0] * 32, node, cx, cy)
+            ends = [] if a == 255 else [a]
+        if not ends:
+            return f"{name}: η σκηνή δεν έχει άγκυρα — δεν δοκιμάζει τη σύνδεση εδάφους"
         deg = m.read_ram(nodes, 96)
         nb = lambda a: [m.peek(adj + 8 * a + j) for j in range(deg[a])]
         for e in ends:
@@ -627,8 +684,9 @@ def fire(sym, g, patch=()):
         if pic != ref:
             k = next(k for k in range(len(pic)) if pic[k] != ref[k])
             return f"{name}: η οθόνη διαφέρει από την πλήρη σχεδίαση στο byte {k % 80}, γραμμή {k // 80}"
-        print(f"    {name}: {len(ends)} δεσμός/οί ({'διάδρομος' if res['corridors'] else 'μονοπάτι'}), "
-              f"πληρωμή {paid}, χειρότερος γύρος {laid:.0f} ms")
+        print(f"    {name}: {len(res['corridors'])} διάδρομοι, "
+              f"{'μονοπάτι' if res['path'] and not res['corridors'] else 'έδαφος'} ως τον "
+              f"{ends[0]}, πληρωμή {paid}, χειρότερος γύρος {laid:.0f} ms")
     return None
 
 
@@ -636,7 +694,10 @@ def fire(sym, g, patch=()):
 def first_lock(sym, g, patch=()):
     """Σε κόσμο χωρίς θόλο ένα airlock μπαίνει μόνο του, και το EC_FREELK το
     θυμάται· ο θόλος που έρχεται μετά, κάτω του, του δίνει τον διάδρομό του, και
-    το EC_FREELK γυρίζει στο 0. Η πρώτη διαφορά, ή None."""
+    το EC_FREELK γυρίζει στο 0. Από το βήμα 87: το airlock δένεται στο έδαφος
+    με το airlock της αποικίας (το μόνο άλλο), σημειώνεται ST_JOINED μόλις
+    πάρει διάδρομο, και ο θόλος δένεται στο έδαφος με το ΝΕΟ — το
+    κοντινότερο από τα δύο. Η πρώτη διαφορά, ή None."""
     import test_reveal as R
     import balance as B
     from cpc import JOY_FIRE
@@ -647,6 +708,10 @@ def first_lock(sym, g, patch=()):
     b6 = G.bank(6)
     for d in range(64):                     # κανένας θόλος: η αποικία χωρίς στέγη
         b6[R.DOME_TBL + 24 * d + 4] = 0
+    # ...και χωρίς τις ακμές τους: ο πρώτος θόλος που μπαίνει παίρνει τον
+    # κόμβο 0, και θα κληρονομούσε τη γραμμή του παλιού (βήμα 87: η σύνδεση
+    # εδάφους του ελέγχεται ακμή προς ακμή).
+    m.write_ram(layout("G_rt_nodes"), bytes(128))
     b4 = G.bank(4)
     for y in range(18, 35):                 # ένα χωράφι από χώμα
         for x in range(-52, -43):
@@ -668,12 +733,19 @@ def first_lock(sym, g, patch=()):
         if m.peek(g + 63) != free or len(new) != recs:
             return (f"αντικείμενο {item} στο {at}: EC_FREELK {m.peek(g + 63)} (θέλει {free}), "
                     f"{len(new)} νέοι διάδρομοι (θέλει {recs})")
+        nb = [m.peek(layout("G_node_adj") + 8 * node + j) for j in range(m.peek(nodes + node))]
+        joined = G.bank(6)[R.STRUCT_TBL + 8 * (lock - 64) + 6] if lock else None
         if item == 9:
             lock = node
-            if node < 64 or m.peek(nodes + node):
-                return f"το airlock: κόμβος {node}, βαθμός {m.peek(nodes + node)}"
+            if node < 64 or nb != [65]:
+                return f"το airlock: κόμβος {node}, γείτονες {nb} (θέλει [65], το έδαφος)"
+            if G.bank(6)[R.STRUCT_TBL + 8 * (lock - 64) + 6]:
+                return "το airlock μόνο του έχει ήδη ST_JOINED"
         elif new != [[node, lock, 0, 5, 2]]:
             return f"ο θόλος {node}: διάδρομος {new}, θέλει [[{node}, {lock}, 0, 5, 2]]"
+        elif nb != [lock] or joined != 1:
+            return (f"ο θόλος {node}: γείτονες {nb} (θέλει [{lock}], το έδαφος ως το "
+                    f"κοντινότερο airlock), ST_JOINED του airlock {joined}")
     pic, ref = G.truth()
     if pic != ref:
         k = next(k for k in range(len(pic)) if pic[k] != ref[k])
@@ -713,14 +785,24 @@ def negatives(sym, g):
         ("η δομή δένεται σε θόλο", rules,
          [(a, v) for a, v in zip(range(find(m, sym["AL_FIND"], [0x21] + w(sym["AL_TRY"]) + [0xCD], 200) + 4, 10**6),
                                  w(sym["AL_SCAND"]))]),
-        ("airlock με ακμή δέχεται κι άλλον", rules,
-         [(find(m, sym["AL_COR1A"], [0x7E, 0xB7, 0xC0], 12) + 2, 0)]),
+        ("airlock με διάδρομο δέχεται κι άλλον", rules,
+         [(find(m, sym["AL_COR1A"], [0x7E, 0xB7, 0xC0], 30) + 2, 0)]),
         ("το NO CORRIDOR FITS λέγεται TOO FAR", rules,
          [(find(m, sym["AL_COR0"], [0xCB, 0xCE], 60) + k, 0) for k in (0, 1)]),
         ("το airlock κρατά τον τελευταίο θόλο", rules,
          [(find(m, sym["AL_LCK"], [0xBE, 0xD0], 20) + 1, 0)]),
         ("το airlock που μπαίνει μόνο του δεν μετριέται", first_lock,
-         [(find(m, sym["AL_COMMIT"], [0x21] + w(g + 63) + [0x34], 200) + 3, 0)]),
+         [(find(m, sym["AL_COMMIT"], [0x21] + w(g + 63) + [0x34], 400) + 3, 0)]),
+        # --- βήμα 87 ---
+        # cp K_SHIP στο al_scans γίνεται cp 255: το σκάφος μετράει ως δομή
+        ("το σκάφος μετράει ως δομή", rules,
+         [(find(m, sym["AL_SCANS"], [0xFE, 7], 30) + 1, 255)]),
+        # cp l · jr nc στο lk_anchor γίνεται jr c: καμία άγκυρα δεν περνά
+        ("η άγκυρα που δεν διαλέγει τη μικρότερη απόσταση", first_lock,
+         [(find(m, sym["LK_ANCHOR"], [0xBD, 0x30], 80) + 1, 0x38)]),
+        # ld (hl),1 στο alc_join γίνεται ld (hl),0
+        ("το airlock που δεν σημειώνεται ST_JOINED", first_lock,
+         [(find(m, sym["ALC_JOIN"], [0x36, 1], 30) + 1, 0)]),
         # Η σειρά ως το test_fit: al_commit πριν από το bd_redraw, χωρίς push/pop.
         ("οι διάδρομοι πριν από το εργοτάξιο", "fire",
          list(zip(range(find(m, sym["UIP_FIRE"], [0xCD] + w(sym["BD_REDRAW"]) + [0xF5, 0xCD]

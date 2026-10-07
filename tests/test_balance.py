@@ -47,7 +47,7 @@ def main():
     sym, g = T.build()
     m = CPC()
     m.run_frames(60)
-    assert m.quickload(T.SNA), "quickload απέτυχε"
+    assert m.quickload(T.COLONY), "quickload απέτυχε"
     m.run_frames(250)
     m.poke(sym["UI_SPD"], 4)
 

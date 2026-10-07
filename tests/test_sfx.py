@@ -147,7 +147,7 @@ class Rig:
         self.sym = sym
         m = self.m = cpc.CPC()
         m.run_frames(60)
-        assert m.quickload(TG.SNA, start=False), "quickload απέτυχε"
+        assert m.quickload(TG.COLONY, start=False), "quickload απέτυχε"
         m.run_frames(400)
         for at, v in patch:
             m.poke(at, v)
@@ -346,7 +346,7 @@ def main():
 
     m = cpc.CPC()
     m.run_frames(60)
-    assert m.quickload(TG.SNA, start=False)
+    assert m.quickload(TG.COLONY, start=False)
 
     def find(at, pat, span=400):
         i = m.read_ram(sym[at], span).find(bytes(pat))

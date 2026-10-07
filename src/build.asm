@@ -490,6 +490,7 @@ t_extr:     db "EXTRACTOR",0
 t_mine:     db "MINE     ",0
 t_lock:     db "AIRLOCK  ",0
 t_pad:      db "LANDING  ",0
+t_shipn:    db "SHIP     ",0          ; το I πάνω στο σκάφος (βήμα 87)
 
 ; --- η τρέχουσα επιλογή, αντιγραμμένη από τον κατάλογο ---------------------
 bd_kind:    db 0

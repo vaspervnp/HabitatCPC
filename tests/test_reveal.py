@@ -76,7 +76,7 @@ class Game:
     def __init__(self, sym, g):
         self.sym, self.g = sym, g
         self.top = sym["MAIN_LOOP"]
-        self.m = B.boot(sym, T.SNA)
+        self.m = B.boot(sym, T.COLONY)
         for k in (3, 4):                     # μέταλλο και βιοπλαστικό: 999
             self.m.poke(g + 2 * k, 0xE7)
             self.m.poke(g + 2 * k + 1, 0x03)

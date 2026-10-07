@@ -23,7 +23,9 @@ in_panel:
         ; ο γλύφος σελιδοποιεί την 7 ---
         call    ob_b6
         call    ui_curt                 ; L = x, H = y
-        ld      b,l
+        ld      a,l
+        sub     MT_REACH                ; το mt_scan θέλει x - MT_REACH (βήμα 87)
+        ld      b,a
         ld      c,h
         ld      hl,G_dome_tbl
         ld      de,MAX_DOME * 256 + DOME_REC
@@ -37,6 +39,9 @@ in_panel:
         xor     a                       ; τίποτα
 inp_rec:
         ld      (in_t),a
+        ld      a,b
+        add     a,MT_REACH
+        ld      b,a
         push    bc                      ; το tile, για το έδαφος
         inc     hl
         inc     hl                      ; D_SIZE / ST_KIND

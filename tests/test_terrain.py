@@ -79,7 +79,7 @@ def check(sym, patch=(), timing=True):
     """Η πρώτη διαφορά από τον κανόνα, ή None."""
     m = cpc.CPC()
     m.run_frames(60)
-    assert m.quickload(TG.SNA, start=False), "quickload απέτυχε"
+    assert m.quickload(TG.COLONY, start=False), "quickload απέτυχε"
     for at, v in patch:
         m.poke(at, v)
     b4 = cpc._lib.cpcemu_ram_ptr(m._h, 4)
@@ -155,7 +155,7 @@ def main():
     r, none = sym["BD_RES"], sym["BDR_NONE"]
     m = cpc.CPC()
     m.run_frames(60)
-    assert m.quickload(TG.SNA, start=False)
+    assert m.quickload(TG.COLONY, start=False)
     code = m.read_ram(r, 80)
     assert code[9:12] == bytes([0x11, 4, 6]), "το bd_res δεν έχει ld de,#0604 στο +9"
     step = code.find(bytes([0x3E, 0x80, 0x91]))

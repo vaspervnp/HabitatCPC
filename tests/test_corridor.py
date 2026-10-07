@@ -13,7 +13,9 @@
   cr_cost    l0 (+ l1) πλακίδια επί την τιμή ανά πλακίδιο, 16 bit
   cr_afford  Z και A = 0 αν φτάνουν και τα δύο υλικά, NZ και A = 1 αν όχι
   cr_commit  η πρώτη άδεια θέση του πίνακα, δύο διπλανές για στροφή, ποτέ
-             μετά την τελευταία· πληρωμή και ακμές του γράφου μόνο τότε
+             μετά την τελευταία· πληρωμή μόνο τότε, και ΚΑΜΙΑ ακμή (βήμα 87)
+  cr_commit_ln  το ίδιο για το LINK, και η ακμή μόνο αν και οι δύο θόλοι
+             είναι έτοιμοι — με έναν από τους δύο εργοτάξιο, όχι
   cr_redraw  οι δύο πόρτες, μία DK_CROW για κάθε ορατή σειρά της διαγωνίου,
              το περίγραμμα του αξονικού κομματιού (stubs στο dirty_push και
              στο view_add)
@@ -123,7 +125,7 @@ class Game:
         self.sym = sym
         m = self.m = cpc.CPC()
         m.run_frames(60)
-        assert m.quickload(TG.SNA, start=False), "quickload απέτυχε"
+        assert m.quickload(TG.COLONY, start=False), "quickload απέτυχε"
         m.run_frames(150)                                # game_new
         m.write_ram(CB, bytes([0x2A, PTR & 255, PTR >> 8, 0x70, 0x23, 0x71, 0x23,
                                0x22, PTR & 255, PTR >> 8, 0xC9]))
@@ -353,13 +355,14 @@ def commit_rule(states, n):
 
 
 def commit_rules(sym, patch=(), n=400):
-    """cr_commit (και cr_pay, cr_link) σε τυχαίους πίνακες διαδρόμων: η πρώτη
-    διαφορά από τον κανόνα, ή None."""
+    """cr_commit_ln (cr_commit, cr_pay, cr_lnk) σε τυχαίους πίνακες διαδρόμων,
+    με τον έναν θόλο ή και τους δύο καμιά φορά εργοτάξιο: η πρώτη διαφορά από
+    τον κανόνα, ή None."""
     G = Game(sym, patch)
     m = G.m
     rnd = random.Random(7272)
     seen = {"στροφές": 0, "χωρίς θέση": 0, "τελευταία θέση": 0, "γεμάτος βαθμός": 0,
-            "ζευγάρι μόνο με την τελευταία": 0}
+            "ζευγάρι μόνο με την τελευταία": 0, "εργοτάξιο: καμία ακμή": 0}
     tbl = ctypes.addressof(G.ptr[6].contents) + G.gc
     span = MAX_CORR * CORR_REC + 32                       # και 32 bytes μετά τον πίνακα
     pairs = {1: [], 2: []}                                # ευθείες και στροφές, μισές-μισές
@@ -410,10 +413,13 @@ def commit_rules(sym, patch=(), n=400):
         m.write_ram(G.g + 6, bytes([0xE8, 3, 0xE8, 3]))   # 1.000 και 1.000
         m.poke(sym["BD_METAL"], 6)
         m.poke(sym["BD_BIOP"], 3)
-        t, A, _ = G.plan(a, b)
+        # ΕΡΓΟΤΑΞΙΟ (βήμα 87): ένας διάδρομος προς θόλο που χτίζεται δεν
+        # είναι ακμή ακόμη. Στο ένα πέμπτο ο ένας ή και οι δύο είναι DS_SITE.
+        live = rnd.choice([(2, 2), (2, 2), (2, 2), (2, 2), (1, 2), (2, 1), (1, 1)])
+        t, A, _ = G.plan(a, b, live)
         if A != len(runs):
             return f"θόλοι {a} -> {b}: το cr_plan έδωσε {A}"
-        _, A, _ = G.run("CR_COMMIT")
+        _, A, _ = G.run("CR_COMMIT_LN")
         where = f"θόλοι {a} -> {b}, {runs}, πίνακας είδους {kind}"
         got = ctypes.string_at(tbl, span)
         at = commit_rule(st, len(runs))
@@ -434,9 +440,10 @@ def commit_rules(sym, patch=(), n=400):
         want_st = (1000 - 6 * nt, 1000 - 3 * nt) if at is not None else (1000, 1000)
         if stock != want_st:
             return f"{where}: αποθέματα {stock}, ο κανόνας λέει {want_st}"
-        # οι ακμές: ο ένας στους γείτονες του άλλου, αν χωράει
+        # οι ακμές: ο ένας στους γείτονες του άλλου, αν χωράει — και μόνο αν
+        # είναι έτοιμοι και οι δύο
         wdeg, wadj = list(deg), bytearray(adj0)
-        if at is not None:
+        if at is not None and live == (2, 2):
             for i, (x, y) in enumerate(((frm, to), (to, frm))):
                 d = wdeg[x - SA]
                 if d < MAX_DEGREE:
@@ -449,6 +456,7 @@ def commit_rules(sym, patch=(), n=400):
         seen["χωρίς θέση"] += at is None
         seen["τελευταία θέση"] += at == MAX_CORR - 1
         seen["γεμάτος βαθμός"] += at is not None and MAX_DEGREE in deg
+        seen["εργοτάξιο: καμία ακμή"] += at is not None and live != (2, 2)
         seen["ζευγάρι μόνο με την τελευταία"] += kind == 1 and len(runs) > 1
     if not patch and min(seen.values()) < 10:
         return f"το σενάριο του commit δεν έπιασε ό,τι έπρεπε: {seen}"
@@ -630,7 +638,7 @@ def main():
     # --- αρνητικά ---
     m = cpc.CPC()
     m.run_frames(60)
-    assert m.quickload(TG.SNA, start=False)
+    assert m.quickload(TG.COLONY, start=False)
     rk, dr, ki, ck = sym["CRS_RK"], sym["CR_DIR"], sym["CRK_IN"], sym["CR_CB_CHK"]
     st = sym["CR_CB_STP"]
     im = m.read_ram(st, 12).find(bytes([0xB3, 0xF8]))            # or e · ret m
@@ -667,6 +675,9 @@ def main():
             fails += 1
     for label, fn, patch in (("ζευγάρι και στην τελευταία θέση", commit_rules,
                               [(cm + il + 2, 0), (cm + il + 3, 0)]),
+                             # cr_lnk: το ret nz πριν από το cr_link γίνεται nop
+                             ("ακμή και προς εργοτάξιο", commit_rules,
+                              [(sym["CR_LINK"] - 1, 0)]),
                              ("σειρά ορατή μόνο από τη στήλη -1", redraw_rules,
                               [(rr + iv + 1, 1)])):
         why = fn(sym, patch, n=150)

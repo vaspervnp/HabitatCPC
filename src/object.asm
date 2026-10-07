@@ -637,12 +637,16 @@ ob_icon:
         ld      l,a
         ld      (ob_src),hl
         pop     hl
-        ld      a,4                     ; αδιαφανές
         ; Τα εικονίδια m και l μετακόμισαν στην ΤΡΑΠΕΖΑ 1, πάνω από τον πίνακα
         ; DIST (§4.2): με 96 κόμβους ο πίνακας αφήνει 4 KB, και αυτά τα 4 KB
-        ; έγιναν χώρος ΚΩΔΙΚΑ στην τράπεζα 2. Τα s έμειναν στη 2 — η
-        ; σελιδοποίηση δεν τα πειράζει, η 2 φαίνεται πάντα.
+        ; έγιναν χώρος ΚΩΔΙΚΑ στην τράπεζα 2. Τα s ακολούθησαν τις μηχανές
+        ; στην ΤΡΑΠΕΖΑ 5 στο βήμα 87, για τον ίδιο λόγο.
+        ld      a,(d_rec+D_SIZE)
+        or      a
+        ld      a,4                     ; αδιαφανές
         ld      c,PAGE_B1
+        jr      nz,ob_put_in
+        ld      c,PAGE_B5
 ; ob_put_in — ob_put με την τράπεζα C στο παράθυρο, και μετά πίσω η 6.
 ob_put_in:
         ld      b,GA_PORT / 256
@@ -1245,11 +1249,11 @@ ob_fig_scan:
 ofs_lp:
         push    bc
         ld      l,c
-        ld      h,AG_FLAGS/256
+        ld      h,AG_FLAGS >> 8
         ld      a,(hl)
         and     OB_ALIVE
         jr      z,ofs_next
-        ld      h,AG_NODE/256
+        ld      h,AG_NODE >> 8
         set     7,l
         ld      a,(hl)                  ; slot
         cp      255
@@ -1260,7 +1264,7 @@ ofs_lp:
         cp      MAX_DOME
         jr      nc,ofs_next             ; δομή, όχι θόλος
         ld      (ofs_node),a
-        ld      h,AG_FLAGS/256
+        ld      h,AG_FLAGS >> 8
         set     7,l
         ld      a,(hl)                  ; role
         and     7
