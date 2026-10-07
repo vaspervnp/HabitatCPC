@@ -273,6 +273,8 @@ done_flag:  db 0
         bankset 1
         org     #0000                   ; τράπεζα 4 — το επίπεδο κόσμου
         incbin  "../build/world_col.bin"
+        org     B5_BASE                 ; τράπεζα 5 — οι μηχανές (βήμα 85)
+        incbin  "../build/bank5.bin"
         org     #8000                   ; τράπεζα 6 — τεταρτημόρια ΚΑΙ πίνακες
         incbin  "../build/bank6_col.bin"
         org     #C000                   ; τράπεζα 7

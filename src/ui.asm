@@ -576,7 +576,7 @@ uip_fire:
         call    ui_validate
         or      a
         jr      nz,uip_deny             ; άκυρη θέση — το FIRE δεν κάνει τίποτα
-        call    bd_afford
+        call    al_afford               ; και οι διάδρομοι μαζί (βήμα 85)
         jr      nz,uip_deny             ; ούτε τα υλικά φτάνουν
         call    ui_hide
         call    bd_commit
@@ -585,6 +585,13 @@ uip_fire:
         ld      a,SFX_BUILD
         call    snd_play
         call    bd_redraw               ; το νέο αντικείμενο μπαίνει στη σκηνή
+        ; ΟΙ ΔΙΑΔΡΟΜΟΙ ΜΕΤΑ ΑΠΟ ΤΟ ΕΡΓΟΤΑΞΙΟ. Η διαγώνιος ξεκινά από τη γωνία
+        ; του αποτυπώματος, και η σειρά του εργοταξίου (dh_site) ζωγραφίζει
+        ; μόνο τον θόλο πάνω στο έδαφος: αν οι σειρές της διαγωνίου έμπαιναν
+        ; πρώτες στη λίστα, η γωνία θα έσβηνε (test_fit, βήμα 85).
+        push    af
+        call    al_commit               ; οι διάδρομοι, ή το μονοπάτι (src/link.asm)
+        pop     af
 uip_late:
         jr      z,uip_after
         ; ΤΟ ΦΑΝΤΑΣΜΑ ΠΕΡΙΜΕΝΕΙ ΤΟ ΕΡΓΟΤΑΞΙΟ. Θα ξανάπεφτε κόκκινο πάνω στον θόλο
@@ -946,17 +953,22 @@ uir_foot:
         ret
 
 ; ---------------------------------------------------------------------------
-; ui_validate — Out: A = 0 αν η θέση επιτρέπεται.
+; ui_validate — Out: A = 0 αν η θέση επιτρέπεται: το έδαφος (bd_check), και
+; από το βήμα 85 ένα κτίσμα σε απόσταση για να δεθεί (al_plan).
 ; ---------------------------------------------------------------------------
 ui_validate:
         ld      a,(ui_state)
         cp      UI_PLACE
         ld      a,0
         ret     nz
+        ; ΤΟ bd_nres ΑΠΟ ΤΟ ΜΗΔΕΝ (βήμα 85). Το γράφουν μόνο το bd_res και το
+        ; al_plan, όταν τα tiles είναι καλά· μετά από θέση με κακά tiles έμενε
+        ; ό,τι είπε η προηγούμενη, και το ui_bad (al_plan) το διαβάζει.
+        ld      (bd_nres),a
         ld      bc,GA_PORT + PAGE_B4
         out     (c),c
         call    bd_check
-        jp      uid_out
+        jp      al_plan                 ; τελειώνει στο uid_out
 
 ; ---------------------------------------------------------------------------
 ; ui_show / ui_hide — το φάντασμα πάνω στη σκηνή, και πίσω.
@@ -1019,7 +1031,7 @@ uis_bad:
         jp      nz,ui_panel
         ld      a,(ui_bad)
         or      a
-        jp      z,ui_panel
+        jp      z,al_ghost              ; οι δεσμοί, πράσινοι (βήμα 85)
         ld      a,PEN_NO
         call    gh_setpen
         ld      de,(ui_tx)              ; E = ui_tx, D = ui_ty
@@ -1157,16 +1169,13 @@ uip_start:
         cp      (hl)
         jr      nz,uipc_go
         inc     hl
-        ld      a,(cr_l1)
-        ld      b,a
-        ld      a,(cr_l0)
-        add     a,b
-        cp      (hl)
-        jr      nz,uipc_go
-        inc     hl
         push    hl
         call    uis_aff
         pop     hl
+        cp      (hl)
+        jr      nz,uipc_go
+        inc     hl
+        ld      a,(cr_metal)            ; ΜΕΤΑ το uis_aff, που το ξαναμετρά
         cp      (hl)
         jr      nz,uipc_go
         inc     hl
@@ -1244,12 +1253,15 @@ uip_item:
         ld      h,0
         ld      (uip_bi),hl
         ld      a,(ui_state)
+        cp      UI_PLACE
+        jr      z,uipi_tot              ; το σύνολο του al_plan (βήμα 85)
         cp      UI_LINK
         jr      nz,uipi_go
         ld      a,(cr_n)
         or      a
         jr      z,uipi_go
         call    cr_cost
+uipi_tot:
         ld      hl,(cr_metal)
         ld      (uip_fe),hl
         ld      hl,(cr_biop)
@@ -1318,7 +1330,7 @@ uip_row4:
         ifdef HAS_DISC
         cp      UI_SLOT
         ld      hl,t_slkeys
-        jr      z,uip_say
+        jp      z,uip_say
         endif
         ; ΜΕΝΟΥΝ LOOK ΚΑΙ MENU. Στο LOOK η σειρά 4 έλεγε «FIRE=PLACE» ως το
         ; βήμα 44, όταν το FIRE εκεί δεν έκανε τίποτα· από το 45 ανοίγει τον
@@ -1345,7 +1357,7 @@ uip_st:
         ld      a,(ui_bad)
         or      a
         jr      nz,uip_blocked
-        call    bd_afford
+        call    al_afford
         jr      nz,uip_poor
         ld      hl,t_ok
         jr      uip_say
@@ -1361,7 +1373,13 @@ uip_blocked:
         dec     a
         ld      hl,t_nowat
         jr      z,uip_say
+        dec     a
         ld      hl,t_noore
+        jr      z,uip_say
+        dec     a
+        ld      hl,t_far                ; 3: κανένα κτίσμα σε απόσταση (βήμα 85)
+        jr      z,uip_say
+        ld      hl,t_path               ; 4: κάποιο, αλλά ο δρόμος κομμένος
         jr      uip_say
 uip_poor:
         ld      hl,t_poor
@@ -1436,16 +1454,17 @@ ui_sig:
         ld      a,(cr_n)
         ld      (hl),a
         inc     hl
-        ld      a,(cr_l0)               ; δύο διαδρομές ίδιου σχήματος και
-        push    hl                      ; διαφορετικού μήκους κοστίζουν αλλιώς
-        ld      hl,cr_l1
-        add     a,(hl)
-        pop     hl
-        ld      (hl),a
-        inc     hl
         push    hl
         call    uis_aff
         pop     hl
+        ld      (hl),a
+        inc     hl
+        ; ΤΟ ΚΟΣΤΟΣ, όχι το μήκος (βήμα 85): δύο διαδρομές ίδιου σχήματος και
+        ; διαφορετικού μήκους κοστίζουν αλλιώς, και στο PLACE το σύνολο του
+        ; al_plan αλλάζει με τους διαδρόμους του θόλου. Το χαμηλό byte φτάνει:
+        ; δύο σύνολα του ίδιου αντικειμένου διαφέρουν κατά 6k, k <= 48, και
+        ; το 256 δεν διαιρείται με το 6. Μετά το uis_aff, που το ξαναμετρά.
+        ld      a,(cr_metal)
         ld      (hl),a
         inc     hl
         ld      a,(ui_spd)            ; ο δείκτης ταχύτητας ζει στη σειρά 3
@@ -1468,6 +1487,8 @@ ui_sig:
 ; uis_aff — A = φτάνουν τα υλικά; του διαδρόμου στο LINK, του καταλόγου αλλού.
 uis_aff:
         ld      a,(ui_state)
+        cp      UI_PLACE
+        jp      z,al_afford
         cp      UI_LINK
         jp      nz,bd_afford
         jp      cr_afford

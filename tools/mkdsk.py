@@ -49,6 +49,7 @@ FILES = [
     ("GAME2.BIN",   "game2.bin", 0,      0x0000),   # από το σύμβολο
     ("GEN.BIN",     "gen.bin",   0x8000, 0x8000),
     ("PAGE2.BIN",   "page2.bin", 0x8000, 0x0000),
+    ("BANK5.BIN",   "bank5.bin", 0x7400, 0x0000),   # οι μηχανές (βήμα 85)
     ("BANK1.BIN",   "bank1.bin", 0x7000, 0x0000),
     ("BANK6.BIN",   "bank6.bin", 0x4000, 0x0000),
     ("BANK7.BIN",   "bank7.bin", 0x4000, 0x0000),
@@ -113,6 +114,7 @@ def boot_equ(name):
 # μνήμη ακυρώνεται πριν διαβαστεί· ένα byte πραγματικών δεδομένων από κάτω της
 # θα ήταν σφάλμα που φαίνεται μόνο από τον δίσκο και ποτέ από το snapshot.
 SCRATCH = boot_equ("SCRATCH")
+SCRATCH_B5 = boot_equ("SCRATCH_B5")
 SCRATCH_G2 = boot_equ("SCRATCH_G2")
 
 # Τα slots του §11 ζουν στα tracks 24-41, ΧΩΡΙΣ αρχείο AMSDOS από πάνω τους: ο
@@ -218,15 +220,21 @@ def check_saves():
 
 def check_scratch():
     n2 = os.path.getsize(os.path.join(BUILD, "page2.bin"))
+    n5 = os.path.getsize(os.path.join(BUILD, "bank5.bin"))
     ng = os.path.getsize(os.path.join(BUILD, "game2.bin"))
-    if SCRATCH + n2 > SCRATCH_G2:
+    # Τρία στη σειρά από το βήμα 85: δεδομένα τράπεζας 2, οι μηχανές της
+    # τράπεζας 5, κώδικας τράπεζας 2.
+    if SCRATCH + n2 > SCRATCH_B5:
         sys.exit(f"το page2.bin ({n2} bytes) φτάνει από το #{SCRATCH:04X} ως το "
-                 f"#{SCRATCH + n2:04X} και σβήνεται από το game2.bin στο "
-                 f"#{SCRATCH_G2:04X} ({SCRATCH + n2 - SCRATCH_G2} bytes)")
+                 f"#{SCRATCH + n2:04X} και σβήνεται από το bank5.bin στο "
+                 f"#{SCRATCH_B5:04X} ({SCRATCH + n2 - SCRATCH_B5} bytes)")
+    if SCRATCH_B5 + n5 > SCRATCH_G2:
+        sys.exit(f"το bank5.bin ({n5} bytes) φτάνει ως το #{SCRATCH_B5 + n5:04X} "
+                 f"και σβήνεται από το game2.bin στο #{SCRATCH_G2:04X}")
     if SCRATCH_G2 + ng > 0x8000:
         sys.exit(f"το game2.bin ({ng} bytes) βγαίνει από το πρόχειρο της "
                  f"τράπεζας 5 ({SCRATCH_G2 + ng - 0x8000} bytes πάνω από το #8000)")
-    return SCRATCH_G2 - SCRATCH - n2
+    return SCRATCH_B5 - SCRATCH - n2
 
 
 def build():

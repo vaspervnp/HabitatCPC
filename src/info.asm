@@ -125,10 +125,16 @@ inp_st:
 inp_none:
         ; Κατοχή χωρίς θόλο ή δομή από πάνω: διάδρομος. Το cr_stamp σφραγίζει
         ; τα tiles του με το ίδιο bit που βάζει και το χτίσιμο (W_OCC_STRUCT).
+        ; Από το βήμα 85 και το μονοπάτι στο έδαφος, με κατοχή 2 (src/link.asm).
         ld      a,(in_w)
         and     W_OCC_MASK
         ld      hl,t_corr               ; τράπεζα 2
         ld      b,35 - 9
+        cp      W_OCC_PATH
+        jr      nz,inp_cor
+        ld      hl,t_pathw
+inp_cor:
+        or      a
         jr      nz,inp_name
         ld      hl,t_i_none
         call    hud_text7

@@ -251,7 +251,7 @@ sv_after:
         ld      hl,#4000
         ld      (hl),0
         ld      de,#4001
-        ld      bc,#3FFF
+        ld      bc,B5_BASE - #4001      ; ως τις μηχανές (βήμα 85)
         ldir
         ld      bc,GA_PORT + PAGE_B1
         out     (c),c

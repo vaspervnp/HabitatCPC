@@ -67,6 +67,10 @@ cr_plan:
         jr      c,crp_out
         ld      bc,GA_PORT + PAGE_B1
         out     (c),c
+; cr_pair — το ίδιο, με τα δύο άκρα ήδη στο cr_a, cr_b (src/link.asm: το άκρο
+; a είναι ο κέρσορας). Μέσα στο cr_plan, για να βρίσκουν το crs_far και το
+; crs_sym την ίδια στοίβα.
+cr_pair:
         call    cr_side
         ld      a,(cr_n)
         or      a
@@ -911,6 +915,20 @@ crc_one:
         ld      (cr_metal),hl
         ret
 
+; cr_pcs — A = τα πλακίδια της διαδρομής, και των δύο τρεξιμάτων. Για το
+; src/link.asm· το cr_cost έχει το ίδιο μέσα του, γιατί μια κλήση εκεί
+; κόστιζε 7 µs σε κάθε afford του LINK (tests/test_corridor.py).
+cr_pcs:
+        ld      hl,cr_l0
+        ld      a,(cr_n)
+        cp      2
+        ld      a,(hl)
+        ret     c
+        inc     hl
+        inc     hl                      ; cr_l1
+        add     a,(hl)
+        ret
+
         assert  bd_biop == bd_metal + 1
 
 ; cr_afford — Z και A = 0 αν φτάνουν τα υλικά για ολόκληρη τη διαδρομή, NZ
@@ -918,6 +936,8 @@ crc_one:
 ; ήδη στο HL, και ένα «λείπει» βγαίνει χωρίς να κοιτάξει το βιοπλαστικό.
 cr_afford:
         call    cr_cost
+; cra_tot — HL = μέταλλο, (cr_biop) = βιοπλαστικό: το σύνολο του al_plan.
+cra_tot:
         ex      de,hl
         ld      hl,(EC_STOCK + S_METAL*2)
         or      a

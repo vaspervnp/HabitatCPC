@@ -13,10 +13,10 @@
   bd_afford  Z και A = 0 αν φτάνουν μέταλλο και βιοπλαστικό, NZ και A = 1 αν όχι
   bd_stock_pay  τα δύο αποθέματα μείον το κόστος, 16 bit
   bd_commit  η πρώτη άδεια θέση θόλου ή δομής και η εγγραφή της, το θεμέλιο
-             και η κατοχή στο αποτύπωμα, η πληρωμή, η ακμή προς τον
-             κοντινότερο ζωντανό θόλο (|dx| + |dy| σε μισά tiles, 8 bit όπως ο
-             Z80) και προς τα πίσω, η εργασία Build, το ob_idx — ή 255 και
-             καμία αλλαγή
+             και η κατοχή στο αποτύπωμα, η πληρωμή, η εργασία Build, το ob_idx
+             — ή 255 και καμία αλλαγή. ΚΑΜΙΑ ακμή από το βήμα 85: ως τότε έδενε
+             το κτίσμα με τον κοντινότερο θόλο όσο μακριά κι αν ήταν· τώρα τους
+             δεσμούς τους βάζει το al_commit (tests/test_reach.py)
   bd_redraw  ο θόλος σε DK_SITE, μία ανά σειρά, και NZ· η δομή στο vr_* και,
              αν φαίνεται, ob_struct και ob_clip_full, και Z (stubs)
 
@@ -35,8 +35,8 @@ interface (test_build, test_map, test_game, test_reveal, test_link): λίγες
 βήματος 72 αποτυγχάνουν όλα.
 
 Αρνητικά, με το snapshot πειραγμένο: το θεμέλιο να μην επιτρέπεται, το πρώτο
-tile ένα δεξιότερα, η επόμενη σειρά του ελέγχου +64, επτά NO_MACH, ο θόλος να
-μετρά και τον εαυτό του, A = 255 αντί 1 στο afford, και ο θόλος να γυρνά Z.
+tile ένα δεξιότερα, η επόμενη σειρά του ελέγχου +64, επτά NO_MACH, το θεμέλιο
+χωρίς κατοχή, A = 255 αντί 1 στο afford, και ο θόλος να γυρνά Z.
 """
 import ctypes, os, random, sys
 
@@ -58,7 +58,9 @@ MAX_DEGREE = 8
 # 127, 71, 15514 και 11825.
 CEIL = {"έλεγχος 4x4": 796, "έλεγχος 6x6": 1365, "έλεγχος 8x8": 2124,
         "έλεγχος 3x3": 599, "έλεγχος 4x4 ορυχείο": 1424, "έλεγχος έξω": 153,
-        "rect": 66, "afford": 63, "commit θόλου": 9362, "commit δομής": 5591}
+        "rect": 66, "afford": 63, "commit θόλου": 4656, "commit δομής": 892}
+# Το commit από το βήμα 85: χωρίς την αναζήτηση του κοντινότερου θόλου (9.362
+# και 5.591 ως τότε)· τους δεσμούς τους βάζει το al_commit.
 
 
 def sb(v):
@@ -294,7 +296,7 @@ def commit_rules(sym, patch=(), n=300):
     m = G.m
     rnd = random.Random(7373)
     rm_list = m.read_ram(sym["RM_LIST"], 16)
-    seen = {"θόλοι": 0, "δομές": 0, "γεμάτος": 0, "πρώτο κτίριο": 0, "γεμάτος βαθμός": 0}
+    seen = {"θόλοι": 0, "δομές": 0, "γεμάτος": 0}
     for case in range(n):
         G.restore()
         i = rnd.choice([0, 1, 2, 4, 5, 6, 7, 8, 9, 10])
@@ -372,25 +374,7 @@ def commit_rules(sym, patch=(), n=300):
                     a = (ty + r + 64) * 128 + tx + c + 64
                     want_w[a] = want_w[a] & 0xC0 | 0x17
             stock = (1000 - G.items[i][4], 1000 - G.items[i][5])
-            best, dist = None, 255
-            for d in range(64):
-                if want_d[24 * d + 4] == 0 or d == node:
-                    continue
-                dx = (want_d[24 * d] - cx) & 255
-                dy = (want_d[24 * d + 1] - cy) & 255
-                dx, dy = (-dx) & 255 if dx & 128 else dx, (-dy) & 255 if dy & 128 else dy
-                if dx + dy < 256 and dx + dy < dist:
-                    best, dist = d, dx + dy
-            if best is None:
-                seen["πρώτο κτίριο"] += 1
-            else:
-                for x, y in ((best, node), (node, best)):
-                    if want_deg[x] < MAX_DEGREE:
-                        want_adj[8 * x + want_deg[x]] = y
-                        want_deg[x] += 1
-                    else:
-                        seen["γεμάτος βαθμός"] += 1
-                dirty = 1
+            # ο γράφος δεν αλλάζει (βήμα 85): ούτε βαθμοί, ούτε γείτονες, ούτε rt_dirty
             j = next((j for j in range(32) if jobs[5 * j] == 255), None)
             if j is not None:
                 want_jobs[5 * j:5 * j + 5] = bytes([0, node, 255, 5, 0])
@@ -498,7 +482,7 @@ def main():
     for fn, what in ((rules, "bd_ok (256), bd_select, bd_rect, bd_check, bd_afford, "
                               "bd_stock_pay = οι κανόνες"),
                      (commit_rules, "bd_commit = η θέση, η εγγραφή, το θεμέλιο, η πληρωμή, "
-                                    "η ακμή, η εργασία, το ob_idx"),
+                                    "η εργασία, το ob_idx — και καμία ακμή"),
                      (redraw_rules, "bd_redraw = DK_SITE ανά σειρά για θόλο, vr_* και "
                                     "ob_struct για δομή")):
         why = fn(sym)
@@ -530,8 +514,8 @@ def main():
            ("πρώτο tile ένα δεξιότερα", rules, [(find("BDR_ONE", [0xD6, 64]) + 1, 63)]),
            ("επόμενη σειρά +64", rules, [(find("BD_CHECK", [0xC6, 128], 96) + 1, 64)]),
            ("επτά NO_MACH", commit_rules, [(find("BD_COMMIT", [0x01, NO_MACH, 8], 96) + 2, 7)]),
-           ("ο θόλος μετρά τον εαυτό του", commit_rules,
-            [(a, 0) for a in (lambda p: (p + 1, p + 2))(find("BL_LP", [0xB8, 0x28]))]),
+           ("το θεμέλιο χωρίς κατοχή", commit_rules,
+            [(find("BD_LINK", [0xF6, 0x17]) + 1, 0x07)]),
            ("A = 255 στο afford", rules,
             [(a, 0) for a in (lambda p: (p, p + 1))(find("BDA_NO", [0xED, 0x44]))]),
            ("ο θόλος γυρνά Z", redraw_rules, [(find("BDR_LP", [0x1C, 0xC9]), 0)])]

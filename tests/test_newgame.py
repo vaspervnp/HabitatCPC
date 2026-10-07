@@ -183,7 +183,7 @@ def check(sym, patch=(), n=8, timing=False):
         if case:
             G.put(6, 0x2C00, bytes(rnd.randrange(256) for _ in range(0x1400)))
             G.put(2, L["G_econ_state"] - 0x8000,
-                  bytes(rnd.randrange(256) for _ in range(0xA500 - L["G_econ_state"])))
+                  bytes(rnd.randrange(256) for _ in range(L["G_hud_shadow"] - L["G_econ_state"])))
             G.put(4, 0, bytes(rnd.choice([0, 1, 7, 0x40, 0x88, 0xC5, 0x17, rnd.randrange(256)])
                               for _ in range(0x4000)))
         before = [G.bank(k) for k in range(8)]
@@ -192,10 +192,13 @@ def check(sym, patch=(), n=8, timing=False):
             t0 = t
         b2, b6, b4 = rule(L, before, fill)
         lo = L["G_econ_state"] - 0x8000
+        # ως την κρυφή μνήμη του HUD, που τη γράφει η πρώτη σχεδίαση· ως το βήμα
+        # 84 ήταν σταθερά στο #A500, από το 85 (οι μηχανές στην τράπεζα 5) πιο
+        # κάτω — και ένα σταθερό #A500 έγραφε σκουπίδια πάνω στον κώδικα
         # ως το τέλος των διαδρόμων: μετά είναι η κρυφή μνήμη φιγούρων, που την
         # ξαναχτίζει η πρώτη σχεδίαση του ui_init
         b6end = L["G_corr_tbl"] + 96 * 5 - 0x4000
-        for name, k, want, a, z in (("η τράπεζα 2", 2, b2, lo, 0xA500 - 0x8000),
+        for name, k, want, a, z in (("η τράπεζα 2", 2, b2, lo, L["G_hud_shadow"] - 0x8000),
                                     ("η τράπεζα 6", 6, b6, 0x2C00, b6end),
                                     ("ο κόσμος", 4, b4, 0, 0x4000)):
             got = G.bank(k)

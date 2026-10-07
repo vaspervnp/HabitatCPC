@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from sprites import load_map, load_bin, ROOT
 import buttons
 
-TEXT_MAX = 2048                 # = TEXT_MAX του src/uitext.asm (assert εκεί)
+TEXT_MAX = 2064                 # = TEXT_MAX του src/uitext.asm (assert εκεί)
 
 # --- γεωμετρία ------------------------------------------------------------
 PAGE2_BASE  = 0x8000                # τράπεζα 2: επίπεδη, πάντα ορατή
@@ -35,6 +35,13 @@ BANK_SIZE   = 0x4000
 MAX_NODE = 96
 BANK1_BASE = WINDOW_BASE + MAX_NODE * 128
 BANK1_SIZE = BANK_SIZE - MAX_NODE * 128
+# ΚΑΙ Η ΤΡΑΠΕΖΑ 5 (βήμα 85): ο πίνακας NEXTHOP είναι κι αυτός κόμβοι x 128, και
+# πάνω του το ευρετήριο αντικειμένων (src/const.asm, OI_END = #73C0). Από το
+# #7400 ως το τέλος, 3 KB που δεν χρησιμοποιούσε κανείς: εκεί πάνε οι μηχανές,
+# και τα 1.584 bytes τους γίνονται χώρος ΚΩΔΙΚΑ στην τράπεζα 2. Το const.asm
+# ελέγχει ότι το ευρετήριο δεν φτάνει ως εδώ.
+BANK5_BASE = 0x7400
+BANK5_SIZE = 0x8000 - BANK5_BASE
 
 
 class Fail(SystemExit):
@@ -141,7 +148,7 @@ def build_runs(smap, blob):
     STRUCTS = ([f"{k}_{s}" for k in ("solar", "turbine", "collector", "extractor")
                 for s in ("s", "m", "l")] + ["mine", "airlock", "pad", "ship"])
 
-    arena, bank1, bank6, bank7 = [], [], [], []
+    arena, bank1, bank5, bank6, bank7 = [], [], [], [], []
     ptr = {}            # όνομα πίνακα -> λίστα ονομάτων run, για 2ο πέρασμα
 
     # --- έδαφος: συνεχόμενο ΑΝΑ ΚΛΑΣΗ μόνο (tile_ptr[class] + variant*64) ---
@@ -168,8 +175,12 @@ def build_runs(smap, blob):
         ptr[f"icon_{size}_ptr"] = names
 
     # --- μηχανές: *132, ίδιο σκεπτικό ---------------------------------------
+    # ΣΤΗΝ ΤΡΑΠΕΖΑ 5 από το βήμα 85, πάνω από το ευρετήριο. Τις ζωγραφίζει μόνο
+    # το πέρασμα αντικειμένων (om_prep, src/object.asm), που σελιδοποιεί ήδη
+    # την 7 για τα φυτά του θερμοκηπίου στις ίδιες υποδοχές: τώρα σελιδοποιεί
+    # την 5 για τις μηχανές. Ο πίνακας δεικτών μένει στη 2.
     for m in MACH:
-        arena.append(spr(f"mach_{m}"))
+        bank5.append(spr(f"mach_{m}"))
     ptr["mach_ptr"] = [f"mach_{m}" for m in MACH]
 
     # --- διάδρομοι, συνδέσεις, γραμματοσειρά --------------------------------
@@ -337,21 +348,22 @@ def build_runs(smap, blob):
     gfx = buttons.gfx()
     bank7.append(Run("btn_gfx", len(gfx), gfx, note="παράγεται από το tools/buttons.py"))
 
-    return arena, bank1, bank6, bank7, ptr
+    return arena, bank1, bank5, bank6, bank7, ptr
 
 
 def pack():
-    """Στρώνει τα πάντα. Επιστρέφει (arena, bank6, bank7, ptr, images).
-    Σκάει με Fail αν κάτι δεν χωράει."""
+    """Στρώνει τα πάντα. Επιστρέφει (arena, bank1, bank5, bank6, bank7, ptr,
+    images, free, report). Σκάει με Fail αν κάτι δεν χωράει."""
     smap, blob = load_map(), load_bin()
-    arena, bank1, bank6, bank7, ptr = build_runs(smap, blob)
+    arena, bank1, bank5, bank6, bank7, ptr = build_runs(smap, blob)
 
     u2 = pack_flat(arena, PAGE2_BASE, BANK_SIZE, "τράπεζα 2")
     u1 = pack_flat(bank1, BANK1_BASE, BANK1_SIZE, "τράπεζα 1 (πάνω από το DIST)")
+    u5 = pack_flat(bank5, BANK5_BASE, BANK5_SIZE, "τράπεζα 5 (πάνω από NEXTHOP και ευρετήριο)")
     u6 = pack_flat(bank6, WINDOW_BASE, BANK_SIZE, "τράπεζα 6")
     u7 = pack_flat(bank7, WINDOW_BASE, BANK_SIZE, "τράπεζα 7")
 
-    by_name = {r.name: r for r in arena + bank1 + bank6 + bank7}
+    by_name = {r.name: r for r in arena + bank1 + bank5 + bank6 + bank7}
 
     # 2ο πέρασμα: οι πίνακες δεικτών ξέρουν πια πού κάθονται όλα
     for tab, names in ptr.items():
@@ -378,6 +390,13 @@ def pack():
         if r.data:
             o = r.addr - BANK1_BASE
             b1[o:o + r.size] = r.data
+    # Η τράπεζα 5 κόβεται κι αυτή στο χρησιμοποιημένο: φορτώνεται σε πρόχειρο
+    # και ο φορτωτής την αντιγράφει στη θέση της (src/boot.asm).
+    b5 = bytearray(u5)
+    for r in bank5:
+        if r.data:
+            o = r.addr - BANK5_BASE
+            b5[o:o + r.size] = r.data
     b6 = bytearray(BANK_SIZE)
     b7 = bytearray(BANK_SIZE)
     for img, runs in ((b6, bank6), (b7, bank7)):
@@ -386,7 +405,7 @@ def pack():
                 o = r.addr - WINDOW_BASE
                 img[o:o + r.size] = r.data
 
-    images = {"page2": bytes(page2), "bank1": bytes(b1),
+    images = {"page2": bytes(page2), "bank1": bytes(b1), "bank5": bytes(b5),
               "bank6": bytes(b6), "bank7": bytes(b7)}
     for name, img in images.items():
         with open(os.path.join(out, name + ".bin"), "wb") as f:
@@ -396,9 +415,12 @@ def pack():
     with open(os.path.join(out, "layout.asm"), "w", encoding="utf-8") as f:
         f.write("; ΠΑΡΑΓΕΤΑΙ από tools/pack.py — μην το επεξεργάζεσαι.\n")
         f.write(f"PAGE2_TOP   equ #{PAGE2_BASE + u2:04X}   ; πρώτο ελεύθερο byte\n")
+        f.write(f"B5_BASE     equ #{BANK5_BASE:04X}   ; οι μηχανές στην τράπεζα 5\n")
+        f.write(f"B5_LEN      equ {u5}\n")
         f.write("; Οι τράπεζες 6/7 φαίνονται στο &4000 όταν σελιδοποιηθούν.\n\n")
         for label, runs in (("τράπεζα 2", arena), ("τράπεζα 1", bank1),
-                            ("τράπεζα 6", bank6), ("τράπεζα 7", bank7)):
+                            ("τράπεζα 5", bank5), ("τράπεζα 6", bank6),
+                            ("τράπεζα 7", bank7)):
             f.write(f"; --- {label} ---\n")
             for r in sorted(runs, key=lambda r: r.addr):
                 f.write(f"G_{r.name:<20} equ #{r.addr:04X}\n")
@@ -408,6 +430,7 @@ def pack():
     lines = []
     for label, runs, used, cap in (("τράπεζα 2", arena, u2, BANK_SIZE),
                                    ("τράπεζα 1", bank1, u1, BANK1_SIZE),
+                                   ("τράπεζα 5", bank5, u5, BANK5_SIZE),
                                    ("τράπεζα 6", bank6, u6, BANK_SIZE),
                                    ("τράπεζα 7", bank7, u7, BANK_SIZE)):
         # ΤΟ «ΕΛΕΥΘΕΡΑ» ΤΗΣ ΤΡΑΠΕΖΑΣ 2 ΕΙΝΑΙ ΗΔΗ ΞΟΔΕΜΕΝΟ. Οσα μένουν πάνω από
@@ -425,7 +448,7 @@ def pack():
     report = "\n".join(lines)
     with open(os.path.join(out, "layout.txt"), "w", encoding="utf-8") as f:
         f.write(report)
-    return arena, bank1, bank6, bank7, ptr, images, [BANK_SIZE - u2], report
+    return arena, bank1, bank5, bank6, bank7, ptr, images, [BANK_SIZE - u2], report
 
 
 if __name__ == "__main__":

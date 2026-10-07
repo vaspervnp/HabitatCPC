@@ -121,10 +121,10 @@ def main():
     # --- 4. χτίσιμο που ΤΕΛΕΙΩΝΕΙ ----------------------------------------
     # Ο κέρσορας πηγαίνει δίπλα στην αποικία χωρίς να περπατήσει: το βήμα
     # κέρσορα είναι δοκιμασμένο αλλού, εδώ μας νοιάζει η αλυσίδα μετά το FIRE.
-    # Το (7, 5) σε μισά tiles είναι το κοντινότερο καθαρό 3x3 σε αυτό το seed:
-    # έδαφος, χωρίς κατοχή, έξω από την αποικία.
-    m.poke(sym["CUR_HX"], 7)
-    m.poke(sym["CUR_HY"], 5)
+    # ΒΟΡΕΙΟΔΥΤΙΚΑ ΤΟΥ ΘΟΛΟΥ ΟΞΥΓΟΝΟΥ από το βήμα 85: το (-9, -11) σε μισά
+    # tiles παίρνει μονοπάτι επτά tiles ως εκεί. Ως τότε ήταν το (7, 5), που ο
+    # κατάλογος έσπρωχνε στο (9, 7) — μέσα στο Γ των δύο διαδρόμων της αρχής,
+    # όπου κάθε μονοπάτι κόβεται από διάδρομο ή από νερό: PATH BLOCKED.
 
     def tap(key, n=1):
         for _ in range(n):
@@ -152,6 +152,8 @@ def main():
     check(m.peek(sym["BD_PARAM"]) == 0 and m.peek(sym["BD_KIND"]) == 1,
           f"ο κατάλογος έφτασε στο SOLAR (είδος {m.peek(sym['BD_KIND'])}, "
           f"παράμετρος {m.peek(sym['BD_PARAM'])})")
+    m.poke(sym["CUR_HX"], -9 & 0xFF)     # ΜΕΤΑ τον κατάλογο, που κουμπώνει
+    m.poke(sym["CUR_HY"], -11 & 0xFF)    # τον κέρσορα στην ισοτιμία του
     fire()                               # -> PLACE
     metal0 = w16(g + 3 * 2)
     fire()                               # -> τοποθέτηση
@@ -213,6 +215,7 @@ def main():
     # δεν το έδειχναν (παίρνουν κόμβο 64+), και καμία δοκιμή δεν είχε περιμένει
     # θόλο να τελειώσει.
     import world as W
+    import balance as B
     plane = open(os.path.join(ROOT, "build", "world_new.bin"), "rb").read()
     ok = {W.GROUND, W.DUST, W.FOUNDATION}
     # ΔΥΟ θέσεις, σε απόσταση: ο δεύτερος θόλος του §6 δεν πρέπει να πέσει
@@ -248,6 +251,9 @@ def main():
     # Ο ΚΕΡΣΟΡΑΣ ΜΠΑΙΝΕΙ ΤΕΛΕΥΤΑΙΟΣ: κάθε αλλαγή αντικειμένου τον κουμπώνει
     # στην ισοτιμία του πλάτους (§3.4), οπότε ένα poke πριν από τον κατάλογο
     # μετακινείται από κάτω του — τέσσερα βήματα αριστερά τον πήγαιναν +2.
+    # ΚΑΙ ΕΚΕΙ ΠΟΥ ΤΟΝ ΔΕΧΕΤΑΙ Η ΑΠΟΙΚΙΑ (βήμα 85): η θέση βγήκε από το έδαφος
+    # μόνο, και ο θόλος θέλει κάτι ως 12 tiles μακριά (live_spot).
+    at = B.live_spot(m, sym, 0, at)
     m.poke(sym["CUR_HX"], at[0] & 0xFF)
     m.poke(sym["CUR_HY"], at[1] & 0xFF)
     m.key_up("\x01")
@@ -255,12 +261,15 @@ def main():
     fire()                               # -> PLACE
     metal0 = w16(g + 3 * 2)
     mpow0, o2p0 = w16(g + 36), w16(g + 38)
+    # ΚΑΙ ΟΙ ΔΙΑΔΡΟΜΟΙ ΤΟΥ (βήμα 85), όσους δείχνει ο κανόνας του tools/reach.py
+    pcs = B.live_plan(m, sym, 0, at)["pieces"]
     fire()                               # -> τοποθέτηση
     m.set_joystick_type(0)
     m.run_frames(30)
     # ΤΟ ΚΕΛΥΦΟΣ ΜΟΝΟ (βήμα 45): 12. Η γεννήτρια μπαίνει από τον εξοπλισμό.
-    check(w16(g + 3 * 2) == metal0 - 12,
-          f"πληρώθηκε ο θόλος στο {at}: μέταλλο {metal0} -> {w16(g + 3 * 2)} "
+    check(w16(g + 3 * 2) == metal0 - 12 - 6 * pcs,
+          f"πληρώθηκε ο θόλος στο {at}: μέταλλο {metal0} -> {w16(g + 3 * 2)}, "
+          f"κέλυφος 12 και {pcs} πλακίδια διαδρόμων "
           f"(ui_bad={m.peek(sym['UI_BAD'])}, κέρσορας "
           f"{sb(m.peek(sym['CUR_HX']))},{sb(m.peek(sym['CUR_HY']))})")
 
@@ -269,7 +278,6 @@ def main():
     # ESC ως το LOOK, FIRE πάνω στο εργοτάξιο, FIRE για τη γεννήτρια. Χωρίς
     # αυτό ο θόλος τελειώνει και δεν παράγει τίποτα — το επόμενο check το
     # λέει.
-    import balance as B
     node = m.peek(sym["BD_NODE"])
     m.set_joystick_type(1)
     for _ in range(2):                   # PLACE -> MENU -> LOOK
@@ -379,16 +387,18 @@ def main():
     check(m.peek(sym["BD_KIND"]) == 0 and m.peek(sym["BD_RSEL"]) == 7,
           f"ο κατάλογος στο DOME S / CONTROL (είδος "
           f"{m.peek(sym['BD_KIND'])}, δωμάτιο {m.peek(sym['BD_RSEL'])})")
+    at2 = B.live_spot(m, sym, 0, at2)
     m.poke(sym["CUR_HX"], at2[0] & 0xFF)
     m.poke(sym["CUR_HY"], at2[1] & 0xFF)
     m.key_up("\x01")
     m.set_joystick_type(1)
     metal0 = w16(g + 3 * 2)
     fire()                               # -> PLACE
+    pcs = B.live_plan(m, sym, 0, at2)["pieces"]
     fire()                               # -> τοποθέτηση
     m.set_joystick_type(0)
     m.run_frames(30)
-    check(w16(g + 3 * 2) == metal0 - 12,
+    check(w16(g + 3 * 2) == metal0 - 12 - 6 * pcs,
           f"πληρώθηκε η αίθουσα ελέγχου στο {at2}: μέταλλο {metal0} -> "
           f"{w16(g + 3 * 2)} (ui_bad={m.peek(sym['UI_BAD'])})")
     got = 0

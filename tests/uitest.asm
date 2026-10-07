@@ -236,6 +236,7 @@ goto_st:    db 0
         include "../src/terrain.asm"
         include "../src/graph.asm"
         include "../src/route.asm"
+        include "../src/link.asm"           ; βήμα 85: το ui.asm το καλεί
         include "../src/ui.asm"
         include "../src/fit.asm"
         include "../src/rooms.asm"
@@ -250,6 +251,8 @@ goto_st:    db 0
         bankset 1
         org     #0000
         incbin  "../build/world_col.bin"
+        org     B5_BASE                 ; οι μηχανές στην τράπεζα 5 (βήμα 85)
+        incbin  "../build/bank5.bin"
         org     #8000
         incbin  "../build/bank6_col.bin"
         org     #C000

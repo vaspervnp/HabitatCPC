@@ -107,7 +107,7 @@ bdr_none:
         ld      (bd_nres),a
         ret
 
-bd_nres:    db 0                ; ποιο υλικό λείπει: 0 κανένα, 1 νερό, 2 φλέβα
+; (το bd_nres ζει στο build.asm από το βήμα 85, δίπλα στο bd_bad)
 
         assert  K_MINE == K_EXTRACT + 1
         assert  W_DEEPWATER == W_WATER + 1 && (W_WATER & 6) == W_WATER

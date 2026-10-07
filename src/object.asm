@@ -673,19 +673,23 @@ om_lp:
         jr      nz,om_lp
         jp      ob_b6
 
-; om_prep — ο πίνακας των sprites: μηχανές, ή φυτά στο θερμοκήπιο — και τότε
-; η τράπεζα 7, όπου ζουν. Για το ob_machines και για τη λίστα (dh_mach).
+; om_prep — ο πίνακας των sprites και η τράπεζα όπου ζουν: μηχανές στην 5
+; (βήμα 85, πάνω από το ευρετήριο), ή φυτά στην 7 όταν ο θόλος είναι
+; θερμοκήπιο. Για το ob_machines και για τη λίστα (dh_mach).
 om_prep:
         ld      hl,G_mach_ptr
+        ld      bc,GA_PORT + PAGE_B5
         ld      a,(d_rec+D_ROOM)
         cp      R_GREENHS
         jr      nz,omp_set
         ld      hl,G_plant_ptr
-        ld      bc,GA_PORT + PAGE_B7
-        out     (c),c
+        ld      c,PAGE_B7
 omp_set:
+        out     (c),c
         ld      (om_tab),hl
         ret
+
+        assert  OI_END <= B5_BASE && B5_BASE + B5_LEN <= #8000
 
 ; ---------------------------------------------------------------------------
 ; ob_mach_one — ΜΙΑ υποδοχή. In: A = υποδοχή· το om_prep έχει τρέξει. Η

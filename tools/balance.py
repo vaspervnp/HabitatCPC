@@ -92,6 +92,32 @@ def colony_tiles():
     return occ
 
 
+_REACH = None
+
+
+def reachable(tx, ty, size):
+    """Θα δεχόταν το παιχνίδι ένα κτίσμα size x size με πάνω-αριστερά το (tx,
+    ty) δίπλα στην αποικία του §10.1; Ο κανόνας του βήματος 85 (tools/reach.py):
+    κάποιο κτίσμα ως 12 tiles μακριά, με μονοπάτι που πατά μόνο έδαφος που
+    χτίζεται. Ελέγχεται ΩΣ ΔΟΜΗ: ένας θόλος στο ίδιο αποτύπωμα δέχεται το ίδιο
+    μονοπάτι όταν δεν βρει διάδρομο, άρα ό,τι περνά εδώ περνά και για θόλο."""
+    global _REACH
+    import reach
+    if _REACH is None:
+        from sprites import load_map, load_bin
+        s = load_map()["struct_dims"]
+        dims = load_bin()[s.off:s.off + s.size]
+        wl = bytearray(plane())
+        for x, y in colony_tiles():
+            wl[reach.widx(x, y)] = wl[reach.widx(x, y)] & 0xC0 | 0x17
+        domes = [[0, 0, 0, 2], [16, 0, 0, 2], [0, 16, 0, 2]] + [[0, 0, 0, 0]] * 61
+        structs = [[(-16) & 255, 16, 6, 0, 2]] + [[0, 0, 0, 0, 0]] * 31
+        _REACH = (bytes(wl), domes, structs, dims)
+    wl, domes, structs, dims = _REACH
+    return reach.plan(wl, domes, structs, dims, 1, 0, size, size,
+                      2 * tx + size, 2 * ty + size)["ok"]
+
+
 def res_spots(kind, size=3, n=2, avoid=()):
     """Θέσεις για αντλία ή ορυχείο: έδαφος που χτίζεται ΚΑΙ υλικό δίπλα.
 
@@ -121,6 +147,8 @@ def res_spots(kind, size=3, n=2, avoid=()):
                     continue
                 if not has_near(pl, tx, ty, size, kind):
                     continue
+                if not reachable(tx, ty, size):     # βήμα 85
+                    continue
                 if any(abs(tx - x) < size + 2 and abs(ty - y) < size + 2
                        for x, y in list(avoid) + out):
                     continue
@@ -148,29 +176,49 @@ def clear_spots(size=3, n=4):
     pl = plane()
     ok = {W.GROUND, W.DUST, W.FOUNDATION}
 
-    def good(tx, ty):
+    occ = colony_tiles()
+
+    def good(tx, ty, near, reach=True):
         # ΟΛΟ το αποτύπωμα έξω από την αποικία: το επίπεδο κόσμου δεν ξέρει
         # τίποτα για τα κατειλημμένα πλακίδια που έστρωσε το newgame, και ένα
         # δαχτυλίδι που μετριέται από την ΠΑΝΩ-ΑΡΙΣΤΕΡΗ γωνία φτάνει άνετα
-        # πάνω στους θόλους με την κάτω-δεξιά του.
-        if any(max(abs(tx + i), abs(ty + j)) < 12
-               for i in range(size) for j in range(size)):
+        # πάνω στους θόλους με την κάτω-δεξιά του. Στο δεύτερο πέρασμα (near)
+        # μέσα στο 12, με ένα tile ανάσα από τα tiles της αποικίας.
+        if near:
+            if any((tx + i, ty + j) in occ
+                   for i in range(-1, size + 1) for j in range(-1, size + 1)):
+                return False
+        elif any(max(abs(tx + i), abs(ty + j)) < 12
+                 for i in range(size) for j in range(size)):
             return False
-        return all(W.cls_of(pl[W.index(tx + i, ty + j)]) in ok
-                   for i in range(size) for j in range(size))
+        if not all(W.cls_of(pl[W.index(tx + i, ty + j)]) in ok
+                   for i in range(size) for j in range(size)):
+            return False
+        # ΚΑΙ ΣΕ ΑΠΟΣΤΑΣΗ από την αποικία (βήμα 85), για κάθε πλάτος που μπορεί
+        # να μπει εδώ: ένας ηλιακός 3x3 στη θέση ενός θόλου 6x6 έχει άλλο κέντρο.
+        return not reach or all(reachable(tx, ty, k) for k in range(3, size + 1))
 
+    # ΤΡΙΑ ΠΕΡΑΣΜΑΤΑ (βήμα 85). Τα δαχτυλίδια 12-29, όπως πάντα, ώστε οι πρώτες
+    # θέσεις να μένουν όσες ήταν· αφού το κτίσμα θέλει πια κάτι ως 12 tiles
+    # μακριά, εκεί έξω λίγες περνούν, οπότε μετά και τα 4-11, δίπλα στην
+    # αποικία. Και αν πάλι δεν φτάνουν, τα 12-29 χωρίς τον κανόνα: όταν έρθει
+    # η σειρά τους η αποικία θα έχει μεγαλώσει προς τα εκεί, και ό,τι δεν
+    # φτάνει ακόμη το διορθώνει το live_spot του build(). Οι θέσεις απέχουν
+    # δύο tiles μεταξύ τους: ένα μονοπάτι χωρά ανάμεσα.
     out = []
-    for r in range(12, 30):                  # δαχτυλίδια γύρω από την αποικία
-        for ty in range(-r, r + 1):
-            for tx in range(-r, r + 1):
-                if max(abs(tx), abs(ty)) != r or not good(tx, ty):
-                    continue
-                if any(abs(tx - x) < size + 1 and abs(ty - y) < size + 1
-                       for x, y in out):
-                    continue
-                out.append((tx, ty))
-                if len(out) >= n:
-                    return out
+    for near, rings, rch in ((False, range(12, 30), True), (True, range(4, 12), True),
+                             (False, range(12, 30), False)):
+        for r in rings:
+            for ty in range(-r, r + 1):
+                for tx in range(-r, r + 1):
+                    if max(abs(tx), abs(ty)) != r or not good(tx, ty, near, rch):
+                        continue
+                    if any(abs(tx - x) < size + 2 and abs(ty - y) < size + 2
+                           for x, y in out):
+                        continue
+                    out.append((tx, ty))
+                    if len(out) >= n:
+                        return out
     return out
 
 
@@ -253,6 +301,16 @@ def build(m, sym, item, g_metal, at=None, room=None, place=True, fit=True):
     # Ο ΚΕΡΣΟΡΑΣ ΤΕΛΕΥΤΑΙΟΣ: κάθε αλλαγή αντικειμένου τον κουμπώνει στην
     # ισοτιμία του πλάτους (§3.4), οπότε ένα poke πριν από τον κατάλογο
     # μετακινείται από κάτω του.
+    #
+    # ΚΑΙ Η ΘΕΣΗ ΜΠΟΡΕΙ ΝΑ ΜΗΝ ΙΣΧΥΕΙ ΠΙΑ (βήμα 85). Οι θέσεις βγαίνουν από την
+    # αποικία της αρχής· ως να έρθει η σειρά τους, ένα μονοπάτι κάποιου άλλου
+    # κτίσματος μπορεί να περνά από πάνω τους. Τότε, η κοντινότερη θέση που
+    # δέχεται το κτίσμα ΣΤΗΝ αποικία όπως είναι τώρα (live_spot).
+    if at and place and linked(m, sym):
+        at2 = live_spot(m, sym, item, at)
+        if at2 != at:
+            print(f"  (το {item} δεν χωρά πια στο {at}: πάει στο {at2})", flush=True)
+            at = at2
     if at:
         m.poke(sym["CUR_HX"], at[0] & 0xFF)
         m.poke(sym["CUR_HY"], at[1] & 0xFF)
@@ -279,6 +337,90 @@ def build(m, sym, item, g_metal, at=None, room=None, place=True, fit=True):
     elif fit and room is not None:
         fit_dome(m, sym)
     return metal1 != metal0
+
+
+def no_link(m, sym):
+    """Σβήνει τον κανόνα του βήματος 85 στο τρέχον παιχνίδι: το al_find γίνεται
+    `xor a / ret`, οπότε κάθε θέση που δέχεται το έδαφος είναι «πρώτο κτίσμα»,
+    χωρίς διάδρομο ή μονοπάτι, και το build() δεν μετακινεί πια τη θέση.
+
+    Για τα σενάρια που στήνουν θόλους σε ένα χωράφι μακριά από την αποικία και
+    ζητούν μετά τον διάδρομο με το χέρι (test_link, test_return, test_reveal):
+    με τον κανόνα ο πρώτος θα ήταν TOO FAR, και ο δεύτερος θα έπαιρνε μόνος του
+    τον διάδρομο που δοκιμάζουν. Τον κανόνα τον δοκιμάζει το test_reach."""
+    m.poke(sym["AL_FIND"], 0xAF)
+    m.poke(sym["AL_FIND"] + 1, 0xC9)
+
+
+def linked(m, sym):
+    """Ισχύει ο κανόνας του βήματος 85 (δεν πέρασε από το no_link);"""
+    return m.peek(sym["AL_FIND"]) != 0xAF
+
+
+def live_plan(m, sym, item, at):
+    """Ο κανόνας του tools/reach.py για το κτίσμα `item` στον κέρσορα `at`,
+    πάνω στην αποικία του τρέχοντος παιχνιδιού (bank 4 και οι πίνακες της 6).
+    Για τα σενάρια που πρέπει να ξέρουν τι θα κοστίσει: ένας θόλος πληρώνει
+    και τους διαδρόμους του (reach.CORR_M το πλακίδιο)."""
+    import cpc, reach
+    L = {}
+    for line in open(os.path.join(ROOT, "build", "layout.asm"), encoding="utf-8"):
+        p = line.split()
+        if len(p) >= 3 and p[1] == "equ" and p[2].startswith("#"):
+            L[p[0]] = int(p[2][1:], 16)
+    b4 = bytes(cpc._lib.cpcemu_ram_ptr(m._h, 4)[:0x4000])
+    b6 = bytes(cpc._lib.cpcemu_ram_ptr(m._h, 6)[:0x4000])
+    gd, gs = L["G_dome_tbl"] - 0x4000, L["G_struct_tbl"] - 0x4000
+    domes = [list(b6[gd + 24 * d:gd + 24 * d + 4]) for d in range(64)]
+    structs = [list(b6[gs + 8 * k:gs + 8 * k + 5]) for k in range(32)]
+    dims = m.read_ram(L["G_struct_dims"], 64)
+    rec = m.read_ram(sym["BLD_ITEMS"] + 8 * item, 4)
+    return reach.plan(b4, domes, structs, dims, rec[0], rec[1], rec[2], rec[3], at[0], at[1])
+
+
+def live_spot(m, sym, item, at):
+    """Ο κέρσορας `at` αν το κτίσμα `item` μπαίνει εκεί στην αποικία του
+    τρέχοντος παιχνιδιού (το έδαφος του bd_ok, το υλικό του bd_res, και ο
+    κανόνας του tools/reach.py)· αλλιώς ο πλησιέστερος που μπαίνει, ή ο ίδιος
+    αν δεν βρεθεί κανένας."""
+    import cpc, reach
+    import world as W
+    L = {}
+    for line in open(os.path.join(ROOT, "build", "layout.asm"), encoding="utf-8"):
+        p = line.split()
+        if len(p) >= 3 and p[1] == "equ" and p[2].startswith("#"):
+            L[p[0]] = int(p[2][1:], 16)
+    b4 = bytes(cpc._lib.cpcemu_ram_ptr(m._h, 4)[:0x4000])
+    b6 = bytes(cpc._lib.cpcemu_ram_ptr(m._h, 6)[:0x4000])
+    gd, gs = L["G_dome_tbl"] - 0x4000, L["G_struct_tbl"] - 0x4000
+    domes = [list(b6[gd + 24 * d:gd + 24 * d + 4]) for d in range(64)]
+    structs = [list(b6[gs + 8 * k:gs + 8 * k + 5]) for k in range(32)]
+    dims = m.read_ram(L["G_struct_dims"], 64)
+    rec = m.read_ram(sym["BLD_ITEMS"] + 8 * item, 4)
+    kind, param, w, h = rec[0], rec[1], rec[2], rec[3]
+
+    def ok(tx, ty):
+        if not all(reach.ok_tile(b4[reach.widx(tx + i, ty + j)])
+                   for i in range(w) for j in range(h)):
+            return False
+        if item in NEED and not has_near(b4, tx, ty, w, NEED[item][0]):
+            return False
+        return reach.plan(b4, domes, structs, dims, kind, param, w, h,
+                          2 * tx + w, 2 * ty + h)["ok"]
+
+    tx0, ty0 = (at[0] - w) >> 1, (at[1] - h) >> 1
+    if ok(tx0, ty0):
+        return at
+    # Αλλιώς από την ΑΠΟΙΚΙΑ προς τα έξω, όχι από τη θέση: μια θέση των
+    # δαχτυλιδιών 12-29 μπορεί να είναι μακριά από ό,τι έχει χτιστεί ως τότε.
+    for r in range(0, 40):
+        for ty in range(-r, r + 1):
+            for tx in range(-r, r + 1):
+                if max(abs(tx), abs(ty)) != r:
+                    continue
+                if -60 <= tx and tx + w <= 60 and -60 <= ty and ty + h <= 60 and ok(tx, ty):
+                    return (2 * tx + w, 2 * ty + h)
+    return at
 
 
 FIT_STATE, FIT_GREEN = 5, 5              # UI_FIT, R_GREENHS

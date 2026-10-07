@@ -540,12 +540,25 @@ def main():
               f"είδος που δέχονται τα ρομπότ")
 
     # Το κέλυφος μόνο: 12, όχι 20 — οι μηχανές πληρώνονται στον εξοπλισμό.
+    # ΚΑΙ ΟΙ ΔΙΑΔΡΟΜΟΙ ΤΟΥ (βήμα 85): ο θόλος δένεται με κάθε θόλο της
+    # αποικίας που φτάνει διάδρομος ως 12 πλακιδίων, 6 μέταλλο το πλακίδιο, με
+    # τον κανόνα του tools/reach.py πάνω στον δοκιμαστικό κόσμο.
+    import reach
+    s_ = load_map()["struct_dims"]
+    dims = load_bin()[s_.off:s_.off + s_.size]
+    domes = [list(colony_.dome[24 * d:24 * d + 4]) for d in range(64)]
+    structs = [list(colony_.struct[8 * k:8 * k + 5]) for k in range(32)]
+    res = reach.plan(bytes(plane.buf), domes, structs, dims, 0, 0, 4, 4,
+                     2 * tx + 4, 2 * ty + 4)
+    cost = 12 + reach.CORR_M * res["pieces"]
     fe1 = m4.peek(g + 6) | (m4.peek(g + 7) << 8)
-    if fe1 != fe0 - 12:
-        print(f"ΑΠΟΤΥΧΙΑ κόστος: μέταλλο {fe0} -> {fe1}, περίμενα -12")
+    if fe1 != fe0 - cost:
+        print(f"ΑΠΟΤΥΧΙΑ κόστος: μέταλλο {fe0} -> {fe1}, περίμενα -{cost} "
+              f"({len(res['corridors'])} διάδρομοι, {res['pieces']} πλακίδια)")
         fails += 1
     else:
-        print(f"OK πληρώθηκε: μέταλλο {fe0} -> {fe1}")
+        print(f"OK πληρώθηκε: μέταλλο {fe0} -> {fe1} — το κέλυφος και "
+              f"{len(res['corridors'])} διάδρομοι, {res['pieces']} πλακίδια")
 
     # --- 5. ΠΟΙΑ μηχανήματα, και με ποια ΣΕΙΡΑ (§6.5) --------------------
     # Η σειρά ήταν ως το βήμα 44 η σειρά του αυτόματου γεμίσματος: με την

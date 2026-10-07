@@ -26,13 +26,13 @@ def check(cond, msg):
 
 
 def main():
-    arena, bank1, bank6, bank7, ptr, images, free, _ = pack.pack()
+    arena, bank1, bank5, bank6, bank7, ptr, images, free, _ = pack.pack()
     smap, blob = load_map(), load_bin()
-    all_runs = arena + bank1 + bank6 + bank7
+    all_runs = arena + bank1 + bank5 + bank6 + bank7
     by_name = {r.name: r for r in all_runs}
 
     # 1. καμία επικάλυψη μέσα στην ίδια περιοχή
-    for label, runs in (("τράπεζα 2", arena), ("τράπεζα 1", bank1),
+    for label, runs in (("τράπεζα 2", arena), ("τράπεζα 1", bank1), ("τράπεζα 5", bank5),
                         ("τράπεζα 6", bank6), ("τράπεζα 7", bank7)):
         seen = sorted(runs, key=lambda r: r.addr)
         for a, b in zip(seen, seen[1:]):
@@ -43,8 +43,14 @@ def main():
             last = seen[-1]
             base = (pack.PAGE2_BASE if label == "τράπεζα 2"
                     else pack.BANK1_BASE if label == "τράπεζα 1"
+                    else pack.BANK5_BASE if label == "τράπεζα 5"
                     else pack.WINDOW_BASE)
-            cap = pack.BANK1_SIZE if label == "τράπεζα 1" else pack.BANK_SIZE
+            # Η τράπεζα 5 κάτω από το B5_BASE είναι NEXTHOP και ευρετήριο
+            # (βήμα 85): οι μηχανές μόνο από εκεί ως το τέλος.
+            cap = (pack.BANK1_SIZE if label == "τράπεζα 1"
+                   else pack.BANK5_SIZE if label == "τράπεζα 5" else pack.BANK_SIZE)
+            check(seen[0].addr >= base,
+                  f"{label}: το {seen[0].name} αρχίζει πριν από το #{base:04X}")
             check(last.addr + last.size <= base + cap,
                   f"{label}: το {last.name} βγαίνει από την τράπεζα")
 
@@ -59,6 +65,8 @@ def main():
             return images["page2"], pack.PAGE2_BASE
         if r in bank1:
             return images["bank1"], pack.BANK1_BASE
+        if r in bank5:
+            return images["bank5"], pack.BANK5_BASE
         return (images["bank6"], pack.WINDOW_BASE) if r in bank6 else \
                (images["bank7"], pack.WINDOW_BASE)
 
@@ -129,6 +137,7 @@ def main():
     print(f"διάταξη: {len(all_runs)} κομμάτια, {checked} sprites επαληθευμένα byte-προς-byte")
     print(f"  τράπ. 2 {sum(r.size for r in arena):>6}/{pack.BANK_SIZE}"
           f"   ελεύθερα {free[0]} συνεχόμενα")
+    print(f"  τράπ. 5 {sum(r.size for r in bank5):>6}/{pack.BANK5_SIZE}")
     print(f"  τράπ. 6 {sum(r.size for r in bank6):>6}/{pack.BANK_SIZE}")
     print(f"  τράπ. 7 {sum(r.size for r in bank7):>6}/{pack.BANK_SIZE}")
 

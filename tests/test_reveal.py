@@ -28,6 +28,14 @@ uip_fire και uil_second) και η ολοκλήρωση (main.asm, ml_built).
 στον θόλο όταν τελειώνει. Αν το dt_ghost γίνει `ret`, η αναίρεση του
 φαντάσματος γράφει πίσω το άδειο εργοτάξιο πάνω από τις μηχανές — και ο
 έλεγχος ΑΛΗΘΕΙΑ πρέπει να το πιάσει.
+
+Από το βήμα 85 ο θόλος L παίρνει μόνος του διάδρομο προς τον κοντινό θόλο
+(src/link.asm): οι γύροι της εμφάνισης είναι οι οκτώ σειρές του εργοταξίου ΚΑΙ
+όσες σειρές της διαγωνίου φαίνονται (tools/reach.py για τον διάδρομο, το rows()
+του test_link για τις σειρές), πάντα μία ανά γύρο. Χωρίς τον διάδρομο ο θόλος
+δεν θα είχε ακμή και δεν θα τελείωνε ποτέ. Για τον διάδρομο ανάμεσα στους δύο S,
+που ζητιέται με το χέρι σε χωράφι μακριά από την αποικία, ο κανόνας σβήνει
+(balance.no_link).
 """
 import os, sys
 
@@ -318,6 +326,12 @@ def dome(sym, g, cut_ghost=False, short=False):
     G.inside = interior(6 * 4, 1 * 16)
     B.build(G.m, sym, I_DOME_L, g + 6, at=(2 * tx + 8, 2 * ty + 8),
             room=R_FACTORY, place=False)
+    # Οι σειρές των διαγωνίων του (βήμα 85), όσες φαίνονται από την κάμερα.
+    import test_link as TL, reach
+    plan = B.live_plan(G.m, sym, I_DOME_L, (2 * tx + 8, 2 * ty + 8))
+    crow = sum(len(TL.rows((reach.sb(c[1][0]), reach.sb(c[1][1])), c[1][2], c[3],
+                           (tx - 6, ty - 1))[0])
+               for c in plan["corridors"])
     if cut_ghost:
         G.m.poke(sym["DT_GHOST"], 0xC9)      # ret: το φάντασμα δεν σηκώνεται
 
@@ -361,9 +375,10 @@ def dome(sym, g, cut_ghost=False, short=False):
         # το ξανασχέδιο μόνο του αποτυπώματος).
         check(placed < 200, f"ο χειρότερος γύρος της τοποθέτησης ήταν "
                             f"{placed:.0f} ms (όριο 200· ήταν 998)")
-        check(bands == 8 and most == 1,
+        check(bands == 8 + crow and most == 1,
               f"ο θόλος εμφανίστηκε σε {bands} γύρους, το πολύ {most} σειρά "
-              f"ανά γύρο (§6.9: μία σειρά tiles ανά γύρο, οκτώ για τον L)")
+              f"ανά γύρο (§6.9: μία σειρά tiles ανά γύρο, οκτώ για τον L και "
+              f"{crow} για τις διαγώνιους των {len(plan['corridors'])} διαδρόμων του)")
         gp = G.m.peek(sym["GH_PTR"]) | (G.m.peek(sym["GH_PTR"] + 1) << 8)
         # ΟΛΟΚΛΗΡΟ: το αρχείο είναι ακριβώς όσο αυτό το φάντασμα (βήμα 41), και
         # ό,τι δεν χωρά απλώς δεν ζωγραφίζεται — ένα σημάδι λιγότερο θα ήταν
@@ -502,6 +517,7 @@ def corridor(sym, g, dx=8, dy=0):
                     spot = (tx, ty)
     tx, ty = spot
     G = Game(sym, g)
+    B.no_link(G.m, sym)                      # ο διάδρομος ζητιέται με το χέρι
     G.camera(tx + wide // 2 - 10, ty + high // 2 - 5)
     B.build(G.m, sym, I_DOME_S, g + 6, at=(2 * tx + 4, 2 * ty + 4), room=R_FACTORY)
     B.build(G.m, sym, I_DOME_S, g + 6, at=(2 * (tx + dx) + 4, 2 * (ty + dy) + 4),

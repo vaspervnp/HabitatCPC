@@ -37,6 +37,11 @@
 Το έδαφος καθαρίζεται με το χέρι στην τράπεζα 4 πριν μπουν οι θόλοι: το
 μεγαλύτερο καθαρό τετράγωνο του χάρτη είναι 14 tiles, πάνω στην αποικία, και
 μια διαγώνιος ανάμεσα σε δύο L θέλει 20.
+
+Από το βήμα 85 κάθε θόλος θέλει κτίσμα ως 12 tiles μακριά και παίρνει μόνος του
+τους διαδρόμους του (src/link.asm). Εδώ ο κανόνας σβήνει (balance.no_link): το
+χωράφι είναι μακριά από την αποικία, και ο διάδρομος που δοκιμάζεται είναι ο
+χειροκίνητος. Τον κανόνα τον ελέγχει το tests/test_reach.py.
 """
 import os, sys
 
@@ -190,6 +195,7 @@ class Pair:
                 b4[W.index(FIELD[0] + i, FIELD[1] + j)] = 0
         for k, v in (patch or {}).items():
             G.m.poke(k, v)
+        B.no_link(G.m, sym)                  # ο διάδρομος ζητιέται με το χέρι
         G.camera(FIELD[0] + wide // 2 - 10, FIELD[1] + high // 2 - 5)
         B.build(G.m, sym, sa, g + 6, at=self.ca, room=R.R_FACTORY)
         B.build(G.m, sym, sb, g + 6, at=self.cb, room=R.R_FACTORY)

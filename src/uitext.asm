@@ -17,7 +17,7 @@
 ; του rasm θα τα έδινε κατευθείαν σωστά, αλλά δεν συνδυάζεται με το `bankset 1`
 ; που στήνει τις τράπεζες 4-7 πιο πάνω.)
 
-TEXT_MAX    equ 2048                    ; η δέσμευση του §4.2 (1.280 ως το βήμα 83,
+TEXT_MAX    equ 2064                    ; η δέσμευση του §4.2 (2.048 ως το βήμα 84, 1.280 ως το 83,
                                         ; 1.024 ως το 79)
 TEXT_IMG    equ #C000 + G_text - #4000
 
@@ -60,7 +60,8 @@ x_t_block:    db "BLOCKED             ",0
 x_t_poor:     db "NOT ENOUGH MATERIAL ",0
 x_t_ln1:      db "PICK THE FIRST DOME ",0
 x_t_ln2:      db "NO ROUTE FROM THERE ",0
-x_t_far:      db "TOO FAR             ",0       ; >= 64 tiles (βήμα 81)
+x_t_far:      db "TOO FAR             ",0       ; >= 64 tiles (βήμα 81)· ή > 12 (βήμα 85)
+x_t_path:     db "PATH BLOCKED        ",0       ; βήμα 85, src/link.asm
 x_t_nowat:    db "NEEDS WATER NEARBY  ",0
 x_t_noore:    db "NEEDS AN ORE VEIN   ",0
 x_t_fe:       db "FE",0
@@ -188,6 +189,7 @@ t_poor    equ x_t_poor - TEXT_IMG + G_text
 t_ln1     equ x_t_ln1 - TEXT_IMG + G_text
 t_ln2     equ x_t_ln2 - TEXT_IMG + G_text
 t_far     equ x_t_far - TEXT_IMG + G_text
+t_path    equ x_t_path - TEXT_IMG + G_text
 t_nowat   equ x_t_nowat - TEXT_IMG + G_text
 t_noore   equ x_t_noore - TEXT_IMG + G_text
 t_fe      equ x_t_fe - TEXT_IMG + G_text

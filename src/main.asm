@@ -258,6 +258,7 @@ zz_bank0_end:
 zz_page2_code:                          ; για το tools/mkdsk.py: πού φορτώνει
         include "build.asm"
         include "route.asm"
+        include "link.asm"              ; βήμα 85: κάθε κτίσμα δένεται με ένα κοντινό
         include "sound.asm"
         include "meteor.asm"            ; βήμα 38: ζει στον τροχό, σπάνια τρέχει
         include "objindex.asm"          ; βήμα 41: το χτίσιμο του ευρετηρίου
@@ -304,6 +305,8 @@ zz_page2_end:
         bankset 1
         org     #0000
         incbin  "../build/world_new.bin"
+        org     B5_BASE                 ; οι μηχανές στην τράπεζα 5 (βήμα 85)
+        incbin  "../build/bank5.bin"
         org     #8000
         incbin  "../build/bank6.bin"
         ; Η τράπεζα 7 έρχεται σε ΔΥΟ κομμάτια, με τα κείμενα στη μέση: ο rasm
