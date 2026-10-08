@@ -100,6 +100,14 @@ FORMAT = {
          "G_node_adj": 1024},
         {"G_agent_fields": 0x6C00, "G_node_occ": 0x7400, "G_dome_tbl": 0x7500,
          "G_struct_tbl": 0x7B00, "G_corr_tbl": 0x7C00, "G_worldinfo": 0x7DE0}),
+    # βήμα 92: ίδια διάταξη, άλλα νοήματα — οι θέσεις 80-95 είναι των ρομπότ,
+    # χωρίς ανάγκες, και ένα σώσιμο του 91 με πάνω από 80 αποίκους θα τους
+    # έδινε για ρομπότ
+    6: ({"G_mach_op": 91, "G_econ_state": 103, "G_job_tbl": 200, "G_room_n": 360,
+         "G_room_list": 372, "G_crew": 468, "G_rt_nodes": 512, "G_rt_row": 768,
+         "G_node_adj": 1024},
+        {"G_agent_fields": 0x6C00, "G_node_occ": 0x7400, "G_dome_tbl": 0x7500,
+         "G_struct_tbl": 0x7B00, "G_corr_tbl": 0x7C00, "G_worldinfo": 0x7DE0}),
 }
 
 

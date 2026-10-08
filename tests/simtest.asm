@@ -148,6 +148,7 @@ rtr_lp:
         include "../src/needs.asm"
         include "../src/ship.asm"
         include "../src/crew.asm"           ; βήμα 91: οι ειδικότητες
+        include "../src/bots.asm"           ; βήμα 92: τα ρομπότ (στο παιχνίδι στην τράπεζα 6)
         include "../src/wheel.asm"
         include "../src/sound.asm"
         include "../src/meteor.asm"

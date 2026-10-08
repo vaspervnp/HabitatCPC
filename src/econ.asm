@@ -768,7 +768,8 @@ ev_after:
         ld      a,(ev_newday)
         or      a
         call    nz,sol_rollover
-        jp      ship_tick
+        jp      bot_tick                ; τα ρομπότ από το απόθεμα, και μετά το
+                                        ; ship_tick (src/bots.asm, βήμα 92)
 
 ev_fl_tab:  db 0,37, 3,101, 1,173
 ev_fl_end:

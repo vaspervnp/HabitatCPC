@@ -398,16 +398,20 @@ class Sim:
             # θέσεις x 32 δεν χωρούσαν άνετα σε frame, οπότε ο τροχός κάνει
             # αυτό ακριβώς που λέει το §7.3: μισούς ανά περιστροφή, τον
             # καθένα κάθε δεύτερη. Οι ανάγκες απλώς κρατάνε διπλάσιο χρόνο.
-            needs_slice(self.a, self.e, self.occ,
-                        self.need_base + (s - 8) * WH_NEED_N, WH_NEED_N)
+            # Οι φέτες από το 80 και πάνω είναι των ρομπότ (βήμα 92): καμία
+            # ανάγκη.
+            first = self.need_base + (s - 8) * WH_NEED_N
+            if first < EC.AG_BOT0:
+                needs_slice(self.a, self.e, self.occ, first, WH_NEED_N)
             if s == 10:
                 self.need_base = (self.need_base + WH_NEED_SPAN) % MAX_COLONIST
         elif s == 11:
             EC.production_slice(self.e, plant_class=self.pc)
         elif s == 12:
-            alive = sum(1 for i in range(MAXAGENT)
+            # Μόνο οι 80 των αποίκων (βήμα 92, en_count).
+            alive = sum(1 for i in range(EC.AG_BOT0)
                         if self.a.flags[i] & F_ALIVE)
-            inside = sum(1 for i in range(MAXAGENT)
+            inside = sum(1 for i in range(EC.AG_BOT0)
                          if self.a.flags[i] & F_ALIVE and self.a.flags[i] & F_INDOORS)
             EC.flow_balance(self.e, alive, inside)
         elif s == 14:
@@ -421,6 +425,7 @@ class Sim:
                 self.e.air_out = 255
             if new_sol:
                 EC.sol_rollover(self.e, self.a, F_ALIVE, F_WORKING, NEED_LOW)
+            EC.bot_tick(self.e, self.a, self.occ)
             EC.ship_tick(self.e, self.a, self.e.pad_node, F_ALIVE, self.occ)
         # 13 πίνακας εργασιών, 14 ελεύθερη — δεν έχουν γραφτεί, ούτε εδώ ούτε
         # στον Z80.

@@ -1038,6 +1038,11 @@ def jobs_tick(e, a, F_ALIVE, F_WORKING):
 
 
 MAXAGENT_J = 128
+# ΟΙ ΘΕΣΕΙΣ ΤΩΝ ΡΟΜΠΟΤ (βήμα 92, src/const.asm): 0-79 άποικοι, 80-95 ρομπότ —
+# τα 80 + 16 του §6.1. Τα ρομπότ δεν έχουν ανάγκες, δεν πιάνουν θέση στο
+# ταβάνι και δεν αναπνέουν: ο μετρητής ζωντανών της θέσης 12 μετρά τους 80.
+AG_BOT0, AG_NBOT = 80, 16
+RL_CBOT, RL_CARRY = 5, 6            # κατασκευής, μεταφοράς (§6.1)
 
 
 # --- ευρετήριο δωματίων (θέση 14) -----------------------------------------
@@ -1082,7 +1087,7 @@ def rooms_rebuild(e, plant_class=None):
     # Το ταβάνι πληθυσμού είναι δουλειά του Control (§6.8), και η πλατφόρμα
     # είναι ο κόμβος όπου κατεβαίνει ο κόσμος (§6.11). Και τα δύο βγαίνουν
     # από περάσματα που γίνονται ούτως ή άλλως.
-    e.pop_cap = min(MAXAGENT_J, 4 + POP_PER_CONTROL * e.room_n[R_CONTROL])
+    e.pop_cap = min(AG_BOT0, 4 + POP_PER_CONTROL * e.room_n[R_CONTROL])
     e.pad_node = 255
     for i in range(MAX_STRUCT):
         b = i * STRUCT_REC
@@ -1194,35 +1199,71 @@ def land_colonists(e, a, node, F_ALIVE, occ):
     παίρνει θέση στην πίστα όπως σε κάθε άφιξη (βήμα 89: έτσι φαίνεται εκεί),
     με τη σειρά γεμίσματος του entity.py, ή 255 αν γέμισε."""
     n = 0
-    count = [sum(1 for i in range(MAXAGENT_J)
+    # ΜΟΝΟ ΟΙ ΘΕΣΕΙΣ ΑΠΟΙΚΩΝ (βήμα 92): οι ζωντανοί και οι ελεύθερες, 0-79.
+    count = [sum(1 for i in range(AG_BOT0)
                  if a.flags[i] & F_ALIVE and a.role[i] == r) for r in range(CW_N)]
-    for i in range(MAXAGENT_J):
+    for i in range(AG_BOT0):
         if n >= COLONISTS_PER_SHIP or e.alive + n >= e.pop_cap:
             break
         if a.flags[i] & F_ALIVE:
             continue
-        a.flags[i] = F_ALIVE
-        a.role[i] = pick_role(e, count)
-        a.node[i] = node
-        a.dest[i] = node
-        a.edge[i] = 255
-        a.slot[i] = next((t for t in (0, 4, 2, 6, 1, 5, 3, 7)
-                          if not (occ[node] >> t) & 1), 255)
-        if a.slot[i] != 255:
-            occ[node] |= 1 << a.slot[i]
-        a.task[i] = 255
-        a.progress[i] = 0
-        a.o2[i] = 200
-        a.water[i] = 200
-        a.food[i] = 200
-        a.sleep[i] = 200
-        a.health[i] = 200
-        a.morale[i] = 160
-        a.suit[i] = SUIT_TRIP               # κατεβαίνει έξω, με στολή (βήμα 90)
-        a.spare[i] = 0
+        born(a, i, F_ALIVE, pick_role(e, count), node, occ)
         n += 1
     e.alive += n
     return n
+
+
+def born(a, i, flags, role, node, occ):
+    """Το sh_born / sb_rest (src/ship.asm): σημαίες, ρόλος, κόμβος, θέση στον
+    κόμβο (με τη σειρά γεμίσματος, ή 255), γεμάτες μπάρες. Ο άποικος στην πίστα,
+    έξω· το ρομπότ στο εργοστάσιο, μέσα (βήμα 92)."""
+    a.flags[i] = flags
+    a.role[i] = role
+    a.node[i] = node
+    a.dest[i] = node
+    a.edge[i] = 255
+    a.slot[i] = next((t for t in (0, 4, 2, 6, 1, 5, 3, 7)
+                      if not (occ[node] >> t) & 1), 255)
+    if a.slot[i] != 255:
+        occ[node] |= 1 << a.slot[i]
+    a.task[i] = 255
+    a.progress[i] = 0
+    a.o2[i] = 200
+    a.water[i] = 200
+    a.food[i] = 200
+    a.sleep[i] = 200
+    a.health[i] = 200
+    a.morale[i] = 160
+    a.suit[i] = SUIT_TRIP               # κατεβαίνει έξω, με στολή (βήμα 90)
+    a.spare[i] = 0
+
+
+M_ROBOTS = MACH.index("robots")
+
+
+def bot_tick(e, a, occ, F_ALIVE=1, F_INDOORS=2):
+    """Τα ρομπότ από το απόθεμα Bots (βήμα 92, src/bots.asm), μία φορά ανά
+    περιστροφή στη θέση 15, πριν από το πλοίο. Με ένα Bot στο απόθεμα και μια
+    ελεύθερη από τις θέσεις 80-95 (η πρώτη), ένα ρομπότ ξυπνά στον πρώτο θόλο
+    Factory του ευρετηρίου που έχει μηχανή robots σε κάποια από τις οκτώ
+    υποδοχές, και το απόθεμα πέφτει κατά ένα. Ζυγή θέση: κατασκευής, μονή:
+    μεταφοράς. Επιστρέφει την ταυτότητα, ή None."""
+    if e.stock[S_BOT] == 0:
+        return None
+    i = next((k for k in range(AG_BOT0, AG_BOT0 + AG_NBOT)
+              if not a.flags[k] & F_ALIVE), None)
+    if i is None:
+        return None
+    for k in range(e.room_n[R_FACTORY]):
+        d = e.room_list[R_FACTORY * ROOM_MAX + k]
+        b = d * DOME_REC + D_MACH
+        if M_ROBOTS in e.dome[b:b + MACH_SLOTS]:
+            break
+    else:
+        return None
+    e.stock[S_BOT] -= 1
+    born(a, i, F_ALIVE | F_INDOORS, RL_CBOT + (i & 1), d, occ)
+    return i
 
 
 def pick_role(e, count):
@@ -1260,10 +1301,9 @@ def sol_rollover(e, a, F_ALIVE, F_WORKING, NEED_LOW):
     # φορτίο (POWER_ESS) δεν είναι πράσινο sol — οι μηχανές της σταμάτησαν.
     green = bool(e.o2_ok and e.power_ok == POWER_ALL
                  and e.stock[S_WATER] and e.stock[S_FOOD])
-    bots = 0
-    for i in range(MAXAGENT_J):
-        if a.flags[i] & F_ALIVE and a.role[i] >= 5 and (a.flags[i] & F_WORKING):
-            bots += 1
+    # ΟΚΤΩ ΖΩΝΤΑΝΑ ΡΟΜΠΟΤ (βήμα 92), στις θέσεις τους. Ως το 91 «δουλεύουν»
+    # (F_WORKING), που δεν το παίρνει ποτέ ρομπότ: το ορόσημο δεν πιανόταν.
+    bots = sum(a.flags[i] & F_ALIVE for i in range(AG_BOT0, AG_BOT0 + AG_NBOT))
 
     # ΚΑΙ ΤΑ ΤΡΙΑ ΣΤΑΜΑΤΟΥΝ ΣΤΟ 255, όπως στον Z80. Ως το βήμα 57 το πράσινο
     # σερί δεν σταματούσε: το 256 δεν χωρούσε στο to_bytes και η αναφορά

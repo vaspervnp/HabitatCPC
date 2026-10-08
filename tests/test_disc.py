@@ -16,6 +16,10 @@
   2. Η κατάσταση εκκίνησης του §10.1 είναι εκεί — δηλαδή έτρεξε το game_new
      ΚΑΙ τα δεδομένα της τράπεζας 2 μεταφέρθηκαν σωστά από το πρόχειρο.
   3. Το HUD γράφτηκε, άρα ο renderer βρήκε τα γραφικά του σε 6 και 7.
+  3β. Ο κώδικας του τροχού (βήμα 92): το B6CODE.BIN κάθεται στη δέσμευση
+     b6code της τράπεζας 6, byte προς byte όπως βγήκε από το build. Το
+     BANK6.BIN την έχει άδεια, οπότε ένας φορτωτής που ξεχνά το αρχείο αφήνει
+     μηδενικά εκεί που πηδά το πρώτο ρομπότ.
   4. Ο κόσμος είναι ΠΑΡΑΓΜΕΝΟΣ: η γεννήτρια έτρεξε ως ξεχωριστό φόρτωμα και
      γέμισε την τράπεζα 4. Το snapshot φορτώνει έτοιμο επίπεδο· ο δίσκος δεν
      έχει τέτοιο αρχείο.
@@ -256,6 +260,23 @@ def main():
     import hudread
     row2 = hudread.text(m, sym, 2)
     check(row2.startswith("POP  4/"), f"το HUD σχεδιάστηκε: |{row2}|")
+
+    # --- 3β. ο κώδικας του τροχού στην τράπεζα 6 (βήμα 92) ----------------
+    # Το BANK6.BIN του pack.py έχει τη δέσμευση b6code ΑΔΕΙΑ· τον κώδικα (τα
+    # ρομπότ, src/bots.asm) τον φέρνει το B6CODE.BIN, και ο φορτωτής πρέπει να
+    # τον ρίξει από πάνω. Αν το ξεχάσει, το πρώτο ρομπότ πηδά σε μηδενικά —
+    # και κανένα snapshot δεν θα το έδειχνε.
+    import ctypes, cpc
+    code = open(os.path.join(ROOT, "build", "b6code.bin"), "rb").read()
+    b6 = cpc._lib.cpcemu_ram_ptr(m._h, 6)
+    lay = {p[0]: int(p[2].lstrip("#"), 16) for p in (
+        line.split() for line in open(os.path.join(ROOT, "build", "layout.asm"),
+                                      encoding="utf-8")) if len(p) >= 3 and p[1] == "equ"}
+    at = lay["G_b6code"]
+    got = ctypes.string_at(ctypes.addressof(b6.contents) + at - 0x4000, len(code))
+    check(len(code) > 64 and got == code and sym["BOT_TICK"] == at,
+          f"ο κώδικας του τροχού ήρθε από τον δίσκο στην τράπεζα 6: {len(code)} bytes στο "
+          f"#{at:04X}, {sum(x != y for x, y in zip(got, code))} διαφορετικά")
 
     # --- 4. ο κόσμος είναι παραγμένος ------------------------------------
     m.run_code(0x3EC0, open(os.path.join(ROOT, "build", "plane.bin"), "rb").read())

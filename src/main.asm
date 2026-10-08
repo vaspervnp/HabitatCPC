@@ -330,8 +330,20 @@ zz_page2_end:
         incbin  "../build/world_new.bin"
         org     B5_BASE                 ; οι μηχανές στην τράπεζα 5 (βήμα 85)
         incbin  "../build/bank5.bin"
+        ; Η ΤΡΑΠΕΖΑ 6 ΣΕ ΔΥΟ ΚΟΜΜΑΤΙΑ, με τον κώδικα του τροχού στη μέση (βήμα
+        ; 92), όπως η 7 με τα κείμενα. Τα bytes γράφονται στη φυσική θέση του
+        ; bankset 1 (#8000 + ...) και οι ετικέτες δείχνουν στο #4000 + ..., εκεί
+        ; που τα βλέπει ο τροχός με την 6 στο παράθυρο.
         org     #8000
-        incbin  "../build/bank6.bin"
+        incbin  "../build/bank6.bin", 0, G_b6code - #4000
+        org     G_b6code, #8000 + G_b6code - #4000
+        include "bots.asm"              ; βήμα 92: τα ρομπότ από το απόθεμα
+zz_b6code_end:
+        assert  zz_b6code_end <= G_b6code + B6C_MAX
+        assert  G_b6code + B6C_MAX == G_agent_fields   ; = η δέσμευση του pack.py
+        save    "../build/b6code.bin", #8000 + G_b6code - #4000, zz_b6code_end - G_b6code
+        org     #8000 + G_b6code + B6C_MAX - #4000
+        incbin  "../build/bank6.bin", G_b6code + B6C_MAX - #4000
         ; Η τράπεζα 7 έρχεται σε ΔΥΟ κομμάτια, με τα κείμενα στη μέση: ο rasm
         ; δεν δέχεται org μέσα σε περιοχή που έχει ήδη γεμίσει, και το
         ; δεσμευμένο κενό «text» του pack.py (§4.2) είναι ακριβώς εκεί.

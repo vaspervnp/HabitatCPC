@@ -21,6 +21,7 @@ from sprites import load_map, load_bin, ROOT
 import buttons
 
 TEXT_MAX = 2120                 # = TEXT_MAX του src/uitext.asm (assert εκεί)
+B6C_MAX = 256                   # = B6C_MAX του src/bots.asm (assert στο main.asm)
 
 # --- γεωμετρία ------------------------------------------------------------
 PAGE2_BASE  = 0x8000                # τράπεζα 2: επίπεδη, πάντα ορατή
@@ -446,6 +447,12 @@ def build_runs(smap, blob):
     # ld l,id`, και χωρίς στοίχιση δεν υπάρχει τέτοια ανάγνωση. ΚΑΙ ΣΤΟ #6C00:
     # το σώσιμο γράφει από εκεί (src/save.asm), και οι δοκιμές το διαβάζουν.
     # Ο,τι μένει από κάτω (βήμα 89) είναι ελεύθερο.
+    # Ο ΚΩΔΙΚΑΣ ΤΟΥ ΤΡΟΧΟΥ (βήμα 92), αμέσως κάτω από τους πράκτορες: ο
+    # τροχός έχει την 6 στο παράθυρο από την αρχή ως το τέλος του (src/wheel.asm),
+    # οπότε ό,τι τρέχει μόνο μέσα του μπορεί να ζει εδώ. Το γράφει το
+    # src/main.asm, και ο φορτωτής το ρίχνει πάνω στη δέσμευση (B6CODE.BIN).
+    bank6.append(Run("b6code", B6C_MAX, None, at=0x6C00 - B6C_MAX,
+                     note="ΔΕΣΜΕΥΣΗ — κώδικας του τροχού (src/bots.asm)"))
     bank6.append(Run("agent_fields", 2048, None, align=256, at=0x6C00,
                      note="ΔΕΣΜΕΥΣΗ — 16 πεδία x 128, ΠΡΕΠΕΙ σε σελίδα"))
     bank6.append(Run("node_occ", 256, None, align=256,

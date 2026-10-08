@@ -370,8 +370,21 @@ def main():
     # --- οι ανάγκες όντως δάγκωσαν; ---
     ag0 = E.Agents().from_bytes(sim0.a.to_bytes())
     agz = E.Agents().from_bytes(got_a)
-    alive0 = sum(1 for i in range(128) if ag0.flags[i] & E.F_ALIVE)
-    alive1 = sum(1 for i in range(128) if agz.flags[i] & E.F_ALIVE)
+    # Οι ζωντανοί της θέσης 12 είναι οι 80 των αποίκων (βήμα 92, en_count).
+    alive0 = sum(1 for i in range(EC.AG_BOT0) if ag0.flags[i] & E.F_ALIVE)
+    alive1 = sum(1 for i in range(EC.AG_BOT0) if agz.flags[i] & E.F_ALIVE)
+    # ΚΑΙ ΟΙ ΘΕΣΕΙΣ 80-95 ΔΕΝ ΕΧΟΥΝ ΑΝΑΓΚΕΣ (βήμα 92). Ο πληθυσμός της δοκιμής
+    # τις γεμίζει με κάθε ρόλο, κι όμως σε 640 frames κανενός δεν άλλαξε ούτε
+    # οξυγόνο ούτε νερό ούτε τροφή ούτε ύπνος — ενώ κάτω από το 80 τρώνε και
+    # κοιμούνται (πιο κάτω). Ως το 91 τους επισκεπτόταν το πέρασμα των αναγκών.
+    botz = range(EC.AG_BOT0, EC.AG_BOT0 + EC.AG_NBOT)
+    moved = [i for i in botz if ag0.flags[i] & E.F_ALIVE and any(
+        getattr(agz, f)[i] != getattr(ag0, f)[i] for f in ("o2", "water", "food", "sleep"))]
+    nbots = sum(1 for i in botz if ag0.flags[i] & E.F_ALIVE)
+    if moved or nbots < 8:
+        print(f"ΑΠΟΤΥΧΙΑ: οι θέσεις των ρομπότ ({nbots} ζωντανοί) άλλαξαν ανάγκες: {moved[:8]}")
+        return 1
+    print(f"OK ρομπότ:   {nbots} ζωντανοί στις θέσεις 80-95, καμία ανάγκη τους δεν άλλαξε")
     fed = sum(1 for i in range(128) if agz.food[i] > ag0.food[i])
     slept = sum(1 for i in range(128) if agz.sleep[i] > ag0.sleep[i])
     healed = sum(1 for i in range(128) if agz.health[i] > ag0.health[i])
@@ -619,8 +632,8 @@ def flow_branches(sym, g, nexthop, sim0, patch=(), quiet=False):
             m.run_frames(1)
         got = m.read_ram(sym["G_ECON_STATE"], EC.ECON_BYTES)
 
-        alive = sum(1 for i in range(128) if sim.a.flags[i] & E.F_ALIVE)
-        inside = sum(1 for i in range(128)
+        alive = sum(1 for i in range(EC.AG_BOT0) if sim.a.flags[i] & E.F_ALIVE)
+        inside = sum(1 for i in range(EC.AG_BOT0)
                      if sim.a.flags[i] & E.F_ALIVE and sim.a.flags[i] & E.F_INDOORS)
         EC.flow_balance(e, alive, inside)
         want = EC.to_bytes(e)
@@ -950,22 +963,59 @@ def _green(e):
     e.stock[EC.S_WATER], e.stock[EC.S_FOOD] = 50, 50
 
 
-def _bots(n, role):
+def _bots(n, first=EC.AG_BOT0):
+    """n ζωντανά ρομπότ από τη θέση first, και οι θέσεις 80-95 αλλιώς άδειες.
+    Το Automation είναι οκτώ ζωντανά ΣΤΙΣ ΘΕΣΕΙΣ ΤΟΥΣ (βήμα 92): με first = 0
+    τα ίδια οκτώ στις θέσεις των αποίκων δεν μετρούν."""
     def f(e, a):
         _sol(e)
         e.milestones = 0
-        for i in range(128):
-            a.flags[i] &= ~E.F_WORKING
-        for i in range(n):
-            a.flags[i], a.role[i] = E.F_ALIVE | E.F_WORKING, role
+        for i in range(EC.AG_BOT0, EC.AG_BOT0 + EC.AG_NBOT):
+            a.flags[i] = 0
+        for i in range(first, first + n):
+            a.flags[i], a.role[i] = E.F_ALIVE, EC.RL_CBOT + (i & 1)
     return f
+
+
+def _robots(stock, alive=0, holes=(), where=1, sol=False):
+    """Το απόθεμα Bots (βήμα 92, src/bots.asm): δύο εργοστάσια στο ευρετήριο,
+    η μηχανή robots στο δεύτερο (where = 1), στο πρώτο (0) ή σε κανένα (None).
+    Οι θέσεις 80-95: οι πρώτες `alive` ζωντανές, οι `holes` νεκρές."""
+    def f(e, a):
+        e.stock[EC.S_BOT] = stock
+        if sol:
+            _sol(e)
+            e.milestones = 0
+        e.dome[ROBOTS_2ND * EC.DOME_REC + EC.D_ROOM] = EC.R_FACTORY
+        for d in range(EC.MAX_DOME):
+            b = d * EC.DOME_REC
+            if e.dome[b + EC.D_ROOM] == EC.R_FACTORY:
+                for k in range(EC.MACH_SLOTS):
+                    if e.dome[b + EC.D_MACH + k] == EC.M_ROBOTS:
+                        e.dome[b + EC.D_MACH + k] = EC.M_ROBOTS - 1
+        EC.rooms_rebuild(e, E.Sim.PLANT_CLASS)
+        fac = [e.room_list[EC.R_FACTORY * EC.ROOM_MAX + k]
+               for k in range(e.room_n[EC.R_FACTORY])]
+        assert len(fac) == 2, fac
+        if where is not None:
+            b = fac[where] * EC.DOME_REC
+            n = EC.MACHINE_COUNT[e.dome[b + EC.D_SIZE]]
+            e.dome[b + EC.D_MACH + n - 1] = EC.M_ROBOTS     # η τελευταία υποδοχή
+        for k in range(EC.AG_NBOT):
+            i = EC.AG_BOT0 + k
+            a.flags[i] = E.F_ALIVE if k < alive and i not in holes else 0
+            a.role[i] = EC.RL_CBOT + (i & 1)
+    return f
+
+
+ROBOTS_2ND = 21             # ο δεύτερος θόλος Factory των περιπτώσεων ρομπότ
 
 
 def _crew(room):
     """Πλοίο αποίκων που προσγειώνεται τώρα, με ταβάνι ζωντανοί + room. Το
     e.alive το μετρά μόνο η θέση 12, οπότε εδώ μετριέται με το χέρι."""
     def f(e, a):
-        e.alive = sum(1 for i in range(128) if a.flags[i] & E.F_ALIVE)
+        e.alive = sum(1 for i in range(EC.AG_BOT0) if a.flags[i] & E.F_ALIVE)
         e.ship_state, e.ship_kind, e.ship_eta = EC.SHIP_INCOMING, EC.SK_COLONIST, 0
         e.pop_cap = e.alive + room
     return f
@@ -1009,8 +1059,19 @@ SHIP_CASES = (
      lambda e, a: (_sol(e), _green(e), setattr(e, "green_sols", 255),
                    setattr(e, "no_death_sols", 255), setattr(e, "deaths_sol", 0),
                    setattr(e, "no_trade_sols", 255), setattr(e, "traded", 0))),
-    ("οκτώ ρομπότ με ρόλο 4", 1, _bots(8, 4)),
-    ("οκτώ ρομπότ με ρόλο 5: αυτοματισμός", 1, _bots(8, 5)),
+    # ΤΟ AUTOMATION (βήμα 92): οκτώ ζωντανά στις θέσεις 80-95, όχι «οκτώ με
+    # F_WORKING και ρόλο 5+», που δεν το έπιανε ποτέ κανένα ρομπότ.
+    ("επτά ρομπότ", 1, _bots(7)),
+    ("οκτώ ρομπότ: αυτοματισμός", 1, _bots(8)),
+    ("οκτώ ρομπότ στις θέσεις αποίκων", 1, _bots(8, 0)),
+    # ΤΑ ΡΟΜΠΟΤ ΑΠΟ ΤΟ ΑΠΟΘΕΜΑ (βήμα 92, src/bots.asm), ένα ανά περιστροφή.
+    ("ρομπότ: απόθεμα 3, η μηχανή στο δεύτερο εργοστάσιο", 4, _robots(3)),
+    ("ρομπότ: η μηχανή στο πρώτο εργοστάσιο", 1, _robots(1, where=0)),
+    ("ρομπότ: απόθεμα, κανένα εργοστάσιο με μηχανή", 2, _robots(5, where=None)),
+    ("ρομπότ: δεκαέξι ήδη", 2, _robots(5, alive=16)),
+    ("ρομπότ: τρύπα στη θέση 85", 2, _robots(4, alive=16, holes=(85,))),
+    ("ρομπότ: επτά, και το όγδοο στην περιστροφή του sol", 1,
+     _robots(1, alive=7, sol=True)),
     ("μέταλλο και βιοπλαστικό, όχι ανταλλακτικά", 1,
      lambda e, a: (_sol(e), setattr(e, "prod_mask", 0x18), setattr(e, "milestones", 0))),
     ("εννιά από τα δέκα αγαθά", 1,
@@ -1030,13 +1091,15 @@ SHIP_CASES = (
 def ship_branches(sym, g, nexthop, sim0):
     """Η θέση 15 καρφωμένη: κάθε SHIP_CASES από την ίδια κατάσταση, στον Z80
     και στην αναφορά (slot15), και όλα τα bytes ίδια."""
+    # ΚΑΙ ΟΙ ΜΑΣΚΕΣ ΘΕΣΕΩΝ (βήμα 92): ένας καινούργιος πιάνει θέση στον κόμβο
+    # του, και ως εδώ η σύγκριση δεν το κοίταζε.
     keys = lambda z: (z.a.to_bytes(), bytes(z.e.dome), bytes(z.e.struct),
-                      EC.to_bytes(z.e), bytes(z.e.job))
+                      EC.to_bytes(z.e), bytes(z.e.job), bytes(z.occ[:128]))
 
     def z80(st, n, patch=()):
         got = run_z80(sym, g, fresh(g, nexthop, st), n, pin=15,
                       rt_n=EC.MAX_DOME + EC.MAX_STRUCT, patch=patch)
-        return (got[0], got[3], got[4], got[5], got[6])
+        return (got[0], got[3], got[4], got[5], got[6], got[1])
 
     starts = {}
     for name, n, setup in SHIP_CASES:
@@ -1052,7 +1115,7 @@ def ship_branches(sym, g, nexthop, sim0):
     at = sym["SOL_ROLLOVER"]
     code = run_peek(sym, at, 256)
     k = next(k for k in range(254) if code[k:k + 3] == [0xFE, 0x08, 0x38])
-    st, n, want = starts["οκτώ ρομπότ με ρόλο 5: αυτοματισμός"]
+    st, n, want = starts["οκτώ ρομπότ: αυτοματισμός"]
     if z80(st, n, patch=[(at + k + 1, 9)]) == want:
         print("ΑΠΟΤΥΧΙΑ πλοία και sol: ΑΡΝΗΤΙΚΟ — με τον αυτοματισμό από 9 "
               "ρομπότ ο Z80 βγαίνει ίδιος με την αναφορά")
@@ -1341,6 +1404,7 @@ def slot15(sim, n):
             sim.e.air_out = 255
         if new_sol:
             EC.sol_rollover(sim.e, sim.a, E.F_ALIVE, E.F_WORKING, E.NEED_LOW)
+        EC.bot_tick(sim.e, sim.a, sim.occ)
         EC.ship_tick(sim.e, sim.a, sim.e.pad_node, E.F_ALIVE, sim.occ)
 
 

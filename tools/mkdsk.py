@@ -54,6 +54,7 @@ FILES = [
     ("BANK6.BIN",   "bank6.bin", 0x4000, 0x0000),
     ("BANK7.BIN",   "bank7.bin", 0x4000, 0x0000),
     ("TEXT.BIN",    "text.bin",  0,      0x0000),   # από το layout: G_text
+    ("B6CODE.BIN",  "b6code.bin", 0,     0x0000),   # από το layout: G_b6code (βήμα 92)
 ]
 
 
@@ -135,12 +136,13 @@ PAGE2_END = 0xC000
 GEN_END = 0x8F00
 
 
-def g_text():
-    """Πού κάθεται το δεσμευμένο κενό κειμένων μέσα στην τράπεζα 7."""
+def g_text(name="G_text"):
+    """Πού κάθεται ένα δεσμευμένο κενό: τα κείμενα στην τράπεζα 7, ή ο κώδικας
+    του τροχού στην 6 (G_b6code, βήμα 92)."""
     for line in open(os.path.join(BUILD, "layout.asm"), encoding="utf-8"):
-        if line.startswith("G_text"):
+        if line.split()[:1] == [name]:
             return int(line.split("#")[1].split()[0], 16)
-    sys.exit("δεν βρέθηκε το G_text στο layout.asm")
+    sys.exit(f"δεν βρέθηκε το {name} στο layout.asm")
 
 
 def symbols():
@@ -267,6 +269,8 @@ def build():
             FILES[i] = (f[0], f[1], lo, f[3])
         elif f[0] == "TEXT.BIN":
             FILES[i] = (f[0], f[1], g_text(), f[3])
+        elif f[0] == "B6CODE.BIN":
+            FILES[i] = (f[0], f[1], g_text("G_b6code"), f[3])
     print(f"τράπεζα 0: {slack} bytes ως τη σκαλωσιά των δοκιμών· "
           f"τράπεζα 2: κώδικας στο #{lo:04X}, {slack2} bytes ως το #C000· "
           f"γεννήτρια ως το #{gen_top:04X}, {GEN_END - gen_top} bytes ως τη "

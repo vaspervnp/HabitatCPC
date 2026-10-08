@@ -111,6 +111,13 @@ boot:
         ld      de,G_text
         ld      c,PAGE_B7
         call    ld_bank
+        ; Το ίδιο για τον κώδικα του τροχού στην τράπεζα 6 (βήμα 92, src/bots.asm),
+        ; πάνω στη δέσμευση b6code: η BANK6.BIN του pack.py την έχει άδεια.
+        ld      hl,n_b6code
+        ld      b,n_b6code_e - n_b6code
+        ld      de,G_b6code
+        ld      c,PAGE_B6
+        call    ld_bank
         ; Η «τράπεζα 1» είναι η βασική RAM στο παράθυρο, όχι επέκταση: τα
         ; εικονίδια κάθονται πάνω από τον πίνακα DIST, χωρίς σελιδοποίηση.
         ld      a,9
@@ -323,6 +330,8 @@ n_bank7:    db "BANK7.BIN"
 n_bank7_e:
 n_text:     db "TEXT.BIN"
 n_text_e:
+n_b6code:   db "B6CODE.BIN"
+n_b6code_e:
 n_page2:    db "PAGE2.BIN"
 n_page2_e:
 n_bank5:    db "BANK5.BIN"
