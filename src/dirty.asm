@@ -383,6 +383,7 @@ dh_site:
         call    ob_shell
         ld      a,(dt_a)
         call    ob_fittings
+        call    fg_draw                 ; ό,τι στέκεται έξω από πάνω (βήμα 89)
         call    ob_clip_full
         jp      dt_end                  ; jr: εκτός εμβέλειας
 
@@ -462,7 +463,7 @@ dh_tile:
         call    vr_tiles                ; το έδαφος, και το clip πάνω του
         ret     z
         call    dh_occupied
-        call    nz,ob_draw_all
+        call    fg_objs                 ; ή μόνο οι φιγούρες (βήμα 89)
         jp      ob_clip_full
 
 ; dh_occupied — πατάει κάτι το ορθογώνιο td_*; NZ αν ναι. Σελιδοποιεί την
@@ -472,6 +473,11 @@ dh_tile:
 ; 99.840 us για ένα tile που έσκαψε ένα ρομπότ στην ερημιά. Τα bits κατοχής
 ; του §3.5 υπάρχουν ακριβώς για να μη χρειάζεται να ρωτηθεί η λίστα θόλων.
 dh_occupied:
+        ld      a,W_OCC_MASK
+; dh_occ_a — A = ποια bits κατοχής μετρούν. Η φιγούρα έξω (βήμα 89) ρωτά μόνο
+; το W_OCC_STRUCT: το μονοπάτι είναι θεμέλιο στο έδαφος, κανένα αντικείμενο.
+dh_occ_a:
+        ld      (dho_mask + 1),a
         ld      bc,GA_PORT + PAGE_B4
         out     (c),c
         ld      a,(td_nr)
@@ -491,7 +497,8 @@ dho_row:
         ld      b,a
 dho_col:
         ld      a,(hl)
-        and     #30                     ; bits κατοχής
+dho_mask:
+        and     #30                     ; bits κατοχής (dh_occ_a)
         jr      nz,dho_out
         inc     hl
         djnz    dho_col
@@ -541,135 +548,11 @@ dkc_out:
 
 dirty_jmp:
         dw      dh_slot, dh_mach, dh_icon, dh_conn, dh_tile, dh_built, dh_site
-        dw      dh_crow
+        dw      dh_crow, dh_agent               ; src/figure.asm, τράπεζα 2
 
-; ---------------------------------------------------------------------------
-; dhs_vacate — μια θέση του δακτυλίου άδειασε (dh_slot· ob_x, ob_y = η θέση).
-;
-; Οταν ΕΡΧΕΤΑΙ άποικος, το αδιαφανές 2x8 του ob_fig_one είναι ό,τι θα έβγαζε
-; το πλήρες πέρασμα. Οταν ΦΕΥΓΕΙ, όχι: η «κενή» παραλλαγή είναι ο δακτύλιος
-; πάνω σε ΜΑΥΡΟ, και όπου ο δακτύλιος είναι διαφανής το πλήρες πέρασμα δείχνει
-; το ΕΔΑΦΟΣ — η αδιαφανής παραλλαγή εκεί βάφει pen 0. Ως το βήμα 42 αυτό άφηνε
-; 1-8 bytes λάθος σε 12 από τις 20 θέσεις της αποικίας δοκιμής, και το §15 το
-; χρέωνε στο κόψιμο του περάσματος αντικειμένων: ο θόλος ξανασχεδιασμένος
-; κομμένος στο 2x8 έβγαζε τα ίδια pixel — γιατί ούτε κι εκείνος ξανάστρωνε
-; έδαφος.
-;
-; Εδώ γίνεται ό,τι κάνει το πλήρες πέρασμα, ΜΟΝΟ στο 2x8: το έδαφος από κάτω
-; (το tile, ή τα δύο ως τέσσερα που πιάνει η θέση, μέσα από το ob_blit που
-; κόβει), και από πάνω όλα τα αντικείμενα κομμένα στο ίδιο. Μια πρώτη μορφή
-; ξανάστρωνε ΟΛΟΚΛΗΡΑ τα tiles (view_rect) και έπρεπε μετά να ξαναζωγραφίσει
-; ό,τι πατούσε πάνω τους — εικονίδιο, μηχανές: ως 32,6 ms για 16 bytes.
-;
-; dhv_rect — το ίδιο για ΟΠΟΙΟΔΗΠΟΤΕ ορθογώνιο στο ob_x, ob_y: L = bytes,
-; H = γραμμές. Και για τη μηχανή που βγήκε (dh_mach, βήμα 45): 6x22 αντί 2x8.
-; ---------------------------------------------------------------------------
-dhs_vacate:
-        ld      hl,SLOT_H*256 + SLOT_W
-dhv_rect:
-        ld      (dhv_w),hl              ; dhv_w, dhv_h διπλανά
-        ; --- το clip: το ορθογώνιο, κομμένο στο κάδρο ---
-        ld      a,l
-        ld      hl,(ob_x)
-        ld      de,SCR_W * 256          ; lo = 0, hi = SCR_W
-        call    dhv_cut
-        ret     z
-        ld      (clip_x0),hl            ; clip_x0, clip_x1
-        ld      hl,(ob_y)
-        ld      a,(dhv_h)
-        ld      de,PLAY_LINES * 256
-        call    dhv_cut
-        ; ΤΟ clip_x ΕΧΕΙ ΗΔΗ ΣΤΕΝΕΨΕΙ. Με `ret z` εδώ, μια θέση που φαίνεται
-        ; οριζόντια αλλά πέφτει κάτω ή πάνω από το κάδρο άφηνε το clip μια
-        ; στήλη δύο bytes, και ΚΑΘΕ επόμενος χειριστής της λίστας ζωγράφιζε
-        ; μέσα σε αυτήν — δηλαδή τίποτα. Από το βήμα 42 ως το 45 δεν φάνηκε,
-        ; γιατί κανένας θόλος δεν τελείωνε στο κάδρο μετά από τέτοιο άδειασμα·
-        ; το test_link του βήματος 45, που περιμένει τον εξοπλισμό, βρήκε έναν
-        ; L χωρίς εικονίδιο και χωρίς καμία από τις οκτώ μηχανές του.
-        jp      z,ob_clip_full
-        ld      (clip_y0),hl            ; clip_y0, clip_y1
-        ; --- ΤΟ ΚΟΣΤΟΣ ΤΟ ΞΕΡΕΙ ΜΟΝΟ ΑΥΤΟΣ. Ο πίνακας λέει 1.500 για το
-        ; DK_SLOT, όσο κοστίζει ένας άποικος που ΕΡΧΕΤΑΙ. Ενα άδειασμα που
-        ; φαίνεται κοστίζει ως 18 ms ακόμη: ο θόλος, κομμένος στο 2x8, περνά
-        ; ακόμη από ~25 blit. Το λέει στον dirty_tick, για να μην ακολουθήσει
-        ; τίποτε άλλο στο ίδιο καρέ. Το 16 bit ξεχειλίζει ως «πάνω» (dt_lp).
-        ld      hl,(dt_spent)
-        ld      de,DHS_VAC_US
-        add     hl,de
-        jr      nc,dhv_spent
-        ld      hl,#FFFF
-dhv_spent:
-        ld      (dt_spent),hl
-        ; --- το έδαφος: κάθε tile που αγγίζει το clip, κομμένο σε αυτό ---
-        ld      bc,GA_PORT + PAGE_B4
-        out     (c),c
-        ld      a,(clip_y0)
-        and     #F0                     ; η γραμμή του πρώτου tile
-        ld      d,a
-dhv_row:
-        ld      a,(clip_x0)
-        and     #FC
-        ld      e,a
-dhv_col:
-        push    de                      ; D = γραμμή, E = byte του tile
-        ld      a,e
-        rrca
-        rrca                            ; στήλη tile (το x < 80)
-        ld      hl,cam_tx
-        add     a,(hl)
-        ld      b,a
-        ld      a,d
-        rrca
-        rrca
-        rrca
-        rrca                            ; σειρά tile (το y < 160)
-        ld      hl,cam_ty
-        add     a,(hl)
-        ld      c,a
-        call    tile_addr
-        ld      (t_wptr),hl
-        call    tile_src
-        ld      (ob_src),hl
-        pop     de
-        push    de
-        ld      h,0
-        ld      l,e
-        ld      (ob_x),hl
-        ld      l,d
-        ld      (ob_y),hl
-        ld      hl,TILE_H*256 + TILE_W
-        ld      a,4                     ; αδιαφανές
-        call    ob_put
-        pop     de
-        ld      a,e
-        add     a,TILE_W
-        ld      e,a
-        ld      hl,clip_x1
-        cp      (hl)
-        jr      c,dhv_col
-        ld      a,d
-        add     a,TILE_H
-        ld      d,a
-        ld      hl,clip_y1
-        cp      (hl)
-        jr      c,dhv_row
-        ld      bc,GA_PORT + PAGE_B1
-        out     (c),c
-        ; --- και από πάνω ό,τι πατά εκεί ---
-        call    ob_draw_all
-        jp      ob_clip_full
-
-; dhv_cut — A = μήκος, HL = θέση, DE = όρια: το ob_clip. Out: Z αν εκτός
-; κάδρου, αλλιώς L = αρχή και H = τέλος του κομμένου.
-dhv_cut:
-        call    ob_clip
-        ret     z
-        ld      b,a                     ; cl_n
-        ld      a,(cl_start)
-        ld      l,a
-        add     a,b                     ; NZ: το τέλος δεν είναι ποτέ 0
-        ld      h,a
-        ret
+; dhs_vacate, dhv_rect, dhv_clip, dhv_charge: στην τράπεζα 2 από το βήμα 89,
+; στο src/figure.asm, που τα χρησιμοποιεί κι αυτό. Ψυχρός κώδικας — ένα
+; άδειασμα θέσης που φαίνεται — και η τράπεζα 0 ήταν γεμάτη ως τη σκαλωσιά.
 
 ; Μετρημένο κόστος ανά είδος, σε us. Ο προϋπολογισμός δεν έχει ρολόι να
 ; κοιτάξει· έχει αυτόν τον πίνακα, και το test_dirty τον ελέγχει.
@@ -689,6 +572,9 @@ dirty_cost:
         dw      12000                   ; μία σειρά διαγωνίου — το ob_draw_all από το
                                         ; ευρετήριο (βήμα 39· ήταν 60.000). Μία ανά
                                         ; γύρο ακόμη: δύο θα ήταν 24.000
+        dw      1300                    ; φιγούρα έξω (βήμα 89) — ο υπολογισμός και
+                                        ; το cpir σε γεμάτη λίστα (1.224)· τα κελιά
+                                        ; και οι φιγούρες χρεώνονται μέσα (figure.asm)
 
 dirty_ring: defs DIRTY_N * DIRTY_REC
 dirty_head: db 0                        ; αυτά τα τρία με αυτή τη σειρά:

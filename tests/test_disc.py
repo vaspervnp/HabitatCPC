@@ -337,10 +337,14 @@ def main():
             cut += 1
     st = (scratch_state(bytes(dsk), bytes(dsk[at:at + len(eg)]))
           if cut == 2 else None)
-    check(st is not None and st[4] > 4000 and st[5] > 4000,
+    # ΤΟ ΜΙΣΟ ΑΠΟ ΟΣΑ ΦΟΡΤΩΘΗΚΑΝ ΕΚΕΙ, όχι 4.000: το βήμα 89 έβγαλε τον διάδρομο
+    # και τις πόρτες από την τράπεζα 2, και τα μη μηδενικά της έπεσαν κάτω
+    # από τα 4.000 που έγραφε εδώ ένας σταθερός αριθμός.
+    nz2, nzg = sum(1 for x in page2 if x), sum(1 for x in game2 if x)
+    check(st is not None and st[4] > nz2 // 2 and st[5] > nzg // 2,
           f"ΑΡΝΗΤΙΚΟ: χωρίς τα δύο σβησίματα ({cut} από 2 κομμένα) μένουν "
-          f"{st[4] if st else '-'} bytes στο DIST και "
-          f"{st[5] if st else '-'} στο NEXTHOP")
+          f"{st[4] if st else '-'} bytes στο DIST (από {nz2} μη μηδενικά της "
+          f"τράπεζας 2) και {st[5] if st else '-'} στο NEXTHOP (από {nzg} του κώδικά της)")
 
     # --- 6. το σβήσιμο της οθόνης ----------------------------------------
     # Ο φορτωτής αφήνει τη δική του οθόνη και το παιχνίδι ξεκινά ΠΑΝΩ της. Ως

@@ -139,7 +139,7 @@ def find_jpz(r, at, target, n=96):
         if (r.m.peek(at + k) == 0xCA and r.m.peek(at + k + 1) == target & 0xFF
                 and r.m.peek(at + k + 2) == target >> 8):
             return at + k
-    raise SystemExit("δεν βρέθηκε το JP Z,ob_clip_full στο dhv_rect")
+    raise SystemExit("δεν βρέθηκε το JP Z,ob_clip_full στο dhv_clip")
 
 
 def find_call(r, at, target, n=64):
@@ -201,7 +201,7 @@ def main():
                     + (f" — έμεινε {[(x[1], x[2], x[6]) for x in leak[:3]]}"
                        if leak else ""))
     r = Run(sym, T.CAMERAS[0][:2])
-    jz = find_jpz(r, sym["DHV_RECT"], sym["OB_CLIP_FULL"])
+    jz = find_jpz(r, sym["DHV_CLIP"], sym["OB_CLIP_FULL"])   # το clip του dhv_rect (βήμα 89)
     neg = vacate_all(sym, patch=[(jz + 1, sym["DT_NO"] & 0xFF),
                                  (jz + 2, sym["DT_NO"] >> 8)])
     nleak = [x for x in neg if x[6] != FULL]

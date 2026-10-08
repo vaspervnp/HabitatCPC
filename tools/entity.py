@@ -392,7 +392,7 @@ class Sim:
         elif s == 15:
             if EC.events(self.e):
                 EC.sol_rollover(self.e, self.a, F_ALIVE, F_WORKING, NEED_LOW)
-            EC.ship_tick(self.e, self.a, self.e.pad_node, F_ALIVE)
+            EC.ship_tick(self.e, self.a, self.e.pad_node, F_ALIVE, self.occ)
         # 13 πίνακας εργασιών, 14 ελεύθερη — δεν έχουν γραφτεί, ούτε εδώ ούτε
         # στον Z80.
 

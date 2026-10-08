@@ -266,6 +266,7 @@ zz_page2_code:                          ; για το tools/mkdsk.py: πού φ�
         include "door.asm"              ; βήμα 87: ένα κτίσμα τελειώνει
         include "edges.asm"             ; βήμα 87: οι ακμές, για όλες τις εκδόσεις
         include "supply.asm"            ; βήμα 88: πρώτα τα υλικά, μετά ο μηχανικός
+        include "figure.asm"            ; βήμα 89: οι άποικοι έξω
         include "sound.asm"
         include "meteor.asm"            ; βήμα 38: ζει στον τροχό, σπάνια τρέχει
         include "objindex.asm"          ; βήμα 41: το χτίσιμο του ευρετηρίου

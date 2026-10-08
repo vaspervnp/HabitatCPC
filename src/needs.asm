@@ -80,10 +80,8 @@ ens_call:
         call    nd_ok                   ; ή nd_def
         pop     bc
 ens_next:
-        ld      a,c
-        inc     a
-        and     N_AGENT - 1
-        ld      c,a
+        inc     c                       ; mod N_AGENT: 2 us λιγότερα από το
+        res     7,c                     ; ld/inc/and/ld (βήμα 89)
         djnz    ens_lp
         ret
 
@@ -473,6 +471,7 @@ nd_d_slot:
         ld      (hl),NO_TASK
         res     7,l
         ld      (hl),0                  ; progress
+        call    fg_mark                 ; αν φαινόταν έξω, σβήνει (βήμα 89)
 
         ld      a,(EC_GLOOM)            ; το πένθος, με ταβάνι
         add     a,16

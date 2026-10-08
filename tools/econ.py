@@ -1140,7 +1140,7 @@ def trade(e, give_stock, give_qty, take_stock, take_qty):
     return True
 
 
-def ship_tick(e, a, spawn_node, F_ALIVE):
+def ship_tick(e, a, spawn_node, F_ALIVE, occ):
     """Μία περιστροφή του πλοίου. Τρέχει στη θέση 15, μαζί με τα συμβάντα."""
     if e.ship_state == SHIP_NONE:
         return
@@ -1151,15 +1151,17 @@ def ship_tick(e, a, spawn_node, F_ALIVE):
         e.ship_state = SHIP_LANDED
         e.ship_eta = SHIP_STAY
         if e.ship_kind == SK_COLONIST:
-            land_colonists(e, a, spawn_node, F_ALIVE)
+            land_colonists(e, a, spawn_node, F_ALIVE, occ)
         elif e.ship_kind == SK_VISITOR:
             visit(e, a, F_ALIVE)
         return
     e.ship_state = SHIP_NONE            # έφυγε
 
 
-def land_colonists(e, a, node, F_ALIVE):
-    """Καινούργιοι άποικοι στην πλατφόρμα. Οσοι χωράνε στο ταβάνι."""
+def land_colonists(e, a, node, F_ALIVE, occ):
+    """Καινούργιοι άποικοι στην πλατφόρμα. Οσοι χωράνε στο ταβάνι. Ο καθένας
+    παίρνει θέση στην πίστα όπως σε κάθε άφιξη (βήμα 89: έτσι φαίνεται εκεί),
+    με τη σειρά γεμίσματος του entity.py, ή 255 αν γέμισε."""
     n = 0
     for i in range(MAXAGENT_J):
         if n >= COLONISTS_PER_SHIP or e.alive + n >= e.pop_cap:
@@ -1171,7 +1173,10 @@ def land_colonists(e, a, node, F_ALIVE):
         a.node[i] = node
         a.dest[i] = node
         a.edge[i] = 255
-        a.slot[i] = 255
+        a.slot[i] = next((t for t in (0, 4, 2, 6, 1, 5, 3, 7)
+                          if not (occ[node] >> t) & 1), 255)
+        if a.slot[i] != 255:
+            occ[node] |= 1 << a.slot[i]
         a.task[i] = 255
         a.progress[i] = 0
         a.o2[i] = 200

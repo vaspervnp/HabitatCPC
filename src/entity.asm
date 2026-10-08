@@ -30,56 +30,8 @@ NO_EDGE     equ 255
 NO_SLOT     equ 255
 N_AGENT     equ 128
 
-; ---------------------------------------------------------------------------
-; ent_move_slice — C = πρώτος πράκτορας, B = πλήθος. Αύξουσα σειρά (§7.1).
-; ---------------------------------------------------------------------------
-ent_move_slice:
-        inc     b                       ; φέτα μηδέν: το djnz θα έκανε 256 γύρους
-        dec     b
-        ret     z
-        ; Ο ΜΕΤΡΗΤΗΣ ΚΑΙ ΤΟ ID ΣΤΟ ΣΚΙΩΔΕΣ BC (βήμα 87). Το push/pop γύρω από
-        ; κάθε πράκτορα ήταν 7 us· δύο exx είναι 2. Ο βρόχος βγαίνει 4 us
-        ; φθηνότερος ανά πράκτορα, 48 ανά φέτα: τα μισά από τα ~97 που
-        ; κόστισε το μέσα-έξω. Το ent_move_one και ό,τι καλεί δεν αγγίζουν
-        ; σκιώδεις, και το ISR ούτε (src/isr.asm).
-        push    bc
-        exx
-        pop     bc
-ems_lp:
-        ld      a,c
-        inc     c
-        res     7,c                     ; mod N_AGENT
-        exx
-        ld      l,a
-        call    ent_move_one
-        exx
-        djnz    ems_lp
-        exx
-        ret
-
-; Το ταξίδι ΠΡΙΝ από το ent_move_one, για να το φτάνει το jr: με το μέσα-έξω
-; (βήμα 87) η αναχώρηση μεγάλωσε, και ένα jp εκεί κόστιζε 1 us σε κάθε
-; πράκτορα που στέκεται.
-; --- ΤΑΞΙΔΕΥΕΙ. A = edge + 1, H = AG_PG + 2, L = id + 128. ---
-em_trans:
-        ld      b,a                     ; B = edge + 1
-        ld      h,AG_PG
-        ld      a,(hl)                  ; role
-        and     7
-        ld      de,role_speed
-        add     a,e
-        ld      e,a
-        adc     a,d
-        sub     e
-        ld      d,a
-        ld      a,(de)                  ; ταχύτητα
-        ld      h,AG_PG + 3
-        res     7,l
-        add     a,(hl)                  ; + progress
-        jr      c,em_arrive
-        ld      (hl),a                  ; ακόμη στον σωλήνα
-        ret
-
+; --- ΦΤΑΝΕΙ. B = edge + 1, H = AG_PG + 3, L = id. ---
+; Πριν από το ent_move_slice, για να το φτάνει το jr του em_trans.
 em_arrive:
         ; ο κόμβος στην άλλη άκρη: node_adj[node*8 + edge]
         ld      c,l                     ; C = id
@@ -117,19 +69,54 @@ em_arrive:
         ; Οποιος ταξίδευε μέσα φτάνει μέσα: η αναχώρηση ρώτησε ήδη το en_in
         ; του στόχου. Μόνο όποιος ερχόταν απ' έξω ρωτά — μπαίνει σε airlock;
         ; (βήμα 87· H = AG_PG + 3, L = id)
+        ; Και η φιγούρα: όποιος ερχόταν από έξω σταματά, και όποιος φτάνει
+        ; σε δομή στέκεται δίπλα της (βήμα 89). Μέσα, σε θόλο, τον δείχνει ο
+        ; δακτύλιος.
         ld      h,AG_PG
         bit     1,(hl)                  ; F_INDOORS
-        ret     nz
+        jr      z,ea_out
+        bit     6,b                     ; κόμβος < 64 (assert): θόλος
+        jr      z,ems_nx
+        jr      ems_mark
+ea_out:
         ld      a,b
         call    en_in                   ; κρατά BC
-        ret     nc                      ; έξω, και μένει
         ld      l,c
+        jr      nc,ems_mark             ; έξω, και μένει
         ld      h,AG_PG
         set     1,(hl)                  ; μπήκε
-        ret
+        jr      ems_mark
+
+; --- ΤΑΞΙΔΕΥΕΙ. A = edge + 1, H = AG_PG + 2, L = id + 128. ---
+em_trans:
+        ld      b,a                     ; B = edge + 1
+        ld      h,AG_PG
+        ld      a,(hl)                  ; role
+        and     7
+        add     a,role_speed & 255      ; ο πίνακας σε μία σελίδα (assert):
+        ld      e,a                     ; 3 us λιγότερα από το adc/sub
+        ld      d,role_speed >> 8
+        ld      a,(de)                  ; ταχύτητα
+        ld      h,AG_PG + 3
+        res     7,l
+        add     a,(hl)                  ; + progress
+        jr      c,em_arrive
+        ld      (hl),a                  ; ακόμη στον δρόμο
+        ; Στον σωλήνα δεν φαίνεται· στο έδαφος η φιγούρα του προχωρά (βήμα 89).
+        ld      h,AG_PG
+        bit     1,(hl)                  ; F_INDOORS
+        jr      nz,ems_nx
+ems_mark:
+        call    fg_mark
+        jr      ems_nx
 
 ; ---------------------------------------------------------------------------
-; ent_move_one — ένα βήμα για τον πράκτορα L.
+; ent_move_slice — C = πρώτος πράκτορας, B = πλήθος. Αύξουσα σειρά (§7.1).
+;
+; ΤΟ ΒΗΜΑ ΤΟΥ ΠΡΑΚΤΟΡΑ ΕΙΝΑΙ ΜΕΣΑ ΣΤΟΝ ΒΡΟΧΟ (βήμα 89). Ως τότε ήταν ρουτίνα,
+; το ent_move_one, με έναν μόνο καλούντα: ένα call ανά πράκτορα, 5 us, και τα
+; ret του γίνονται jr στο ems_nx με το ίδιο κόστος. 60 us ανά φέτα των
+; δώδεκα — περισσότερα από όσα κόστισε η φιγούρα έξω στην κίνηση (fg_mark).
 ;
 ; Το id έρχεται στο L και μένει σε καταχωρητή (L, ή D και C όπου το HL
 ; χρειάζεται αλλού): τα πεδία είναι σε σελίδες, οπότε ένα πεδίο είναι ένα
@@ -137,10 +124,25 @@ em_arrive:
 ; το em_id· τώρα γράφεται μόνο όταν κάποιος φεύγει από κόμβο, όπου το θέλει το
 ; ent_release.
 ; ---------------------------------------------------------------------------
-ent_move_one:
+ent_move_slice:
+        inc     b                       ; φέτα μηδέν: το djnz θα έκανε 256 γύρους
+        dec     b
+        ret     z
+        ; Ο ΜΕΤΡΗΤΗΣ ΚΑΙ ΤΟ ID ΣΤΟ ΣΚΙΩΔΕΣ BC (βήμα 87). Το push/pop γύρω από
+        ; κάθε πράκτορα ήταν 7 us· δύο exx είναι 2. Το βήμα του πράκτορα και
+        ; ό,τι καλεί δεν αγγίζουν σκιώδεις, και το ISR ούτε (src/isr.asm).
+        push    bc
+        exx
+        pop     bc
+ems_lp:
+        ld      a,c
+        inc     c
+        res     7,c                     ; mod N_AGENT
+        exx
+        ld      l,a
         ld      h,AG_PG
         bit     0,(hl)                  ; F_ALIVE
-        ret     z
+        jr      z,ems_nx
         ld      h,AG_PG + 2
         set     7,l
         ld      a,(hl)                  ; edge
@@ -153,7 +155,7 @@ ent_move_one:
         dec     h                       ; AG_PG + 1
         ld      a,(hl)                  ; node
         cp      e
-        ret     z                       ; είναι ήδη εκεί
+        jr      z,ems_nx                ; είναι ήδη εκεί
         ld      (em_node),a
         ld      d,l                     ; D = id
 
@@ -191,6 +193,10 @@ ent_move_one:
         inc     h                       ; +128 = task
         set     7,l
         ld      (hl),NO_TASK
+ems_nx:
+        exx
+        djnz    ems_lp
+        exx
         ret
 
 em_have:
@@ -205,7 +211,7 @@ em_have:
         ld      c,(hl)                  ; deg[node]
         inc     c
         dec     c
-        ret     z                       ; κόμβος χωρίς ακμές — δεν συμβαίνει
+        jr      z,ems_nx                ; κόμβος χωρίς ακμές — δεν συμβαίνει
         ld      b,0
         ; G_node_adj + node*8 = (G_node_adj/8 + node) * 8, χωρίς κρατούμενο
         ; στο κάτω byte (assert)
@@ -217,7 +223,7 @@ em_have:
         add     hl,hl
         ld      a,e
         cpir
-        ret     nz                      ; μπαγιάτικο NEXTHOP — μένει ακίνητος
+        jr      nz,ems_nx               ; μπαγιάτικο NEXTHOP — μένει ακίνητος
         dec     l
         ld      a,l
         and     7                       ; k: η λίστα ξεκινά σε πολλαπλάσιο του 8
@@ -252,24 +258,47 @@ emf_rel:
         ; ξεκινά μέσα μένει μέσα μόνο σε διάδρομο προς έτοιμο μέρος με αέρα,
         ; και όχι από δομή σε δομή: δύο airlock τα ενώνει μόνο το έδαφος. Το
         ; «ξεκινά μέσα» είναι η σημαία, όχι ξανά το en_in του κόμβου. ---
+        ; Και η φιγούρα (βήμα 89): φαίνεται όποιος φεύγει έξω ή από δομή.
         res     7,l
         ld      h,AG_PG
         bit     1,(hl)                  ; F_INDOORS
-        ret     z
+        jp      z,ems_mark
         ld      a,(em_node)
+        ld      b,a                     ; B = από πού, για μετά το en_in
         ld      hl,em_nh
         and     (hl)
         and     MAX_DOME                ; και οι δύο 64 ή πάνω: δομή με δομή
         jr      nz,emd_put              ; το and άφησε CY = 0: έξω
         ld      a,(hl)
-        call    en_in                   ; src/door.asm
-        ret     c                       ; μέσα, και μένει
+        call    en_in                   ; src/door.asm· κρατά BC
+        jr      nc,emd_put
+        bit     6,b                     ; μέσα, και μένει: από θόλο δεν
+        jp      z,ems_nx                ; φαινόταν, από airlock ναι
+        ld      a,(em_id)
+        ld      l,a
+        jp      ems_mark
 emd_put:
         ld      a,(em_id)
         ld      l,a
         ld      h,AG_PG
         res     1,(hl)                  ; F_INDOORS: βγαίνει
-        ret
+        jp      ems_mark
+
+; fg_mark — L = πράκτορας (το bit 7 δεν μετρά): η φιγούρα του έξω ίσως άλλαξε
+; (src/figure.asm). Ενα byte ανά πράκτορα, στο πάνω μισό της σελίδας node_occ,
+; λέει «είναι ήδη στη λίστα αλλαγών»: μία εγγραφή DK_AGENT το πολύ, όσο γρήγορα
+; κι αν κινείται. Το σβήνει το dh_agent. Χαλάει A, B, D, HL.
+fg_mark:
+        ld      h,OCCPG
+        set     7,l
+        ld      a,(hl)
+        or      a
+        ret     nz
+        inc     (hl)
+        res     7,l
+        ld      b,l
+        ld      a,DK_AGENT
+        jp      wh_push
 
 
 ; ---------------------------------------------------------------------------
@@ -358,11 +387,11 @@ er_out:
         pop     bc
         ret
 
-bit_tab:    db 1,2,4,8,16,32,64,128
 ; Διπλάσιες από την πρώτη εκτίμηση: με τις παλιές, μια ακμή ήθελε έξι
 ; περιστροφές και μια διαδρομή πέντε αλμάτων κρατούσε όσο και η ανάγκη που
 ; σε έστειλε — κανείς δεν πρόφταινε ποτέ να πιάσει δουλειά.
 role_speed: db 96,96,88,104,112,128,144,120
+bit_tab:    db 1,2,4,8,16,32,64,128
 
 em_id:      db 0
 em_node:    db 0
@@ -372,3 +401,5 @@ em_nh:      db 0                ; ο επόμενος κόμβος, για το 
         assert  NO_EDGE == 255 && (PAGE_B5 >> 8) == (PAGE_B6 >> 8)
         assert  (G_node_adj & 7) == 0 && ((G_node_adj >> 3) & 255) + 128 <= 256
         assert  (G_corr_fill & 255) <= 256 - 8
+        assert  (role_speed & 255) <= 248
+        assert  MAX_DOME == 64

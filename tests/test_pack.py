@@ -110,10 +110,38 @@ def main():
 
     # 7. ό,τι δεικτοδοτείται με πολλαπλασιασμό πρέπει να είναι ΣΥΝΕΧΟΜΕΝΟ
     for grp, stride, count in (("font_m1", 8, 96 + 5), ("connectors", 32, 8),
-                               ("corr_slot_gfx", 16, 216)):
+                               ("slot_empty", 16, 24), ("fig_ring", 32, 8),
+                               ("fig_gfx", 32, 8)):
         r = by_name[grp]
         check(r.size == stride * count,
               f"{grp}: {r.size} B, περίμενα {stride*count}")
+
+    # 7α. ΟΙ ΘΕΣΕΙΣ ΤΟΥ ΔΑΚΤΥΛΙΟΥ (βήμα 89): η κενή, και από πάνω η φιγούρα με
+    #     μάσκα, είναι η ψημένη παραλλαγή των assets — και για τις 24 x 8, από
+    #     τα bytes της ΕΙΚΟΝΑΣ της τράπεζας 6, όχι από ό,τι νομίζει το pack.py.
+    #     Και η φιγούρα έξω είναι η ίδια σιλουέτα: όπου η μάσκα του δακτυλίου
+    #     λέει «φιγούρα», η έξω λέει το ίδιο pixel (η σκιά είναι μόνο παραπάνω).
+    #     Η λίστα, οι φιγούρες και ο δακτύλιος σε σελίδα (ld h,σελίδα).
+    img6 = images["bank6"]
+    at6 = lambda n: img6[by_name[n].addr - pack.WINDOW_BASE:][:by_name[n].size]
+    empty, ring, out = at6("slot_empty"), at6("fig_ring"), at6("fig_gfx")
+    bad = []
+    for i, (z, t) in enumerate((z, t) for z in "sml" for t in range(8)):
+        for f, nm in enumerate(pack.FIG_NAMES):
+            want = blob[smap[f"slot_{z}_{t}_{nm}"].off:][:16]
+            spr = ring[f * 32:(f + 1) * 32]
+            got = bytes((empty[i * 16 + k] & spr[2 * k]) | spr[2 * k + 1] for k in range(16))
+            if got != want:
+                bad.append(f"slot_{z}_{t}_{nm}")
+    check(not bad, f"κενή + φιγούρα δεν είναι η ψημένη θέση: {bad[:4]}")
+    same = all((out[k] | ring[k]) == ring[k] if k % 2 == 0 else
+               (ring[k] & ~ring[k - 1] & 0xFF) == (out[k] & ~ring[k - 1] & 0xFF)
+               for k in range(256))
+    check(same, "η φιγούρα έξω δεν είναι η σιλουέτα του δακτυλίου")
+    for n in ("fig_list", "fig_gfx", "fig_ring"):
+        check(by_name[n].addr % 256 == 0, f"το {n} στο #{by_name[n].addr:04X} δεν είναι σε σελίδα")
+    check(by_name["agent_fields"].addr == 0x6C00,
+          f"το agent_fields στο #{by_name['agent_fields'].addr:04X}, όχι στο #6C00 του σωσίματος")
 
     # 7β. Η γραμματοσειρά Mode 1 του HUD (βήμα 83) δεν είναι sprite: τη γράφει
     #     το pack.py από το font_gfx. Εδώ ξαναβγαίνει από τα PIXEL, με τον

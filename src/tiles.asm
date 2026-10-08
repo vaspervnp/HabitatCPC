@@ -46,6 +46,22 @@ ta_even:
         ld      h,a
         ret
 
+; tl_occ — A = μάσκα, B = tx, C = ty του κόσμου: NZ αν το byte του tile έχει
+; κάτι από τη μάσκα. Σελιδοποιεί την 4 και γυρίζει την 1 (βήμα 89: τι είναι
+; κάτω από το κελί μιας φιγούρας, src/figure.asm).
+tl_occ:
+        ld      e,a                     ; το tile_addr κρατά το DE
+        push    bc
+        ld      bc,GA_PORT + PAGE_B4
+        out     (c),c
+        pop     bc
+        call    tile_addr
+        ld      a,(hl)
+        and     e
+        ld      bc,GA_PORT + PAGE_B1
+        out     (c),c                   ; οι σημαίες μένουν
+        ret
+
 ; ---------------------------------------------------------------------------
 ; tile_draw_all — όλο το κάδρο από (cam_tx, cam_ty), που είναι το ΠΑΝΩ-ΑΡΙΣΤΕΡΑ
 ; ορατό tile.

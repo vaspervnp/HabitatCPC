@@ -226,6 +226,7 @@ goto_st:    db 0
         include "../src/object.asm"
         include "../src/objindex.asm"
         include "../src/dirty.asm"
+        include "../src/figure.asm"         ; βήμα 89: οι άποικοι έξω
         include "../src/hud.asm"
         include "../src/view.asm"
         include "../src/ghost.asm"

@@ -69,11 +69,22 @@ p6_loop:
         ld      c,a
         ld      a,h
         add     a,DOME_Y
+        push    bc
+        push    af
         call    scr_addr
-        ld      hl,G_corr_slot_gfx + 1*SLOT_SIZE   ; s, θέση 0, fig 1
+        ; Από το βήμα 89 η κενή θέση και από πάνω η φιγούρα με μάσκα: η
+        ; αναφορά του test_pack_z80 μένει η ψημένη slot_s_0_colonist.
+        ld      hl,G_slot_empty                    ; s, θέση 0
         ld      b,SLOT_W
         ld      c,SLOT_H
         call    blit_op
+        pop     af
+        pop     bc
+        call    scr_addr
+        ld      hl,G_fig_ring                      ; fig 1
+        ld      b,SLOT_W
+        ld      c,SLOT_H
+        call    blit_mask
 
         ; --- τράπεζα 7: εξωτερική δομή ---
         ld      bc,GA_PORT + PAGE_B7

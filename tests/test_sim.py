@@ -980,21 +980,49 @@ def move_state(rnd, g):
     return a, occ, dome
 
 
-def move_ref(a, occ, dome, g, nexthop, first, count):
+DK_AGENT = 8                            # src/const.asm (βήμα 89)
+
+
+def move_ref(a, occ, dome, g, nexthop, first, count, marks):
     """Η αναφορά, πράκτορα προς πράκτορα — και οι wh_push που πρέπει να βγουν:
-    όποιος άφησε θέση θόλου, όποιος πήρε θέση θόλου."""
+    όποιος άφησε θέση θόλου, όποιος πήρε θέση θόλου.
+
+    ΚΑΙ Η ΦΙΓΟΥΡΑ ΕΞΩ (βήμα 89, src/figure.asm): ένα DK_AGENT όταν αλλάζει κάτι
+    που φαίνεται έξω, με ένα σημάδι ανά πράκτορα (marks) — μόνο αν δεν ήταν
+    ήδη σημειωμένος. Αλλάζει όταν βηματίζει στο έδαφος (όχι στον σωλήνα), όταν
+    φτάνει από έξω ή σε δομή, και όταν φεύγει — εκτός από θόλο, μέσα, προς
+    μέρος με αέρα: εκεί δεν φαινόταν ούτε πριν ούτε μετά."""
     e, out = types.SimpleNamespace(dome=dome, struct=STRUCTS), []
     for k in range(count):
         i = (first + k) % 128
-        node, slot, edge = a.node[i], a.slot[i], a.edge[i]
+        node, slot, edge, f0 = a.node[i], a.slot[i], a.edge[i], a.flags[i]
         E.move_one(a, i, g, nexthop, occ, e)
+        fig = False
         if edge == E.NO_EDGE and a.edge[i] != E.NO_EDGE:
             if slot != E.NO_SLOT and node < EC.MAX_DOME:
                 out += [0, node, slot]
+            fig = not (f0 & E.F_INDOORS and a.flags[i] & E.F_INDOORS
+                       and node < EC.MAX_DOME)
         elif edge != E.NO_EDGE and a.edge[i] == E.NO_EDGE:
             if a.slot[i] != E.NO_SLOT and a.node[i] < EC.MAX_DOME:
                 out += [0, a.node[i], a.slot[i]]
+            fig = not f0 & E.F_INDOORS or a.node[i] >= EC.MAX_DOME
+        elif edge != E.NO_EDGE and f0 & E.F_ALIVE:
+            fig = not f0 & E.F_INDOORS
+        if fig and not marks[i]:
+            marks[i] = 1
+            out += [DK_AGENT, i, 0]
     return out
+
+
+def pushes(rec):
+    """Οι εγγραφές του wh_push, με το τρίτο byte του DK_AGENT μηδέν: εκεί δεν
+    σημαίνει τίποτα, και το fg_mark δεν ξοδεύει εντολή για να το γράψει."""
+    rec = list(rec)
+    for j in range(0, len(rec) - 2, 3):
+        if rec[j] == DK_AGENT:
+            rec[j + 2] = 0
+    return rec
 
 
 STRUCTS = None                          # ο πίνακας δομών της κίνησης (move_branches)
@@ -1046,12 +1074,14 @@ def move_branches(sym, sim0, n=12, patch=(), quiet=False):
             m.poke(at, v)
         bank6 = lambda: ctypes.string_at(cpc._lib.cpcemu_ram_ptr(m._h, 6), 0x4000)
         spans = [(sym[n] - 0x4000, k) for n, k in (("G_AGENT_FIELDS", 2048),
-                 ("G_NODE_OCC", G.MAXNODE), ("G_DOME_TBL", len(dome)))]
+                 ("G_NODE_OCC", 256), ("G_DOME_TBL", len(dome)))]
+        mk0 = sym["G_NODE_OCC"] - 0x4000 + 128          # τα σημάδια των φιγούρων
+        marks = bytearray(bank6()[mk0:mk0 + 128])
         rest = lambda b: b"".join(b[s + k:e] for (s, k), (e, _) in
                                   zip([(0, 0)] + spans, spans + [(0x4000, 0)]))
         rest0 = rest(bank6())
         for first, count in MOVE_SLICES:
-            want = move_ref(a, occ, dome, g, nexthop, first, count)
+            want = move_ref(a, occ, dome, g, nexthop, first, count, marks)
             m.write_ram(rec, bytes([(rec + 2) & 255, (rec + 2) >> 8]))
             # di · ld sp · ld bc,#7FC6: out (c),c (τράπεζα 6) · ld bc · call ·
             # ld a,#5A: ld (σημαία),a · jr $
@@ -1068,9 +1098,11 @@ def move_branches(sym, sim0, n=12, patch=(), quiet=False):
             oc = b6[sym["G_NODE_OCC"] - 0x4000:][:G.MAXNODE]
             dm = b6[sym["G_DOME_TBL"] - 0x4000:][:len(dome)]
             p = m.peek(rec) | (m.peek(rec + 1) << 8)
-            got = list(m.read_ram(rec + 2, p - rec - 2))
+            got = pushes(m.read_ram(rec + 2, p - rec - 2))
+            mk = b6[mk0:mk0 + 128]
             for what, x, y in (("πεδία", ag, a.to_bytes()), ("κατοχή", oc, bytes(occ)),
                                ("θόλοι", dm, bytes(dome)), ("wh_push", got, want),
+                               ("σημάδια φιγούρων", mk, bytes(marks)),
                                ("η υπόλοιπη τράπεζα 6", rest(b6), rest0)):
                 if bytes(x) != bytes(y):
                     if what == "πεδία":
@@ -1161,7 +1193,7 @@ def slot15(sim, n):
     for _ in range(n):
         if EC.events(sim.e):
             EC.sol_rollover(sim.e, sim.a, E.F_ALIVE, E.F_WORKING, E.NEED_LOW)
-        EC.ship_tick(sim.e, sim.a, sim.e.pad_node, E.F_ALIVE)
+        EC.ship_tick(sim.e, sim.a, sim.e.pad_node, E.F_ALIVE, sim.occ)
 
 
 def edge_tiles(e):

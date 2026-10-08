@@ -254,6 +254,7 @@ done_flag:  db 0
         include "../src/object.asm"
         include "../src/objindex.asm"
         include "../src/dirty.asm"
+        include "../src/figure.asm"         ; βήμα 89: οι άποικοι έξω
         include "../src/hud.asm"
         include "../src/stock.asm"          ; το ec_stock_ptr του hud.asm (βήμα 52)
         include "../src/supply.asm"         ; το sp_noeng του hud.asm (βήμα 88)

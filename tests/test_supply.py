@@ -167,11 +167,14 @@ def no_engineer(sym, g, patch=(), quiet=False):
     B.build(m, sym, 4, g + 6, at=SOLAR_AT, fit=False)
     said = []
 
+    # Το χρέος ΚΑΙ η σειρά, στην ίδια στιγμή: το wait διαβάζει πριν ρωτήσει αν
+    # τελείωσε, και αν το τελευταίο φορτίο φτάσει μέσα στα ίδια 25 frames, το
+    # NO ENGINEER είναι ήδη σωστό. Ως το βήμα 88 ο χρόνος έπεφτε αλλιώς.
     def hud():
-        said.append(hudread.text(m, sym, 2)[20:40].strip())
+        said.append((w.struct(1)[7], hudread.text(m, sym, 2)[20:40].strip()))
     if w.wait(lambda: w.struct(1)[7] == 0, 20000, 25, hud) is None:
         return f"το ηλιακό δεν τροφοδοτήθηκε: εγγραφή {w.struct(1)}, εργασίες {w.jobs()}"
-    if "NO ENGINEER" in said:
+    if any(owed and "NO ENGINEER" in t for owed, t in said):
         return f"NO ENGINEER όσο κουβαλιούνταν ακόμη υλικά: {said}"
     m.run_frames(2000)
     jobs, row = w.jobs(), hudread.text(m, sym, 2)

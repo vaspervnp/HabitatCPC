@@ -288,7 +288,8 @@ DK_TILE     equ 4                   ; a = tx, b = ty (προσημασμένα)
 DK_BUILT    equ 5                   ; a = κόμβος που μόλις τελείωσε (§6.9)
 DK_SITE     equ 6                   ; a = θόλος, b = σειρά tiles του εργοταξίου
 DK_CROW     equ 7                   ; a = tx, b = ty: τρία tiles μιας διαγωνίου
-DK_KINDS    equ 8
+DK_AGENT    equ 8                   ; a = πράκτορας: η φιγούρα του έξω (βήμα 89)
+DK_KINDS    equ 9
 
 ; --- ευρετήριο αντικειμένων (src/object.asm, βήμα 39) ---
 ; Στην τράπεζα 5, πάνω από το NEXTHOP[MAX_NODE][128], που τελειώνει στο

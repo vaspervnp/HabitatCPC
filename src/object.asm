@@ -240,6 +240,13 @@ ob_sext:
 
 ; ob_addu — HL += A, ανυπόγραφο. Δεν αγγίζει τα BC, DE: γι' αυτό αντικαθιστά
 ; και το ld l,a / ld h,0 / ld de,πίνακας / add hl,de, που τα χαλούσε.
+;
+; ΟΧΙ ΓΙΑ ΣΤΑΘΕΡΟ ΠΙΝΑΚΑ ΣΤΟ ΠΕΡΑΣΜΑ ΤΟΥ ΕΥΡΕΤΗΡΙΟΥ (βήμα 89). Ο χρόνος του
+; εξαρτάται από το αν ο πίνακας περνά όριο σελίδας: στο βήμα 89 ο κώδικας από
+; πάνω μεγάλωσε, το corr_dir και το dome_conn έπεσαν πάνω σε όριο, και το
+; ob_index βγήκε ως 134 us πιο αργό χωρίς να αλλάξει εντολή. Εκεί (dome_geo,
+; dome_conn, corr_dir, diag_k, struct_dims, struct_ptr) γράφεται μέσα: add a,
+; ld l, adc a, sub l, ld h — 7 us όπου κι αν πέσει, αντί για 13-16.
 ob_addu:
         add     a,l
         ld      l,a
@@ -269,6 +276,49 @@ ob_sy:
         add     hl,hl
         add     hl,hl
         add     hl,hl
+        ret
+
+; Οι συντεταγμένες ενός κελιού φιγούρας έξω (src/figure.asm, βήμα 89): εδώ,
+; δίπλα στα ob_sx / ob_sy, γιατί η τράπεζα 2 γέμισε.
+; fg_in — H = ux, L = uy -> CY αν το κελί είναι στο κάδρο, και τότε ob_x, ob_y
+; = το κελί στην οθόνη. Είναι ΟΛΟ μέσα ή ΟΛΟ έξω: το κάδρο είναι 40 x 20 μισά
+; tiles ακριβώς, άρα μέσα η θέση είναι ένα byte (x < 80, y < 160) και δεν
+; χρειάζεται το ob_sx / ob_sy των 16 bits — ~45 us αντί για ~150. Χαλάει A, B.
+fg_in:
+        ld      a,(cam_tx)
+        add     a,a
+        add     a,128
+        ld      b,a
+        ld      a,h
+        sub     b
+        cp      2 * VIEW_TW
+        ret     nc
+        add     a,a
+        ld      (ob_x),a
+        ld      a,(cam_ty)
+        add     a,a
+        add     a,128
+        ld      b,a
+        ld      a,l
+        sub     b
+        cp      2 * VIEW_TH
+        ret     nc
+        add     a,a
+        add     a,a
+        add     a,a
+        ld      (ob_y),a
+        xor     a
+        ld      (ob_x + 1),a
+        ld      (ob_y + 1),a
+        scf
+        ret
+        assert  2 * VIEW_TW * 2 <= 256 && 2 * VIEW_TH * 8 <= 256
+
+; fge_t — A = μισά tiles + 128 -> το tile, μείον ένα.
+fge_t:
+        xor     128
+        sra     a
+        dec     a
         ret
 
 ; ob_rel — HL = A - 2*(DE), και τα δύο προσημασμένα. obr_t — HL - 2*(DE),
@@ -338,8 +388,11 @@ ob_frame:
         add     a,a
         add     a,a
         add     a,c                     ; 10*size — η εγγραφή είναι ΔΕΚΑ bytes
-        ld      hl,dome_geo
-        call    ob_addu
+        add     a,dome_geo & 255        ; σταθερός χρόνος, όπου κι αν πέσει ο πίνακας
+        ld      l,a
+        adc     a,dome_geo >> 8
+        sub     l
+        ld      h,a
         ld      (d_geo),hl
         ld      e,(hl)                  ; QW
         inc     hl
@@ -568,8 +621,11 @@ obf_full:
 ; --- πόρτες: μόνο εκεί που υπάρχει διάδρομος -------------------------------
 ob_conns:
         ld      a,(d_id)
-        ld      hl,dome_conn
-        call    ob_addu
+        add     a,dome_conn & 255
+        ld      l,a
+        adc     a,dome_conn >> 8
+        sub     l
+        ld      h,a
         ld      a,(hl)
         ld      (oc_mask),a
         xor     a
@@ -768,10 +824,17 @@ of_at:
 ; ob_fig_one — ΜΙΑ θέση δακτυλίου του θόλου d_id. In: A = θέση.
 ; Out: (of_fig) = η φιγούρα, ob_x / ob_y = η θέση.
 ;
-; Μια φιγούρα είναι αδιαφανές blit 16 bytes, με τον δακτύλιο της θέσης ψημένο
-; μέσα — και αυτό αρκεί για να ΕΜΦΑΝΙΣΤΕΙ. Για να σβηστεί δεν αρκεί: η κενή
-; παραλλαγή είναι ο δακτύλιος πάνω σε μαύρο, όχι πάνω στο έδαφος που δείχνουν
-; τα διαφανή του pixel (dh_slot). Στην πλήρη σχεδίαση η κενή παραλείπεται.
+; Η κενή θέση και η φιγούρα με μάσκα από πάνω της, σε ΕΝΑ πέρασμα (ob_fig),
+; αδιαφανές — και αυτό αρκεί για να ΕΜΦΑΝΙΣΤΕΙ. Για να σβηστεί δεν αρκεί: η
+; κενή θέση είναι ο δακτύλιος πάνω σε μαύρο, όχι πάνω στο έδαφος που δείχνουν
+; τα διαφανή του pixel (dh_slot).
+;
+; ΑΠΟ ΤΟ ΒΗΜΑ 89 Η ΘΕΣΗ ΔΕΝ ΕΙΝΑΙ ΨΗΜΕΝΗ. Ως τότε ήταν ένα αδιαφανές blit από το
+; corr_slot_gfx: κάθε φιγούρα ψημένη σε κάθε θέση, 3.456 bytes της τράπεζας 6.
+; Η κενή με τη φιγούρα από πάνω είναι η ίδια εικόνα byte προς byte
+; (tools/pack.py, check_ring), οι 3.072 bytes που έμειναν πήραν τις φιγούρες
+; έξω, τον διάδρομο και τις πόρτες, και το ob_fig την κάνει πιο γρήγορα από
+; ό,τι το ob_put το ένα blit.
 ; ---------------------------------------------------------------------------
 ob_fig_one:
         ld      (of_slot),a
@@ -780,22 +843,12 @@ ob_fig_one:
         ld      a,(of_slot)
         ld      de,G_corr_slots
         call    ob_slot_at
-        ; πηγή = corr_slot_gfx + size*SLOT_BANK + slot*SLOT_STRIDE + fig*SLOT_SIZE
-        ;      = corr_slot_gfx + 16 * ((size*8 + slot)*9 + fig)
-        ; και το εσωτερικό γινόμενο είναι το πολύ (2*8+7)*9+8 = 215: ένα byte.
-        ; Ως το βήμα 43 ήταν δύο ob_mul και ένας πίνακας για το size*1.152.
+        ; η κενή: slot_empty + 16 * (size*8 + slot)
         ld      a,(d_rec+D_SIZE)
         add     a,a
         add     a,a
         add     a,a
         ld      hl,of_slot
-        add     a,(hl)
-        ld      c,a
-        add     a,a
-        add     a,a
-        add     a,a
-        add     a,c                     ; *9
-        ld      hl,of_fig
         add     a,(hl)
         ld      l,a
         ld      h,0
@@ -803,14 +856,23 @@ ob_fig_one:
         add     hl,hl
         add     hl,hl
         add     hl,hl
-        ld      de,G_corr_slot_gfx
+        ld      de,G_slot_empty
         add     hl,de
-        ld      (ob_src),hl
-        ld      hl,SLOT_H*256 + SLOT_W
-        ld      a,4
-        jp      ob_put
-        assert  SLOT_SIZE == 16 && SLOT_STRIDE == 9 * SLOT_SIZE
-        assert  SLOT_BANK == 8 * SLOT_STRIDE && SLOT_FIGS <= 9
+        ld      b,h
+        ld      c,l
+        ; η φιγούρα: fig_ring + 32 * (fig - 1), μία σελίδα. Η κενή μόνη της δεν
+        ; ζωγραφίζεται: στην πλήρη σχεδίαση ο δακτύλιος είναι ήδη εκεί, και όταν
+        ; αδειάζει η θέση το dh_slot ξαναστρώνει όλο το 2x8 (dhs_vacate).
+        ld      a,(of_fig)
+        dec     a
+        ret     m
+        rrca
+        rrca
+        rrca
+        ld      l,a
+        ld      h,G_fig_ring >> 8
+        jp      ob_fig                  ; src/figure.asm
+        assert  SLOT_SIZE == 16 && SLOT_FIGS <= 9 && (G_fig_ring & 255) == 0
 
 ; ---------------------------------------------------------------------------
 ; ob_corr — ένας διάδρομος. In: A = id διαδρόμου. Απαιτεί τράπεζα 6.
@@ -889,8 +951,11 @@ oc_setdir:
         add     a,a
         add     a,a
         add     a,c                     ; dir*9
-        ld      hl,corr_dir
-        call    ob_addu
+        add     a,corr_dir & 255
+        ld      l,a
+        adc     a,corr_dir >> 8
+        sub     l
+        ld      h,a
         ld      de,ob_src
         ld      bc,9
         ldir
@@ -899,8 +964,11 @@ oc_setdir:
 ob_corr_d:
         ; --- διαγώνιος: πλέγμα DIAG_K από το ΚΕΝΤΡΟ του θόλου ---
         ld      a,(d_rec+D_SIZE)
-        ld      hl,diag_k
-        call    ob_addu
+        add     a,diag_k & 255
+        ld      l,a
+        adc     a,diag_k >> 8
+        sub     l
+        ld      h,a
         ld      b,(hl)
         push    bc
         call    ob_center
@@ -1107,8 +1175,11 @@ ob_struct:
         add     a,(hl)
         add     a,a
         ld      c,a
-        ld      hl,G_struct_dims
-        call    ob_addu
+        add     a,G_struct_dims & 255
+        ld      l,a
+        adc     a,G_struct_dims >> 8
+        sub     l
+        ld      h,a
         ld      a,(hl)
         or      a
         ret     z                       ; 0,0 = αυτό το μέγεθος δεν υπάρχει
@@ -1131,8 +1202,11 @@ ob_struct:
         ld      (ob_y),hl
         ld      a,c
         ; πηγή από το struct_ptr, και η πλατφόρμα είναι η μόνη ΑΔΙΑΦΑΝΗ
-        ld      hl,G_struct_ptr
-        call    ob_addu
+        add     a,G_struct_ptr & 255
+        ld      l,a
+        adc     a,G_struct_ptr >> 8
+        sub     l
+        ld      h,a
         ld      a,(hl)
         inc     hl
         ld      h,(hl)
@@ -1333,6 +1407,7 @@ ob_draw_all:
         ld      a,(oi_ns)
         ld      de,ob_struct
         call    oi_walk
+        call    fg_draw                 ; οι άποικοι έξω, πάνω από όλα (βήμα 89)
         ld      bc,GA_PORT + PAGE_B1
         out     (c),c
         ret
