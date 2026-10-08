@@ -42,15 +42,15 @@ x_txt_nowater:db "LOW ON WATER       ",0
 x_txt_lost:   db "COLONY LOST        ",0
 x_txt_noeng:  db "NO ENGINEER        ",0   ; βήμα 88
 x_txt_suit:   db "SUIT AIR LOW       ",0   ; βήμα 90
-x_t_saving:   db "SAVING TO DISC...   ",0
-x_t_saved:    db "SAVED TO SLOT 1     ",0
+x_t_saving:   db "SAVING TO DISC...",0
+x_t_saved:    db "SAVED TO SLOT 1",0
 x_t_loading:  db "LOADING FROM DISC...",0
-x_t_loaded:   db "LOADED FROM SLOT 1  ",0
-x_t_dskerr:   db "DISC ERROR          ",0
-x_t_empty:    db "NOTHING IN SLOT 1   ",0
+x_t_loaded:   db "LOADED FROM SLOT 1",0
+x_t_dskerr:   db "DISC ERROR",0
+x_t_empty:    db "NOTHING IN SLOT 1",0
 x_t_slsave:   db "SAVE TO SLOT  ",0
 x_t_slload:   db "LOAD FROM SLOT",0
-x_t_slkeys:   db "LEFT RIGHT FIRE ESC ",0
+x_t_slkeys:   db "LEFT RIGHT FIRE ESC",0
 x_t_pause:    db "PAUSE",0
 x_t_x1:       db "  x1 ",0
 x_t_x2:       db "  x2 ",0
@@ -58,15 +58,15 @@ x_t_x4:       db "  x4 ",0
 x_t_look:     db "SPACE=MENU I=INFO FIRE=FIT C=SHIP",0
 x_t_keys:     db "FIRE=PLACE ESC=BACK ",0
 x_t_ok:       db "READY  FIRE TO BUILD",0
-x_t_block:    db "BLOCKED             ",0
-x_t_poor:     db "NOT ENOUGH MATERIAL ",0
-x_t_ln1:      db "PICK THE FIRST DOME ",0
-x_t_ln2:      db "NO ROUTE FROM THERE ",0
-x_t_far:      db "TOO FAR             ",0       ; >= 64 tiles (βήμα 81)· ή > 12 (βήμα 85)
-x_t_path:     db "PATH BLOCKED        ",0       ; βήμα 85, src/link.asm
-x_t_nofit:    db "NO CORRIDOR FITS    ",0       ; βήμα 86: η ζώνη «σχεδόν διαγώνιο»
-x_t_nowat:    db "NEEDS WATER NEARBY  ",0
-x_t_noore:    db "NEEDS AN ORE VEIN   ",0
+x_t_block:    db "BLOCKED",0
+x_t_poor:     db "NOT ENOUGH MATERIAL",0
+x_t_ln1:      db "PICK THE FIRST DOME",0
+x_t_ln2:      db "NO ROUTE FROM THERE",0
+x_t_far:      db "TOO FAR",0       ; >= 64 tiles (βήμα 81)· ή > 12 (βήμα 85)
+x_t_path:     db "PATH BLOCKED",0       ; βήμα 85, src/link.asm
+x_t_nofit:    db "NO CORRIDOR FITS",0       ; βήμα 86: η ζώνη «σχεδόν διαγώνιο»
+x_t_nowat:    db "NEEDS WATER NEARBY",0
+x_t_noore:    db "NEEDS AN ORE VEIN",0
 x_t_fe:       db "FE",0
 x_t_bi:       db "BI",0
 
@@ -87,6 +87,11 @@ x_t_ship:     db "COLONIST SHIP CALLED",0
 x_t_shipno:   db "A SHIP IS ALREADY DUE",0
 x_t_noctl:    db "NEED A CONTROL ROOM",0
 x_t_nopad:    db "NEED A LANDING PAD",0
+
+; Η γραμμή του πλοίου (src/crew.asm, βήμα 91): τέσσερα bytes το όνομα, με τη
+; σειρά των ρόλων 0-4 — το cw_panel τα διαβάζει στη σειρά.
+x_t_cw_names: db "WRK",0, "ENG",0, "BIO",0, "MED",0, "GRD",0
+x_t_cw_keys:  db "SHIP UP/DN=10% FIRE=CALL ESC=BACK",0
 
 ; Ο εξοπλισμός (src/fit.asm). ΟΚΤΩ bytes το όνομα, συνεχόμενα και με τη σειρά
 ; του MACH_TYPES και μετά των κωδικών 250-255: το fit_name τα βρίσκει με x8.
@@ -212,6 +217,8 @@ t_r_sto   equ x_t_r_sto - TEXT_IMG + G_text
 t_r_lng   equ x_t_r_lng - TEXT_IMG + G_text
 t_keysr   equ x_t_keysr - TEXT_IMG + G_text
 t_ship    equ x_t_ship - TEXT_IMG + G_text
+t_cw_names equ x_t_cw_names - TEXT_IMG + G_text
+t_cw_keys equ x_t_cw_keys - TEXT_IMG + G_text
 t_shipno  equ x_t_shipno - TEXT_IMG + G_text
 t_noctl   equ x_t_noctl - TEXT_IMG + G_text
 t_nopad   equ x_t_nopad - TEXT_IMG + G_text

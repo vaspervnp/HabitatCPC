@@ -65,6 +65,11 @@ ac_tick:
         xor     a                       ; UI_LOOK
         jp      ui_goto
 act_fire:
+        ld      c,a
+        ld      a,(ac_mode)
+        cp      CW_MODE
+        ld      a,c
+        jp      z,cw_tick               ; η γραμμή του πλοίου (src/crew.asm)
         and     1 << A_FIRE | 1 << A_MENU
         jr      nz,ac_do
         ld      hl,ac_sel
@@ -186,16 +191,47 @@ btk_act:
         ld      (ui_state),a            ; UI_LOOK
         jp      (hl)
 
-btk_ajp:    dw ac_info, fit_enter, ac_save, ac_load, ac_home, ac_ship
+btk_ajp:    dw ac_info, fit_enter, ac_save, ac_load, ac_home, cw_open
         assert  AB_INFO == 0 && AB_FIT == 1 && AB_SAVE == 2 && AB_LOAD == 3
         assert  AB_HOME == 4 && AB_SHIP == 5
 
 ac_info:
         ld      a,UI_INFO
         jp      ui_ask
+; --- Η ΓΡΑΜΜΗ ΤΟΥ ΠΛΟΙΟΥ (βήμα 91): η κατάσταση εδώ, οι ειδικότητες και
+; η εικόνα της στο src/crew.asm ---------------------------------------------
+; cw_open — το κουμπί του πλοίου και το C: η γραμμή, στο UI_ACT.
+cw_open:
+        ld      a,CW_MODE
+        ld      (ac_mode),a
+        call    ui_click
+        ld      a,UI_ACT
+        jp      ui_ask
+
+; cw_tick — από το ac_tick, όταν δεν πατήθηκε ESC. A = act_hit.
+cw_tick:
+        ld      c,a
+        and     1 << A_FIRE | 1 << A_MENU   ; και το SPACE, όπως στο μενού
+        jr      nz,cw_call
+        ld      a,c
+        and     1 << A_UP | 1 << A_DOWN
+        jp      nz,cw_ud                ; src/crew.asm, τράπεζα 0
+        ld      hl,cw_sel
+        ld      c,CW_N
+        call    ui_lr
+        ret     z
+cw_draw:
+        call    ui_click
+        call    ui_dirty                ; ούτε το cw_sel ούτε το EC_LAND είναι
+        jp      ui_panel                ; στην υπογραφή
+cw_call:
+        xor     a                       ; UI_LOOK, όπως το btk_act
+        ld      (ui_state),a
+        jp      ac_ship
+; ac_ship — το FIRE της γραμμής του πλοίου (src/crew.asm, βήμα 91· ως τότε
+; το ίδιο το κουμπί). Το μήνυμα του πλοίου γράφει μόνο τη σειρά 3 (ui_msg), και
+; η 4 θα έμενε με την περιγραφή ως το τέλος του μηνύματος — σε παύση, για πάντα.
 ac_ship:
-        ; Το μήνυμα του πλοίου γράφει μόνο τη σειρά 3 (ui_msg), και η 4 θα
-        ; έμενε με την περιγραφή ως το τέλος του μηνύματος — σε παύση, για πάντα.
         ld      a,4
         call    hud_go
         ld      b,40
@@ -224,6 +260,9 @@ ac_cur:
 ; uip_spd, όπως το in_panel. Το όνομα και η γραμμή είναι της οθόνης βοήθειας.
 ; ---------------------------------------------------------------------------
 ac_panel:
+        ld      a,(ac_mode)
+        cp      CW_MODE
+        jp      z,cw_panel              ; η γραμμή του πλοίου (src/crew.asm)
         ld      a,'<'
         call    hud_char
         call    hud_space
@@ -235,7 +274,7 @@ ac_panel:
         inc     hl
         push    hl                      ; η γραμμή του
         ld      b,15                    ; ως 12 γράμματα το όνομα
-        call    ac_to
+        call    hud_to
         ld      a,'>'
         call    hud_char
         ld      b,2
@@ -243,26 +282,18 @@ ac_panel:
         ld      hl,t_a_keys
         call    hud_text
         ld      b,35                    ; ως τον δείκτη ταχύτητας
-        call    ac_to
+        call    hud_to
         ld      a,4
         call    hud_go
         pop     hl
         call    hud_text
+acp_end:                                ; το cw_panel (src/crew.asm)
         ld      b,40
-        call    ac_to
+        call    hud_to
         ld      bc,GA_PORT + PAGE_B1
         call    hud_page
         jp      uip_spd
 
-; ac_to — κενά ως τη στήλη B. Στις σειρές 3-4 το hud_sp είναι η στήλη: το
-; hud_go το ξεκινά από το 0 και κάθε κελί το ανεβάζει κατά ένα.
-ac_to:
-        ld      a,(hud_sp)
-        cpl
-        inc     a                       ; -στήλη
-        add     a,b
-        ld      b,a
-        jp      hud_blank
 
 ac_lst:     dw ac_l_grp
 ac_n:       db 7

@@ -159,6 +159,17 @@ def main():
         m.joystick(0)
         m.run_frames(10)
 
+    def call_ship():
+        """Το C ανοίγει τη γραμμή του πλοίου, το FIRE το καλεί (βήμα 91· ως
+        τότε το C το καλούσε μόνο του). -> η σειρά 4 της γραμμής."""
+        press_c()
+        shown = hud(4)
+        m.set_joystick_type(1)
+        fire()
+        m.set_joystick_type(0)
+        m.run_frames(30)
+        return shown
+
     tap(KEY_SPACE, 2)                    # -> ACT -> MENU: το BUILD είναι πρώτο
     tap(KEY_RIGHT, 4)                    # -> SOLAR
     m.key_up("\x01")
@@ -384,7 +395,9 @@ def main():
         m.set_joystick_type(0)
 
     calm()
-    press_c()
+    shown = call_ship()
+    check("WRK 2" in shown and "GRD 2" in shown,
+          f"το C δείχνει τη γραμμή του πλοίου: |{shown.strip()}|")
     check(m.peek(g + 72) == 0,
           f"χωρίς αίθουσα ελέγχου δεν φεύγει πλοίο (κατάσταση "
           f"{m.peek(g + 72)})")
@@ -433,9 +446,9 @@ def main():
 
     calm()
     alive0 = m.peek(g + 58)
-    press_c()
+    call_ship()
     check(m.peek(g + 72) == 1 and m.peek(g + 73) == SK_COLONIST,
-          f"το C κάλεσε πλοίο αποίκων (κατάσταση {m.peek(g + 72)}, "
+          f"το C και το FIRE κάλεσαν πλοίο αποίκων (κατάσταση {m.peek(g + 72)}, "
           f"είδος {m.peek(g + 73)})")
     check("CALLED" in hud(3), f"και το λέει: |{hud(3).strip()}|")
     got = 0

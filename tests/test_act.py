@@ -18,8 +18,9 @@
              μένουν
   FIRE, SPACE     το διαλεγμένο, σαν να πατήθηκε το γράμμα του: INFO -> οι
              σειρές του I, FIT -> ο εξοπλισμός, SAVE/LOAD -> η επιλογή θέσης,
-             CENTRE -> ο κέρσορας στο (0, 0)· και το C της ΜΕΤΑΦΟΡΑΣ -> το
-             πλοίο και το μήνυμά του (η σειρά 4 κενή)
+             CENTRE -> ο κέρσορας στο (0, 0)· και το C της ΜΕΤΑΦΟΡΑΣ -> η
+             γραμμή του πλοίου (βήμα 91), όπου το FIRE ή το SPACE -> το πλοίο
+             και το μήνυμά του (η σειρά 4 κενή)
   ESC        πίσω στο LOOK
 
 ΤΟ FIT ΔΕΝ ΕΛΕΓΧΕΤΑΙ ΑΠΟ ΤΗΝ ΠΡΟΖΑ ΤΟΥ ΚΩΔΙΚΑ ΑΛΛΑ ΑΠΟ ΤΟ ΙΔΙΟ ΤΟ ΠΑΙΧΝΙΔΙ: σε
@@ -227,18 +228,22 @@ def run(sym, a, patch=(), quick=False):
             far = (home[0] + 3, home[1] + 2)
             G.cursor(*(far if name == "centre" else home))
             if name == "ship":
+                # Το κουμπί ανοίγει τη γραμμή του πλοίου (βήμα 91), και το
+                # FIRE ή το SPACE εκεί το καλούν (tests/test_crew.py).
                 G.tap("T")
-                G.tap("C" if how == "FIRE" else "C")    # γράμμα: δεν έχει βελάκι
+                G.tap("C")                              # γράμμα: δεν έχει βελάκι
+                if G.state() != UI_ACT or "WRK" not in G.hud(4):
+                    return f"ship: το κουμπί έδειξε «{G.rows()[0]}» / «{G.hud(4)}»", n
             else:
                 G.tap("M")
                 for _ in range(k):
                     G.tap(cpc.KEY_RIGHT)
                 if G.rows() != rows(name):
                     return f"{name}: το μενού λέει «{G.rows()[0]}»", n
-                if how == "FIRE":
-                    G.stick(0x10)
-                else:
-                    G.tap(cpc.KEY_SPACE)
+            if how == "FIRE":
+                G.stick(0x10)
+            else:
+                G.tap(cpc.KEY_SPACE)
             m.run_frames(40)                            # το CENTRE ξαναζωγραφίζει
             st, (r3, r4) = G.state(), G.rows()          # όλο το κάδρο
             if name == "fit":

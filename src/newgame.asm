@@ -261,6 +261,11 @@ ng_econ:
         NG_BYTE EC_O2OK, 1
         NG_BYTE EC_ALIVE, 4
         NG_BYTE EC_POPCAP, 4            ; κανένα Control: η βάση των τεσσάρων
+        NG_BYTE EC_LAND + 0, 2          ; 20% κάθε ειδικότητα (βήμα 91)
+        NG_BYTE EC_LAND + 1, 2
+        NG_BYTE EC_LAND + 2, 2
+        NG_BYTE EC_LAND + 3, 2
+        NG_BYTE EC_LAND + 4, 2
 ng_econ_end:
 ; η αποικία δοκιμών: τα 75 και 45 των βημάτων 31-86, και οι τρεις θόλοι της
         NG_BYTE EC_STOCK + 2 * S_METAL, 75

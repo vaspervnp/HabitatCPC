@@ -177,6 +177,7 @@ EC_MRND     equ G_econ_state + 89       ; η δική της γεννήτρια 
 ; αντί να σαρώνει τον πίνακα σε κάθε τικ του. Μπαίνει με το sp_build, βγαίνει
 ; όταν το κτίσμα τελειώσει (ja_build) — καμία Build δεν φεύγει αλλιώς.
 EC_NBUILD   equ G_econ_state + 91
+EC_LAND     equ G_econ_state + 92       ; 5 bytes: οι ειδικότητες των πλοίων σε δέκατα (βήμα 91, src/crew.asm)
 
 EC_CAP      equ 600                     ; ταβάνι αποθέματος
 

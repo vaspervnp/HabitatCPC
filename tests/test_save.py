@@ -92,6 +92,14 @@ FORMAT = {
          "G_room_list": 367, "G_rt_nodes": 512, "G_rt_row": 768, "G_node_adj": 1024},
         {"G_agent_fields": 0x6C00, "G_node_occ": 0x7400, "G_dome_tbl": 0x7500,
          "G_struct_tbl": 0x7B00, "G_corr_tbl": 0x7C00, "G_worldinfo": 0x7DE0}),
+    # βήμα 91: η οικονομία 92 -> 97 (EC_LAND), οι εργασίες και τα δωμάτια +5, και
+    # η μνήμη εργασίας του src/crew.asm στο κενό πριν από το rt_nodes: σώζεται
+    # μαζί με το μπλοκ, και το cw_count την ξαναγράφει πριν από κάθε χρήση
+    5: ({"G_mach_op": 91, "G_econ_state": 103, "G_job_tbl": 200, "G_room_n": 360,
+         "G_room_list": 372, "G_crew": 468, "G_rt_nodes": 512, "G_rt_row": 768,
+         "G_node_adj": 1024},
+        {"G_agent_fields": 0x6C00, "G_node_occ": 0x7400, "G_dome_tbl": 0x7500,
+         "G_struct_tbl": 0x7B00, "G_corr_tbl": 0x7C00, "G_worldinfo": 0x7DE0}),
 }
 
 
@@ -267,6 +275,12 @@ def main():
     assert m.peek(sym["UI_STATE"]) == 0, f"η διεπαφή στην κατάσταση {m.peek(sym['UI_STATE'])}"
 
     # --- 1. φωτογραφία Α και σώσιμο ---------------------------------------
+    # Τα ποσοστά των πλοίων (EC_LAND, βήμα 91) όχι τα αρχικά: πρέπει να
+    # γυρίσουν ΑΥΤΑ, και όχι τα 20% που ξαναγράφει κάθε νέο παιχνίδι.
+    LAND_A, LAND_B = [1, 0, 3, 2, 4], [2] * 5
+    land = lambda: [m.peek(g + 92 + r) for r in range(5)]
+    for r in range(5):
+        m.poke(g + 92 + r, LAND_A[r])
     freeze(True)
     m.run_frames(4)
     a_econ, a_plane, a_play = snap()
@@ -284,6 +298,8 @@ def main():
     # ακριβώς ένα sol η εικόνα ήταν ΙΔΙΑ και ο έλεγχος «γύρισε» τετριμμένος.
     freeze(False)
     m.run_frames(18000)
+    for r in range(5):
+        m.poke(g + 92 + r, LAND_B[r])           # ο παίκτης άλλαξε τα ποσοστά
     freeze(True)
     m.run_frames(4)
     b_econ, b_plane, b_play = snap()
@@ -298,6 +314,7 @@ def main():
     m.run_frames(120)
     c_econ, c_plane, c_play = snap()
     check(c_plane == a_plane, "το επίπεδο κόσμου γύρισε ακριβώς")
+    check(land() == LAND_A, f"τα ποσοστά των πλοίων γύρισαν: {land()}, σωσμένα {LAND_A}")
     same = sum(1 for x, y in zip(c_econ, a_econ) if x == y)
     check(same >= len(a_econ) - 8,
           f"η κατάσταση γύρισε: {len(a_econ) - same} bytes διαφορά στα "

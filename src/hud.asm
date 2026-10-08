@@ -586,6 +586,16 @@ hud_next:
         ld      (hud_de),hl
         ret
 
+; hud_to — κενά ως τη στήλη B. Στις σειρές 3-4 το hud_sp είναι η στήλη: το
+; hud_go το ξεκινά από το 0 και κάθε κελί το ανεβάζει κατά ένα. (Ως το βήμα
+; 91 ac_to, στο src/act.asm· εδώ για να το έχει και το uip_say.)
+hud_to:
+        ld      a,(hud_sp)
+        cpl
+        inc     a                       ; -στήλη
+        add     a,b
+        ld      b,a
+        ; fall through
 ; hud_blank — B στήλες κενές· B = 0, καμία.
 hud_blank:
         inc     b

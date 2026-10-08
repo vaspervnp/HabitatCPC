@@ -49,7 +49,8 @@ import cpc                                               # noqa: E402
 from test_terrain import model                           # noqa: E402
 
 PROBE, OUT = 0x3E00, 0x3EF0
-LOG, LPTR, FLAG, STUB = 0x3800, 0x3EFC, 0x3EFE, 0x3C00   # τα stubs του bd_redraw
+# πάνω από τον κώδικα της τράπεζας 0: το main.asm τον κρατά ως το #3D60 (βήμα 91· ως τότε #3C00)
+LOG, LPTR, FLAG, STUB = 0x3800, 0x3EFC, 0x3EFE, 0x3D60   # τα stubs του bd_redraw
 B1, B4 = 0xC0, 0xC4
 K_MINE, NO_MACH, DS_BUILDING, DK_SITE = 4, 255, 1, 6     # src/const.asm
 OB_IX_FIG, OB_IX_DOME, OB_IX_STRUCT = 1, 2, 8
@@ -153,6 +154,7 @@ def redraw_stubs(sym):
     vt += [0x22, lo, hi, 0x3A, FLAG & 255, FLAG >> 8, 0xB7, 0xC9]
     os_ = [0x2A, lo, hi, 0x36, 0xFD, 0x23, 0x77, 0x23, 0x22, lo, hi, 0xC9]
     oc = [0x2A, lo, hi, 0x36, 0xFC, 0x23, 0x22, lo, hi, 0xC9]
+    assert sym["ZZ_BANK0_END"] <= STUB, "ο κώδικας έφτασε στα stubs"
     code = {STUB: dp, STUB + 0x20: vt, STUB + 0x50: os_, STUB + 0x70: oc}
     for name, at in (("DIRTY_PUSH", STUB), ("VR_TILES", STUB + 0x20),
                      ("OB_STRUCT", STUB + 0x50), ("OB_CLIP_FULL", STUB + 0x70)):

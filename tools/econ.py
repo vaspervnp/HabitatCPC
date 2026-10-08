@@ -109,6 +109,7 @@ EXTRACTOR_POWER = [1, 3, 6]     # ένα τρίτο πάνελ, όχι δύο �
 MINE_OUT, MINE_POWER = 2, 8
 
 O2_PER_COLONIST = 2
+CW_N = 5                            # οι ειδικότητες των πλοίων αποίκων (βήμα 91)
 
 
 class Econ:
@@ -147,6 +148,9 @@ class Econ:
         self.mcy = 0
         self.mrnd = 0
         self.nbuild = 0                 # EC_NBUILD: Build στον πίνακα (βήμα 88)
+        # EC_LAND (βήμα 91): το ποσοστό κάθε ειδικότητας στα πλοία αποίκων, σε
+        # δέκατα — εργάτης, μηχανικός, βιολόγος, γιατρός, φρουρός. Αθροισμα 10.
+        self.land = [2] * CW_N
         self.acc_o2 = 0
         self.prod_dome = 0                  # πού έφτασε το σάρωμα
         # ρολόι και καιρός (§6.10)
@@ -692,10 +696,11 @@ def to_bytes(e):
     out += bytes([e.meteor, e.mcx & 0xFF, e.mcy & 0xFF])   # βήμα 38
     out += int(e.mrnd).to_bytes(2, "little")
     out += bytes([e.nbuild])                                 # βήμα 88
+    out += bytes(e.land)                                     # βήμα 91
     return bytes(out)
 
 
-ECON_BYTES = 64 + 8 + 10 + 4 + 5 + 1        # + η βροχή μετεωριτών + οι Build = 92
+ECON_BYTES = 64 + 8 + 10 + 4 + 5 + 1 + 5    # + μετεωρίτες, Build, ειδικότητες = 97
 
 
 def populate(e, n_dome=24, n_struct=30, seed=11):
@@ -1189,13 +1194,15 @@ def land_colonists(e, a, node, F_ALIVE, occ):
     παίρνει θέση στην πίστα όπως σε κάθε άφιξη (βήμα 89: έτσι φαίνεται εκεί),
     με τη σειρά γεμίσματος του entity.py, ή 255 αν γέμισε."""
     n = 0
+    count = [sum(1 for i in range(MAXAGENT_J)
+                 if a.flags[i] & F_ALIVE and a.role[i] == r) for r in range(CW_N)]
     for i in range(MAXAGENT_J):
         if n >= COLONISTS_PER_SHIP or e.alive + n >= e.pop_cap:
             break
         if a.flags[i] & F_ALIVE:
             continue
         a.flags[i] = F_ALIVE
-        a.role[i] = i & 7
+        a.role[i] = pick_role(e, count)
         a.node[i] = node
         a.dest[i] = node
         a.edge[i] = 255
@@ -1216,6 +1223,19 @@ def land_colonists(e, a, node, F_ALIVE, occ):
         n += 1
     e.alive += n
     return n
+
+
+def pick_role(e, count):
+    """Η ειδικότητα του καινούργιου (βήμα 91, src/crew.asm): αυτή που λείπει
+    περισσότερο από την αποικία. Με N ζωντανούς ανθρώπους και count[r] από την
+    r, μετά από αυτόν θα έπρεπε να είναι land[r] (N + 1) / 10, και λείπουν
+    land[r] (N + 1) - 10 count[r] δέκατα. Το μεγαλύτερο, το πρώτο σε ισοπαλία.
+    Ποτέ ρομπότ."""
+    k = sum(count) + 1
+    d = [e.land[r] * k - 10 * count[r] for r in range(CW_N)]
+    r = d.index(max(d))
+    count[r] += 1
+    return r
 
 
 def visit(e, a, F_ALIVE):

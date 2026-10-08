@@ -149,6 +149,7 @@ def fresh(g, nexthop, src):
     s.e.job = bytearray(src.e.job)
     s.e.room_n = bytearray(src.e.room_n)
     s.e.room_list = bytearray(src.e.room_list)
+    s.e.land = list(src.e.land)
     for f in ("power_store", "power_cap", "power_prod", "power_use",
               "mach_power", "o2_prod", "o2_use", "acc_power", "acc_o2",
               "power_ok", "o2_ok", "prod_dome", "day", "wind", "sol",
@@ -177,8 +178,12 @@ def main():
     sim0.e.sollen, sim0.e.daylen = 320, 192
     before = E.Agents().from_bytes(sim0.a.to_bytes())
 
+    # Ολες οι γραμμές του DIST (βήμα 91): οι νεογέννητοι του πλοίου είναι πια
+    # άνθρωποι και ψάχνουν δουλειά από την πίστα (κόμβος 64 και πάνω). Ως το
+    # 90 οι ταυτότητες 5, 21, 37, 53 έβγαιναν ρομπότ και δεν έψαχναν.
     got_a, got_occ, frames, got_dome, got_str, got_econ, got_job, got_room = \
-        run_z80(sym, g, fresh(g, nexthop, sim0), TICKS)
+        run_z80(sym, g, fresh(g, nexthop, sim0), TICKS,
+                rt_n=EC.MAX_DOME + EC.MAX_STRUCT)
 
     sim = fresh(g, nexthop, sim0)
     for _ in range(TICKS):
@@ -966,6 +971,16 @@ def _crew(room):
     return f
 
 
+def _land(land, room):
+    """Το ίδιο, με ποσοστά ειδικοτήτων (βήμα 91, src/crew.asm)."""
+    crew = _crew(room)
+
+    def f(e, a):
+        crew(e, a)
+        e.land = list(land)
+    return f
+
+
 def _visit_roll():
     """Ο σπόρος που ρίχνει επισκέπτες στην πρώτη ζαριά (event_branches)."""
     return next(x for x in range(1, 65536) if EC.lfsr(EC.lfsr(x)) & 0x7FF == 0)
@@ -987,6 +1002,9 @@ SHIP_CASES = (
                    [a.morale.__setitem__(i, (i * 37) & 0xFF) for i in range(128)])),
     ("άποικοι, ταβάνι για δύο", 2, _crew(2)),
     ("άποικοι, ταβάνι ήδη ξεπερασμένο", 2, _crew(-1)),
+    # ΟΙ ΕΙΔΙΚΟΤΗΤΕΣ (βήμα 91): 50% βιολόγοι, 50% γιατροί, σε μια αποικία με
+    # κάθε ρόλο και ρομπότ — ο Z80 μετρά όπως η αναφορά, και ρομπότ δεν έρχονται.
+    ("άποικοι, 50% βιολόγοι και 50% γιατροί", 2, _land([0, 0, 5, 5, 0], 4)),
     ("τρία σερί στο 255", 1,
      lambda e, a: (_sol(e), _green(e), setattr(e, "green_sols", 255),
                    setattr(e, "no_death_sols", 255), setattr(e, "deaths_sol", 0),
@@ -1040,7 +1058,7 @@ def ship_branches(sym, g, nexthop, sim0):
               "ρομπότ ο Z80 βγαίνει ίδιος με την αναφορά")
         return 1
     print(f"OK πλοία και sol: {len(SHIP_CASES)} περιπτώσεις στα όρια — πίστα, τροφή "
-          f"και ηθικό επισκεπτών, ταβάνι, σερί στο 255, ρομπότ, οι δύο μάσκες, "
+          f"και ηθικό επισκεπτών, ταβάνι, ειδικότητες, σερί στο 255, ρομπότ, οι δύο μάσκες, "
           f"habitat — ίδια bytes στον Z80 και στην αναφορά. ΑΡΝΗΤΙΚΟ: με "
           f"αυτοματισμό από 9 ρομπότ διαφέρουν")
     return 0

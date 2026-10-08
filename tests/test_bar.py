@@ -448,10 +448,12 @@ def _help(m, sym, quick):
 
 
 # --- κόστος ------------------------------------------------------------------
-PROBE = 0x3C00
+# πάνω από τον κώδικα της τράπεζας 0: το main.asm τον κρατά ως το #3D60 (βήμα 91· ως τότε #3C00)
+PROBE = 0x3D60
 
 
 def call_us(m, sym, target, reps=3):
+    assert sym["ZZ_BANK0_END"] <= PROBE, "ο κώδικας έφτασε στο PROBE"
     on, ml = sym["IS_ON"], sym["MAIN_LOOP"]
     best = None
     for _ in range(reps):

@@ -49,10 +49,14 @@ import test_game as TG                                   # noqa: E402
 import cpc                                               # noqa: E402
 
 # Ο ελεύθερος χώρος της τράπεζας 0 κάτω από τη σκαλωσιά (#3EC0): stubs και
-# ημερολόγιο. Ο κώδικας του παιχνιδιού τελειώνει πριν από το STUBS (assert).
-# Ενα #100 πιο πάνω από το βήμα 84, όταν τα κουμπιά έφεραν την τράπεζα 0 στο
-# #3B08· το ημερολόγιο τελειώνει ακόμη κάτω από τη σκαλωσιά του #3EC0.
-STUBS, LOG, LOG_TOP = 0x3C00, 0x3D00, 0x3E00
+# ημερολόγιο. ΑΠΟ ΤΟ ΒΗΜΑ 91 ΤΑ STUBS ΑΡΧΙΖΟΥΝ ΕΚΕΙ ΠΟΥ ΤΕΛΕΙΩΝΕΙ Ο ΚΩΔΙΚΑΣ
+# (ZZ_BANK0_END, στρογγυλεμένο στα 16) και το ημερολόγιο αμέσως μετά: ως τότε
+# ήταν σταθερά στο #3C00 και #3D00, και ο κώδικας του παιχνιδιού δεν μπορούσε
+# να περάσει το #3C00. Το ημερολόγιο ενός γύρου είναι ως ~20 εγγραφές των 6
+# bytes· το stub ελέγχει τη σελίδα του, ως το #3EFF, και ο έλεγχος «γέμισε» της
+# δοκιμής το #3EC0, όπου αρχίζει το hook.
+LOG_TOP = 0x3EC0
+LOG_MIN = 20 * 6                                         # ένας γύρος, με περιθώριο
 HOOK, GO, PTR, CNT = 0x3EC0, 0x3EF0, 0x3EF2, 0x3EF4
 SFX_ALERT, SFX_METEOR = 6, 8                             # src/sound.asm
 TARGETS = ["WHEEL_TICK", "SND_PLAY", "DIRTY_RESET", "UI_HIDE", "VIEW_DRAW", "UI_SHOW",
@@ -100,7 +104,8 @@ class Loop:
         lab = labels()
         own = [a for n, a in lab.items() if n.startswith(("ML_", "MLA_", "MLW_"))]
         self.own_end = min(a for a in lab.values() if a > max(own))
-        assert sym["ZZ_BANK0_END"] <= STUBS, "ο κώδικας έφτασε στα stubs της δοκιμής"
+        self.stubs_at = (sym["ZZ_BANK0_END"] + 15) & ~15
+        self.log = None                                  # μετά τα stubs (stubs())
         # Ο εξομοιωτής δείχνει PC = X - 1 στο πρώτο µs μιας εντολής στο X: χωρίς
         # το - 1, το scr_nextline που ακολουθεί μετρούσε ως βρόχος (838 µs σε μια
         # πλήρη σχεδίαση).
@@ -137,7 +142,7 @@ class Loop:
                + [0x21] + w(-self.own_end) + [0x19, 0x38, "out"]        # >= own_end: έξω
                + [0x21] + w(-sym["MAIN_LOOP"]) + [0x19, 0x30, "out"]    # < main_loop: έξω
                + [0x21, 9, 0, 0x39, 0x46,                       # B = το A του καλούντα
-                  0x2A] + w(PTR) + [0x7C, 0xFE, LOG_TOP >> 8, 0x30, "out",
+                  0x2A] + w(PTR) + [0x7C, 0xFE, (LOG_TOP >> 8) + 1, 0x30, "out",
                   0x71, 0x23, 0x70, 0x23, 0x73, 0x23, 0x72, 0x23,         # id, A, επιστροφή
                   0x3A] + w(pok) + [0x77, 0x23, 0x3A] + w(o2) + [0x77, 0x23,
                   0x22] + w(PTR)
@@ -153,19 +158,21 @@ class Loop:
                 ln = ilen(head, k)
                 assert ln, f"{name}: η πρώτη εντολή δεν μετακινείται (#{head[k]:02X})"
                 k += ln
-            m.write_ram(t, bytes([0xC3] + w(STUBS + len(code))))
-            code += [0xF5, 0x3E, n, 0xCD] + w(STUBS) + [0xF1] + list(head[:k]) + [0xC3] + w(t + k)
-        assert STUBS + len(code) <= LOG, "τα stubs δεν χωρούν"
-        m.write_ram(STUBS, bytes(code))
+            m.write_ram(t, bytes([0xC3] + w(self.stubs_at + len(code))))
+            code += [0xF5, 0x3E, n, 0xCD] + w(self.stubs_at) + [0xF1] + list(head[:k]) + [0xC3] + w(t + k)
+        self.log = self.stubs_at + len(code)
+        assert self.log + LOG_MIN <= LOG_TOP, \
+            f"το ημερολόγιο δεν χωρά: stubs #{self.stubs_at:04X}-#{self.log:04X}, ως το #{LOG_TOP:04X}"
+        m.write_ram(self.stubs_at, bytes(code))
         self.reset_log()
 
     def reset_log(self):
-        self.m.write_ram(PTR, bytes([LOG & 255, LOG >> 8]))
+        self.m.write_ram(PTR, bytes([self.log & 255, self.log >> 8]))
 
     def read_log(self):
         m = self.m
         end = m.peek(PTR) | m.peek(PTR + 1) << 8
-        raw = m.read_ram(LOG, end - LOG)
+        raw = m.read_ram(self.log, end - self.log)
         recs = [raw[i:i + 6] for i in range(0, len(raw), 6)]
         self.full = end >= LOG_TOP
         return [(TARGETS[r[0]], r[1], r[4], r[5]) for r in recs]

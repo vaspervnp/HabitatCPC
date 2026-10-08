@@ -147,6 +147,7 @@ rtr_lp:
         include "../src/stock.asm"
         include "../src/needs.asm"
         include "../src/ship.asm"
+        include "../src/crew.asm"           ; βήμα 91: οι ειδικότητες
         include "../src/wheel.asm"
         include "../src/sound.asm"
         include "../src/meteor.asm"

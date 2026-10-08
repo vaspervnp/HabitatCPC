@@ -196,7 +196,7 @@ usv_load:
 usv_none:
         endif
         ifdef HAS_SIM
-        jp      ui_ship                 ; ό,τι μένει είναι το C
+        jp      cw_open                 ; ό,τι μένει είναι το C (src/crew.asm)
         else
         ret
         endif
@@ -1412,9 +1412,9 @@ uip_lnr:
         ld      hl,t_ok
 uip_say:
         call    hud_text7
-        ld      b,40-20
-        call    hud_blank
-        ; fall through
+        ld      b,40                    ; ως το τέλος, όσο κι αν είναι: από το
+        call    hud_to                  ; βήμα 91 τα κείμενα δεν έχουν κενά στο
+        ; fall through                  ; τέλος (ως τότε 20 στήλες ακριβώς)
 
 ; uip_spd — η ταχύτητα, στις πέντε τελευταίες στήλες της σειράς 3. Είναι το
 ; μόνο σημείο του HUD που γράφεται από τα δεξιά: οι σειρές 0-2 είναι γεμάτες
