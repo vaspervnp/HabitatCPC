@@ -278,34 +278,84 @@ bda_no:
 ; Το §6.9 λέει «το κόστος ΔΕΣΜΕΥΕΤΑΙ, δεν ξοδεύεται ακόμη». Εδώ ξοδεύεται
 ; αμέσως: δεν υπάρχει δεξαμενή δέσμευσης στην οικονομία και μια ψεύτικη θα
 ; ήταν χειρότερη από μια ειλικρινή απλοποίηση. Η ΚΑΤΑΣΚΕΥΗ όμως μένει: ο θόλος
-; μπαίνει ως DS_BUILDING με ακεραιότητα 0 και δημοσιεύεται εργασία Build.
+; μπαίνει ως DS_BUILDING με ακεραιότητα 0, χρωστά ό,τι πλήρωσε σε φορτία, και
+; δημοσιεύει εργασίες Supply· η Build έρχεται όταν φτάσουν (βήμα 88).
 ; ---------------------------------------------------------------------------
 bd_commit:
+        ; ΤΑ ΦΟΡΤΙΑ ΠΡΩΤΑ (βήμα 88, §6.9): ό,τι κόστισε — το σύνολο του al_plan,
+        ; μαζί με τους διαδρόμους που θα βάλει το al_commit — σε δεκάδες. Το
+        ; εργοτάξιο τα χρωστά, και η εγγραφή τους γράφεται πιο κάτω, εκεί που
+        ; το HL είναι ήδη πάνω της (src/supply.asm).
+        ld      hl,(cr_metal)
+        call    sp_loads
+        ld      (sp_m),a
+        ld      hl,(cr_biop)
+        call    sp_loads
+        ld      (sp_b),a
         ld      bc,GA_PORT + PAGE_B6
         out     (c),c
+        ; ΜΙΑ ΑΝΑΖΗΤΗΣΗ ΓΙΑ ΘΟΛΟΥΣ ΚΑΙ ΔΟΜΕΣ, με δείκτη και ανά τέσσερις
+        ; (βήμα 88). Ως το 87 ο θόλος ρωτούσε το ob_dome_live, που
+        ; ξαναϋπολογίζει τη διεύθυνση (x24) για κάθε θόλο: 168 T ο καθένας,
+        ; 32 τώρα· η δομή 44. Ο κόμβος είναι C + k - 4B, όπου k η θέση μέσα
+        ; στην τετράδα, και το A = 0 μένει για το cp (hl).
         ld      a,(bd_kind)
         cp      BK_STRUCT
-        jr      z,bdk_struct
-        ; --- θόλος ---
-        ld      bc,MAX_DOME * 256       ; B = πόσοι μένουν, C = ο θόλος
+        ld      hl,G_struct_tbl + ST_STATE
+        ld      de,STRUCT_REC
+        ld      bc,(MAX_STRUCT >> 2) * 256 + MAX_DOME + MAX_STRUCT
+        jr      z,bdk_scan
+        ld      hl,G_dome_tbl + D_STATE
+        ld      e,DOME_REC
+        ld      bc,(MAX_DOME >> 2) * 256 + MAX_DOME
+bdk_scan:
+        xor     a
 bdk_find:
-        ld      a,c
-        call    ob_dome_live            ; HL -> D_STATE
-        jr      z,bdk_got
-        inc     c
+        cp      (hl)
+        jr      z,bdk_got               ; DS_EMPTY
+        add     hl,de
+        cp      (hl)
+        jr      z,bdk_got1
+        add     hl,de
+        cp      (hl)
+        jr      z,bdk_got2
+        add     hl,de
+        cp      (hl)
+        jr      z,bdk_got3
+        add     hl,de
         djnz    bdk_find
 bdk_full:
         ld      bc,GA_PORT + PAGE_B1
         out     (c),c
         ld      a,255
         ret
+bdk_got3:
+        inc     c
+bdk_got2:
+        inc     c
+bdk_got1:
+        inc     c
 bdk_got:
+        ld      a,b
+        add     a,a
+        add     a,a
+        neg
+        add     a,c                     ; ο κόμβος: C + k - 4B
         ld      (bd_node),a
+        cp      MAX_DOME
+        jr      nc,bds_got
+        ; --- θόλος ---
         push    hl
         call    rm_room                 ; ό,τι διάλεξε ο παίκτης με πάνω-κάτω
         pop     hl
         call    bdk_rec                 ; δωμάτιο, DS_BUILDING, ακεραιότητα 0
-        ld      (hl),a                  ; χειριστές
+        ; Ενας θόλος που χτίζεται δεν έχει ούτε ρεύμα ούτε χειριστές: τα δύο
+        ; bytes κρατούν τα φορτία που χρωστιούνται (βήμα 88).
+        ld      de,(sp_m)               ; E = μέταλλο, D = βιοπλαστικό
+        dec     hl
+        ld      (hl),e                  ; D_POWER
+        inc     hl
+        ld      (hl),d                  ; D_OPS
         inc     hl
         ld      bc,8 * 256 + NO_MACH
 bdk_m:
@@ -321,26 +371,23 @@ bdk_h:
         ; τις διαλέγει ο παίκτης μία-μία και τις πληρώνει χωριστά, και μπορεί
         ; από τώρα, πάνω στο εργοτάξιο: φαίνονται όταν χτιστεί (src/fit.asm).
         jr      bd_link
-bdk_struct:
-        ld      hl,G_struct_tbl + ST_STATE
-        ld      de,STRUCT_REC
-        ld      bc,MAX_STRUCT * 256 + MAX_DOME  ; C = ο κόμβος: 64 + δομή
-bds_find:
-        ld      a,(hl)
-        or      a
-        jr      z,bds_got
-        add     hl,de
-        inc     c
-        djnz    bds_find
-        jr      bdk_full
 bds_got:
-        ld      a,c
-        ld      (bd_node),a
         ld      a,(bd_size)
         call    bdk_rec                 ; μέγεθος, DS_BUILDING, 0, 0
+        ld      de,(sp_m)
+        ld      a,e
+        add     a,a
+        add     a,a
+        add     a,a
+        add     a,a
+        or      d
+        ld      (hl),a                  ; ST_OWED: μέταλλο<<4 | βιοπλαστικό
+
+        assert  D_POWER == 6 && D_OPS == 7 && ST_OWED == 7  ; το bdk_rec αφήνει το HL στο 7
+        assert  (MAX_DOME & 3) == 0 && (MAX_STRUCT & 3) == 0     ; ανά τέσσερις
 
 ; ---------------------------------------------------------------------------
-; bd_link — το θεμέλιο, η πληρωμή, η εργασία Build.
+; bd_link — το θεμέλιο, η πληρωμή, οι εργασίες (Supply, ή Build).
 ;
 ; ΧΩΡΙΣ ΑΚΜΗ ΑΠΟ ΤΟ ΒΗΜΑ 85. Ως τότε εδώ το εργοτάξιο έπαιρνε μια «ακμή
 ; εξωτερικού χώρου» προς τον κοντινότερο ζωντανό θόλο, όσο μακριά κι αν ήταν,
@@ -360,31 +407,40 @@ bd_link:
         call    tile_addr
         ld      a,(bd_h)
         ld      c,a
+        ; Η μάσκα και η τιμή σε καταχωρητές, και inc l: μια σειρά του κόσμου
+        ; είναι 128 bytes από όριο των 128 και δεν περνά σελίδα (tile_addr).
+        ; 39 T το tile αντί για 47 (βήμα 88).
+        ld      de,#C000 + W_FOUNDATION + W_OCC_STRUCT  ; το decor μένει
 bst_rl:
         push    hl
         ld      a,(bd_w)
         ld      b,a
 bst_cl:
         ld      a,(hl)
-        and     #C0                     ; το decor μένει
-        or      W_FOUNDATION + W_OCC_STRUCT
+        and     d
+        or      e
         ld      (hl),a
-        inc     hl
+        inc     l
         djnz    bst_cl
         pop     hl
-        ld      de,128
-        add     hl,de                   ; η επόμενη σειρά (tile_addr)
+        ld      a,l                     ; η επόμενη σειρά: +128 (tile_addr)
+        add     a,128
+        ld      l,a
+        jr      nc,bst_nx
+        inc     h
+bst_nx:
         dec     c
         jr      nz,bst_rl
         ld      bc,GA_PORT + PAGE_B1
         out     (c),c
         call    bd_stock_pay            ; πληρώνει ΑΦΟΥ βρεθεί θέση
 bdk_post:
-        ; Με την εργασία Build, το ΠΡΩΤΟ είδος εργασίας που δέχονται τα ρομπότ
-        ; απέκτησε πηγή: ως τότε κανείς δεν δημοσίευε Haul, Drill ή Build, και
-        ; το ορόσημο «αυτοματισμός» του §10.2 ήταν απρόσιτο εξ ορισμού.
+        ; ΠΡΩΤΑ ΤΑ ΥΛΙΚΑ (βήμα 88, §6.9). Το εργοτάξιο χρωστά ό,τι πλήρωσε ο
+        ; παίκτης — το σύνολο του al_plan, μαζί με τους διαδρόμους που θα
+        ; βάλει το al_commit — και δημοσιεύει εργασίες Supply· η Build έρχεται
+        ; όταν φτάσει το τελευταίο φορτίο (src/supply.asm).
         ld      a,(bd_node)
-        call    jb_post_build           ; src/jobs.asm — και για τον μετεωρίτη· κρατά το A
+        call    sp_jobs                 ; κρατά το A
         jp      ob_touch_n              ; μόνο η κατηγορία του· κρατά το A
 
 ; bdk_rec — HL -> D_STATE / ST_STATE μιας εγγραφής, A = το τέταρτο byte

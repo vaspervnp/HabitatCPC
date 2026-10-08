@@ -17,7 +17,7 @@
 ; του rasm θα τα έδινε κατευθείαν σωστά, αλλά δεν συνδυάζεται με το `bankset 1`
 ; που στήνει τις τράπεζες 4-7 πιο πάνω.)
 
-TEXT_MAX    equ 2080                    ; η δέσμευση του §4.2 (2.064 ως το βήμα 85, 2.048 ως το 84, 1.280 ως το 83,
+TEXT_MAX    equ 2100                    ; η δέσμευση του §4.2 (2.080 ως το βήμα 87, 2.064 ως το 85, 2.048 ως το 84, 1.280 ως το 83,
                                         ; 1.024 ως το 79)
 TEXT_IMG    equ #C000 + G_text - #4000
 
@@ -40,6 +40,7 @@ x_txt_meteor: db "METEOR SHOWER      ",0
 x_txt_nofood: db "LOW ON FOOD        ",0
 x_txt_nowater:db "LOW ON WATER       ",0
 x_txt_lost:   db "COLONY LOST        ",0
+x_txt_noeng:  db "NO ENGINEER        ",0   ; βήμα 88
 x_t_saving:   db "SAVING TO DISC...   ",0
 x_t_saved:    db "SAVED TO SLOT 1     ",0
 x_t_loading:  db "LOADING FROM DISC...",0
@@ -160,6 +161,7 @@ txt_pop   equ x_txt_pop - TEXT_IMG + G_text
 txt_sol   equ x_txt_sol - TEXT_IMG + G_text
 txt_day   equ x_txt_day - TEXT_IMG + G_text
 txt_night equ x_txt_night - TEXT_IMG + G_text
+txt_noeng equ x_txt_noeng - TEXT_IMG + G_text
 txt_ok    equ x_txt_ok - TEXT_IMG + G_text
 txt_nopwr equ x_txt_nopwr - TEXT_IMG + G_text
 txt_shed  equ x_txt_shed - TEXT_IMG + G_text

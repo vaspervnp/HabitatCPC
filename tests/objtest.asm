@@ -256,6 +256,7 @@ done_flag:  db 0
         include "../src/dirty.asm"
         include "../src/hud.asm"
         include "../src/stock.asm"          ; το ec_stock_ptr του hud.asm (βήμα 52)
+        include "../src/supply.asm"         ; το sp_noeng του hud.asm (βήμα 88)
         include "../src/view.asm"
         include "../src/hw.asm"
         ; Η λίστα αλλαγών ξέρει από το βήμα 34 το φάντασμα (dt_ghost: δεν

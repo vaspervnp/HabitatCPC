@@ -296,7 +296,7 @@ def commit_rules(sym, patch=(), n=300):
     m = G.m
     rnd = random.Random(7373)
     rm_list = m.read_ram(sym["RM_LIST"], 16)
-    seen = {"θόλοι": 0, "δομές": 0, "γεμάτος": 0}
+    seen = {"θόλοι": 0, "δομές": 0, "γεμάτος": 0, "Supply": 0, "Build": 0}
     for case in range(n):
         G.restore()
         i = rnd.choice([0, 1, 2, 4, 5, 6, 7, 8, 9, 10])
@@ -344,6 +344,15 @@ def commit_rules(sym, patch=(), n=300):
         for j in range(32):
             jobs[5 * j] = 0 if full or rnd.random() < 0.7 else 255
         m.write_ram(G.jobs, bytes(jobs))
+        # ΤΟ ΣΥΝΟΛΟ ΤΟΥ al_plan (βήμα 88): ό,τι κόστισε, με τους διαδρόμους.
+        # Μια δομή ως 15 φορτία το υλικό (το assert του src/link.asm), ένας
+        # θόλος ως 255· και κάπου-κάπου τίποτα, που φέρνει κατευθείαν Build.
+        lim = 150 if kind else 400
+        cm = 0 if rnd.random() < 0.2 else rnd.randrange(1, lim + 1)
+        cb = 0 if rnd.random() < 0.3 else rnd.randrange(1, lim // 2 + 1)
+        m.write_ram(sym["CR_METAL"], bytes([cm & 255, cm >> 8]))
+        m.write_ram(sym["CR_BIOP"], bytes([cb & 255, cb >> 8]))
+        lm, lb = -(-cm // 10), -(-cb // 10)
         _, A, _ = G.run("BD_COMMIT")
         # --- ο κανόνας ---
         want_d, want_s, want_w = bytearray(domes), bytearray(structs), bytearray(world)
@@ -355,13 +364,13 @@ def commit_rules(sym, patch=(), n=300):
             if slot is not None:
                 o = 24 * slot
                 want_d[o:o + 24] = bytes([cx & 255, cy & 255, param, rm_list[rsel], DS_BUILDING,
-                                          0, 0, 0] + [NO_MACH] * 8 + [0] * 8)
+                                          0, lm, lb] + [NO_MACH] * 8 + [0] * 8)
         else:
             slot = next((s_ for s_ in range(32) if structs[8 * s_ + 4] == 0), None)
             node = None if slot is None else 64 + slot
             if slot is not None:
-                want_s[8 * slot:8 * slot + 7] = bytes([cx & 255, cy & 255, param, size,
-                                                       DS_BUILDING, 0, 0])
+                want_s[8 * slot:8 * slot + 8] = bytes([cx & 255, cy & 255, param, size,
+                                                       DS_BUILDING, 0, 0, lm << 4 | lb])
         if node is None:
             want_a = 255
             seen["γεμάτος"] += 1
@@ -375,9 +384,12 @@ def commit_rules(sym, patch=(), n=300):
                     want_w[a] = want_w[a] & 0xC0 | 0x17
             stock = (1000 - G.items[i][4], 1000 - G.items[i][5])
             # ο γράφος δεν αλλάζει (βήμα 85): ούτε βαθμοί, ούτε γείτονες, ούτε rt_dirty
-            j = next((j for j in range(32) if jobs[5 * j] == 255), None)
-            if j is not None:
-                want_jobs[5 * j:5 * j + 5] = bytes([0, node, 255, 5, 0])
+            # Supply για ό,τι χρωστιέται, μέταλλο πρώτα· αν τίποτα, Build
+            for k, n_ in ((7, lm), (8, lb)) if lm or lb else ((0, 1),):
+                j = next((j for j in range(32) if want_jobs[5 * j] == 255), None)
+                if n_ and j is not None:
+                    want_jobs[5 * j:5 * j + 5] = bytes([k, node, 255, 4 if k else 5, node])
+                    seen["Supply" if k else "Build"] += 1
             idx = OB_IX_FIG + (OB_IX_DOME if kind == 0 else OB_IX_STRUCT)
         got = {"A": A, "θόλοι": G.bank(6, G.gd, 64 * 24), "δομές": G.bank(6, G.gs, 32 * 8),
                "κόσμος": G.bank(4), "αποθέματα": (G.w16(G.g + 6), G.w16(G.g + 8)),
@@ -472,6 +484,9 @@ def timing(sym):
             s_[8 * k + 4] = 0 if k == 31 else 2
         G.put(6, G.gd, d)
         G.put(6, G.gs, s_)
+        # το κόστος του ίδιου του κτίσματος, όπως το αφήνει το al_plan (βήμα 88)
+        m.write_ram(sym["CR_METAL"], bytes([G.items[i][4], 0]))
+        m.write_ram(sym["CR_BIOP"], bytes([G.items[i][5], 0]))
         out[name] = G.run("BD_COMMIT", step=1)[0]
     return out
 
@@ -513,9 +528,14 @@ def main():
     neg = [("θεμέλιο όχι", rules, [(find("BD_OK", [0xFE, 6]) + 1, 7)]),
            ("πρώτο tile ένα δεξιότερα", rules, [(find("BDR_ONE", [0xD6, 64]) + 1, 63)]),
            ("επόμενη σειρά +64", rules, [(find("BD_CHECK", [0xC6, 128], 96) + 1, 64)]),
-           ("επτά NO_MACH", commit_rules, [(find("BD_COMMIT", [0x01, NO_MACH, 8], 96) + 2, 7)]),
+           ("επτά NO_MACH", commit_rules, [(find("BD_COMMIT", [0x01, NO_MACH, 8], 160) + 2, 7)]),
+           # ld de,#C000 + W_FOUNDATION + W_OCC_STRUCT (βήμα 88· ως τότε or #17)
            ("το θεμέλιο χωρίς κατοχή", commit_rules,
-            [(find("BD_LINK", [0xF6, 0x17]) + 1, 0x07)]),
+            [(find("BD_LINK", [0x11, 0x17, 0xC0]) + 1, 0x07)]),
+           # ΤΑ ΧΡΕΗ (βήμα 88): με το ld (hl),d του D_OPS σβησμένο, ο θόλος δεν
+           # χρωστά βιοπλαστικό ενώ η εργασία του δημοσιεύεται
+           ("το D_OPS χωρίς το βιοπλαστικό", commit_rules,
+            [(find("BD_COMMIT", [0x2B, 0x73, 0x23, 0x72], 160) + 3, 0)]),
            ("A = 255 στο afford", rules,
             [(a, 0) for a in (lambda p: (p, p + 1))(find("BDA_NO", [0xED, 0x44]))]),
            ("ο θόλος γυρνά Z", redraw_rules, [(find("BDR_LP", [0x1C, 0xC9]), 0)])]

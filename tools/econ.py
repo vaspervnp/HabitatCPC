@@ -92,7 +92,9 @@ DS_EMPTY, DS_BUILDING, DS_ACTIVE = 0, 1, 2
 # --- δομές ----------------------------------------------------------------
 STRUCT_REC = 8
 MAX_STRUCT = 32          # §4.2: 64 θόλοι + 32 δομές = 96 κόμβοι
-ST_CX, ST_CY, ST_KIND, ST_SIZE, ST_STATE, ST_INTEG, ST_OUT, ST_SPARE = range(8)
+# Το έβδομο byte είναι το ST_JOINED των airlock (βήμα 87)· το όγδοο, από το
+# βήμα 88, ό,τι χρωστιέται σε ένα εργοτάξιο: μέταλλο<<4 | βιοπλαστικό.
+ST_CX, ST_CY, ST_KIND, ST_SIZE, ST_STATE, ST_INTEG, ST_OUT, ST_OWED = range(8)
 
 # είδη δομών, με τη σειρά του STRUCTS στο pack.py (solar/turbine/collector/
 # extractor σε τρία μεγέθη, μετά mine/airlock/pad/ship)
@@ -144,6 +146,7 @@ class Econ:
         self.mcx = 0
         self.mcy = 0
         self.mrnd = 0
+        self.nbuild = 0                 # EC_NBUILD: Build στον πίνακα (βήμα 88)
         self.acc_o2 = 0
         self.prod_dome = 0                  # πού έφτασε το σάρωμα
         # ρολόι και καιρός (§6.10)
@@ -607,8 +610,52 @@ def post_build(e, node):
     for j in range(MAX_JOB):
         b = j * JOB_REC
         if e.job[b + J_KIND] == NO_JOB:
-            e.job[b:b + JOB_REC] = bytes([J_BUILD, node, 255, 5, 0])
-            return
+            e.job[b:b + JOB_REC] = bytes([J_BUILD, node, 255, 5, node])
+            e.nbuild += 1                       # EC_NBUILD (βήμα 88, sp_build)
+            return b
+    return None
+
+
+SP_PRIO = 4                 # src/supply.asm: κάτω από το Build
+
+
+def post_supply(e, node, kind):
+    """Το sp_post: μια Build που γίνεται Supply του είδους kind."""
+    b = post_build(e, node)
+    if b is not None:
+        e.job[b + J_KIND] = kind
+        e.job[b + J_PRIO] = SP_PRIO
+        e.nbuild -= 1                           # δεν είναι Build
+
+
+def owed(e, node, mat):
+    """Το sp_owed: (πίνακας, θέση αυτού του υλικού, θέση του άλλου, ένα
+    φορτίο, μάσκα). Θόλος: μέταλλο στο D_POWER, βιοπλαστικό στο D_OPS. Δομή:
+    και τα δύο στο ST_OWED, μέταλλο στα πάνω τέσσερα bits."""
+    if node < MAX_DOME:
+        b = node * DOME_REC
+        me, other = (b + D_POWER, b + D_OPS) if mat == 0 else (b + D_OPS, b + D_POWER)
+        return e.dome, me, other, 1, 0xFF
+    b = (node - MAX_DOME) * STRUCT_REC + ST_OWED
+    return (e.struct, b, b, 0x10, 0xF0) if mat == 0 else (e.struct, b, b, 1, 0x0F)
+
+
+def supply_source(e, node):
+    """Το sp_take: η πηγή πιο κοντά στον κόμβο `node` — το σκάφος (δομή 0,
+    αν είναι σκάφος) και οι αποθήκες σε λειτουργία, με αυτή τη σειρά, και η
+    πρώτη στην ισοπαλία. Μόνο ό,τι φτάνει (DIST < 255)· αλλιώς 255."""
+    cands = []
+    if e.struct[ST_KIND] == K_SHIP:
+        cands.append(MAX_DOME)
+    rn = getattr(e, "room_n", None)
+    if rn is not None:
+        cands += list(e.room_list[R_STORAGE * ROOM_MAX:R_STORAGE * ROOM_MAX + rn[R_STORAGE]])
+    best, bd = 255, 255
+    for c in cands:
+        d = e.dist[node * 128 + c]
+        if d < bd:
+            best, bd = c, d
+    return best
 
 
 def to_bytes(e):
@@ -639,10 +686,11 @@ def to_bytes(e):
     out += int(e.acc_ess).to_bytes(2, "little")
     out += bytes([e.meteor, e.mcx & 0xFF, e.mcy & 0xFF])   # βήμα 38
     out += int(e.mrnd).to_bytes(2, "little")
+    out += bytes([e.nbuild])                                 # βήμα 88
     return bytes(out)
 
 
-ECON_BYTES = 64 + 8 + 10 + 4 + 5                    # + η βροχή μετεωριτών = 91
+ECON_BYTES = 64 + 8 + 10 + 4 + 5 + 1        # + η βροχή μετεωριτών + οι Build = 92
 
 
 def populate(e, n_dome=24, n_struct=30, seed=11):
@@ -755,13 +803,17 @@ def populate(e, n_dome=24, n_struct=30, seed=11):
 
 MAX_JOB = 32
 JOB_REC = 5
-J_KIND, J_NODE, J_AGENT, J_PRIO, J_AGE = range(5)
+# Το πέμπτο byte είναι ο κόμβος της εργασίας (βήμα 88)· το J_NODE είναι πού
+# πηγαίνει ο πράκτορας. Διαφέρουν μόνο στο πρώτο σκέλος μιας Supply.
+J_KIND, J_NODE, J_AGENT, J_PRIO, J_SITE = range(5)
 NO_JOB = 255
 
-J_BUILD, J_OPERATE, J_HAUL, J_DRILL, J_REPAIR, J_HEAL, J_DEFEND = range(7)
+J_BUILD, J_OPERATE, J_HAUL, J_DRILL, J_REPAIR, J_HEAL, J_DEFEND, J_SUPPLY = range(8)
+# J_SUPPLY μέταλλο, J_SUPPLY + 1 βιοπλαστικό (βήμα 88, src/supply.asm)
 
-# ποιοι ρόλοι δέχονται ποια εργασία — bitmask ανά είδος (§6.7)
-JOB_ROLES = [0x22, 0x05, 0x41, 0x81, 0x02, 0x08, 0x10]
+# ποιοι ρόλοι δέχονται ποια εργασία — bitmask ανά είδος (§6.7). Η Supply:
+# όλοι οι άποικοι και το ρομπότ μεταφοράς.
+JOB_ROLES = [0x22, 0x05, 0x41, 0x81, 0x02, 0x08, 0x10, 0x5F, 0x5F]
 JOB_PRIO = [5, 3, 2, 4, 6, 8, 9]
 BUILD_STEP = 32                     # src/jobs.asm — οκτώ επισκέψεις
 # Το OPERATE δεν έχει μία προτεραιότητα αλλά μία ανά ΔΩΜΑΤΙΟ (§6.7): με κοινή
@@ -824,6 +876,7 @@ def jobs_tick(e, a, F_ALIVE, F_WORKING):
             continue
         if not (a.flags[i] & F_ALIVE) or a.task[i] != j:
             jb[b + J_AGENT] = 255
+            jb[b + J_NODE] = jb[b + J_SITE]     # μια Supply γυρίζει στο εργοτάξιο
 
     # 2. όποιος έφτασε, πιάνει δουλειά: ο θόλος αποκτά χειριστή
     for j in range(MAX_JOB):
@@ -835,6 +888,29 @@ def jobs_tick(e, a, F_ALIVE, F_WORKING):
             continue
         node = jb[b + J_NODE]
         if a.node[i] != node or a.edge[i] != 255:
+            continue
+        if jb[b + J_KIND] >= J_SUPPLY:
+            # ΤΡΟΦΟΔΟΣΙΑ (βήμα 88, sp_arrive): στην πηγή φορτώνει και πάει
+            # στο εργοτάξιο· στο εργοτάξιο ξεφορτώνει.
+            mat = jb[b + J_KIND] - J_SUPPLY
+            site = jb[b + J_SITE]
+            if node != site:
+                jb[b + J_NODE] = site
+                a.spare[i] = S_METAL + mat
+                a.dest[i] = site
+                continue
+            a.spare[i] = 0
+            rec, me, other, unit, mask = owed(e, site, mat)
+            if rec[me] & mask:
+                rec[me] = (rec[me] - unit) & 0xFF
+                if rec[me] & mask:
+                    jb[b + J_AGENT] = 255       # κι άλλο ταξίδι: ξανανοίγει
+                    a.task[i] = NO_TASK
+                    continue
+            if not (rec[me] | rec[other]):
+                post_build(e, site)             # όλα έφτασαν: σειρά του χτίστη
+            a.task[i] = NO_TASK
+            jb[b + J_KIND] = NO_JOB
             continue
         if jb[b + J_KIND] == J_BUILD:
             # Ο ΕΡΓΑΤΗΣ ΜΕΝΕΙ ΚΑΙ ΧΤΙΖΕΙ (src/jobs.asm, ja_build): η πρόοδος
@@ -848,18 +924,21 @@ def jobs_tick(e, a, F_ALIVE, F_WORKING):
                 continue
             rec[rb + D_STATE] = DS_ACTIVE
             # Το lk_done του src/door.asm (βήμα 87). Ενας θόλος με σύνδεση
-            # εδάφους σφραγίζεται: φεύγει και ο χτίστης βγαίνει — αυτό θέλει
-            # τον γράφο, και το ελέγχει το tests/test_outside.py στο ίδιο το
-            # παιχνίδι. Μια δομή: ο χτίστης μένει, μέσα αν είναι airlock.
+            # εδάφους σφραγίζεται: φεύγει, και όσοι στέκονται εκεί βγαίνουν —
+            # αυτό θέλει τον γράφο, και το ελέγχει το tests/test_outside.py
+            # στο ίδιο το παιχνίδι. Ενα airlock: όσοι στέκονται εκεί, ο
+            # χτίστης και οι μεταφορείς του (βήμα 88), είναι πια μέσα. Κάθε
+            # άλλη δομή: ήταν ήδη έξω.
             if node < MAX_DOME:
                 # Η αναφορά δεν έχει γράφο εδώ: οι σκηνές της είναι θόλοι με
                 # διαδρόμους ως ακμές, που το lk_done αφήνει όπως είναι.
                 pass
             elif indoor_node(e, node):
-                a.flags[i] |= 2                 # F_INDOORS
-            else:
-                a.flags[i] &= ~2 & 0xFF
+                for k in range(MAXAGENT_J):
+                    if a.node[k] == node and a.edge[k] == 255 and a.flags[k] & F_ALIVE:
+                        a.flags[k] |= 2         # F_INDOORS
             e.flow_div = 1
+            e.nbuild -= 1                       # EC_NBUILD
             a.task[i] = NO_TASK
             jb[b + J_KIND] = NO_JOB
             continue
@@ -905,7 +984,7 @@ def jobs_tick(e, a, F_ALIVE, F_WORKING):
                 jb[k * JOB_REC + J_PRIO] = (
                     ROOM_PRIO[e.dome[d * DOME_REC + D_ROOM]]
                     if kind == J_OPERATE else JOB_PRIO[kind])
-                jb[k * JOB_REC + J_AGE] = 0
+                jb[k * JOB_REC + J_SITE] = d
                 break
 
     # 4. ανάθεση: ως JOB_ASSIGN, με αύξουσα σειρά ταυτότητας από περιστροφική
@@ -937,6 +1016,13 @@ def jobs_tick(e, a, F_ALIVE, F_WORKING):
         jb[best * JOB_REC + J_AGENT] = i
         a.task[i] = best
         a.dest[i] = jb[best * JOB_REC + J_NODE]
+        if jb[best * JOB_REC + J_KIND] >= J_SUPPLY:
+            # sp_take: πρώτα στην πηγή, με άδεια χέρια
+            a.spare[i] = 0
+            src = supply_source(e, a.node[i])
+            if src != 255:
+                jb[best * JOB_REC + J_NODE] = src
+                a.dest[i] = src
         done += 1
     e.job_agent = (e.job_agent + JOB_LOOK) & (MAXAGENT_J - 1)
 

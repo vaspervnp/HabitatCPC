@@ -46,7 +46,7 @@ jb_reap:
         ld      c,0                     ; C = δείκτης εργασίας
 jr_lp:
         ld      a,(hl)
-        cp      NO_JOB
+        inc     a                       ; NO_JOB: 3 T φθηνότερο από το cp (βήμα 88)
         jr      z,jr_next
         push    hl
         inc     hl
@@ -66,6 +66,16 @@ jr_lp:
         jr      z,jr_pop
 jr_free:
         ld      (hl),255
+        ; ΚΑΙ ΠΙΣΩ ΣΤΟΝ ΚΟΜΒΟ ΤΗΣ (βήμα 88): μια Supply που αφέθηκε στο πρώτο
+        ; σκέλος δείχνει ακόμη την πηγή. Το J_SITE είναι ο κόμβος της, και σε
+        ; κάθε άλλη εργασία ίσος με το J_NODE: η αντιγραφή είναι πάντα σωστή.
+        inc     hl
+        inc     hl
+        ld      a,(hl)                  ; J_SITE
+        dec     hl
+        dec     hl
+        dec     hl
+        ld      (hl),a                  ; J_NODE
 jr_pop:
         pop     hl
 jr_next:
@@ -89,7 +99,7 @@ ja_lp:
         push    bc
         push    hl
         ld      a,(hl)
-        cp      NO_JOB
+        inc     a                       ; NO_JOB
         jr      z,ja_next
         inc     hl
         ld      c,(hl)                  ; C = κόμβος
@@ -111,11 +121,14 @@ ja_lp:
         jr      nz,ja_next              ; ακόμη στον σωλήνα
         pop     hl
         push    hl
+        ; Ο ΧΕΙΡΙΣΤΗΣ ΠΕΡΝΑ ΑΠΟ ΔΥΟ ΕΡΩΤΗΣΕΙΣ, όχι από τρεις (βήμα 88): η
+        ; επισκευή και η τροφοδοσία είναι από το J_REPAIR και πάνω.
         ld      a,(hl)
-        cp      J_BUILD
+        or      a                       ; J_BUILD
         jr      z,ja_build              ; ο πράκτορας δουλεύει και μένει
         cp      J_REPAIR
-        jr      z,ja_repair             ; φτάνει, αλλάζει το εξάρτημα, φεύγει
+        jr      nc,ja_more              ; επισκευή ή τροφοδοσία
+ja_oper:
         ; --- ο θόλος αποκτά χειριστή ---
         ld      a,c
         cp      MAX_DOME
@@ -143,6 +156,18 @@ ja_next:
         pop     bc
         djnz    ja_lp
         ret
+
+ja_more:
+        jr      z,ja_repair             ; φτάνει, αλλάζει το εξάρτημα, φεύγει
+        cp      J_SUPPLY
+        jr      c,ja_oper               ; Heal, Defend: όπως ως το 87
+; --- τροφοδοσία (βήμα 88): φορτώνει στην πηγή, ξεφορτώνει στο εργοτάξιο
+; (src/supply.asm). E = ο πράκτορας. ---
+ja_supply:
+        call    sp_arrive
+        jr      z,ja_next               ; φόρτωσε: η εργασία μένει δική του
+        jr      c,ja_fail               ; παρέδωσε, χρωστιέται κι άλλο: ξανανοίγει
+        jr      ja_done                 ; το τελευταίο φορτίο του υλικού
 
 ; --- επισκευή: C = ο θόλος ---
 ; Το jb_broken αφήνει τον IX πάνω στην υποδοχή που βρήκε, και η υγεία είναι
@@ -218,6 +243,8 @@ jab_st:
         ; να έρθει η σειρά του κύκλου. Οτι αλλάζει την αποικία, ξαναμετριέται.
         ld      a,1
         ld      (ec_fdiv),a
+        ld      hl,EC_NBUILD            ; μία Build λιγότερη (βήμα 88)
+        dec     (hl)
         jr      ja_done
 
 ja_cleartask:
@@ -334,7 +361,7 @@ jpw_look:
         pop     hl
         ld      (hl),a
         inc     hl
-        ld      (hl),0
+        ld      (hl),c                  ; J_SITE = ο θόλος (βήμα 88)
         ret
 
 ; jb_slots — (jb_d) = θόλος. Z αν είναι χτισμένος, και τότε HL -> D_STATE,
@@ -472,7 +499,7 @@ jb_assign:
         ld      b,MAX_JOB
 jba_any:
         ld      a,(hl)
-        cp      NO_JOB
+        inc     a                       ; NO_JOB
         jr      z,jba_an
         inc     hl
         inc     hl
@@ -635,7 +662,7 @@ jbb_next:
         ret
 
 ; ---------------------------------------------------------------------------
-; jb_take — ο (jb_i) παίρνει την εργασία A. Χαλάει B.
+; jb_take — ο (jb_i) παίρνει την εργασία A. Χαλάει B, C, DE, HL.
 ; ---------------------------------------------------------------------------
 jb_take:
         ld      c,a                     ; C = j
@@ -647,6 +674,10 @@ jb_take:
         ld      h,0
         ld      de,G_job_tbl
         add     hl,de
+        ; Η ερώτηση εδώ, η απάντηση στο τέλος (βήμα 88): το CY
+        ; επιζεί, γιατί inc hl, ld, set/res και dec d δεν το αγγίζουν.
+        ld      a,(hl)
+        cp      J_SUPPLY                ; CY: όχι Supply
         inc     hl
         ld      b,(hl)                  ; B = κόμβος της εργασίας
         inc     hl
@@ -661,9 +692,14 @@ jb_take:
         dec     d                       ; AG_PG + 2
         ld      a,b
         ld      (de),a                  ; agent.dest = κόμβος
-        ret
+        ret     c
+        jp      sp_take                 ; μια Supply πάει πρώτα στην πηγή (βήμα 88)
 
-job_roles:  db #22,#05,#41,#81,#02,#08,#10
+; Ποιοι ρόλοι παίρνουν κάθε είδος, ένα bit ανά ρόλο (§6.1): εργάτης,
+; μηχανικός, βιολόγος, γιατρός, φρουρός, ρομπότ κατασκευής, μεταφοράς,
+; γεώτρησης. Η Supply (βήμα 88) είναι ΟΛΟΙ οι άποικοι και το ρομπότ
+; μεταφοράς, για μέταλλο και για βιοπλαστικό.
+job_roles:  db #22,#05,#41,#81,#02,#08,#10,#5F,#5F
 jb_ag:      db 0
 jb_d:       db 0
 jb_kind2:   db 0

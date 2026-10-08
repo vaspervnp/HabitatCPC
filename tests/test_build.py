@@ -9,8 +9,9 @@
      αναίρεσης είναι ο μόνος λόγος που ο κέρσορας δεν κοστίζει επανασχεδίαση,
      και ένα λάθος εκεί αφήνει σκουπίδια που δεν φεύγουν ποτέ.
   3. Ο έλεγχος θέσης λέει όχι πάνω σε θόλο και ναι σε ανοιχτό έδαφος.
-  4. Η τοποθέτηση γράφει εγγραφή, σφραγίζει τα tiles, δημοσιεύει εργασία Build
-     και πληρώνει.
+  4. Η τοποθέτηση γράφει εγγραφή, σφραγίζει τα tiles, πληρώνει, και το
+     εργοτάξιο χρωστά το κόστος του σε φορτία και δημοσιεύει εργασίες Supply
+     (βήμα 88· ως το 87, μία Build).
 """
 import os, subprocess, sys
 
@@ -526,19 +527,6 @@ def main():
     else:
         print("OK τα tiles έγιναν θεμέλιο και δεσμευμένα")
 
-    job_tbl = None
-    for line in open(os.path.join(ROOT, "build", "layout.asm"), encoding="utf-8"):
-        if line.startswith("G_job_tbl"):
-            job_tbl = int(line.split("#")[1].strip(), 16)
-    jobs = [(m4.peek(job_tbl + j * 5), m4.peek(job_tbl + j * 5 + 1))
-            for j in range(32)]
-    if (0, node) not in jobs:
-        print(f"ΑΠΟΤΥΧΙΑ: καμία εργασία Build για τον κόμβο {node}")
-        fails += 1
-    else:
-        print(f"OK δημοσιεύτηκε εργασία Build στον κόμβο {node} — το πρώτο "
-              f"είδος που δέχονται τα ρομπότ")
-
     # Το κέλυφος μόνο: 12, όχι 20 — οι μηχανές πληρώνονται στον εξοπλισμό.
     # ΚΑΙ ΟΙ ΔΙΑΔΡΟΜΟΙ ΤΟΥ (βήμα 85): ο θόλος δένεται με κάθε θόλο της
     # αποικίας που φτάνει διάδρομος ως 12 πλακιδίων, 6 μέταλλο το πλακίδιο, με
@@ -559,6 +547,27 @@ def main():
     else:
         print(f"OK πληρώθηκε: μέταλλο {fe0} -> {fe1} — το κέλυφος και "
               f"{len(res['corridors'])} διάδρομοι, {res['pieces']} πλακίδια")
+
+    # ΠΡΩΤΑ ΤΑ ΥΛΙΚΑ (βήμα 88, §6.9): ο θόλος χρωστά ό,τι πλήρωσε — το κέλυφος
+    # ΚΑΙ οι διάδρομοί του — σε φορτία των δέκα, στο D_POWER και στο D_OPS,
+    # και δημοσιεύει δύο Supply, μέταλλο και βιοπλαστικό. Η Build έρχεται όταν
+    # φτάσει το τελευταίο φορτίο (tests/test_supply.py). Ως το 87 εδώ έμπαινε
+    # κατευθείαν η Build — το πρώτο είδος που δεχόταν ρομπότ.
+    job_tbl = None
+    for line in open(os.path.join(ROOT, "build", "layout.asm"), encoding="utf-8"):
+        if line.startswith("G_job_tbl"):
+            job_tbl = int(line.split("#")[1].strip(), 16)
+    jobs = [(m4.peek(job_tbl + j * 5), m4.peek(job_tbl + j * 5 + 1))
+            for j in range(32)]
+    bio = 8 + reach.CORR_B * res["pieces"]
+    owed = [-(-cost // 10), -(-bio // 10)]
+    if (7, node) not in jobs or (8, node) not in jobs or (0, node) in jobs or rec[6:8] != owed:
+        print(f"ΑΠΟΤΥΧΙΑ: εργασίες του κόμβου {node}: {[j for j in jobs if j[1] == node]}, "
+              f"χρέη {rec[6:8]} — περίμενα δύο Supply, καμία Build, χρέη {owed}")
+        fails += 1
+    else:
+        print(f"OK το εργοτάξιο χρωστά {owed[0]} φορτία μετάλλου και {owed[1]} "
+              f"βιοπλαστικού ({cost}/{bio}) και δημοσίευσε δύο Supply, καμία Build")
 
     # --- 5. ΠΟΙΑ μηχανήματα, και με ποια ΣΕΙΡΑ (§6.5) --------------------
     # Η σειρά ήταν ως το βήμα 44 η σειρά του αυτόματου γεμίσματος: με την

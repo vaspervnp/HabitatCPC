@@ -69,6 +69,7 @@ ST_SIZE     equ 3
 ST_STATE    equ 4
 ST_INTEG    equ 5
 ST_JOINED   equ 6           ; airlock: έχει ήδη τον διάδρομό του (βήμα 87)
+ST_OWED     equ 7           ; εργοτάξιο: φορτία που χρωστιούνται, μέταλλο<<4 | βιοπλ. (βήμα 88)
 CORR_REC    equ 5
 C_A         equ 0
 C_B         equ 1
@@ -172,6 +173,10 @@ EC_METEOR   equ G_econ_state + 86       ; κρούσεις που μένουν (
 EC_MCX      equ G_econ_state + 87       ; το κέντρο της, σε tiles, προσημασμένα
 EC_MCY      equ G_econ_state + 88
 EC_MRND     equ G_econ_state + 89       ; η δική της γεννήτρια (16 bit)
+; Οι εργασίες Build στον πίνακα (βήμα 88): το NO ENGINEER του HUD ρωτά ένα byte
+; αντί να σαρώνει τον πίνακα σε κάθε τικ του. Μπαίνει με το sp_build, βγαίνει
+; όταν το κτίσμα τελειώσει (ja_build) — καμία Build δεν φεύγει αλλιώς.
+EC_NBUILD   equ G_econ_state + 91
 
 EC_CAP      equ 600                     ; ταβάνι αποθέματος
 
@@ -210,7 +215,12 @@ J_KIND      equ 0
 J_NODE      equ 1
 J_AGENT     equ 2
 J_PRIO      equ 3
-J_AGE       equ 4
+; ΤΟ ΠΕΜΠΤΟ BYTE ΕΙΝΑΙ Ο ΚΟΜΒΟΣ ΤΗΣ ΕΡΓΑΣΙΑΣ, και το J_NODE είναι πού πηγαίνει
+; ο πράκτορας της (βήμα 88). Για όλες τις εργασίες τα δύο είναι ίδια, εκτός
+; από το πρώτο σκέλος μιας Supply: τότε το J_NODE είναι η πηγή (το σκάφος, μια
+; αποθήκη) και το J_SITE το εργοτάξιο. Ως το 87 ήταν «ηλικία» και δεν το
+; διάβαζε κανείς.
+J_SITE      equ 4
 NO_JOB      equ 255
 J_BUILD     equ 0
 J_OPERATE   equ 1
@@ -219,6 +229,14 @@ J_DRILL     equ 3
 J_REPAIR    equ 4
 J_HEAL      equ 5
 J_DEFEND    equ 6
+J_SUPPLY    equ 7               ; μέταλλο· J_SUPPLY + 1 βιοπλαστικό (βήμα 88, src/supply.asm)
+; οι ρόλοι (§6.1) που χτίζουν: μηχανικός και ρομπότ κατασκευής
+RL_ENGINEER equ 1
+RL_CBOT     equ 5
+; Το ευρετήριο δωματίων (src/needs.asm): ως τόσοι θόλοι ανά είδος. Εδώ από το
+; βήμα 88, γιατί το διαβάζει και το src/supply.asm, που δεν έχει το needs.asm
+; σε κάθε harness.
+ROOM_MAX    equ 8
 
 ; --- ο γράφος κόμβων (§6.2). Εδώ επειδή τον γράφει και το build mode.
 MAX_DEGREE  equ 8

@@ -142,7 +142,7 @@ rtr_lp:
         include "../src/entity.asm"
         include "../src/econ.asm"
         include "../src/jobs.asm"
-        include "../src/jobpost.asm"
+        include "../src/supply.asm"         ; βήμα 88: η τροφοδοσία
         include "../src/stock.asm"
         include "../src/needs.asm"
         include "../src/ship.asm"

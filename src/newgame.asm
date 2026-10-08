@@ -25,8 +25,10 @@ NG_B6_LEN   equ G_corr_tbl + MAX_CORR * CORR_REC - G_agent_fields
 game_new:
         ; --- κάθε πίνακας στην τιμή που σημαίνει «άδειο», και αυτή ΔΕΝ είναι
         ; πάντα το μηδέν. Η οικονομία και ο γράφος: τράπεζα 2, πάντα ορατή.
+        ; ΟΛΗ, ως το EC_NBUILD (βήμα 88). Ως τότε 86 bytes: τα πέντε της βροχής
+        ; μετεωριτών (βήμα 38, +86..+90) έμεναν από την προηγούμενη παρτίδα.
         ld      hl,G_econ_state
-        ld      bc,85
+        ld      bc,EC_NBUILD - G_econ_state
         call    ng_zero
         ld      hl,NODE_DEG
         ld      bc,127

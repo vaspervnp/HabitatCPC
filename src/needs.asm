@@ -21,7 +21,7 @@
 NEED_LOW    equ 64
 NEED_CRIT   equ 16
 O2_REFILL   equ 2
-ROOM_MAX    equ 8       ; τα R_* είναι στο const.asm
+; Το ROOM_MAX και τα R_* είναι στο const.asm.
 
 ; Το ευρετήριο δωματίων: 12 μετρητές και 12 λίστες των ROOM_MAX, σε ΜΙΑ σελίδα
 ; (layout του tools/pack.py), οπότε κάθε δείκτης μέσα του είναι «add, ld l».

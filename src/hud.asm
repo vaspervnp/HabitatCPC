@@ -730,6 +730,12 @@ hud_alert:
         call    hd_short
         ld      hl,txt_nowater
         jr      c,hd_say
+        ; ΕΝΑ ΚΤΙΡΙΟ ΠΕΡΙΜΕΝΕΙ ΧΤΙΣΤΗ ΠΟΥ ΔΕΝ ΥΠΑΡΧΕΙ (βήμα 88): μόνο μηχανικός ή
+        ; ρομπότ κατασκευής χτίζει, και χωρίς αυτό ο παίκτης βλέπει ένα
+        ; εργοτάξιο που απλώς δεν προχωρά (src/supply.asm).
+        call    sp_noeng
+        ld      hl,txt_noeng
+        jr      c,hd_say
         ld      hl,txt_storm
         ld      a,(EC_STORM)
         or      a

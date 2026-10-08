@@ -240,6 +240,7 @@ def expect(R, before, r1):
     raw = b[2][ge:ge + EC.ECON_BYTES]
     e.meteor, e.mcx, e.mcy = raw[86], s8(raw[87]), s8(raw[88])
     e.mrnd = raw[89] | (raw[90] << 8)
+    e.nbuild = raw[91]                       # EC_NBUILD (βήμα 88)
     e.frame = raw[52] | (raw[53] << 8)
     e.flow_div = 255
     impact = e.meteor > 0
@@ -257,6 +258,7 @@ def expect(R, before, r1):
     b[2][ge + 86] = e.meteor
     b[2][ge + 87], b[2][ge + 88] = e.mcx & 255, e.mcy & 255
     b[2][ge + 89], b[2][ge + 90] = e.mrnd & 255, e.mrnd >> 8
+    b[2][ge + 91] = e.nbuild & 255
 
     def poke(name, v):
         a = sym[name]

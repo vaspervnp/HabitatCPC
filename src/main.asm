@@ -236,7 +236,6 @@ mla_pok:
         include "entity.asm"
         include "econ.asm"
         include "jobs.asm"
-        include "jobpost.asm"            ; κοινό με το build.asm (βήμα 38)
         include "stock.asm"              ; κοινό με το fit.asm (βήμα 46)
         include "needs.asm"
         include "ship.asm"
@@ -266,6 +265,7 @@ zz_page2_code:                          ; για το tools/mkdsk.py: πού φ�
         include "link.asm"              ; βήμα 85: κάθε κτίσμα δένεται με ένα κοντινό
         include "door.asm"              ; βήμα 87: ένα κτίσμα τελειώνει
         include "edges.asm"             ; βήμα 87: οι ακμές, για όλες τις εκδόσεις
+        include "supply.asm"            ; βήμα 88: πρώτα τα υλικά, μετά ο μηχανικός
         include "sound.asm"
         include "meteor.asm"            ; βήμα 38: ζει στον τροχό, σπάνια τρέχει
         include "objindex.asm"          ; βήμα 41: το χτίσιμο του ευρετηρίου

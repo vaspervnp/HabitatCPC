@@ -157,7 +157,7 @@ def fresh(g, nexthop, src):
               "sollen", "daylen", "prod_mask", "ship_state", "ship_kind",
               "ship_eta", "pop_cap", "pad_node", "milestones", "deaths_sol",
               "no_death_sols", "green_sols", "no_trade_sols", "traded",
-              "meteor", "mcx", "mcy", "mrnd"):
+              "meteor", "mcx", "mcy", "mrnd", "nbuild"):
         setattr(s.e, f, getattr(src.e, f))
     return s
 
@@ -440,6 +440,10 @@ def main():
 
     # --- η βροχή μετεωριτών (§6.10, src/meteor.asm) ---
     if meteors(sym, g, nexthop, sim0):
+        return 1
+
+    # --- πρώτα τα υλικά, μετά ο μηχανικός (βήμα 88, src/supply.asm) ---
+    if supply(sym, g, nexthop, sim0):
         return 1
 
     # --- κάθε ζαριά της θέσης 15, στημένη (βήμα 46) ---
@@ -1379,6 +1383,105 @@ def meteors(sym, g, nexthop, sim0):
 
 
 WH_RT_B = 15                    # src/wheel.asm, DESIGN §7.2
+
+SUPPLY_TICKS = 2400             # 150 περιστροφές: ταξίδια, παραδόσεις, χτίσιμο (2.173 με αποθήκη)
+SITES = ((12, 2, 1), (5, 0, 2), (9, 3, 0))      # θόλος, φορτία μετάλλου, βιοπλαστικού
+
+
+def supply_scene(g, nexthop, sim0, storage=True):
+    """Τρεις θόλοι της αποικίας ξαναγίνονται εργοτάξια που χρωστούν φορτία, με
+    τις εργασίες Supply τους, όπως τα αφήνει το sp_place. Οι χειριστές τους
+    σταματούν (το D_OPS είναι πια χρέος· στο παιχνίδι ένας θόλος δεν γυρίζει
+    ποτέ πίσω σε εργοτάξιο). Χωρίς αποθήκη, ο θόλος της γίνεται σαλόνι."""
+    st = fresh(g, nexthop, sim0)
+    for d, m, b in SITES:
+        r = d * EC.DOME_REC
+        st.e.dome[r + EC.D_STATE], st.e.dome[r + EC.D_INTEG] = EC.DS_BUILDING, 0
+        st.e.dome[r + EC.D_POWER], st.e.dome[r + EC.D_OPS] = m, b
+        for i in range(EC.MAXAGENT_J):
+            if st.a.node[i] == d:
+                st.a.flags[i] &= ~E.F_WORKING & 0xFF
+        if m:
+            EC.post_supply(st.e, d, EC.J_SUPPLY)
+        if b:
+            EC.post_supply(st.e, d, EC.J_SUPPLY + 1)
+    if not storage:
+        for d in range(EC.MAX_DOME):
+            if st.e.dome[d * EC.DOME_REC + EC.D_ROOM] == EC.R_STORAGE:
+                st.e.dome[d * EC.DOME_REC + EC.D_ROOM] = EC.R_LOUNGE
+    EC.rooms_rebuild(st.e, st.pc)
+    return st
+
+
+def supply(sym, g, nexthop, sim0):
+    """Η τροφοδοσία στον Z80 και στην αναφορά, byte προς byte, και τι έγινε.
+
+    Με αποθήκη: η πηγή είναι η αποθήκη (το σκάφος δεν υπάρχει σε αυτή την
+    αποικία, και ο γράφος της δεν φτάνει δομές). Χωρίς: κατευθείαν στο
+    εργοτάξιο. Και στα δύο: φορτία φεύγουν, τα χρέη πέφτουν στο μηδέν, η Build
+    έρχεται ΜΕΤΑ, και την παίρνει μόνο μηχανικός ή ρομπότ κατασκευής.
+    ΑΡΝΗΤΙΚΑ: ο Z80 χωρίς αποθήκες στην πηγή, και με το «κι άλλο ταξίδι» να
+    κλείνει την εργασία, ΠΡΕΠΕΙ να διαφωνήσει με την αναφορά.
+    """
+    for storage in (True, False):
+        what = "τροφοδοσία " + ("από αποθήκη" if storage else "χωρίς πηγή")
+        st = supply_scene(g, nexthop, sim0, storage)
+        if same(sym, g, nexthop, st, SUPPLY_TICKS, what) is None:
+            return 1
+        # ΤΙ ΕΓΙΝΕ, στην αναφορά — που μόλις βγήκε ίδια με τον Z80
+        walk = fresh(g, nexthop, st)
+        store = walk.e.room_list[EC.R_STORAGE * EC.ROOM_MAX] if storage else None
+        carried = at_store = 0
+        builders, early = set(), []
+        for _ in range(SUPPLY_TICKS):
+            walk.tick()
+            jb = walk.e.job
+            carried = max(carried, sum(1 for i in range(EC.MAXAGENT_J) if walk.a.spare[i]))
+            for j in range(EC.MAX_JOB):
+                b = j * EC.JOB_REC
+                k = jb[b + EC.J_KIND]
+                if k >= EC.J_SUPPLY and jb[b + EC.J_NODE] == store:
+                    at_store += 1
+                if k == EC.J_BUILD and jb[b + EC.J_AGENT] != 255:
+                    builders.add(walk.a.role[jb[b + EC.J_AGENT]])
+                if k == EC.J_BUILD:
+                    r = jb[b + EC.J_NODE] * EC.DOME_REC
+                    if walk.e.dome[r + EC.D_POWER] or walk.e.dome[r + EC.D_OPS]:
+                        early.append(jb[b + EC.J_NODE])
+        done = [d for d, _, _ in SITES
+                if walk.e.dome[d * EC.DOME_REC + EC.D_STATE] == EC.DS_ACTIVE]
+        owed = [walk.e.dome[d * EC.DOME_REC + EC.D_POWER] + walk.e.dome[d * EC.DOME_REC + EC.D_OPS]
+                for d, _, _ in SITES]
+        # χωρίς πηγή κανείς δεν φορτώνει: πηγαίνει κατευθείαν, με άδειο spare
+        if (bool(carried) != storage or bool(at_store) != storage
+                or early or not builders or builders - {E.ENGINEER, E.BOT_CONSTR}
+                or len(done) != len(SITES) or any(owed)):
+            print(f"ΑΠΟΤΥΧΙΑ {what}: ως {carried} κουβαλούσαν μαζί, {at_store} δείγματα "
+                  f"με πηγή την αποθήκη, Build πριν από τα υλικά {early[:3]}, χτίστες "
+                  f"ρόλων {sorted(builders)}, χτίστηκαν {done}, χρωστιούνται {owed}")
+            return 1
+        print(f"OK {what}: ως {carried} άποικοι κουβαλούσαν μαζί"
+              + (f", η αποθήκη πηγή σε {at_store} δείγματα" if storage else
+                 ", κανείς δεν πήγε σε πηγή ούτε φόρτωσε")
+              + f"; τα {len(SITES)} εργοτάξια πήραν όλα τους τα φορτία και μετά "
+              f"Build, μόνο από ρόλους {sorted(builders)}; ίδια bytes στον Z80")
+
+    # ΑΡΝΗΤΙΚΑ: ο Z80 αλλαγμένος, η αναφορά όχι
+    st = supply_scene(g, nexthop, sim0, True)
+    m = boot_only()
+    find = lambda at, pat, n=160: next((at + k for k in range(n)
+                                        if list(m.read_ram(at + k, len(pat))) == pat), None)
+    rn = sym["G_ROOM_N"] + EC.R_STORAGE
+    s_at = find(sym["SP_TAKE"], [0x3A, rn & 255, rn >> 8])          # ld a,(G_room_n + R_STORAGE)
+    c_at = find(sym["JA_SUPPLY"], [0x38], 6)                         # jr c,ja_fail
+    for label, patch in (("χωρίς αποθήκες στην πηγή", s_at and [(s_at, 0xAF), (s_at + 1, 0),
+                                                                (s_at + 2, 0)]),
+                         ("το «κι άλλο ταξίδι» κλείνει την εργασία", c_at and [(c_at, 0), (c_at + 1, 0)])):
+        if not patch or same(sym, g, nexthop, st, SUPPLY_TICKS, label, patch, quiet=True):
+            print(f"ΑΠΟΤΥΧΙΑ ΑΡΝΗΤΙΚΟ τροφοδοσίας: με «{label}» ο Z80 συμφώνησε")
+            return 1
+        print(f"OK ΑΡΝΗΤΙΚΟ τροφοδοσίας: με «{label}» ο Z80 διαφωνεί με την αναφορά")
+    return 0
 
 
 def boot_only():
