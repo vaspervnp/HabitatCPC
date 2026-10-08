@@ -97,10 +97,14 @@ p6_loop:
         ld      c,32
         call    blit_mask
 
-        ; --- πίσω στη βασική, και ένα εικονίδιο από τη σελίδα 2 ---
-        ld      bc,GA_PORT + PAGE_B1
+        ; --- πίσω στη βασική, και ένα εικονίδιο της τράπεζας 1. Ο δείκτης του
+        ; είναι στην 6 από το βήμα 90 (tools/pack.py, OB6): διαβάζεται ΠΡΙΝ
+        ; μπει η 1, όπως στο ob_icon.
+        ld      bc,GA_PORT + PAGE_B6
         out     (c),c
         ld      hl,(G_icon_m_ptr + 5*2) ; τύπος 5 = greenhouse
+        ld      bc,GA_PORT + PAGE_B1
+        out     (c),c
         ld      c,ICON_X
         ld      a,ICON_Y
         push    hl

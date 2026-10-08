@@ -139,6 +139,8 @@ ngp_n:
         set     7,l
         inc     h
         djnz    ngp_n
+        res     7,l
+        ld      (hl),SUIT_START         ; δέκα λεπτά αέρα στην αρχή (βήμα 90)
         inc     c
         ld      a,c
         cp      4

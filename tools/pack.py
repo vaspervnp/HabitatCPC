@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from sprites import load_map, load_bin, ROOT
 import buttons
 
-TEXT_MAX = 2100                 # = TEXT_MAX του src/uitext.asm (assert εκεί)
+TEXT_MAX = 2120                 # = TEXT_MAX του src/uitext.asm (assert εκεί)
 
 # --- γεωμετρία ------------------------------------------------------------
 PAGE2_BASE  = 0x8000                # τράπεζα 2: επίπεδη, πάντα ορατή
@@ -123,6 +123,11 @@ HUD_CELLS = (bytes(8)                      # #80 κενό
 # άποικος χάνεται στη σκόνη. Ένα pixel pen 0 κάτω-δεξιά από κάθε pixel της που
 # δεν σκεπάζει άλλο δικό της — η στήλη 3 και η γραμμή 7 του κελιού είναι
 # άδειες, οπότε η σκιά χωρά πάντα μέσα στα 4x8.
+# Οι πίνακες που διαβάζει ΜΟΝΟ το πέρασμα αντικειμένων, με την 6 μέσα: στην
+# τράπεζα 6 από το βήμα 90, με αυτή τη σειρά, σε μία σελίδα.
+OB6 = ("struct_ptr", "icon_s_ptr", "icon_m_ptr", "icon_l_ptr",
+       "corr_slots", "conn_points", "interior_ofs")
+
 FIG_NAMES = ["colonist", "biologist", "medic", "guard", "carrier", "driller",
              "engineer", "constructor"]                      # φιγούρα 1..8
 
@@ -267,8 +272,8 @@ def build_runs(smap, blob):
     # Τα m και l πάνε στην ΤΡΑΠΕΖΑ 1, πάνω από τον πίνακα DIST· τα s στην
     # ΤΡΑΠΕΖΑ 5 από το βήμα 87, πάνω από τις μηχανές — 864 bytes κώδικα για την
     # τράπεζα 2, όπως οι μηχανές στο 85. Το ob_icon (src/object.asm) διαλέγει
-    # τράπεζα κατά μέγεθος. Οι πίνακες δεικτών μένουν και οι τρεις στη 2 —
-    # διαβάζονται όσο το παράθυρο έχει την 6 μέσα, και η 2 φαίνεται πάντα.
+    # τράπεζα κατά μέγεθος. Οι πίνακες δεικτών διαβάζονται όσο το παράθυρο
+    # έχει την 6 μέσα: ως το βήμα 89 στη 2, από το 90 στην ίδια την 6 (OB6).
     for size in ("s", "m", "l"):
         names = [f"icon_{size}_{r}" for r in ROOMS]
         dest = bank5 if size == "s" else bank1
@@ -280,10 +285,14 @@ def build_runs(smap, blob):
     # ΣΤΗΝ ΤΡΑΠΕΖΑ 5 από το βήμα 85, πάνω από το ευρετήριο. Τις ζωγραφίζει μόνο
     # το πέρασμα αντικειμένων (om_prep, src/object.asm), που σελιδοποιεί ήδη
     # την 7 για τα φυτά του θερμοκηπίου στις ίδιες υποδοχές: τώρα σελιδοποιεί
-    # την 5 για τις μηχανές. Ο πίνακας δεικτών μένει στη 2.
+    # την 5 για τις μηχανές.
     for m in MACH:
         bank5.append(spr(f"mach_{m}"))
     ptr["mach_ptr"] = [f"mach_{m}" for m in MACH]
+    # Ο ΠΙΝΑΚΑΣ ΔΕΙΚΤΩΝ ΜΑΖΙ ΤΟΥΣ από το βήμα 90: το ob_mach_one τον διαβάζει
+    # ΑΦΟΥ το om_prep σελιδοποιήσει την 5 (τα φυτά έχουν τον δικό τους στην 7).
+    bank5.append(Run("mach_ptr", len(MACH) * 2, bytes(len(MACH) * 2),
+                     note="παράγεται", page=len(MACH) * 2))
 
     # --- διάδρομοι και συνδέσεις: στην τράπεζα 6 από το βήμα 89 (πιο κάτω) ---
     # Η ΓΡΑΜΜΑΤΟΣΕΙΡΑ ΕΦΥΓΕ ΑΠΟ ΕΔΩ ΣΤΟ ΒΗΜΑ 33 — δες την τράπεζα 7 πιο κάτω.
@@ -298,10 +307,9 @@ def build_runs(smap, blob):
     # ρητά: ο packer πηδά στην επόμενη σελίδα μόνο όταν χρειάζεται.
     flat = {"corr_fill", "plant_class", "machine_count", "machine_rules",
             "room_machines", "tile_variants"}
-    for n in ("corr_slots", "corr_fill", "plant_class", "machine_count",
+    for n in ("corr_fill", "plant_class", "machine_count",
               "machine_slots", "machine_rules", "room_machines",
-              "interior_ofs", "tile_variants",
-              "planet_pens", "conn_points", "struct_dims", "palette_fw"):
+              "tile_variants", "planet_pens", "struct_dims", "palette_fw"):
         r = spr(n)
         if n in flat:
             r.page = r.size
@@ -318,8 +326,10 @@ def build_runs(smap, blob):
     ptr["struct_ptr"] = sp
 
     # --- παραγόμενοι πίνακες δεικτών ---------------------------------------
+    # Οσοι διαβάζονται μόνο από το πέρασμα αντικειμένων ΕΦΥΓΑΝ από εδώ (βήμα
+    # 90): στην τράπεζα 6 ή στην 5, πιο κάτω (OB6, και το mach_ptr).
     for tab, names in ptr.items():
-        if tab != "plant_ptr":
+        if tab != "plant_ptr" and tab not in OB6 and tab != "mach_ptr":
             arena.append(Run(tab, len(names) * 2, bytes(len(names) * 2),
                              note="παράγεται",
                              page=len(names) * 2 if tab == "tile_ptr" else 0))
@@ -411,6 +421,19 @@ def build_runs(smap, blob):
     for n in ("corr_h", "corr_v", "corr_dr", "corr_dl"):
         bank6.append(spr(n))
     bank6.append(group("connectors", [f"conn_{d}" for d in DIRS]))   # dir*32
+    # ΟΙ ΠΙΝΑΚΕΣ ΤΟΥ ΠΕΡΑΣΜΑΤΟΣ ΑΝΤΙΚΕΙΜΕΝΩΝ, ΑΠΟ ΤΗΝ ΤΡΑΠΕΖΑ 2 (βήμα 90). Τους
+    # διαβάζει μόνο το src/object.asm, και πάντα με την 6 στο παράθυρο: ο δείκτης
+    # ενός εικονιδίου ή μιας δομής ΠΡΙΝ σελιδοποιηθεί η τράπεζα του sprite, οι
+    # θέσεις και οι πόρτες με τον θόλο. Τα 238 bytes τους γίνονται χώρος ΚΩΔΙΚΑ
+    # στη 2, για τις στολές. Σε ΜΙΑ σελίδα, κανένας πάνω σε όριο: το ob_addu
+    # πληρώνει το inc h όταν ένας πίνακας περνά σελίδα (βήμα 89, ob_index).
+    for n in OB6:
+        if n in ptr:
+            r = Run(n, len(ptr[n]) * 2, bytes(len(ptr[n]) * 2), note="παράγεται")
+        else:
+            r = spr(n)
+        r.page = r.size
+        bank6.append(r)
     # --- πίνακες οντοτήτων: δομή-από-πίνακες, σελιδοποιημένη (§6.1) ---
     # Το agent_fields ΠΡΕΠΕΙ σε σελίδα: η ανάγνωση πεδίου είναι `ld h,σελίδα /
     # ld l,id`, και χωρίς στοίχιση δεν υπάρχει τέτοια ανάγνωση. ΚΑΙ ΣΤΟ #6C00:

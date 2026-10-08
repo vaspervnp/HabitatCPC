@@ -21,6 +21,15 @@
      ΑΛΛΟΝ κόσμο, γιατί το seed βγαίνει από τον καταχωρητή R — και μετά L. Αυτό
      είναι η πραγματική χρήση, και μόνο εδώ αποδεικνύεται ότι το επίπεδο
      αντικαθίσταται ΟΛΟΚΛΗΡΟ: τα 16 KB διαφέρουν παντού πριν το φόρτωμα.
+  8. ΣΩΣΙΜΟ ΑΛΛΗΣ ΕΚΔΟΣΗΣ (βήμα 90): ένα σώσιμο με SV_VER - 1 απορρίπτεται
+     και δεν αγγίζει τίποτα· με το sv_hdr_ok πειραγμένο να δέχεται τα πάντα,
+     το ίδιο σώσιμο φορτώνεται — αυτό που το απέρριψε ήταν η έκδοση.
+  Και πριν από όλα, χωρίς εξομοιωτή: Η ΜΟΡΦΗ ΑΝΑ ΕΚΔΟΣΗ. Οι θέσεις των πινάκων
+  μέσα στα δύο μπλοκ που σώζονται, γραμμένες εδώ για κάθε SV_VER. Το βήμα 89
+  μετακίνησε την οικονομία μέσα στο μπλοκ της τράπεζας 2 (από το byte 0 στο
+  109) χωρίς νέα έκδοση, και ένα σώσιμο του 88 θα φόρτωνε σιωπηλά λάθος
+  αποθέματα· με αυτόν τον έλεγχο θα αποτύγχανε (η έκδοση 3 πιο κάτω είναι
+  του 88).
 """
 import os, subprocess, sys
 
@@ -71,6 +80,34 @@ def build():
 
 STATE = None
 
+# Η ΜΟΡΦΗ ΑΝΑ ΕΚΔΟΣΗ (§11): οι πίνακες μέσα στο μπλοκ της τράπεζας 2 (θέση από
+# την αρχή του) και στο μπλοκ της τράπεζας 6 (διεύθυνση). Οποιος μετακινεί
+# έναν, γράφει νέο SV_VER και νέα γραμμή εδώ.
+FORMAT = {
+    3: ({"G_econ_state": 0, "G_job_tbl": 92, "G_room_n": 256, "G_room_list": 268,
+         "G_rt_nodes": 512, "G_rt_row": 768, "G_node_adj": 1024},           # βήμα 88
+        {"G_agent_fields": 0x6C00, "G_node_occ": 0x7400, "G_dome_tbl": 0x7500,
+         "G_struct_tbl": 0x7B00, "G_corr_tbl": 0x7C00, "G_worldinfo": 0x7DE0}),
+    4: ({"G_mach_op": 91, "G_econ_state": 103, "G_job_tbl": 195, "G_room_n": 355,
+         "G_room_list": 367, "G_rt_nodes": 512, "G_rt_row": 768, "G_node_adj": 1024},
+        {"G_agent_fields": 0x6C00, "G_node_occ": 0x7400, "G_dome_tbl": 0x7500,
+         "G_struct_tbl": 0x7B00, "G_corr_tbl": 0x7C00, "G_worldinfo": 0x7DE0}),
+}
+
+
+def save_format():
+    """Οι πίνακες της διάταξης μέσα στα δύο μπλοκ, όπως τους έχει το build."""
+    L = {}
+    for line in open(os.path.join(ROOT, "build", "layout.asm"), encoding="utf-8"):
+        p = line.split()
+        if len(p) >= 3 and p[1] == "equ" and p[2].startswith("#"):
+            L[p[0]] = int(p[2][1:], 16)
+    st = L["G_hud_shadow"] - 0x800
+    b2 = {n: a - st for n, a in L.items()
+          if st <= a < st + 0x800 and n.startswith("G_")}
+    b6 = {n: L[n] for n in FORMAT[max(FORMAT)][1]}
+    return b2, b6
+
 
 def main():
     sym, g = build()
@@ -94,6 +131,15 @@ def main():
     else:
         sys.exit("το παιχνίδι δεν ξεκίνησε από τον δίσκο")
     m.run_frames(200)
+
+    # --- η μορφή ανά έκδοση ------------------------------------------------
+    ver = m.peek(sym["SV_MAGIC"] + 4)
+    have = save_format()
+    check(ver in FORMAT and have == FORMAT[ver],
+          f"η μορφή της έκδοσης {ver} είναι αυτή που γράφει το FORMAT"
+          + ("" if ver in FORMAT and have == FORMAT[ver] else
+             f" — ΟΧΙ: {have}, ενώ η έκδοση {ver} λέει {FORMAT.get(ver)}. "
+             f"Πίνακας που σώζεται μετακινήθηκε: νέο SV_VER στο src/save.asm"))
 
     def freeze(on):
         for i in range(16):
@@ -364,6 +410,32 @@ def main():
     disc_op("L", 1)
     check("NOTHING IN SLOT 2" in LAST_MSG,
           f"η άδεια θέση το λέει με λόγια, όχι «DISC ERROR»: |{LAST_MSG}|")
+
+    # --- 8. σώσιμο άλλης έκδοσης -----------------------------------------
+    # Η εικόνα της προηγούμενης έκδοσης: το sv_magic με SV_VER - 1, σώσιμο
+    # στη δεύτερη θέση (άδεια ως εδώ), το sv_magic πίσω, φόρτωμα.
+    mg = sym["SV_MAGIC"]
+    mine = bytes(m.read_ram(mg, 5))
+    m.write_ram(mg, b"HBT" + bytes([ord("0") + ver - 1, ver - 1]))
+    disc_op("S", 1)
+    m.write_ram(mg, mine)
+    freeze(True)
+    m.run_frames(4)
+    j_econ, j_plane, _ = snap()
+    disc_op("L", 1)
+    m.run_frames(120)
+    k_econ, k_plane, _ = snap()
+    check("NOTHING IN SLOT 2" in LAST_MSG and k_econ == j_econ and k_plane == j_plane,
+          f"ένα σώσιμο της έκδοσης {ver - 1} απορρίπτεται και δεν αγγίζει τίποτα: "
+          f"|{LAST_MSG}|, {sum(1 for x, y in zip(k_econ, j_econ) if x != y)} bytes")
+    # ΑΡΝΗΤΙΚΟ: το sv_hdr_ok χωρίς τη σύγκριση (jr nz,svo_bad -> nop nop)
+    # δέχεται το ίδιο σώσιμο: αυτό που το απέρριψε ήταν η έκδοση.
+    hk = next(sym["SV_HDR_OK"] + k for k in range(16)
+              if list(m.read_ram(sym["SV_HDR_OK"] + k, 2)) == [0xBE, 0x20])
+    m.write_ram(hk + 1, b"\x00\x00")
+    disc_op("L", 1)
+    check("LOADED FROM SLOT 2" in LAST_MSG,
+          f"ΑΡΝΗΤΙΚΟ: με το sv_hdr_ok να δέχεται τα πάντα, το ίδιο σώσιμο φορτώνεται: |{LAST_MSG}|")
 
     m.screenshot(os.path.join(ROOT, "build", "save.png"), aspect=True)
     if FAIL:

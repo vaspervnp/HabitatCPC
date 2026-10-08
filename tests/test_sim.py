@@ -806,6 +806,132 @@ def o2_branches(sym, g, nexthop, sim0):
           f"με οξυγόνο που φτάνει και σε έλλειμμα — ίδια bytes στον Z80 και "
           f"στην αναφορά. ΑΡΝΗΤΙΚΑ: χωρίς το «ήταν 0» του nd_ok και χωρίς το "
           f"«έξω» του nd_def διαφέρουν")
+    return suit_branches(sym)
+
+
+# --- οι στολές (βήμα 90, src/suit.asm) ----------------------------------------
+# (στολή, φάση, ρόλος ή None, εργασία ή None): η τελευταία μονάδα και στις δύο
+# φάσεις, γύρω από το SUIT_LOW, ρομπότ με άδεια στολή, και κάποιος που πάει ήδη
+# μέσα (T_NEED) με λίγο αέρα.
+SUIT_CASES = [(1, 0, None, None), (1, 1, None, None), (EC.SUIT_LOW + 1, 1, None, None),
+              (EC.SUIT_LOW + 2, 1, None, None), (EC.SUIT_LOW, 0, None, None),
+              (200, 0, None, None), (1, 1, 5, None), (2, 1, 7, None),
+              (EC.SUIT_LOW - 3, 0, None, E.T_NEED), (EC.SUIT_LOW + 1, 1, None, None)]
+SUIT_LOCKS = (64, 66, 69)           # airlock, κρεμασμένα σε θόλους
+SUIT_OUT = (65, 67, 68, 70, 71, 90, 91)     # δομές έξω· 90-91 δεν φτάνουν πουθενά
+SUIT_TICKS = 640
+
+
+def suit_graph():
+    """Ο γράφος της αποικίας με δομές (64-71) σε θόλους, μία πίσω από το
+    airlock 64 και μία πίσω από το 66, και ένα ζευγάρι 90-91 μόνο του."""
+    g = G.GRAPHS["colony"]()
+    g.n = g.hw = 93
+    for k, s in enumerate(range(64, 72)):
+        if s not in (65, 67):
+            g.link(k * 5 % 48, s)
+    g.link(64, 65)
+    g.link(66, 67)
+    g.link(90, 91)
+    return g
+
+
+def suit_scene():
+    """Οι πρώτοι ζωντανοί στις δομές έξω (και σε δύο airlock μέσα, με
+    προορισμό δομή έξω: φεύγουν, και το emd_put τους γεμίζει τη στολή), με
+    τις SUIT_CASES κυκλικά."""
+    g = suit_graph()
+    dist, nexthop = G.all_pairs(g)
+    st = E.Sim(g, nexthop, dist)
+    EC.populate(st.e)
+    E.populate(st)
+    for n in SUIT_LOCKS + SUIT_OUT:
+        b = (n - EC.MAX_DOME) * EC.STRUCT_REC
+        st.e.struct[b:b + 8] = bytes([0, 0, EC.K_AIRLOCK if n in SUIT_LOCKS else 0, 0,
+                                      EC.DS_ACTIVE, 255, 0, 0])
+    EC.rooms_rebuild(st.e, st.pc)
+    a = st.a
+    alive = [i for i in range(E.MAX_COLONIST)
+             if a.flags[i] & E.F_ALIVE]
+    for k, i in enumerate(alive[:48]):
+        E.release(st.occ, a.node[i], a.slot[i])
+        if k % 8 == 7:                      # μέσα, σε airlock, και φεύγει έξω
+            n = SUIT_LOCKS[k % 3]
+            a.node[i], a.dest[i] = n, SUIT_OUT[k % 5]
+            a.flags[i] = (a.flags[i] | E.F_INDOORS) & ~E.F_WORKING & 0xFF
+            a.suit[i] = 3
+        else:
+            n = SUIT_OUT[k % len(SUIT_OUT)]
+            a.node[i] = a.dest[i] = n
+            a.flags[i] &= ~(E.F_INDOORS | E.F_WORKING | E.F_SUITPH) & 0xFF
+            suit, ph, role, task = SUIT_CASES[k % len(SUIT_CASES)]
+            a.suit[i] = suit
+            a.flags[i] |= E.F_SUITPH if ph else 0
+            if role is not None:
+                a.role[i] = role
+            if task is not None:
+                a.task[i] = task
+                a.dest[i] = SUIT_LOCKS[0]
+        a.slot[i] = E.claim(st.occ, n)
+        a.edge[i] = E.NO_EDGE
+        a.progress[i] = 0
+        # οι ανάγκες ψηλά: εδώ μετρά μόνο η στολή
+        a.water[i] = a.food[i] = a.sleep[i] = a.health[i] = 220
+    return g, nexthop, st
+
+
+def suit_branches(sym):
+    """ΟΙ ΣΤΟΛΕΣ, byte προς byte. Και τι έγινε, στην αναφορά: πέθαναν ΜΟΝΟ όσοι
+    είχαν μία μονάδα (και άνθρωποι), όσοι έπεσαν στο SUIT_LOW πήγαν σε airlock
+    και μπήκαν, κανείς από το 90-91 (κανένα airlock δεν φτάνεται), τα ρομπότ
+    ανέγγιχτα, και όποιος βγήκε από airlock βγήκε με SUIT_TRIP. ΑΡΝΗΤΙΚΑ: ο
+    Z80 με τη στολή να αδειάζει σε κάθε επίσκεψη, χωρίς airlock, με το
+    T_NEED να σβήνει και έξω, και χωρίς γέμισμα στην έξοδο."""
+    g, nexthop, st = suit_scene()
+    end = same(sym, g, nexthop, st, SUIT_TICKS, "στολές")
+    if end is None:
+        return 1
+    a0, a1 = st.a, end.a
+    out = [i for i in range(96) if a0.flags[i] & 3 == E.F_ALIVE and a0.node[i] in SUIT_OUT]
+    died = [i for i in out if not a1.flags[i] & E.F_ALIVE]
+    bots = [i for i in out if a0.role[i] >= E.BOT_CONSTR]
+    went = [i for i in out if a1.flags[i] & E.F_ALIVE and a1.node[i] in SUIT_LOCKS
+            and a1.flags[i] & E.F_INDOORS]
+    left = [i for i in range(96) if a0.flags[i] & 3 == 3 and a0.node[i] in SUIT_LOCKS
+            and a0.dest[i] in SUIT_OUT]
+    why = []
+    if any(a0.suit[i] > 2 or a0.role[i] >= E.BOT_CONSTR for i in died):
+        why.append(f"πέθαναν και άλλοι: {[(i, a0.suit[i], a0.role[i]) for i in died]}")
+    if any(a1.suit[i] != a0.suit[i] or not a1.flags[i] & 1 for i in bots):
+        why.append("τα ρομπότ άλλαξαν")
+    if not went or any(a0.node[i] in (90, 91) for i in went):
+        why.append(f"μπήκαν σε airlock {went}")
+    gone = [i for i in left if a1.flags[i] & 3 == E.F_ALIVE]       # βγήκαν (από θόλο ίσως όχι ακόμη)
+    if not gone or not all(a1.suit[i] >= EC.SUIT_TRIP - 6 for i in gone):
+        why.append(f"όσοι βγήκαν: {[(a1.flags[i], a1.node[i], a1.suit[i]) for i in left]}")
+    if why:
+        print("ΑΠΟΤΥΧΙΑ στολές: " + "· ".join(why))
+        return 1
+    # ΑΡΝΗΤΙΚΑ
+    m = boot_only()
+    find = lambda at, pat, n=96: next((at + k for k in range(n)
+                                       if list(m.read_ram(at + k, len(pat))) == pat), None)
+    ph = find(sym["SU_TICK"], [0xCB, 0x76, 0x20], 40)          # bit 6,(hl) · jr nz
+    lk = find(sym["SU_TICK"], [0xCD, sym["SU_LOCK"] & 255, sym["SU_LOCK"] >> 8], 96)
+    sd = find(sym["ND_SATED"], [0xCB, 0x4E, 0xC8], 24)
+    fill = find(sym["EMD_PUT"], [0x26, (sym["G_AGENT_FIELDS"] >> 8) + 7, 0x36, EC.SUIT_TRIP], 16)
+    for label, patch in (("η στολή αδειάζει σε κάθε επίσκεψη", ph and [(ph + 2, 0x18)]),   # jr: πάντα
+                         ("κανένα airlock", lk and [(lk, 0x3E), (lk + 1, 0xFF), (lk + 2, 0)]),
+                         ("το T_NEED σβήνει και έξω", sd and [(sd + 2, 0)]),
+                         ("χωρίς γέμισμα στην έξοδο", fill and [(fill + k, 0) for k in range(4)])):
+        if not patch or same(sym, g, nexthop, st, SUIT_TICKS, label, patch, quiet=True):
+            print(f"ΑΠΟΤΥΧΙΑ ΑΡΝΗΤΙΚΟ στολών: με «{label}» ο Z80 συμφώνησε (ή δεν βρέθηκε)")
+            return 1
+    print(f"OK στολές: {len(out)} έξω σε {len(SUIT_CASES)} περιπτώσεις — {len(died)} πέθαναν "
+          f"(μόνο με μία μονάδα), {len(went)} γύρισαν σε airlock και μπήκαν, κανείς από "
+          f"το 90-91, {len(bots)} ρομπότ ανέγγιχτα, {len(gone)} βγήκαν με γεμάτη στολή — "
+          f"ίδια bytes στον Z80 και στην αναφορά. ΑΡΝΗΤΙΚΑ: κάθε επίσκεψη, κανένα "
+          f"airlock, T_NEED που σβήνει έξω, χωρίς γέμισμα — διαφέρουν")
     return 0
 
 
@@ -1191,7 +1317,11 @@ LONG_N = 120                # κρούσεις της μακριάς βροχή�
 def slot15(sim, n):
     """Η θέση 15 της αναφοράς, n φορές — ό,τι κάνει ο καρφωμένος τροχός."""
     for _ in range(n):
-        if EC.events(sim.e):
+        new_sol = EC.events(sim.e)
+        if sim.e.air_out != 255:                # βήμα 90: ένα airlock χτυπήθηκε
+            E.air_out(sim.a, sim.e.air_out)
+            sim.e.air_out = 255
+        if new_sol:
             EC.sol_rollover(sim.e, sim.a, E.F_ALIVE, E.F_WORKING, E.NEED_LOW)
         EC.ship_tick(sim.e, sim.a, sim.e.pad_node, E.F_ALIVE, sim.occ)
 

@@ -253,7 +253,9 @@ AG_PROG     equ G_agent_fields + 768         ; +0 progress +128 task
 AG_O2       equ G_agent_fields + 1024        ; +0 o2      +128 water
 AG_FOOD     equ G_agent_fields + 1280        ; +0 food    +128 sleep
 AG_HEALTH   equ G_agent_fields + 1536        ; +0 health  +128 morale
-AG_SKILL    equ G_agent_fields + 1792        ; +0 skill   +128 spare
+AG_SUIT     equ G_agent_fields + 1792        ; +0 suit    +128 spare (βήμα 90: ως τότε skill, που δεν το διάβασε ποτέ κανείς)
+; «Πάω για ανάγκη» στο πεδίο της εργασίας: όχι δείκτης εργασίας (src/needs.asm).
+T_NEED      equ 254
 OCCPG       equ G_node_occ >> 8
 
 ; --- η ελεύθερη τράπεζα 2, μοιρασμένη (§4.3).

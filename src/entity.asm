@@ -25,6 +25,7 @@ F_INDOORS   equ 2
 F_ASLEEP    equ 4
 F_SICK      equ 8
 F_IDLE      equ 16
+; 32 = F_WORKING (src/jobs.asm), 64 = F_SUITPH (src/suit.asm, βήμα 90)
 
 NO_EDGE     equ 255
 NO_SLOT     equ 255
@@ -282,6 +283,8 @@ emd_put:
         ld      l,a
         ld      h,AG_PG
         res     1,(hl)                  ; F_INDOORS: βγαίνει
+        ld      h,AG_PG + 7
+        ld      (hl),SUIT_TRIP          ; με γεμάτη στολή, πάντα (βήμα 90)
         jp      ems_mark
 
 ; fg_mark — L = πράκτορας (το bit 7 δεν μετρά): η φιγούρα του έξω ίσως άλλαξε

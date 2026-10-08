@@ -175,6 +175,14 @@ mth_struct:
         ld      (hl),DS_BUILDING        ; ξανά εργοτάξιο
         ld      a,1
         ld      (ec_fdiv),a             ; το ισοζύγιο ξαναμετρά (όπως το ja_build)
+        ; Ενα airlock χωρίς αέρα: όσοι στέκονταν μέσα του είναι πια έξω, με
+        ; στολή (βήμα 90· το §6.2 το άφηνε για όταν θα έρθουν οι στολές).
+        dec     hl
+        dec     hl                      ; ST_KIND
+        ld      a,(hl)
+        cp      K_AIRLOCK
+        ld      a,c
+        call    z,lk_air_out            ; src/door.asm· κρατά το C
         ld      a,c
         jp      sp_build                ; και κάποιος έρχεται να το ξαναχτίσει (src/supply.asm)
 

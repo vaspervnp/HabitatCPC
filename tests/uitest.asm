@@ -233,6 +233,9 @@ goto_st:    db 0
         include "../src/input.asm"
         include "../src/build.asm"
         include "../src/supply.asm"         ; βήμα 88: το bd_link και το HUD το καλούν
+        include "../src/suit.asm"           ; βήμα 90: το su_hud του HUD
+nd_load:                                ; το su_tick γυρίζει εκεί (src/needs.asm),
+nd_die: ret                             ; και εδώ δεν το καλεί κανείς
         include "../src/stock.asm"
         include "../src/terrain.asm"
         include "../src/graph.asm"

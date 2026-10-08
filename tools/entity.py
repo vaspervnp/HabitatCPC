@@ -40,10 +40,11 @@ FILL = [0, 4, 2, 6, 1, 5, 3, 7]
 # πεδία, με τη σειρά που κάθονται στη μνήμη· το i-οστό στη σελίδα i//2,
 # μετατόπιση (i%2)*128
 FIELDS = ["flags", "role", "node", "slot", "dest", "edge", "progress", "task",
-          "o2", "water", "food", "sleep", "health", "morale", "skill", "spare"]
+          "o2", "water", "food", "sleep", "health", "morale", "suit", "spare"]
 
 F_ALIVE, F_INDOORS, F_ASLEEP, F_SICK, F_IDLE = 1, 2, 4, 8, 16
 F_WORKING = 32              # στέκεται στη θέση εργασίας και μετράει ως χειριστής
+F_SUITPH = 64               # 1: η επόμενη επίσκεψη έξω παίρνει μονάδα στολής (βήμα 90)
 
 # ρόλοι (§6.1) και ταχύτητα ανά βήμα κίνησης. Τα ρομπότ είναι γρηγορότερα.
 WORKER, ENGINEER, BIOLOGIST, MEDIC, GUARD, BOT_CONSTR, BOT_CARRY, BOT_DRILL = range(8)
@@ -157,6 +158,8 @@ def move_one(a, i, g, nexthop, occ, e=None):
             if a.flags[i] & F_INDOORS:
                 set_in(a, i, not (x >= EC.MAX_DOME and nh >= EC.MAX_DOME)
                        and EC.indoor_node(e, nh))
+                if not a.flags[i] & F_INDOORS:
+                    a.suit[i] = EC.SUIT_TRIP        # βγαίνει με γεμάτη στολή (βήμα 90)
             return
     # το NEXTHOP δείχνει γείτονα που δεν υπάρχει στη λίστα: ο πίνακας είναι
     # μπαγιάτικος ΚΑΙ λάθος. Δεν συμβαίνει· αν συμβεί, δεν κουνιέται.
@@ -207,6 +210,23 @@ def needs_slice(a, e, occ, first, count):
 
 def need_one(a, e, occ, i):
     inside = a.flags[i] & F_INDOORS
+    # 0. ΕΞΩ, Η ΣΤΟΛΗ (βήμα 90, src/suit.asm): αδειάζει μία μονάδα κάθε δεύτερη
+    #    επίσκεψη, και όταν αδειάσει ο άποικος πεθαίνει αμέσως. Με ένα λεπτό
+    #    αέρα αφήνει τη δουλειά και πάει στο κοντινότερο airlock — το κοιτά
+    #    μόνο στην επίσκεψη που αδειάζει η στολή. Τα ρομπότ δεν αναπνέουν (το
+    #    bit της φάσης γυρίζει και σε αυτά: η μισή επίσκεψη δεν κοιτά ρόλο).
+    if not inside:
+        a.flags[i] ^= F_SUITPH
+        if not a.flags[i] & F_SUITPH and a.role[i] < BOT_CONSTR:
+            a.suit[i] = (a.suit[i] - 1) & 0xFF
+            if a.suit[i] == 0:
+                die(a, e, occ, i)
+                return
+            if a.suit[i] <= EC.SUIT_LOW and a.task[i] != T_NEED:
+                n = EC.nearest_airlock(e, a.node[i])
+                if n != 255:
+                    a.dest[i] = n
+                    a.task[i] = T_NEED
     # 1. φθορά. Το οξυγόνο μόνο μέσα (βήμα 87): έξω αναπνέει από τη στολή, και
     #    ως το βήμα 89 η στολή δεν αδειάζει.
     for f, r in zip(NEED_FIELDS, NEED_RATE):
@@ -219,8 +239,10 @@ def need_one(a, e, occ, i):
     if e.o2_ok and inside:
         a.o2[i] = min(255, a.o2[i] + O2_REFILL)
 
-    # 3. αν στέκεται στο σωστό δωμάτιο, το παίρνει
-    if a.edge[i] == NO_EDGE and a.node[i] < EC.MAX_DOME:
+    # 3. αν στέκεται στο σωστό δωμάτιο, το παίρνει — ΜΟΝΟ ΜΕΣΑ (βήμα 90). Εξω
+    #    στέκεται σε θόλο μόνο αν ο θόλος είναι εργοτάξιο, και ως το βήμα 89 ο
+    #    χτίστης κοιμόταν σε εργοτάξιο κοιτώνα και έτρωγε σε εργοτάξιο κυλικείου.
+    if inside and a.edge[i] == NO_EDGE and a.node[i] < EC.MAX_DOME:
         satisfy(a, e, i, a.node[i])
 
     # 4. υγεία
@@ -314,7 +336,10 @@ def seek(a, e, i):
     elif a.sleep[i] < NEED_LOW:
         room = EC.R_QUARTERS
     else:
-        if a.task[i] == T_NEED:             # χορτάτος: ξαναγίνεται διαθέσιμος
+        # Χορτάτος: ξαναγίνεται διαθέσιμος — μέσα. Εξω το T_NEED τον πηγαίνει
+        # μέσα (η στολή), και αν το έσβηνε ο πίνακας εργασιών θα τον ξανάστελνε
+        # στη δουλειά, η στολή πίσω, ως να αδειάσει (βήμα 90).
+        if a.task[i] == T_NEED and a.flags[i] & F_INDOORS:
             a.task[i] = NO_TASK
         return
     # Ηδη πάει (ή είναι) σε τέτοιο δωμάτιο; Τότε τίποτα. Χωρίς αυτόν τον
@@ -390,11 +415,24 @@ class Sim:
         elif s == 13:
             EC.jobs_tick(self.e, self.a, F_ALIVE, F_WORKING)
         elif s == 15:
-            if EC.events(self.e):
+            new_sol = EC.events(self.e)
+            if self.e.air_out != 255:
+                air_out(self.a, self.e.air_out)
+                self.e.air_out = 255
+            if new_sol:
                 EC.sol_rollover(self.e, self.a, F_ALIVE, F_WORKING, NEED_LOW)
             EC.ship_tick(self.e, self.a, self.e.pad_node, F_ALIVE, self.occ)
         # 13 πίνακας εργασιών, 14 ελεύθερη — δεν έχουν γραφτεί, ούτε εδώ ούτε
         # στον Z80.
+
+
+def air_out(a, n):
+    """Το lk_air_out (src/door.asm, βήμα 90): ένα airlock ξανάγινε εργοτάξιο,
+    και όσοι στέκονταν μέσα του είναι έξω, με γεμάτη στολή."""
+    for k in range(MAXAGENT):
+        if a.node[k] == n and a.edge[k] == NO_EDGE and a.flags[k] & F_ALIVE:
+            a.flags[k] &= ~F_INDOORS & 0xFF
+            a.suit[k] = EC.SUIT_TRIP
 
 
 def populate(sim, n_agents=96, seed=7):
@@ -433,6 +471,7 @@ def populate(sim, n_agents=96, seed=7):
             a.sleep[i] = 30
         a.health[i] = 200
         a.morale[i] = 150
+        a.suit[i] = EC.SUIT_TRIP
         # Εξι άποικοι μπαίνουν ετοιμοθάνατοι. Χωρίς αυτούς η διαδρομή του
         # θανάτου — θέση, δουλειά, χειριστής, πένθος — δεν εκτελείται ποτέ
         # μέσα στη διάρκεια της δοκιμής.

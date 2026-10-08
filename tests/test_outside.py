@@ -272,7 +272,8 @@ def main():
              for k, v in enumerate(w(sym["CR_LINK"]))]),
            # en_in: cp K_AIRLOCK γίνεται cp 255
            ("το airlock δεν έχει αέρα", [(find(m, sym["EN_IN"], [0xFE, K_AIRLOCK], 40) + 1, 255)]),
-           # nd_def: rr e · jr nc,nd_d2 — το jr γίνεται nop nop
+           # nd_def: rr e · jr nc,nd_out (ως το βήμα 89 nd_d2) — το jr
+           # γίνεται nop nop
            ("έξω αναπνέουν", [(find(m, sym["ND_DEF"], [0xCB, 0x1B, 0x30], 16) + 2 + k, 0)
                               for k in range(2)]),
            # ef_o2: ld l,e γίνεται ld l,c — η ζήτηση από όλους τους ζωντανούς

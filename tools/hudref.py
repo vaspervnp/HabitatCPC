@@ -151,6 +151,8 @@ class Hud:
             return "NO POWER           "
         if not e["o2ok"]:
             return "NO OXYGEN          "
+        if e.get("suit"):                  # κάποιος έξω με < 1 λεπτό αέρα (βήμα 90)
+            return "SUIT AIR LOW       "
         if e["pok"] == P_ESS:
             return "LOW POWER          "
         if e.get("meteor"):

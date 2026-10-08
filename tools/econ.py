@@ -187,6 +187,7 @@ class Econ:
         self.green_sols = 0
         self.no_trade_sols = 0
         self.traded = 0
+        self.air_out = 255          # airlock που ξανάγινε εργοτάξιο (βήμα 90)
         self.dist = None            # ο πίνακας αποστάσεων, δίνεται απ' έξω
 
 
@@ -592,6 +593,10 @@ def _impact(e):
         rec[base + ST_STATE] = DS_BUILDING  # ξανά εργοτάξιο
         rec[base + ST_INTEG] = 0
         e.flow_div = 1
+        # Ενα airlock χωρίς αέρα: όσοι στέκονταν μέσα του βγαίνουν (βήμα 90,
+        # lk_air_out). Οι πράκτορες δεν είναι εδώ: το κάνει το Sim.tick.
+        if rec[base + ST_KIND] == K_AIRLOCK:
+            e.air_out = n
         post_build(e, n)
 
 
@@ -1081,6 +1086,27 @@ def rooms_rebuild(e, plant_class=None):
             break
 
 
+# --- οι στολές (βήμα 90, src/suit.asm) -------------------------------------
+# Μία μονάδα = δύο επισκέψεις αναγκών = 128 frames.
+SUIT_START = 234            # 10 λεπτά: οι τέσσερις του σκάφους
+SUIT_TRIP = 70              # 3 λεπτά, σε κάθε έξοδο
+SUIT_LOW = 23               # 1 λεπτό: γυρίζει στο airlock
+
+
+def nearest_airlock(e, node):
+    """Το su_lock: το κοντινότερο έτοιμο airlock στον γράφο, ή 255.
+    Ισοπαλία: η πρώτη δομή."""
+    best, best_d = 255, 255
+    for s in range(MAX_STRUCT):
+        b = s * STRUCT_REC
+        if e.struct[b + ST_KIND] != K_AIRLOCK or e.struct[b + ST_STATE] != DS_ACTIVE:
+            continue
+        d = e.dist[node * 128 + MAX_DOME + s]
+        if d < best_d:
+            best, best_d = MAX_DOME + s, d
+    return best
+
+
 def nearest_room(e, room, node):
     """Ο κοντινότερος θόλος αυτού του είδους, ή 255. Ισοπαλία: μικρότερο id."""
     best, best_d = 255, 255
@@ -1185,6 +1211,8 @@ def land_colonists(e, a, node, F_ALIVE, occ):
         a.sleep[i] = 200
         a.health[i] = 200
         a.morale[i] = 160
+        a.suit[i] = SUIT_TRIP               # κατεβαίνει έξω, με στολή (βήμα 90)
+        a.spare[i] = 0
         n += 1
     e.alive += n
     return n
