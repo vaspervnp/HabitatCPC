@@ -191,7 +191,9 @@ def run(sym, a, patch=(), quick=False):
                 G.ship(ctl, pad, busy)
                 G.tap("T")
                 ok = ctl and pad != 255 and not busy
-                exp = B.want_group("transport", lit={"airlock"}, red=() if ok else {"ship"})
+                # ο έμπορος κόκκινος: το busy είναι πλοίο που ΕΡΧΕΤΑΙ (βήμα 93)
+                exp = B.want_group("transport", lit={"airlock"},
+                                   red={"trade"} | (set() if ok else {"ship"}))
                 if G.bar() != exp:
                     return (f"έλεγχος {ctl}, πίστα {pad}, πλοίο {busy}: «{B.show(G.bar())}», "
                             f"η πρόζα λέει «{B.show(exp)}»"), n

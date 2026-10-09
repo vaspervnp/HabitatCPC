@@ -150,6 +150,7 @@ def fresh(g, nexthop, src):
     s.e.room_n = bytearray(src.e.room_n)
     s.e.room_list = bytearray(src.e.room_list)
     s.e.land = list(src.e.land)
+    s.e.cargo = list(src.e.cargo)                       # βήμα 93
     for f in ("power_store", "power_cap", "power_prod", "power_use",
               "mach_power", "o2_prod", "o2_use", "acc_power", "acc_o2",
               "power_ok", "o2_ok", "prod_dome", "day", "wind", "sol",
@@ -158,7 +159,7 @@ def fresh(g, nexthop, src):
               "sollen", "daylen", "prod_mask", "ship_state", "ship_kind",
               "ship_eta", "pop_cap", "pad_node", "milestones", "deaths_sol",
               "no_death_sols", "green_sols", "no_trade_sols", "traded",
-              "meteor", "mcx", "mcy", "mrnd", "nbuild"):
+              "meteor", "mcx", "mcy", "mrnd", "nbuild", "markup"):
         setattr(s.e, f, getattr(src.e, f))
     return s
 
@@ -351,16 +352,27 @@ def main():
               f"{(want_bits & ~mile):05b} μετά από {watch.e.sol} sols")
         return 1
 
-    # Το εμπόριο είναι πράξη του παίκτη: εδώ δοκιμάζεται ο μηχανισμός.
+    # Το εμπόριο είναι πράξη του παίκτη: εδώ ο μηχανισμός της αναφοράς (βήμα
+    # 93· η γραμμή και ο Z80 στο tests/test_trade.py). Τέσσερα μέταλλα με 40%
+    # είναι 4 x 21 = 84, και εννιά μεταλλεύματα 90: γίνεται, και φεύγει.
     tr = fresh(g, nexthop, sim0)
     tr.e.ship_state, tr.e.ship_kind = EC.SHIP_LANDED, EC.SK_MERCHANT
+    tr.e.markup, tr.e.cargo = 40, [EC.S_METAL, 10] + [0] * 6
+    tr.e.stock[EC.S_ORE] = 50
     tr.e.no_trade_sols = 9
     before_metal = tr.e.stock[EC.S_METAL]
-    if not EC.trade(tr.e, EC.S_ORE, 10, EC.S_METAL, 4):
+    net = [0] * EC.N_STOCK
+    net[EC.S_METAL], net[EC.S_ORE] = 4, -8
+    if EC.trade(tr.e, net):
+        print("ΑΠΟΤΥΧΙΑ: η ανταλλαγή έγινε με 80 για 84")
+        return 1
+    net[EC.S_ORE] = -9
+    if not EC.trade(tr.e, net):
         print("ΑΠΟΤΥΧΙΑ: η ανταλλαγή με τον έμπορο δεν έγινε")
         return 1
-    if tr.e.stock[EC.S_METAL] != before_metal + 4 or not tr.e.traded:
-        print("ΑΠΟΤΥΧΙΑ: η ανταλλαγή δεν άλλαξε τα αποθέματα σωστά")
+    if (tr.e.stock[EC.S_METAL] != before_metal + 4 or tr.e.stock[EC.S_ORE] != 41
+            or not tr.e.traded or tr.e.ship_state != EC.SHIP_NONE):
+        print("ΑΠΟΤΥΧΙΑ: η ανταλλαγή δεν άλλαξε τα αποθέματα σωστά, ή ο έμπορος έμεινε")
         return 1
     print(f"OK πλοία:    {landings} προσγειώσεις, {crew_landed} άποικοι στην "
           f"πίστα (κόμβος {got_econ[81]}), ταβάνι {got_econ[74]}")
@@ -1031,9 +1043,29 @@ def _land(land, room):
     return f
 
 
-def _visit_roll():
-    """Ο σπόρος που ρίχνει επισκέπτες στην πρώτη ζαριά (event_branches)."""
-    return next(x for x in range(1, 65536) if EC.lfsr(EC.lfsr(x)) & 0x7FF == 0)
+def _visit_roll(want=0):
+    """Ο σπόρος που ρίχνει επισκέπτες στην πρώτη ζαριά (event_branches) — ή,
+    με want = MER_ROLL, έμπορο (βήμα 93)."""
+    return next(x for x in range(1, 65536) if EC.lfsr(EC.lfsr(x)) & 0x7FF == want)
+
+
+def _mer_seed(cond):
+    """Ο πρώτος σπόρος του οποίου η προσγείωση δίνει τα bytes που θέλει το
+    cond(b0, b1, b2): η θέση 15 τραβά πρώτα τρεις ζαριές, και το φορτίο βγαίνει
+    από το EC_RND μετά από αυτές (src/ship.asm, sm_land)."""
+    def l3(x):
+        for _ in range(3):
+            x = EC.lfsr(x)
+        return x
+    return next(x for x in range(1, 65536) if cond(*EC.mer_bytes(l3(x), 3)))
+
+
+def _merchant(cond):
+    """Ο έμπορος προσγειώνεται τώρα, με σπόρο που περνά από την άκρη cond."""
+    def f(e, a):
+        e.ship_state, e.ship_kind, e.ship_eta = EC.SHIP_INCOMING, EC.SK_MERCHANT, 0
+        e.rnd = _mer_seed(cond)
+    return f
 
 
 # (όνομα, περιστροφές, στήσιμο) — βήμα 57. Κάθε μία είναι ένα κενό που βρήκαν
@@ -1050,6 +1082,26 @@ SHIP_CASES = (
                    setattr(e, "ship_kind", EC.SK_VISITOR), setattr(e, "ship_eta", 0),
                    e.stock.__setitem__(EC.S_FOOD, 5),
                    [a.morale.__setitem__(i, (i * 37) & 0xFF) for i in range(128)])),
+    # Ο ΕΜΠΟΡΟΣ (βήμα 93): από τη ζαριά, με πίστα και χωρίς άλλο πλοίο· το
+    # φορτίο στις άκρες του — τρία και τέσσερα αγαθά, κέρδος 31 -> 0 (35%),
+    # πρώτο αγαθό 13-15 -> mod 13, βήμα 12-15 -> mod 12 — και μισό sol.
+    ("έμπορος από τη ζαριά", 2,
+     lambda e, a: (setattr(e, "ship_state", 0), setattr(e, "rnd", _visit_roll(EC.MER_ROLL)))),
+    ("έμπορος από τη ζαριά, χωρίς πίστα", 2,
+     lambda e, a: (setattr(e, "pad_node", 255), setattr(e, "ship_state", 0),
+                   setattr(e, "rnd", _visit_roll(EC.MER_ROLL)))),
+    ("έμπορος από τη ζαριά, πλοίο ήδη", 2,
+     lambda e, a: (setattr(e, "ship_state", EC.SHIP_INCOMING), setattr(e, "ship_eta", 50),
+                   setattr(e, "ship_kind", EC.SK_COLONIST),
+                   setattr(e, "rnd", _visit_roll(EC.MER_ROLL)))),
+    ("έμπορος: τρία αγαθά", 3, _merchant(lambda b0, b1, b2: not b0 & 32)),
+    ("έμπορος: τέσσερα αγαθά", 3, _merchant(lambda b0, b1, b2: b0 & 32)),
+    ("έμπορος: κέρδος 31 -> 35%", 1, _merchant(lambda b0, b1, b2: b0 & 31 == 31)),
+    ("έμπορος: πρώτο αγαθό 13-15", 1, _merchant(lambda b0, b1, b2: b1 & 15 >= 13)),
+    ("έμπορος: βήμα 12-15", 1, _merchant(lambda b0, b1, b2: b1 >> 4 >= 12)),
+    ("έμπορος φεύγει", 1,
+     lambda e, a: (setattr(e, "ship_state", EC.SHIP_LANDED),
+                   setattr(e, "ship_kind", EC.SK_MERCHANT), setattr(e, "ship_eta", 0))),
     ("άποικοι, ταβάνι για δύο", 2, _crew(2)),
     ("άποικοι, ταβάνι ήδη ξεπερασμένο", 2, _crew(-1)),
     # ΟΙ ΕΙΔΙΚΟΤΗΤΕΣ (βήμα 91): 50% βιολόγοι, 50% γιατροί, σε μια αποικία με
@@ -1121,7 +1173,8 @@ def ship_branches(sym, g, nexthop, sim0):
               "ρομπότ ο Z80 βγαίνει ίδιος με την αναφορά")
         return 1
     print(f"OK πλοία και sol: {len(SHIP_CASES)} περιπτώσεις στα όρια — πίστα, τροφή "
-          f"και ηθικό επισκεπτών, ταβάνι, ειδικότητες, σερί στο 255, ρομπότ, οι δύο μάσκες, "
+          f"και ηθικό επισκεπτών, έμπορος και φορτίο, ταβάνι, ειδικότητες, σερί στο 255, "
+          f"ρομπότ, οι δύο μάσκες, "
           f"habitat — ίδια bytes στον Z80 και στην αναφορά. ΑΡΝΗΤΙΚΟ: με "
           f"αυτοματισμό από 9 ρομπότ διαφέρουν")
     return 0

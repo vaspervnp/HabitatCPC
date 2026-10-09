@@ -21,7 +21,7 @@
 ; είναι στις τράπεζες 0 και 2 και, όπως κάθε πέρασμα του τροχού, αφήνουν την 6
 ; στο παράθυρο όταν γυρίζουν.
 
-B6C_MAX     equ 256                     ; = B6C_MAX του tools/pack.py
+B6C_MAX     equ 1280                    ; = B6C_MAX του tools/pack.py· 256 ως το βήμα 92
 M_ROBOTS    equ 5                       ; η μηχανή robots: η σειρά του MACH στο pack.py
 
         assert  F_ALIVE == 1 && RL_CARRY == RL_CBOT + 1 && (AG_BOT0 & 1) == 0
@@ -90,3 +90,4 @@ bt_make:
         ld      (hl),a
         call    sb_rest                 ; τα υπόλοιπα, όπως ο άποικος (src/ship.asm)
         jp      ship_tick
+bot_end:                                ; το τέλος των ρομπότ (tests/test_bots.py)

@@ -238,8 +238,7 @@ mla_pok:
         include "jobs.asm"
         include "stock.asm"              ; κοινό με το fit.asm (βήμα 46)
         include "needs.asm"
-        include "ship.asm"
-        include "crew.asm"              ; βήμα 91: ποιοι έρχονται με το πλοίο
+        include "lines.asm"             ; βήμα 91: η γραμμή του πλοίου (93: και το εμπόριο)
         include "wheel.asm"
         ; (fdc.asm και newgame.asm: στην τράπεζα 2 από το βήμα 33, πιο κάτω)
         ; Ο ΚΑΝΟΝΑΣ ΕΔΑΦΟΥΣ ΕΙΝΑΙ ΔΟΥΛΕΙΑ ΤΟΥ build.asm ΚΑΙ ΖΕΙ ΕΔΩ. Το
@@ -338,6 +337,9 @@ zz_page2_end:
         incbin  "../build/bank6.bin", 0, G_b6code - #4000
         org     G_b6code, #8000 + G_b6code - #4000
         include "bots.asm"              ; βήμα 92: τα ρομπότ από το απόθεμα
+        include "ship.asm"              ; βήμα 93: πλοία και ορόσημα, από την τράπεζα 0
+        include "crew.asm"              ; βήμα 93: ποιοι έρχονται, από την τράπεζα 0
+        include "flow.asm"              ; βήμα 93: η θέση 12, από την τράπεζα 0
 zz_b6code_end:
         assert  zz_b6code_end <= G_b6code + B6C_MAX
         assert  G_b6code + B6C_MAX == G_agent_fields   ; = η δέσμευση του pack.py

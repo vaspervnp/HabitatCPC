@@ -69,7 +69,8 @@ act_fire:
         ld      a,(ac_mode)
         cp      CW_MODE
         ld      a,c
-        jp      z,cw_tick               ; η γραμμή του πλοίου (src/crew.asm)
+        jp      nc,ln_tick              ; οι γραμμές: του πλοίου και του εμπόρου
+                                        ; (src/lines.asm, βήμα 93)
         and     1 << A_FIRE | 1 << A_MENU
         jr      nz,ac_do
         ld      hl,ac_sel
@@ -191,9 +192,9 @@ btk_act:
         ld      (ui_state),a            ; UI_LOOK
         jp      (hl)
 
-btk_ajp:    dw ac_info, fit_enter, ac_save, ac_load, ac_home, cw_open
+btk_ajp:    dw ac_info, fit_enter, ac_save, ac_load, ac_home, cw_open, tr_open
         assert  AB_INFO == 0 && AB_FIT == 1 && AB_SAVE == 2 && AB_LOAD == 3
-        assert  AB_HOME == 4 && AB_SHIP == 5
+        assert  AB_HOME == 4 && AB_SHIP == 5 && AB_TRADE == 6   ; το tr_open: src/lines.asm
 
 ac_info:
         ld      a,UI_INFO
@@ -262,7 +263,7 @@ ac_cur:
 ac_panel:
         ld      a,(ac_mode)
         cp      CW_MODE
-        jp      z,cw_panel              ; η γραμμή του πλοίου (src/crew.asm)
+        jp      nc,ln_panel             ; οι γραμμές (src/lines.asm, βήμα 93)
         ld      a,'<'
         call    hud_char
         call    hud_space
@@ -287,7 +288,7 @@ ac_panel:
         call    hud_go
         pop     hl
         call    hud_text
-acp_end:                                ; το cw_panel (src/crew.asm)
+acp_end:                                ; οι γραμμές (src/lines.asm)
         ld      b,40
         call    hud_to
         ld      bc,GA_PORT + PAGE_B1

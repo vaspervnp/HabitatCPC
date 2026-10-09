@@ -178,6 +178,25 @@ EC_MRND     equ G_econ_state + 89       ; η δική της γεννήτρια 
 ; όταν το κτίσμα τελειώσει (ja_build) — καμία Build δεν φεύγει αλλιώς.
 EC_NBUILD   equ G_econ_state + 91
 EC_LAND     equ G_econ_state + 92       ; 5 bytes: οι ειδικότητες των πλοίων σε δέκατα (βήμα 91, src/crew.asm)
+; Ο ΕΜΠΟΡΟΣ (βήμα 93, src/ship.asm, src/lines.asm): ό,τι φέρνει, όσο είναι
+; προσγειωμένος. Το κέρδος του σε %, και τέσσερα [απόθεμα, ποσότητα] — απόθεμα 0
+; (το νερό, που δεν είναι εμπόρευμα) είναι κενή θέση.
+EC_MARKUP   equ G_econ_state + 97
+EC_CARGO    equ G_econ_state + 98       ; 8 bytes
+
+; --- πλοία (§6.11): το src/ship.asm ζει στην τράπεζα 6 από το βήμα 93, και
+; αυτά τα διαβάζουν και το HUD, η μπάρα και η γραμμή του εμπόρου ---
+SHIP_NONE   equ 0
+SHIP_INCOM  equ 1
+SHIP_LANDED equ 2
+SK_COLONIST equ 0
+SK_MERCHANT equ 1
+SK_VISITOR  equ 2
+MER_SLOTS   equ 4                       ; αγαθά στο φορτίο, ως
+MER_ROLL    equ #5A5                    ; τα 11 κάτω bits του r2 (src/econ.asm)
+MARKUP_MIN  equ 35                      ; + 0..30 %
+TRADE_N     equ 13                      ; τα αποθέματα 1-13: όλα εκτός από το νερό
+TRADE_MAX   equ 99                      ; ως τόσα από ένα αγαθό σε μία προσφορά
 
 EC_CAP      equ 600                     ; ταβάνι αποθέματος
 

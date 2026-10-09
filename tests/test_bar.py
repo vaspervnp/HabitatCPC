@@ -25,7 +25,8 @@
   SPACE SPACE  ξανανοίγει την τελευταία ομάδα στο ίδιο αντικείμενο.
   κάμερα       η μπάρα μετακινείται με το βήμα κάμερας και ξαναζωγραφίζεται
                μετά από άλμα (H).
-  ?            η οθόνη βοήθειας: όλη Mode 1, τα 33 κουμπιά σε τρεις στήλες των
+  ?            η οθόνη βοήθειας: όλη Mode 1, τα 34 κουμπιά (33 ως το βήμα 92:
+               ο έμπορος μετά το πλοίο) σε τρεις στήλες των
                δώδεκα (οι ομάδες λευκές), δεξιά το όνομα λευκό και από κάτω η
                γραμμή του πράσινη, και η σειρά 24. Ενα πλήκτρο γυρίζει πίσω, και
                δεν κάνει τίποτα άλλο: ίδια κατάσταση, ίδια μπάρα, ίδιο κάδρο.
@@ -75,6 +76,7 @@ HELP = [("DOMES", "LIVE AND WORK INSIDE"), ("SMALL DOME", "4X4, ANY ROOM"),
         ("EXTRACTOR", "WATER FROM GROUND"), ("MINE", "ORE FROM A VEIN"),
         ("TRANSPORT", "COMING AND GOING"), ("AIRLOCK", "WAY IN AND OUT"),
         ("LANDING PAD", "SHIPS LAND HERE"), ("SHIP", "CALL NEW COLONISTS"),
+        ("TRADE", "UP TAKES, DOWN GIVES"),                  # βήμα 93
         ("MANAGE", "INFO, DISC, VIEW"), ("INFO", "WHAT IS HERE"),
         ("FIT", "MACHINES IN A DOME"), ("SAVE", "SAVE TO DISC"),
         ("LOAD", "LOAD FROM DISC"), ("CENTRE", "BACK TO THE MIDDLE"),
@@ -371,12 +373,15 @@ def run(sym, patch=(), quick=False):
 
 
 def _ship_red(G, sym, group):
+    """Τα κόκκινα της ΜΕΤΑΦΟΡΑΣ: το πλοίο χωρίς αίθουσα ελέγχου, πίστα ή με
+    πλοίο ήδη· ο έμπορος (βήμα 93) όσο δεν είναι προσγειωμένος έμπορος."""
     if group != "transport":
         return ()
     p = G.m.peek
     E = _equs()
     ok = p(E["CTL"]) != 0 and p(E["PAD"]) != 255 and p(E["SHIP"]) == 0
-    return () if ok else {"ship"}
+    mer = p(E["SHIP"]) == 2 and p(E["SHIP"] + 1) == 1
+    return (set() if ok else {"ship"}) | (set() if mer else {"trade"})
 
 
 _EQ = None

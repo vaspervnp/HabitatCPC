@@ -15,6 +15,8 @@
   2. Ο κόσμος τρέχει 18.000 frames — η οικονομία ΚΑΙ η εικόνα ΠΡΕΠΕΙ να έχουν
      αλλάξει, αλλιώς η δοκιμή δεν δοκιμάζει τίποτα.
   3. L = φόρτωσε. Φωτογραφία Γ: οικονομία, επίπεδο κόσμου και ΕΙΚΟΝΑ πίσω στο Α.
+     Και τα ποσοστά των πλοίων (βήμα 91) και ο έμπορος, κέρδος και φορτίο
+     (βήμα 93), αλλαγμένα ανάμεσα: γυρίζουν τα σωσμένα.
   4. Αρνητικός έλεγχος: φόρτωμα από ΑΔΕΙΟ slot πρέπει να απορριφθεί και να μην
      αγγίξει τίποτα. Ενα άδειο slot είναι #E5 παντού — απολύτως έγκυρα bytes.
   5. ΚΑΙ ΑΠΟ ΚΡΥΑ ΕΚΚΙΝΗΣΗ: reset, ξαναφόρτωμα από τον δίσκο — που φτιάχνει
@@ -105,6 +107,14 @@ FORMAT = {
     # έδινε για ρομπότ
     6: ({"G_mach_op": 91, "G_econ_state": 103, "G_job_tbl": 200, "G_room_n": 360,
          "G_room_list": 372, "G_crew": 468, "G_rt_nodes": 512, "G_rt_row": 768,
+         "G_node_adj": 1024},
+        {"G_agent_fields": 0x6C00, "G_node_occ": 0x7400, "G_dome_tbl": 0x7500,
+         "G_struct_tbl": 0x7B00, "G_corr_tbl": 0x7C00, "G_worldinfo": 0x7DE0}),
+    # βήμα 93: η οικονομία 97 -> 106 (ο έμπορος: κέρδος και φορτίο), οι
+    # εργασίες, τα δωμάτια και η μνήμη εργασίας +9 — ως το rt_nodes χωρούσαν
+    # ακριβώς έντεκα
+    7: ({"G_mach_op": 91, "G_econ_state": 103, "G_job_tbl": 209, "G_room_n": 369,
+         "G_room_list": 381, "G_crew": 477, "G_rt_nodes": 512, "G_rt_row": 768,
          "G_node_adj": 1024},
         {"G_agent_fields": 0x6C00, "G_node_occ": 0x7400, "G_dome_tbl": 0x7500,
          "G_struct_tbl": 0x7B00, "G_corr_tbl": 0x7C00, "G_worldinfo": 0x7DE0}),
@@ -289,6 +299,11 @@ def main():
     land = lambda: [m.peek(g + 92 + r) for r in range(5)]
     for r in range(5):
         m.poke(g + 92 + r, LAND_A[r])
+    # Και ο έμπορος (βήμα 93): το κέρδος και το φορτίο του, +97..+105.
+    MER_A, MER_B = [52, 3, 10, 9, 2, 1, 30, 0, 0], [35] + [0] * 8
+    mer = lambda: [m.peek(g + 97 + k) for k in range(9)]
+    for k, v in enumerate(MER_A):
+        m.poke(g + 97 + k, v)
     freeze(True)
     m.run_frames(4)
     a_econ, a_plane, a_play = snap()
@@ -308,6 +323,8 @@ def main():
     m.run_frames(18000)
     for r in range(5):
         m.poke(g + 92 + r, LAND_B[r])           # ο παίκτης άλλαξε τα ποσοστά
+    for k, v in enumerate(MER_B):
+        m.poke(g + 97 + k, v)                   # και ήρθε άλλος έμπορος
     freeze(True)
     m.run_frames(4)
     b_econ, b_plane, b_play = snap()
@@ -323,6 +340,7 @@ def main():
     c_econ, c_plane, c_play = snap()
     check(c_plane == a_plane, "το επίπεδο κόσμου γύρισε ακριβώς")
     check(land() == LAND_A, f"τα ποσοστά των πλοίων γύρισαν: {land()}, σωσμένα {LAND_A}")
+    check(mer() == MER_A, f"ο έμπορος γύρισε: κέρδος και φορτίο {mer()}, σωσμένα {MER_A}")
     same = sum(1 for x, y in zip(c_econ, a_econ) if x == y)
     check(same >= len(a_econ) - 8,
           f"η κατάσταση γύρισε: {len(a_econ) - same} bytes διαφορά στα "

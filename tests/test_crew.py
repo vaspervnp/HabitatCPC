@@ -79,11 +79,15 @@ def econ_at():
 
 
 class Game(TA.Game):
-    def __init__(self, sym, patch=()):
+    """Τα patch6 πειράζουν την τράπεζα 6: από το βήμα 93 το ship_crew, το
+    cw_count και το cw_pick ζουν εκεί (b6code)."""
+    def __init__(self, sym, patch=(), patch6=()):
         super().__init__(sym, patch)
         self.EC = econ_at()
         self.ag = TO.layout()["G_agent_fields"] - 0x4000
         self.pad = self.m.peek(self.E["PAD"])   # η πίστα του colony.sna (64)
+        for at, v in patch6:
+            self.b6[at - 0x4000] = v
 
     def land(self):
         return [self.m.peek(self.EC["EC_LAND"] + r) for r in range(5)]
@@ -140,6 +144,12 @@ class Model:
 def find(m, lo, hi, pat):
     """Οι διευθύνσεις του pat στη μνήμη [lo, hi)."""
     ram = m.read_ram(lo, hi - lo)
+    return [lo + k for k in range(len(ram) - len(pat) + 1) if list(ram[k:k + len(pat)]) == pat]
+
+
+def find6(G, lo, hi, pat):
+    """Το ίδιο στην τράπεζα 6, με διευθύνσεις του παραθύρου (#4000-#7FFF)."""
+    ram = bytes(G.b6[lo - 0x4000:hi - 0x4000])
     return [lo + k for k in range(len(ram) - len(pat) + 1) if list(ram[k:k + len(pat)]) == pat]
 
 
@@ -282,10 +292,10 @@ def reference(land, flags, roles):
     return [EC.pick_role(e, count) for _ in range(4)]
 
 
-def rules(sym, patch=()):
+def rules(sym, patch6=()):
     """[(όνομα, ρόλοι των καινούργιων με τη σειρά των ταυτοτήτων τους)] — ένα
     μηχάνημα, ένα probe ανά περίπτωση."""
-    G = Game(sym, patch)
+    G = Game(sym, patch6=patch6)
     out = []
     for name, land, (flags, roles), stale, _ in RULE_CASES:
         for i in range(128):
@@ -380,11 +390,11 @@ def voyage(sym, quiet=False):
 COST = ((4, 3400), (48, 4600), (76, 5400))        # (ζωντανοί, ταβάνι σε us)
 
 
-def cost(sym, patch=()):
+def cost(sym, patch6=()):
     """[(ζωντανοί, us του ship_crew)] σε αποικίες χωρίς κενά, ρόλοι κυκλικά."""
     out = []
     for n, _ in COST:
-        G = Game(sym, patch)
+        G = Game(sym, patch6=patch6)
         m = G.m
         for i in range(128):
             G.b6[G.ag + i], G.b6[G.ag + 128 + i] = (3 if i < n else 0), i % 5
@@ -453,14 +463,15 @@ def main():
         check(bool(why), f"ΑΡΝΗΤΙΚΟ γραμμής: με «{label}» " +
               (f"πιάνεται — {why}" if why else "ΔΕΝ πιάνεται (ή δεν βρέθηκε)"))
 
-    # --- ΑΡΝΗΤΙΚΑ ΤΟΥ ΚΑΝΟΝΑ ---
+    # --- ΑΡΝΗΤΙΚΑ ΤΟΥ ΚΑΝΟΝΑ: στην τράπεζα 6 από το βήμα 93 ---
     good = [r for _, r, _ in rules(sym)]
     pk, cn, born = sym["CW_PICK"], sym["CW_COUNT"], sym["SH_BORN"]
-    cpick = find(m, born, born + 16, [0xCD, pk & 255, pk >> 8])
-    ccount = find(m, sym["SHIP_CREW"], sym["SHIP_CREW"] + 4, [0xCD, cn & 255, cn >> 8])
-    tie = find(m, pk, pk + 40, [0x79, 0x93, 0x78, 0x9A, 0x30])     # BC - DE: CY αν d >
-    dead = find(m, cn, cn + 48, [0x1F, 0x38])                       # rra · jr c,ζωντανός
-    first = find(m, cn, cn + 48, [0xCB, 0x79, 0x28])                # bit 7,c · jr z
+    G6 = Game(sym)
+    cpick = find6(G6, born, born + 16, [0xCD, pk & 255, pk >> 8])
+    ccount = find6(G6, sym["SHIP_CREW"], sym["SHIP_CREW"] + 4, [0xCD, cn & 255, cn >> 8])
+    tie = find6(G6, pk, pk + 40, [0x79, 0x93, 0x78, 0x9A, 0x30])     # BC - DE: CY αν d >
+    dead = find6(G6, cn, cn + 48, [0x1F, 0x38])                       # rra · jr c,ζωντανός
+    first = find6(G6, cn, cn + 48, [0xCB, 0x79, 0x28])                # bit 7,c · jr z
     rule_negs = (
         ("ταυτότητα & 7, όπως ως το 90", cpick and [(cpick[0], 0x7D), (cpick[0] + 1, 0xE6),
                                                     (cpick[0] + 2, 0x07)]),
@@ -472,7 +483,7 @@ def main():
         ("ο πρώτος νεκρός είναι ο τελευταίος", first and [(first[0] + 2, 0), (first[0] + 3, 0)]),
     )
     # Χωρίς την πρόωρη έξοδο: το jr z μετά το dec b γίνεται δύο nop.
-    early = find(m, cn, cn + 64, [0x05, 0x28])
+    early = find6(G6, cn, cn + 64, [0x05, 0x28])
     slow = early and cost(sym, [(early[0] + 1, 0), (early[0] + 2, 0)])
     check(bool(slow) and slow[0][1] > COST[0][1],
           f"ΑΡΝΗΤΙΚΟ κόστους: χωρίς την πρόωρη έξοδο, 4 ζωντανοί "

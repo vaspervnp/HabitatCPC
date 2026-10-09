@@ -21,7 +21,7 @@ from sprites import load_map, load_bin, ROOT
 import buttons
 
 TEXT_MAX = 2120                 # = TEXT_MAX του src/uitext.asm (assert εκεί)
-B6C_MAX = 256                   # = B6C_MAX του src/bots.asm (assert στο main.asm)
+B6C_MAX = 1280                  # = B6C_MAX του src/bots.asm (assert στο main.asm)· 256 ως το 92
 
 # --- γεωμετρία ------------------------------------------------------------
 PAGE2_BASE  = 0x8000                # τράπεζα 2: επίπεδη, πάντα ορατή

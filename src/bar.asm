@@ -9,7 +9,7 @@
 ;   ΔΙΑΔΡΟΜΟΣ R   (μόνος του: η ομάδα είναι ο διάδρομος)
 ;   ΕΝΕΡΓΕΙΑ P    S ηλιακός · T τουρμπίνα · C συλλέκτης
 ;   ΠΟΡΟΙ E       X αντλία · M ορυχείο
-;   ΜΕΤΑΦΟΡΑ T    A αεροθάλαμος · P πίστα · C πλοίο
+;   ΜΕΤΑΦΟΡΑ T    A αεροθάλαμος · P πίστα · C πλοίο · M έμπορος (βήμα 93)
 ;   ΔΙΑΧΕΙΡΙΣΗ M  I πληροφορίες · F εξοπλισμός · S σώσιμο · L φόρτωμα · H κέντρο
 ;
 ; ΤΟ ΓΡΑΜΜΑ ΣΤΗΝ ΚΑΤΩ ΑΡΙΣΤΕΡΗ ΓΩΝΙΑ ΕΙΝΑΙ ΤΟ ΠΛΗΚΤΡΟ, και ισχύει όσο το κουμπί
@@ -27,14 +27,15 @@
 ; το sl_draw της τράπεζας 2 (src/help.asm), που ζωγραφίζει και την οθόνη
 ; βοήθειας με τα ίδια κουμπιά.
 
-BT_N        equ 33                      ; κουμπιά (tools/buttons.py)
+BT_N        equ 34                      ; κουμπιά (tools/buttons.py)· 33 ως το βήμα 92
 BT_SMALL    equ 1                       ; 1-3 τα μεγέθη
 BT_ROOM0    equ 4                       ; 4-13 τα δωμάτια, με τη σειρά του rm_list
 BT_CORR     equ 14
 BT_SHIP     equ 25
-BT_MANAGE   equ 26
-BT_FIT      equ 28
-BT_HELP     equ 32
+BT_TRADE    equ 26                      ; βήμα 93: αμέσως μετά το πλοίο
+BT_MANAGE   equ 27
+BT_FIT      equ 29
+BT_HELP     equ 33
 BT_NONE     equ 255
 BAR_N       equ 16                      ; θέσεις
 BAR_HELP    equ 15                      ; το ?
@@ -63,7 +64,8 @@ AB_SAVE     equ 2
 AB_LOAD     equ 3
 AB_HOME     equ 4
 AB_SHIP     equ 5
-AB_HELP     equ 6
+AB_TRADE    equ 6                       ; βήμα 93· το AB_HELP ήταν 6
+AB_HELP     equ 7
 
 ; ---------------------------------------------------------------------------
 ; bt_tab — ανά κουμπί: το γράμμα, η γραμμή και η μάσκα του πλήκτρου στη μήτρα
@@ -96,19 +98,20 @@ bt_tab:
         db 'A',8,#20, KB_ITEM << 5 | 9          ; 23 αεροθάλαμος
         db 'P',3,#08, KB_ITEM << 5 | 10         ; 24 πίστα
         db 'C',7,#40, KB_ACT << 5 | AB_SHIP     ; 25 πλοίο
-        db 'M',4,#40, KB_GROUP << 5 | G_MANAGE  ; 26 ΔΙΑΧΕΙΡΙΣΗ
-        db 'I',4,#08, KB_ACT << 5 | AB_INFO     ; 27
-        db 'F',6,#20, KB_ACT << 5 | AB_FIT      ; 28
-        db 'S',7,#10, KB_ACT << 5 | AB_SAVE     ; 29
-        db 'L',4,#10, KB_ACT << 5 | AB_LOAD     ; 30
-        db 'H',5,#10, KB_ACT << 5 | AB_HOME     ; 31
-        db '?',3,#40, KB_ACT << 5 | AB_HELP     ; 32 (το πλήκτρο / ?)
+        db 'M',4,#40, KB_ACT << 5 | AB_TRADE    ; 26 έμπορος (βήμα 93)
+        db 'M',4,#40, KB_GROUP << 5 | G_MANAGE  ; 27 ΔΙΑΧΕΙΡΙΣΗ
+        db 'I',4,#08, KB_ACT << 5 | AB_INFO     ; 28
+        db 'F',6,#20, KB_ACT << 5 | AB_FIT      ; 29
+        db 'S',7,#10, KB_ACT << 5 | AB_SAVE     ; 30
+        db 'L',4,#10, KB_ACT << 5 | AB_LOAD     ; 31
+        db 'H',5,#10, KB_ACT << 5 | AB_HOME     ; 32
+        db '?',3,#40, KB_ACT << 5 | AB_HELP     ; 33 (το πλήκτρο / ?)
 bt_end:
         assert  bt_end - bt_tab == 4 * BT_N
 
 ; Οι ομάδες: το πρώτο κουμπί, πόσα, και το πρώτο αντικείμενο του καταλόγου.
-grp_first:  db 0, 14, 15, 19, 22, 26
-grp_n:      db 14, 1, 4, 3, 4, 6
+grp_first:  db 0, 14, 15, 19, 22, 27
+grp_n:      db 14, 1, 4, 3, 5, 6
 grp_bld:    db 0, 3, 4, 7, 9
 ; Ο κατάλογος (src/build.asm, ui_sel): η ομάδα και το κουμπί κάθε αντικειμένου.
 bld_grp:    db 0, 0, 0, 1, 2, 2, 2, 3, 3, 4, 4
@@ -116,8 +119,8 @@ bld_btn:    db 1, 2, 3, 14, 16, 17, 18, 20, 21, 23, 24
 bld_end:
 ; Οι λίστες του αριστερά/δεξιά στο μενού (src/act.asm): οι ομάδες και το ?,
 ; και η ΔΙΑΧΕΙΡΙΣΗ. Η πρώτη είναι και η μπάρα του LOOK, στις θέσεις 0-5.
-ac_l_grp:   db 0, 14, 15, 19, 22, 26, BT_HELP
-ac_l_man:   db 27, 28, 29, 30, 31, BT_HELP
+ac_l_grp:   db 0, 14, 15, 19, 22, BT_MANAGE, BT_HELP
+ac_l_man:   db 28, 29, 30, 31, 32, BT_HELP
 
 ; ---------------------------------------------------------------------------
 ; bk_scan — τα γράμματα της μπάρας που φαίνεται, μία φορά ανά frame.
@@ -336,9 +339,18 @@ bww_c2: ld      (hl),BS_GREEN
         jr      z,bww_domes
         cp      G_TRANS
         ret     nz
+bww_trans:
         call    bar_shipok
-        ret     nz
+        jr      nz,bwt_mer
         ld      a,BT_SHIP
+        ld      c,BS_RED
+        call    bww_st
+bwt_mer:
+        ; ΤΟ ΕΜΠΟΡΙΟ ΜΟΝΟ ΟΣΟ ΕΙΝΑΙ ΕΔΩ (βήμα 93). Αλλάζει με το EC_SHSTATE,
+        ; που είναι ήδη στην υπογραφή: το είδος αλλάζει μόνο μαζί του.
+        call    mer_here
+        ret     z
+        ld      a,BT_TRADE
         ld      c,BS_RED
         jp      bww_st
 bww_domes:
@@ -389,6 +401,19 @@ bww_act:
         ld      a,(ac_mode)
         or      a
         jr      z,bww_agrp
+        ; ΟΙ ΓΡΑΜΜΕΣ (src/lines.asm) ΔΕΙΧΝΟΥΝ ΤΗ ΜΕΤΑΦΟΡΑ, με το κουμπί τους
+        ; λευκό: του πλοίου (91) και του εμπόρου (93). Ως το 93 η γραμμή του
+        ; πλοίου έδειχνε τη ΔΙΑΧΕΙΡΙΣΗ — και τα γράμματά της δούλευαν από εκεί.
+        cp      CW_MODE
+        jr      c,bww_man
+        add     a,BT_SHIP - CW_MODE
+        push    af
+        ld      a,G_TRANS
+        call    bww_group
+        call    bww_trans               ; τα κόκκινα, και μετά το λευκό από πάνω
+        pop     af
+        jp      bww_lit
+bww_man:
         ld      a,G_MANAGE
         call    bww_group
         ld      a,(ac_fit)

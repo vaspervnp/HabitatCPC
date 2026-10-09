@@ -7,13 +7,14 @@
 ;
 ; ΤΟ ΜΗΚΟΣ ΤΟΥ SOL ΕΙΝΑΙ ΔΕΔΟΜΕΝΟ, ΟΧΙ ΣΤΑΘΕΡΑ. Ενα sol είναι 12.000 frames·
 ; μια δοκιμή που θέλει να δει πέντε από αυτά δεν μπορεί να περιμένει 60.000.
+;
+; ΖΕΙ ΣΤΗΝ ΤΡΑΠΕΖΑ 6 από το βήμα 93, στη δέσμευση b6code μαζί με τα ρομπότ
+; (src/bots.asm): ό,τι είναι εδώ το καλεί μόνο η θέση 15, που έχει την 6 στο
+; παράθυρο. Η τράπεζα 0 είχε 28 bytes ως το πάτωμα των δοκιμών και το εμπόριο
+; ήθελε εκατοντάδες. Το ship_call, που το καλεί και το κουμπί του πλοίου, έμεινε
+; στην τράπεζα 0, δίπλα στο econ_events (src/econ.asm).
 
-SHIP_NONE   equ 0
-SHIP_INCOM  equ 1
-SHIP_LANDED equ 2
-SK_COLONIST equ 0
-SK_MERCHANT equ 1
-SK_VISITOR  equ 2
+; οι καταστάσεις και τα είδη των πλοίων είναι στο const.asm (βήμα 93)
 SHIP_TRIP   equ 24
 SHIP_STAY   equ 8
 SHIP_NCREW  equ 4
@@ -45,28 +46,6 @@ DEP_MASK    equ (1 << 10) - 1
         assert  (G_agent_fields & 255) == 0     ; AG_PG: η σελίδα των σημαιών
 
 ; ---------------------------------------------------------------------------
-; ship_call — A = είδος. Επιστρέφει Cy=1 αν ξεκίνησε.
-; ---------------------------------------------------------------------------
-ship_call:
-        ld      b,a
-        ld      a,(EC_SHSTATE)
-        or      a
-        jr      nz,sc_no
-        ld      a,(EC_PADNODE)
-        inc     a
-        jr      z,sc_no                 ; 255: χωρίς πίστα, κανένα πλοίο
-        ld      h,b
-        ld      l,SHIP_INCOM
-        ld      (EC_SHSTATE),hl         ; EC_SHSTATE, EC_SHKIND
-        ld      hl,SHIP_TRIP
-        ld      (EC_SHETA),hl
-        scf
-        ret
-sc_no:
-        or      a                       ; και από τους δύο δρόμους: CY = 0
-        ret
-
-; ---------------------------------------------------------------------------
 ; ship_tick — μία περιστροφή.
 ; ---------------------------------------------------------------------------
 ship_tick:
@@ -95,7 +74,7 @@ st_here:
         or      a                       ; SK_COLONIST
         jr      z,ship_crew
         cp      SK_VISITOR
-        ret     nz
+        jp      nz,sm_land              ; ο έμπορος (βήμα 93), πιο κάτω
         ; --- επισκέπτες: τρώνε και ανεβάζουν το ηθικό ---
         ld      hl,(EC_STOCK + 2*S_FOOD)
         ld      bc,VIS_FOOD
@@ -107,8 +86,8 @@ st_here:
 sv_pay:
         ld      (EC_STOCK + 2*S_FOOD),hl
         ld      hl,G_agent_fields       ; σελίδα flags
-        ld      b,128
-sv_lp:
+        ld      b,AG_BOT0               ; οι άποικοι: τα ρομπότ δεν έχουν ηθικό
+sv_lp:                                  ; (ως το βήμα 93 και οι 128)
         ld      a,(hl)
         and     F_ALIVE
         jr      z,sv_n
@@ -222,6 +201,113 @@ sb_lp:
 ; το ship_crew, ή το bot_tick (βήμα 92)· τη θέση την ξαναγράφει το ent_claim (βήμα 89).
 sb_tab:     db 0, 255, 0, 255, 0, 255, 200, 200, 200, 200, 200, 160
             db SUIT_TRIP, 0             ; στολή, φορτίο (βήμα 90): κατεβαίνει έξω
+
+; --- ο έμπορος (βήμα 93): το φορτίο του, και μένει μισό sol ----------------
+; ΟΠΩΣ ΣΤΟ PLANETBASE: τρία ή τέσσερα αγαθά, άλλα κάθε φορά, 1-4 μονάδες από
+; το καθένα (tr_lot, src/stock.asm), και το κέρδος του, 35-65%. Τρία bytes από
+; ΔΙΚΑ τους βήματα του Galois, οκτώ ανά byte, με σπόρο το EC_RND — που δεν
+; αλλάζει: η ακολουθία των συμβάντων μένει ίδια, με ή χωρίς έμπορο (όπως η
+; βροχή μετεωριτών, src/meteor.asm).
+;   1ο   κέρδος: τα 5 κάτω bits, mod 31 · τέσσερα αγαθά αν το bit 5
+;   2ο   το πρώτο αγαθό: τα 4 κάτω, mod 13 · το βήμα: τα 4 πάνω, mod 12, + 1
+;   3ο   οι μονάδες, δύο bits ανά αγαθό
+; Το 13 είναι πρώτος: t, t + d, t + 2d, t + 3d (mod 13) διαφέρουν πάντα.
+; tools/econ.py: land_merchant.
+sm_land:
+        ld      hl,EC_CARGO             ; οι κενές θέσεις μένουν 0
+        ld      b,2 * MER_SLOTS
+sml_z:  ld      (hl),0
+        inc     hl
+        djnz    sml_z
+        ld      hl,(EC_RND)
+        call    sm_byte
+        ld      d,a                     ; D = το πρώτο
+        call    sm_byte
+        ld      e,a                     ; E = το δεύτερο
+        call    sm_byte
+        ld      c,a                     ; C = οι μονάδες
+        ld      a,d
+        and     31
+        cp      31
+        jr      c,sml_m
+        xor     a                       ; 31 mod 31
+sml_m:  add     a,MARKUP_MIN
+        ld      (EC_MARKUP),a
+        ld      b,3
+        bit     5,d
+        jr      z,sml_k
+        inc     b                       ; B = πόσα
+sml_k:  ld      a,e
+        rrca
+        rrca
+        rrca
+        rrca
+        and     15
+        cp      12
+        jr      c,sml_d
+        sub     12
+sml_d:  inc     a
+        ld      d,a                     ; D = το βήμα, 1-12
+        ld      a,e
+        and     15
+        cp      TRADE_N
+        jr      c,sml_t
+        sub     TRADE_N
+sml_t:  ld      e,a                     ; E = t, 0-12
+        ld      hl,EC_CARGO
+sml_lp:
+        ld      a,e
+        inc     a                       ; το απόθεμα: 1 + t
+        ld      (hl),a
+        inc     hl
+        push    hl
+        ld      hl,tr_lot               ; (το ob_addu δεν υπάρχει στο simtest)
+        add     a,l
+        ld      l,a
+        jr      nc,sml_l
+        inc     h
+sml_l:  ld      a,(hl)                  ; η μονάδα του
+        pop     hl
+        push    bc
+        ld      b,a
+        ld      a,c
+        and     3
+        ld      c,a                     ; C = 0-3: 1-4 μονάδες
+        ld      a,b
+sml_q:  dec     c
+        jp      m,sml_qd
+        add     a,b
+        jr      sml_q
+sml_qd: pop     bc
+        ld      (hl),a                  ; η ποσότητα
+        inc     hl
+        srl     c
+        srl     c
+        ld      a,e
+        add     a,d                     ; t += d, mod 13
+        cp      TRADE_N
+        jr      c,sml_n
+        sub     TRADE_N
+sml_n:  ld      e,a
+        djnz    sml_lp
+        ; ΜΙΣΟ SOL, ΟΧΙ SHIP_STAY: οκτώ περιστροφές είναι 2,6 δευτερόλεπτα, και
+        ; η ανταλλαγή θέλει χρόνο. Από το μήκος του sol, που είναι δεδομένο: 32
+        ; = 16 frames ανά περιστροφή x 2.
+        ld      hl,(EC_SOLLEN)
+        ld      b,5
+sml_h:  srl     h
+        rr      l
+        djnz    sml_h
+        ld      (EC_SHETA),hl
+        ret
+
+; sm_byte — HL = κατάσταση: οκτώ βήματα του Galois, A = το κάτω byte.
+sm_byte:
+        ld      b,8
+smb_lp: call    lfsr_hl                 ; src/econ.asm, τράπεζα 0: χαλάει το A
+        djnz    smb_lp
+        ld      a,l
+        ret
 
 ; ---------------------------------------------------------------------------
 ; sol_rollover — μία φορά ανά sol: τα σερί, και μετά τα ορόσημα (§10.2).

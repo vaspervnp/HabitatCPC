@@ -31,17 +31,18 @@ x_txt_pop:    db "POP ",0
 x_txt_sol:    db " SOL",0
 x_txt_day:    db "DAY",0
 x_txt_night:  db "NGT",0
-x_txt_ok:     db "ALL SYSTEMS OK     ",0
-x_txt_nopwr:  db "NO POWER           ",0
-x_txt_shed:   db "LOW POWER          ",0
-x_txt_noo2:   db "NO OXYGEN          ",0
-x_txt_storm:  db "SANDSTORM          ",0
-x_txt_meteor: db "METEOR SHOWER      ",0
-x_txt_nofood: db "LOW ON FOOD        ",0
-x_txt_nowater:db "LOW ON WATER       ",0
-x_txt_lost:   db "COLONY LOST        ",0
-x_txt_noeng:  db "NO ENGINEER        ",0   ; βήμα 88
-x_txt_suit:   db "SUIT AIR LOW       ",0   ; βήμα 90
+x_txt_ok:     db "ALL SYSTEMS OK",0
+x_txt_nopwr:  db "NO POWER",0
+x_txt_shed:   db "LOW POWER",0
+x_txt_noo2:   db "NO OXYGEN",0
+x_txt_storm:  db "SANDSTORM",0
+x_txt_meteor: db "METEOR SHOWER",0
+x_txt_nofood: db "LOW ON FOOD",0
+x_txt_nowater:db "LOW ON WATER",0
+x_txt_lost:   db "COLONY LOST",0
+x_txt_noeng:  db "NO ENGINEER",0   ; βήμα 88
+x_txt_suit:   db "SUIT AIR LOW",0   ; βήμα 90
+x_txt_mer:    db "MERCHANT LANDED",0   ; βήμα 93: χωρίς κενά στο τέλος, όπως όλα από το 93 (hd_say)
 x_t_saving:   db "SAVING TO DISC...",0
 x_t_saved:    db "SAVED TO SLOT 1",0
 x_t_loading:  db "LOADING FROM DISC...",0
@@ -93,6 +94,14 @@ x_t_nopad:    db "NEED A LANDING PAD",0
 x_t_cw_names: db "WRK",0, "ENG",0, "BIO",0, "MED",0, "GRD",0
 x_t_cw_keys:  db "SHIP UP/DN=10% FIRE=CALL ESC=BACK",0
 
+; Η γραμμή του εμπόρου (src/lines.asm, βήμα 93).
+x_t_tr_take:  db " TAKE ",0
+x_t_tr_give:  db " GIVE ",0
+x_t_tr_fire:  db " FIRE=DEAL",0
+x_t_tr_ship:  db " SHIP ",0
+x_t_tr_have:  db " HAVE ",0
+x_t_deal:     db "TRADE DONE",0
+
 ; Ο εξοπλισμός (src/fit.asm). ΟΚΤΩ bytes το όνομα, συνεχόμενα και με τη σειρά
 ; του MACH_TYPES και μετά των κωδικών 250-255: το fit_name τα βρίσκει με x8.
 x_t_f_names:  db "OXYGEN ",0, "METAL  ",0, "PLASTIC",0, "WEAPONS",0
@@ -100,6 +109,7 @@ x_t_f_names:  db "OXYGEN ",0, "METAL  ",0, "PLASTIC",0, "WEAPONS",0
               db "DRUGS  ",0, "MEAT   ",0, "BEDS   ",0, "CABINET",0
               db "STARCH ",0, "VEGGIES",0, "HERBS  ",0, "TREE   ",0
               db "MIXED  ",0, "EMPTY  ",0
+              db "ORE    ",0        ; 18: μόνο για τη γραμμή του εμπόρου (βήμα 93)
 x_t_f_slot:   db "SLOT ",0
 x_t_f_keys:   db "UP/DN=PICK FIRE=FIT SPACE=ALL",0
 
@@ -145,6 +155,7 @@ x_t_help:     db "DOMES",0, "LIVE AND WORK INSIDE",0
               db "AIRLOCK",0, "WAY IN AND OUT",0
               db "LANDING PAD",0, "SHIPS LAND HERE",0
               db "SHIP",0, "CALL NEW COLONISTS",0
+              db "TRADE",0, "UP TAKES, DOWN GIVES",0      ; βήμα 93
               db "MANAGE",0, "INFO, DISC, VIEW",0
               db "INFO",0, "WHAT IS HERE",0
               db "FIT",0, "MACHINES IN A DOME",0
@@ -234,6 +245,13 @@ t_i_ore   equ x_t_i_ore - TEXT_IMG + G_text
 t_help    equ x_t_help - TEXT_IMG + G_text
 t_a_keys  equ x_t_a_keys - TEXT_IMG + G_text
 t_hfoot   equ x_t_hfoot - TEXT_IMG + G_text
+txt_mer   equ x_txt_mer - TEXT_IMG + G_text
+t_tr_take equ x_t_tr_take - TEXT_IMG + G_text
+t_tr_give equ x_t_tr_give - TEXT_IMG + G_text
+t_tr_fire equ x_t_tr_fire - TEXT_IMG + G_text
+t_tr_ship equ x_t_tr_ship - TEXT_IMG + G_text
+t_tr_have equ x_t_tr_have - TEXT_IMG + G_text
+t_deal    equ x_t_deal - TEXT_IMG + G_text
 
         ; Το κενό είναι 1.280 bytes και τελειώνει εκεί που αρχίζει το επόμενο
         ; πράγμα της τράπεζας 7. Χωρίς αυτόν τον έλεγχο, ένα κείμενο παραπάνω θα
@@ -242,7 +260,7 @@ t_hfoot   equ x_t_hfoot - TEXT_IMG + G_text
         ; Και το TEXT_MAX ΣΥΜΦΩΝΕΙ με την τρύπα του tools/pack.py, που βάζει τη
         ; γραμματοσειρά αμέσως μετά: αλλιώς τα κείμενα γράφουν πάνω της.
         assert  G_text + TEXT_MAX <= G_font_m1
-        assert  x_t_f_slot - x_t_f_names == 18 * 8   ; fit_name: x8
+        assert  x_t_f_slot - x_t_f_names == 19 * 8   ; fit_name, tr_panel: x8
         assert  x_t_i_ore - x_t_i_cls == 8 * 11      ; in_panel: x11
 
         ; ΚΑΙ ΣΤΟΝ ΔΙΣΚΟ: η BANK7.BIN φτιάχνεται από το tools/pack.py, που δεν

@@ -63,9 +63,14 @@ class World:
     def __init__(self, sym, g, patch=()):
         self.sym, self.g, self.L = sym, g, layout()
         self.m = B.boot(sym, TG.SNA)
-        for at, v in patch:
-            self.m.poke(at, v)
         self.b6p = cpc._lib.cpcemu_ram_ptr(self.m._h, 6)
+        for at, v in patch:
+            # #4000-#7FFF: ο κώδικας του τροχού στην τράπεζα 6 (b6code, βήματα
+            # 92-93) — το ef_o2 ζει εκεί από το 93
+            if 0x4000 <= at < 0x8000:
+                self.put6(at, [v])
+            else:
+                self.m.poke(at, v)
 
     def b6(self, addr, n=1):
         return ctypes.string_at(ctypes.addressof(self.b6p.contents) + addr - 0x4000, n)
@@ -247,7 +252,11 @@ def scenario(sym, g, patch=(), quiet=False):
 
 
 def find(m, at, pat, span):
-    code = m.read_ram(at, span + len(pat))
+    if 0x4000 <= at < 0x8000:                   # b6code: από την τράπεζα 6
+        b6 = cpc._lib.cpcemu_ram_ptr(m._h, 6)
+        code = bytes(b6[at - 0x4000:at - 0x4000 + span + len(pat)])
+    else:
+        code = m.read_ram(at, span + len(pat))
     k = next((k for k in range(span) if list(code[k:k + len(pat)]) == pat), None)
     assert k is not None, f"το μοτίβο {pat} δεν βρέθηκε μετά το #{at:04X}"
     return at + k

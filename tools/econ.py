@@ -191,6 +191,9 @@ class Econ:
         self.green_sols = 0
         self.no_trade_sols = 0
         self.traded = 0
+        # --- ο έμπορος (βήμα 93) — όσο είναι προσγειωμένος ---
+        self.markup = 0             # το κέρδος του, 35-65 (%)
+        self.cargo = [0] * (2 * MER_SLOTS)  # [αγαθό, ποσότητα] x 4· αγαθό 0: κενό
         self.air_out = 255          # airlock που ξανάγινε εργοτάξιο (βήμα 90)
         self.dist = None            # ο πίνακας αποστάσεων, δίνεται απ' έξω
 
@@ -489,6 +492,12 @@ def events(e):
     # 1/64 ανά περιστροφή οι επισκέπτες έτρωγαν 70 τρόφιμα το sol.
     if (r2 & 0x7FF) == 0 and e.ship_state == SHIP_NONE and e.pad_node != 255:
         call_ship(e, SK_VISITOR)            # απρόσκλητοι (§6.11)
+    # Ο ΕΜΠΟΡΟΣ ΕΡΧΕΤΑΙ ΜΟΝΟΣ ΤΟΥ (βήμα 93), με την ίδια συχνότητα από τα ίδια
+    # έντεκα bits: μηδέν είναι επισκέπτης, MER_ROLL έμπορος. Το MER_ROLL έχει
+    # ένα στο bit 0 (όχι αλλαγή ανέμου), στο 2 (όχι βλάβη), στο 7 (όχι θύελλα,
+    # όχι έκλαμψη) και μηδέν στο 3 (όχι μετεωρίτες): δεν συμπίπτει με κανένα.
+    if (r2 & 0x7FF) == MER_ROLL and e.ship_state == SHIP_NONE and e.pad_node != 255:
+        call_ship(e, SK_MERCHANT)
 
     if (r3 >> 6) == 0:                      # ηλιακή έκλαμψη: τα ψηλά του ίδιου
         break_one(e, r3 + 37)               # 1/1024 — τρεις ανά τέσσερα sols
@@ -697,10 +706,12 @@ def to_bytes(e):
     out += int(e.mrnd).to_bytes(2, "little")
     out += bytes([e.nbuild])                                 # βήμα 88
     out += bytes(e.land)                                     # βήμα 91
+    out += bytes([e.markup] + list(e.cargo))                 # βήμα 93
     return bytes(out)
 
 
-ECON_BYTES = 64 + 8 + 10 + 4 + 5 + 1 + 5    # + μετεωρίτες, Build, ειδικότητες = 97
+# + μετεωρίτες, Build, ειδικότητες, έμπορος = 106
+ECON_BYTES = 64 + 8 + 10 + 4 + 5 + 1 + 5 + 9
 
 
 def populate(e, n_dome=24, n_struct=30, seed=11):
@@ -1150,6 +1161,108 @@ INDUSTRY_STOCKS = (S_METAL, S_BIOPL, S_SPARE)
 INDEPENDENCE_STOCKS = tuple(range(10))
 
 
+# --- ο έμπορος (βήμα 93, §6.11) ------------------------------------------
+# Οπως στο Planetbase: έρχεται μόνος του, φέρνει λίγα αγαθά (τρία ή τέσσερα,
+# άλλα κάθε φορά), τα δικά του τα λογαριάζει με το κέρδος του (35-65%) και τα
+# δικά σου στην τιμή τους, και η ανταλλαγή γίνεται όταν δίνεις τουλάχιστον όσο
+# παίρνεις. Μετά φεύγει· αλλιώς μένει μισό sol. Οι τιμές είναι του Planetbase
+# (meal 5, ore 10, metal 15, bioplastic 10, semiconductors 40, spares 15,
+# medical supplies 25, gun 80, starch/vegetables/vitromeat 5, medicinal 10)·
+# το ρομπότ 120, ανάμεσα στο ρομπότ μεταφοράς (80) και κατασκευής (160), γιατί
+# εδώ ένα Bot γίνεται εναλλάξ το ένα ή το άλλο. Το νερό δεν είναι εμπόρευμα,
+# όπως εκεί.
+TRADE_VALUE = [0, 5, 10, 15, 10, 40, 15, 25, 80, 120, 5, 5, 10, 5]   # ανά απόθεμα
+# Η ΜΟΝΑΔΑ ΤΟΥ ΒΕΛΟΥΣ, ~50-100 σε αξία: 10 τρόφιμα, 5 μέταλλα, 2 επεξεργαστές,
+# 1 ρομπότ. Και του φορτίου: ο έμπορος φέρνει 1-4 μονάδες από το καθένα.
+TRADE_LOT = [0, 10, 10, 5, 10, 2, 5, 4, 1, 1, 10, 10, 10, 10]
+TRADE_N = 13                # τα αποθέματα 1-13: όλα εκτός από το νερό
+MER_SLOTS = 4
+MER_ROLL = 0x5A5            # (r2 & 0x7FF): το μηδέν είναι ο επισκέπτης
+MARKUP_MIN = 35             # + 0..30
+TRADE_MAX = 99              # ως 99 από ένα αγαθό σε μία προσφορά: δύο ψηφία
+
+
+def mer_bytes(seed, n):
+    """n bytes από ΔΙΚΟ τους βήματα του Galois, οκτώ ανά byte (όπως η βροχή
+    μετεωριτών): ο σπόρος είναι το EC_RND, που ΔΕΝ αλλάζει — η ακολουθία των
+    συμβάντων μένει ίδια, με ή χωρίς έμπορο."""
+    out, x = [], seed
+    for _ in range(n):
+        for _ in range(8):
+            x = lfsr(x)
+        out.append(x & 0xFF)
+    return out
+
+
+def land_merchant(e):
+    """Το φορτίο και το κέρδος, τη στιγμή που προσγειώνεται. Τρία bytes:
+    το πρώτο δίνει το κέρδος (5 bits, ως 30) και αν φέρνει τέσσερα (bit 5), το
+    δεύτερο το πρώτο αγαθό (χαμηλά 4 bits, mod 13) και το βήμα ανάμεσά τους
+    (ψηλά 4, mod 12, + 1), το τρίτο τις μονάδες, δύο bits το καθένα. Το 13 είναι
+    πρώτος αριθμός: s, s + d, s + 2d, s + 3d (mod 13) είναι πάντα διαφορετικά."""
+    b0, b1, b2 = mer_bytes(e.rnd, 3)
+    m = b0 & 31
+    e.markup = MARKUP_MIN + (m - 31 if m >= 31 else m)
+    k = 4 if b0 & 32 else 3
+    t = b1 & 15
+    t = t - 13 if t >= 13 else t
+    d = b1 >> 4
+    d = (d - 12 if d >= 12 else d) + 1
+    cargo = []
+    for i in range(MER_SLOTS):
+        if i < k:
+            g = 1 + t
+            cargo += [g, TRADE_LOT[g] * (1 + (b2 & 3))]
+            b2 >>= 2
+            t += d
+            t = t - 13 if t >= 13 else t
+        else:
+            cargo += [0, 0]
+    e.cargo = cargo
+    e.ship_eta = e.sollen >> 5          # μισό sol, σε περιστροφές
+
+
+def mer_here(e):
+    return e.ship_state == SHIP_LANDED and e.ship_kind == SK_MERCHANT
+
+
+def trade_price(e, g):
+    """Ενα από τα δικά του: η τιμή και το κέρδος του, στρογγυλεμένα ανά
+    μονάδα. Το βιοπλαστικό με 40% κάνει 14, όπως στο παράδειγμα του Planetbase."""
+    v = TRADE_VALUE[g]
+    return v + (v * e.markup + 50) // 100
+
+
+def trade_totals(e, net):
+    """net[απόθεμα]: > 0 παίρνεις από αυτόν, < 0 του δίνεις. (παίρνεις, δίνεις)
+    σε αξία: τα δικά του με το κέρδος, τα δικά σου στην τιμή τους."""
+    take = sum(n * trade_price(e, g) for g, n in enumerate(net) if n > 0)
+    give = sum(-n * TRADE_VALUE[g] for g, n in enumerate(net) if n < 0)
+    return take, give
+
+
+def trade(e, net):
+    """Η ανταλλαγή, αν γίνεται: κάτι παίρνεις, και δίνεις τουλάχιστον όσο
+    παίρνεις, από όσα έχεις ΤΩΡΑ. Μετά ο έμπορος φεύγει (Planetbase: όταν
+    παραδοθούν όλα· εδώ η παράδοση είναι στιγμιαία). Σπάει το σερί της
+    ανεξαρτησίας."""
+    if not mer_here(e):
+        return False
+    take, give = trade_totals(e, net)
+    if take == 0 or give < take:
+        return False
+    if any(n < 0 and -n > e.stock[g] for g, n in enumerate(net)):
+        return False
+    for g, n in enumerate(net):
+        if n > 0:
+            add_stock(e, g, n)
+        elif n < 0:
+            e.stock[g] += n
+    e.traded = 1
+    e.ship_state = SHIP_NONE
+    return True
+
+
 def call_ship(e, kind):
     """Ο παίκτης καλεί πλοίο από το Control. Ενα τη φορά, και θέλει πίστα."""
     if e.ship_state != SHIP_NONE or e.pad_node == 255:
@@ -1157,22 +1270,6 @@ def call_ship(e, kind):
     e.ship_state = SHIP_INCOMING
     e.ship_kind = kind
     e.ship_eta = SHIP_TRIP
-    return True
-
-
-def trade(e, give_stock, give_qty, take_stock, take_qty):
-    """Ανταλλαγή με τον έμπορο. Επιστρέφει αν έγινε.
-
-    Το εμπόριο είναι πράξη του παίκτη, όχι του τροχού: εδώ υπάρχει ο
-    μηχανισμός, και το κουμπί που τον καλεί θα ζήσει στο §9.
-    """
-    if e.ship_state != SHIP_LANDED or e.ship_kind != SK_MERCHANT:
-        return False
-    if e.stock[give_stock] < give_qty:
-        return False
-    e.stock[give_stock] -= give_qty
-    add_stock(e, take_stock, take_qty)
-    e.traded = 1                        # σπάει το σερί της ανεξαρτησίας
     return True
 
 
@@ -1190,6 +1287,8 @@ def ship_tick(e, a, spawn_node, F_ALIVE, occ):
             land_colonists(e, a, spawn_node, F_ALIVE, occ)
         elif e.ship_kind == SK_VISITOR:
             visit(e, a, F_ALIVE)
+        else:
+            land_merchant(e)            # βήμα 93
         return
     e.ship_state = SHIP_NONE            # έφυγε
 
@@ -1283,7 +1382,7 @@ def visit(e, a, F_ALIVE):
     """Επισκέπτες: τρώνε και ανεβάζουν το ηθικό. Ενοχλητικοί όταν πεινάς."""
     take = min(VISITOR_FOOD, e.stock[S_FOOD])
     e.stock[S_FOOD] -= take
-    for i in range(MAXAGENT_J):
+    for i in range(AG_BOT0):            # οι άποικοι· τα ρομπότ δεν έχουν ηθικό (92)
         if a.flags[i] & F_ALIVE:
             a.morale[i] = min(255, a.morale[i] + VISITOR_MORALE)
 

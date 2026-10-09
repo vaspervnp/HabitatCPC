@@ -444,7 +444,9 @@ def negatives(sym):
     ψάχνεται στη μνήμη, και πρέπει να βρεθεί ακριβώς μία φορά."""
     G = Game(sym)
     m = G.m
-    b6 = bytes(G.b6[sym["BOT_TICK"] - 0x4000:sym["ZZ_B6CODE_END"] - 0x4000])
+    # Μόνο ο κώδικας των ρομπότ: από το βήμα 93 στην ίδια δέσμευση ζουν και τα
+    # πλοία και το μέτρημα των ειδικοτήτων (src/ship.asm, src/crew.asm).
+    b6 = bytes(G.b6[sym["BOT_TICK"] - 0x4000:sym["BOT_END"] - 0x4000])
     ram = lambda name, n, pat: find(m.read_ram(sym[name], n), sym[name], pat)
     out = []
 
@@ -456,6 +458,14 @@ def negatives(sym):
         at = ram(name, n, pat)
         out.append((label, [(at[0] + k, v) for k, v in edits] if len(at) == 1 else None,
                     False, test))
+
+    def bank6(label, name, n, pat, edits, test):
+        # ό,τι ζει στη δέσμευση b6code από το βήμα 93: το ship_crew και το
+        # sol_rollover ήταν στην τράπεζα 0
+        lo = sym[name] - 0x4000
+        at = find(bytes(G.b6[lo:lo + n]), sym[name], pat)
+        out.append((label, [(at[0] + k, v) for k, v in edits] if len(at) == 1 else None,
+                    True, test))
     at = find(b6, sym["BOT_TICK"], [0x7C, 0xB5, 0xCA])     # or l / jp z,ship_tick
     out.append(("χωρίς τον έλεγχο του αποθέματος",
                 [(at[0] + k, 0) for k in (2, 3, 4)] if len(at) == 1 else None, True, "rules"))
@@ -479,10 +489,10 @@ def negatives(sym):
               [0xFE, BOT0 + 1, 0x38, 0x02, 0x3E, BOT0])
     out.append(("ταβάνι 128", [(at[0] + 1, 129), (at[0] + 5, 128)] if len(at) == 1 else None,
                 False, "cap"))
-    zero("το πλοίο γεννά στις θέσεις ρομπότ", "SHIP_CREW", 12, [0xD6, BOT0, 0xD0],
-         [(1, 128), (2, 0xC8)], "cap")
-    zero("Automation με F_WORKING", "SOL_ROLLOVER", 200, [0xE6, 0x01, 0x81], [(1, 0x20)],
-         "auto")
+    bank6("το πλοίο γεννά στις θέσεις ρομπότ", "SHIP_CREW", 12, [0xD6, BOT0, 0xD0],
+          [(1, 128), (2, 0xC8)], "cap")
+    bank6("Automation με F_WORKING", "SOL_ROLLOVER", 200, [0xE6, 0x01, 0x81], [(1, 0x20)],
+          "auto")
     return out
 
 
