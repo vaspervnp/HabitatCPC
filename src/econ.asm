@@ -657,6 +657,5 @@ tab_extr_pw:    db 1,3,6
 tab_extr_out:   db 1,2,5
 
 ef_wat:     dw 0
-ef_ore:     dw 0
 ec_pdiv:    db 1
 ec_fdiv:    db 1

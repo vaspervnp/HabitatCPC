@@ -109,6 +109,11 @@ EXTRACTOR_OUT = [1, 2, 5]      # ανά κύκλο ροής — δες FLOW_DIV
 EXTRACTOR_POWER = [1, 3, 6]     # ένα τρίτο πάνελ, όχι δύο — βλ. src/econ.asm
 MINE_OUT, MINE_POWER = 2, 8         # MINE_OUT: με ΕΝΑΝ που σκάβει (βήμα 94)
 MINE_OPS = 3                        # ως τρεις σε κάθε ορυχείο, όπως το Planetbase
+# Η ΜΕΤΑΦΟΡΑ (βήμα 95, src/haul.asm): το μετάλλευμα μένει σε σωρό στο ορυχείο
+# (ST_OWED), ως HAUL_CAP, και το κουβαλούν φορτία των HAUL_LOAD. Το bit ST_HAUL
+# του ST_OPS λέει ότι η Haul του υπάρχει (το 0x80 είναι της Drill).
+HAUL_LOAD, HAUL_CAP = 10, 30
+ST_HAUL = 0x40
 
 O2_PER_COLONIST = 2
 CW_N = 5                            # οι ειδικότητες των πλοίων αποίκων (βήμα 91)
@@ -365,7 +370,7 @@ def flow_balance(e, alive, inside):
 
 
 def flow_cycle(e):
-    prod = cap = water = ore = 0
+    prod = cap = water = 0
     use = e.mach_power
     e.mines = 0
     for i in range(MAX_STRUCT):
@@ -384,19 +389,17 @@ def flow_cycle(e):
             use += EXTRACTOR_POWER[sz]
             water += EXTRACTOR_OUT[sz]
         elif k == K_MINE:
-            # ΣΚΑΒΕΙ ΟΠΟΙΟΣ ΕΙΝΑΙ ΕΚΕΙ (βήμα 94, src/flow.asm και src/drill.asm):
-            # κανείς 0, ένας MINE_OUT, κάθε επόμενος ένα παραπάνω — το 100, 150,
-            # 200% του Planetbase. Το ρεύμα το τρώει ούτως ή άλλως. Και όσο
-            # λείπει κάποιος, μια εργασία Drill, εδώ στο σάρωμα (dr_post).
+            # ΣΚΑΒΕΙ ΟΠΟΙΟΣ ΕΙΝΑΙ ΕΚΕΙ (βήμα 94, src/flow.asm και src/drill.asm),
+            # και όσο λείπει κάποιος, μια εργασία Drill, εδώ στο σάρωμα
+            # (dr_post). Το ρεύμα το τρώει ούτως ή άλλως. Το μετάλλευμα πάει
+            # στον σωρό, με το ρεύμα του τελευταίου ισοζυγίου (haul_pile, βήμα 95).
             use += MINE_POWER
             e.mines += 1
-            n = e.struct[st + ST_OPS]
+            n = e.struct[st + ST_OPS] & 0x83    # όχι το ST_HAUL
             # το bit 7: η Drill του υπάρχει ήδη, ως να φτάσει κάποιος (dr_post)
             if n < MINE_OPS and post_drill(e, MAX_DOME + i):
                 e.struct[st + ST_OPS] |= 0x80
-            n &= MINE_OPS
-            if n:
-                ore += MINE_OUT + n - 1
+            haul_pile(e, i)
 
     e.power_prod, e.power_cap, e.power_use = prod, cap, use
     if prod >= use:
@@ -425,13 +428,30 @@ def flow_cycle(e):
 
     if e.power_ok == POWER_ALL:             # οι αντλίες θέλουν ρεύμα
         add_stock(e, S_WATER, water)
-        add_stock(e, S_ORE, ore)
-        # Το νερό και το μετάλλευμα βγαίνουν από ΔΟΜΕΣ, όχι από μηχανές
-        # θόλου, αλλά βγαίνουν εδώ — και το §10.2 τα θέλει.
+        # Το νερό βγαίνει από ΔΟΜΕΣ, όχι από μηχανές θόλου, αλλά βγαίνει εδώ —
+        # και το §10.2 το θέλει. Το μετάλλευμα από το βήμα 95 στην παράδοση.
         if water:
             e.prod_mask |= 1 << S_WATER
-        if ore:
-            e.prod_mask |= 1 << S_ORE
+
+
+def mine_rate(n):
+    """Μετάλλευμα ανά κύκλο με n που σκάβουν (βήμα 94): 0, 2, 3, 4."""
+    return MINE_OUT + n - 1 if n else 0
+
+
+def haul_pile(e, i):
+    """Το hl_pile (βήμα 95, src/haul.asm), στο σάρωμα, για το έτοιμο ορυχείο
+    i: με όλο το ρεύμα ΤΟΥ ΤΕΛΕΥΤΑΙΟΥ ΙΣΟΖΥΓΙΟΥ (όπως οι μηχανές της θέσης 11)
+    ο σωρός παίρνει τον ρυθμό του, ως HAUL_CAP· και με ή χωρίς, ένας σωρός
+    από HAUL_LOAD χωρίς Haul παίρνει μία."""
+    st = i * STRUCT_REC
+    if e.power_ok == POWER_ALL:
+        r = mine_rate(e.struct[st + ST_OPS] & MINE_OPS)
+        if r:
+            e.struct[st + ST_OWED] = min(HAUL_CAP, e.struct[st + ST_OWED] + r)
+    if e.struct[st + ST_OWED] >= HAUL_LOAD and not e.struct[st + ST_OPS] & ST_HAUL:
+        if post_job(e, J_HAUL, MAX_DOME + i):
+            e.struct[st + ST_OPS] |= ST_HAUL
 
 
 STORM_LEN = 32          # περιστροφές — περίπου δέκα δευτερόλεπτα
@@ -730,7 +750,10 @@ def to_bytes(e):
 ECON_BYTES = 64 + 8 + 10 + 4 + 5 + 1 + 5 + 9 + 1
 
 
-def populate(e, n_dome=24, n_struct=30, seed=11):
+POP_DOME, POP_STRUCT = 24, 30          # η αποικία του populate (tests/test_sim.py)
+
+
+def populate(e, n_dome=POP_DOME, n_struct=POP_STRUCT, seed=11):
     """Μια αποικία που όντως δουλεύει: παραγωγοί ρεύματος, αντλίες, ορυχείο,
     και θόλοι με μηχανές που έχουν πού να τραβήξουν. Ντετερμινιστική."""
     x = seed
@@ -781,6 +804,10 @@ def populate(e, n_dome=24, n_struct=30, seed=11):
         # εδώ. Σαν ρομπότ γεώτρησης, που δεν φεύγει ποτέ.
         if k == K_MINE:
             e.struct[b + ST_OPS] = 1
+            # ΚΑΙ ΔΥΟ ΦΟΡΤΙΑ ΣΤΟΝ ΣΩΡΟ (βήμα 95): ο κύκλος ροής δημοσιεύει Haul
+            # αμέσως, και οι σκηνές του tests/test_sim.py περνούν από φόρτωμα
+            # και παράδοση χωρίς να περιμένουν πέντε κύκλους.
+            e.struct[b + ST_OWED] = 2 * HAUL_LOAD
     e.n_struct = n_struct
 
     # Δέκα μικροί θόλοι με γεννήτρια οξυγόνου. Οχι δύο: 2 x 20 = 40 O2 για
@@ -856,7 +883,7 @@ J_BUILD, J_OPERATE, J_HAUL, J_DRILL, J_REPAIR, J_HEAL, J_DEFEND, J_SUPPLY = rang
 # ποιοι ρόλοι δέχονται ποια εργασία — bitmask ανά είδος (§6.7). Η Supply:
 # όλοι οι άποικοι και το ρομπότ μεταφοράς.
 JOB_ROLES = [0x22, 0x05, 0x41, 0x81, 0x02, 0x08, 0x10, 0x5F, 0x5F]
-JOB_PRIO = [5, 3, 2, 4, 6, 8, 9]
+JOB_PRIO = [5, 3, 5, 4, 6, 8, 9]        # η Haul 5 από το βήμα 95: πάνω από τη Drill
 BUILD_STEP = 32                     # src/jobs.asm — οκτώ επισκέψεις
 # Το OPERATE δεν έχει μία προτεραιότητα αλλά μία ανά ΔΩΜΑΤΙΟ (§6.7): με κοινή
 # τιμή η ισοπαλία έσπαγε πάντα στην απόσταση, που δεν αλλάζει ποτέ, και ο
@@ -918,7 +945,10 @@ def jobs_tick(e, a, F_ALIVE, F_WORKING):
             continue
         if not (a.flags[i] & F_ALIVE) or a.task[i] != j:
             jb[b + J_AGENT] = 255
-            jb[b + J_NODE] = jb[b + J_SITE]     # μια Supply γυρίζει στο εργοτάξιο
+            # μια Supply γυρίζει στο εργοτάξιο· μια Haul όχι: φορτωμένη, ο
+            # επόμενος παραδίδει ό,τι έμεινε στη μέση (βήμα 95)
+            if jb[b + J_KIND] != J_HAUL:
+                jb[b + J_NODE] = jb[b + J_SITE]
 
     # 2. όποιος έφτασε, πιάνει δουλειά: ο θόλος αποκτά χειριστή
     for j in range(MAX_JOB):
@@ -951,6 +981,32 @@ def jobs_tick(e, a, F_ALIVE, F_WORKING):
                     continue
             if not (rec[me] | rec[other]):
                 post_build(e, site)             # όλα έφτασαν: σειρά του χτίστη
+            a.task[i] = NO_TASK
+            jb[b + J_KIND] = NO_JOB
+            continue
+        if jb[b + J_KIND] == J_HAUL:
+            # ΜΕΤΑΦΟΡΑ (βήμα 95, hl_arrive): στο ορυχείο ένα φορτίο από τον
+            # σωρό και ο προορισμός του sp_take· στον προορισμό — ή εκεί, αν
+            # δεν φτάνεται κανένας — το φορτίο στα αποθέματα.
+            mine = jb[b + J_SITE]
+            if node == mine:
+                ms = (mine - MAX_DOME) * STRUCT_REC
+                e.struct[ms + ST_OPS] &= ~ST_HAUL & 0xFF
+                if e.struct[ms + ST_OWED] < HAUL_LOAD:
+                    a.task[i] = NO_TASK
+                    jb[b + J_KIND] = NO_JOB
+                    continue
+                e.struct[ms + ST_OWED] -= HAUL_LOAD
+                a.spare[i] = 0
+                dst = supply_source(e, node)
+                if dst != 255:
+                    jb[b + J_NODE] = dst
+                    a.dest[i] = dst
+                    a.spare[i] = S_ORE
+                    continue
+            a.spare[i] = 0
+            add_stock(e, S_ORE, HAUL_LOAD)
+            e.prod_mask |= 1 << S_ORE
             a.task[i] = NO_TASK
             jb[b + J_KIND] = NO_JOB
             continue
@@ -1000,8 +1056,10 @@ def jobs_tick(e, a, F_ALIVE, F_WORKING):
         if node < MAX_DOME:
             e.dome[node * DOME_REC + D_OPS] += 1
         else:                               # το ορυχείο (βήμα 94, op_ptr)
-            b = (node - MAX_DOME) * STRUCT_REC + ST_OPS
-            e.struct[b] = (e.struct[b] + 1) & 0x7F      # και η Drill του έφυγε
+            # ΟΧΙ `b`: είναι η εγγραφή της εργασίας, που σβήνει πιο κάτω. Ως το
+            # βήμα 95 εδώ ήταν `b`, και η αναφορά έσβηνε ένα byte άλλης εργασίας.
+            sb = (node - MAX_DOME) * STRUCT_REC + ST_OPS
+            e.struct[sb] = (e.struct[sb] + 1) & 0x7F    # και η Drill του έφυγε
         a.flags[i] |= F_WORKING
         a.task[i] = NO_TASK
         jb[b + J_KIND] = NO_JOB
@@ -1402,20 +1460,25 @@ def drill_need(e, a, F_ALIVE=1):
 
 
 def post_drill(e, node):
-    """Το dr_post μέσω του jp_have (src/jobs.asm): μια εργασία Drill για τον
-    κόμβο, αν δεν υπάρχει ήδη, στην πρώτη ελεύθερη θέση· τίποτα αν ο πίνακας
-    γέμισε. True αν υπάρχει πια."""
+    """Το dr_post (βήμα 94)."""
+    return post_job(e, J_DRILL, node)
+
+
+def post_job(e, kind, node):
+    """Το st_post μέσω του jp_have (src/drill.asm, src/jobs.asm): μια εργασία
+    του είδους για τον κόμβο, αν δεν υπάρχει ήδη, στην πρώτη ελεύθερη θέση·
+    τίποτα αν ο πίνακας γέμισε. True αν υπάρχει πια."""
     jb = e.job
-    if any(jb[k * JOB_REC + J_KIND] == J_DRILL and jb[k * JOB_REC + J_NODE] == node
+    if any(jb[k * JOB_REC + J_KIND] == kind and jb[k * JOB_REC + J_NODE] == node
            for k in range(MAX_JOB)):
         return True
     for k in range(MAX_JOB):
         b = k * JOB_REC
         if jb[b + J_KIND] == NO_JOB:
-            jb[b + J_KIND] = J_DRILL
+            jb[b + J_KIND] = kind
             jb[b + J_NODE] = node
             jb[b + J_AGENT] = 255
-            jb[b + J_PRIO] = JOB_PRIO[J_DRILL]
+            jb[b + J_PRIO] = JOB_PRIO[kind]
             jb[b + J_SITE] = node
             return True
     return False

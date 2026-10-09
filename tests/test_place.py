@@ -49,8 +49,11 @@ import cpc                                               # noqa: E402
 from test_terrain import model                           # noqa: E402
 
 PROBE, OUT = 0x3E00, 0x3EF0
-# πάνω από τον κώδικα της τράπεζας 0: το main.asm τον κρατά ως το #3D60 (βήμα 91· ως τότε #3C00)
-LOG, LPTR, FLAG, STUB = 0x3800, 0x3EFC, 0x3EFE, 0x3D60   # τα stubs του bd_redraw
+# Τα stubs ΠΑΝΩ από το PROBE, στο #3F00 (βήμα 95· ως τότε στο #3D60, ακριβώς πάνω
+# από τον κώδικα της τράπεζας 0, που κρατούσε έτσι 160 bytes άδεια για τις
+# δοκιμές). Το #3F00-#3FBF δεν το αγγίζει το παιχνίδι· το #3FC0 είναι το
+# επίμετρο του φορτωτή (src/boot.asm, ENDGAME).
+LOG, LPTR, FLAG, STUB = 0x3800, 0x3EFC, 0x3EFE, 0x3F00   # τα stubs του bd_redraw
 B1, B4 = 0xC0, 0xC4
 K_MINE, NO_MACH, DS_BUILDING, DK_SITE = 4, 255, 1, 6     # src/const.asm
 OB_IX_FIG, OB_IX_DOME, OB_IX_STRUCT = 1, 2, 8

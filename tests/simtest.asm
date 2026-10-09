@@ -144,6 +144,7 @@ rtr_lp:
         include "../src/flow.asm"           ; βήμα 93: η θέση 12 (στο παιχνίδι στην τράπεζα 6)
         include "../src/drill.asm"          ; βήμα 94: η γεώτρηση
         include "../src/jobs.asm"
+        include "../src/haul.asm"           ; βήμα 95: η μεταφορά
         include "../src/supply.asm"         ; βήμα 88: η τροφοδοσία
         include "../src/suit.asm"           ; βήμα 90: οι στολές
         include "../src/stock.asm"

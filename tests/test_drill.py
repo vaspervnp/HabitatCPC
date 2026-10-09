@@ -8,7 +8,10 @@
              #81, προτεραιότητα 4) και δεν τη δημοσίευε τίποτα.
   ΡΥΘΜΟΣ     μετάλλευμα ανά κύκλο ροής, με ρεύμα: κανείς 0, ένας 2 — όσο ως το
              93 χωρίς κανέναν —, δύο 3, τρεις 4: το 100, 150, 200% του
-             Planetbase. Το ρεύμα του (8) το τρώει ούτως ή άλλως.
+             Planetbase. Το ρεύμα του (8) το τρώει ούτως ή άλλως. ΑΠΟ ΤΟ ΒΗΜΑ
+             95 ΣΤΟΝ ΣΩΡΟ του ορυχείου (ST_OWED), όχι στα αποθέματα: εκεί το
+             βάζει η μεταφορά (tests/test_haul.py)· και «με ρεύμα» είναι το
+             ρεύμα του τελευταίου ισοζυγίου (EC_POK), όπως για τις μηχανές.
   ΕΡΓΑΣΙΑ    στο σάρωμα του κύκλου ροής: κάθε έτοιμο ορυχείο με λιγότερους από
              τρεις έχει ΜΙΑ εργασία Drill — κόμβος 64 + δομή, αδιάθετη,
              προτεραιότητα 4, εργοτάξιο ο ίδιος κόμβος — στην πρώτη ελεύθερη
@@ -23,8 +26,8 @@
              περισσότερες από τα ζωντανά γεωτρύπανα· αλλιώς κατασκευής ή
              μεταφοράς, όπως στο 92. Και τα δύο ίδια με την αναφορά.
   ΑΛΥΣΙΔΑ    στο παιχνίδι που τρέχει: ένα ορυχείο στη φλέβα δίπλα στην αποικία,
-             χτισμένο από τον μηχανικό, παίρνει εργάτη, βγάζει 2 ανά κύκλο όσο
-             σκάβει εκείνος και τίποτα όταν τον γυρίσει η στολή· όποιος πεθάνει
+             χτισμένο από τον μηχανικό, παίρνει εργάτη, ρίχνει 2 ανά κύκλο στον
+             σωρό όσο σκάβει εκείνος και τίποτα όταν τον γυρίσει η στολή· όποιος πεθάνει
              εκεί κατεβάζει το μέτρημα· ένα ρομπότ γεώτρησης που ξυπνά πάει και
              μένει.
   ΑΝΑΘΕΣΗ    μια Drill μένει ανοιχτή όσο το ορυχείο έχει θέση και δεν έρχεται
@@ -34,7 +37,8 @@
              ανοιχτών (jb_open, src/drill.asm). Στη θέση 13 του σεναρίου
              ταυτότητας του tests/test_sim.py: 363 ms στα 640 ticks στο 93,
              982 με τη γεώτρηση χωρίς μάσκα, 292 τώρα.
-  ΚΟΣΤΟΣ     ο κύκλος ροής με τρία ορυχεία (0, 2, 3 που σκάβουν), η θέση 12
+  ΚΟΣΤΟΣ     ο κύκλος ροής με τρία ορυχεία (0, 2, 3 που σκάβουν) — και στις
+             τρεις τελευταίες θέσεις του πίνακα, στο ίδιο ταβάνι —, η θέση 12
              χωρίς κύκλο, η θέση 13 — χωρίς ανοιχτή εργασία, και με μια Drill
              που δεν την παίρνει κανείς, χωρίς αδρανή στο παράθυρο και με
              αδρανείς άλλου ρόλου —, και το ξύπνημα ρομπότ, κάτω από τα ταβάνια
@@ -64,7 +68,7 @@ import entity as E                                       # noqa: E402
 FAIL = []
 MINE_OPS, J_DRILL, RL_DRILL, RL_WORKER = 3, EC.J_DRILL, EC.RL_DRILL, 0
 K_MINE, K_SOLAR, DS_BUILDING, DS_ACTIVE = EC.K_MINE, EC.K_SOLAR, 1, 2
-ST_OPS = EC.ST_OPS
+ST_OPS, ST_OWED = EC.ST_OPS, EC.ST_OWED
 OUT = {0: 0, 1: 2, 2: 3, 3: 4}                       # ο ρυθμός της πρόζας
 MINE_AT = (-10, -8)                                  # μισά tiles: η φλέβα της δύσης
 EC_MINES_OFS = 106
@@ -137,6 +141,7 @@ def ref_flow(G):
     for k in range(14):
         e.stock[k] = G.w16(G.g + 2 * k)
     e.power_store = G.w16(G.g + 28)
+    e.power_ok = G.m.peek(G.g + 46)                     # EC_POK: το τελευταίο ισοζύγιο
     e.mach_power = G.w16(G.g + 36)
     e.ess_power = G.w16(G.g + 82)
     e.day, e.wind, e.storm = G.m.peek(G.g + 49), G.m.peek(G.g + 50), G.m.peek(G.g + 61)
@@ -157,6 +162,10 @@ def flow(sym, patch=(), patch6=(), quiet=False):
         G = Game(sym, patch, patch6)
         for k, v in SCENE:
             G.put_rec(k, [b & 255 for b in v])
+        # ΤΟ ΡΕΥΜΑ ΤΟΥ ΤΕΛΕΥΤΑΙΟΥ ΙΣΟΖΥΓΙΟΥ γεμίζει τους σωρούς (βήμα 95,
+        # hl_pile): το EC_POK. Η μπαταρία κάνει το ισοζύγιο αυτού του κύκλου
+        # ίδιο, για τον δεύτερο.
+        G.m.poke(G.g + 46, EC.POWER_ALL if power else EC.POWER_NONE)
         G.s16(G.g + 28, 30000 if power else 0)          # EC_PSTORE: η μπαταρία
         ore0, jobs0 = G.ore(), G.jobs()
         (want_ore, want_mines, want_jobs), want_st = ref_flow(G)
@@ -164,23 +173,26 @@ def flow(sym, patch=(), patch6=(), quiet=False):
             return "ΡΟΗ: το econ_flow δεν τερμάτισε"
         got = (G.ore(), G.mines(), G.jobs())
         ops = [G.rec(k)[ST_OPS] for k, _ in SCENE]
-        # η πρόζα: 2 + 3 + 4 με ρεύμα, τρεις εργασίες για τις δομές 5, 6, 7
+        piles = [G.rec(k)[ST_OWED] for k, _ in SCENE]
+        # η πρόζα: 2 + 3 + 4 με ρεύμα στους σωρούς, τρεις εργασίες για τις δομές 5, 6, 7
         free = [j for j in range(32) if jobs0[5 * j] == 255][:3]
         prose = bytearray(jobs0)
         for j, k in zip(free, (5, 6, 7)):
             prose[5 * j:5 * j + 5] = bytes([J_DRILL, 64 + k, 255, 4, 64 + k])
-        want_p = (ore0 + (sum(OUT[n] for n in (0, 1, 2, 3)) if power else 0), 4, bytes(prose))
-        if got != want_p or ops != [0x80, 0x81, 0x82, 3, 0, 1]:
+        want_p = (ore0, 4, bytes(prose))
+        want_piles = [OUT[n] if power else 0 for n in (0, 1, 2, 3)] + [0, 0]
+        if got != want_p or ops != [0x80, 0x81, 0x82, 3, 0, 1] or piles != want_piles:
             return (f"ΡΟΗ ({'με' if power else 'χωρίς'} ρεύμα): μετάλλευμα {ore0} -> {got[0]}, "
-                    f"EC_MINES {got[1]}, ST_OPS {[hex(v) for v in ops]}, νέες εργασίες "
+                    f"σωροί {piles}, EC_MINES {got[1]}, ST_OPS {[hex(v) for v in ops]}, νέες εργασίες "
                     f"{[list(got[2][5 * j:5 * j + 5]) for j in range(32) if got[2][5 * j:5 * j + 5] != jobs0[5 * j:5 * j + 5]]}"
-                    f" — η πρόζα λέει {want_p[0]}, 4, ST_OPS 80 81 82 3 0 1, Drill για τους 69, 70, 71")
+                    f" — η πρόζα λέει μετάλλευμα {ore0}, σωροί {want_piles}, 4, ST_OPS 80 81 82 3 0 1, "
+                    f"Drill για τους 69, 70, 71")
         if got != (want_ore, want_mines, want_jobs) or bytes(G.b6[G.st:G.st + 256]) != want_st:
             return "ΡΟΗ: ο Z80 διαφέρει από την αναφορά (tools/econ.py, flow_cycle)"
         # ένας δεύτερος κύκλος: καμία διπλή, και φτηνός (το bit 7)
         jobs1 = G.jobs()
         cycle(G)
-        if G.jobs() != jobs1 or G.ore() != got[0] + (9 if power else 0):
+        if G.jobs() != jobs1 or [G.rec(k)[ST_OWED] for k, _ in SCENE] != [2 * v for v in want_piles]:
             return "ΡΟΗ: ο δεύτερος κύκλος ξαναδημοσίευσε Drill, ή δεν έβγαλε τα ίδια"
     # ο πίνακας γεμάτος: τίποτα, και τίποτα δεν χαλάει
     G = Game(sym, patch, patch6)
@@ -192,7 +204,7 @@ def flow(sym, patch=(), patch6=(), quiet=False):
     if G.jobs() != full or [G.rec(k)[ST_OPS] for k in (5, 6, 7)] != [0, 1, 2]:
         return "ΡΟΗ: με τον πίνακα γεμάτο κάτι γράφτηκε, ή μπήκε το bit 7"
     if not quiet:
-        print(f"    ΡΟΗ: ορυχεία με 0-3 που σκάβουν βγάζουν 0+2+3+4 = 9 με ρεύμα, 0 χωρίς· "
+        print(f"    ΡΟΗ: ορυχεία με 0-3 που σκάβουν ρίχνουν 0, 2, 3, 4 στους σωρούς τους με ρεύμα, 0 χωρίς· "
               f"μία Drill για καθένα κάτω από τρεις, με ή χωρίς ρεύμα, καμία για το "
               f"εργοτάξιο και το ηλιακό, καμία διπλή, τίποτα με τον πίνακα γεμάτο· "
               f"EC_MINES 4· όπως η αναφορά")
@@ -250,7 +262,7 @@ def roles(sym, patch=(), patch6=(), quiet=False):
 # --------------------------------------------------------------------------
 # ΑΛΥΣΙΔΑ — το ορυχείο στη φλέβα, στο παιχνίδι που τρέχει
 # --------------------------------------------------------------------------
-def next_cycle(G, ops=lambda: 0, limit=4000):
+def next_cycle(G, ops=lambda: 0, limit=4000, val=None):
     """Τρέχει ως να τρέξει ο επόμενος κύκλος ροής: το ec_fdiv μετρά από 64
     προς τα κάτω και ξαναγεμίζει στο 64 μέσα στον κύκλο. (frames, ops() πριν
     από το frame του κύκλου, μετάλλευμα που μπήκε σε εκείνο και στο επόμενο
@@ -262,15 +274,16 @@ def next_cycle(G, ops=lambda: 0, limit=4000):
     και 0 μετάλλευμα, και ο επόμενος με 6 (η μπαταρία το ίδιο: 0, και μετά
     διπλό). Ο,τι τρέξει μετά τον κύκλο στο δεύτερο frame δεν αλλάζει το
     μετάλλευμα — εδώ δεν το ξοδεύει κανείς."""
+    val = val or G.ore
     fd = G.sym["EC_FDIV"]
     prev = G.m.peek(fd)
     for t in range(1, limit + 1):
-        o, n = G.ore(), ops()
+        o, n = val(), ops()
         G.m.run_frames(1)
         cur = G.m.peek(fd)
         if cur > prev:
             G.m.run_frames(1)
-            return t + 1, n, G.ore() - o
+            return t + 1, n, val() - o
         prev = cur
     return None
 
@@ -324,17 +337,26 @@ def chain(sym, g, patch=(), patch6=(), quiet=False, stop=None):
     # Με ×1: ένα πέρασμα του τροχού ανά frame, οπότε στο frame του κύκλου
     # κανένα άλλο πέρασμα δεν αλλάζει όσους σκάβουν.
     m.poke(sym["UI_SPD"], 1)
-    G.s16(G.g + 2 * EC.S_ORE, 0)                     # μακριά από το ταβάνι των 600
     seen, t = {}, 0
+
+    def pile():
+        return G.rec(k)[ST_OWED]
     while t < 60000 and not (seen.get(1) and seen.get(0)):
-        r = next_cycle(G, ops)
+        # ΣΤΟΝ ΣΩΡΟ (βήμα 95), και ο σωρός άδειος πριν από κάθε κύκλο: καμία
+        # Haul δεν δημοσιεύεται, κανείς δεν φορτώνει στη μέση, κανένα ταβάνι.
+        G.b6[G.st + 8 * k + ST_OWED] = 0
+        # ΜΕ ΡΕΥΜΑ: ο σωρός κοιτάζει το ισοζύγιο του ΠΡΟΗΓΟΥΜΕΝΟΥ κύκλου (EC_POK,
+        # βήμα 95), που μπορεί να έγινε τη νύχτα, πριν γεμίσει η μπαταρία.
+        G.s16(G.g + 28, 30000)
+        G.m.poke(G.g + 46, EC.POWER_ALL)
+        r = next_cycle(G, ops, val=pile)
         if r is None:
             return "ΡΥΘΜΟΣ: κανένας κύκλος ροής σε 4.000 frames"
         t += r[0]
         seen.setdefault(r[1], set()).add(r[2])
     bad = {n: v for n, v in seen.items() if v != {OUT[n]}}
     if bad or 1 not in seen:
-        return f"ΡΥΘΜΟΣ: μετάλλευμα ανά κύκλο με όσους σκάβουν: {seen} — η πρόζα λέει {OUT}"
+        return f"ΡΥΘΜΟΣ: στον σωρό ανά κύκλο με όσους σκάβουν: {seen} — η πρόζα λέει {OUT}"
     m.poke(sym["UI_SPD"], 4)
     # --- η στολή τον γυρίζει πίσω ---
     t = 0
@@ -348,7 +370,7 @@ def chain(sym, g, patch=(), patch6=(), quiet=False, stop=None):
     a = G.agent(w)
     if ops() != 0 or a["flags"] & 32 or a["node"] == node and a["edge"] == 255:
         return f"ΑΝΑΧΩΡΗΣΗ: σε {t} frames ST_OPS {ops()}, ο {w}: {a}"
-    say(f"ΡΥΘΜΟΣ: μετάλλευμα ανά κύκλο με όσους σκάβουν {seen}· η στολή γύρισε τον {w} "
+    say(f"ΡΥΘΜΟΣ: στον σωρό ανά κύκλο με όσους σκάβουν {seen}· η στολή γύρισε τον {w} "
         f"πίσω και το ST_OPS έπεσε στο 0, F_WORKING σβηστό")
     if stop == "leave":
         return None
@@ -402,8 +424,13 @@ def chain(sym, g, patch=(), patch6=(), quiet=False, stop=None):
 # Η θέση 13 στο 93 (rep94/c13.py, ίδια αποικία, ίδια Drill στη θέση): 2.841
 # χωρίς ανοιχτή εργασία, 3.864 με τη Drill και κανέναν στο παράθυρο, 6.117 με
 # τους 4 αδρανείς της αποικίας μέσα του και τους εργάτες απασχολημένους.
-COST = {"κύκλος, χωρίς ορυχεία": 1790, "κύκλος, τρία ορυχεία 0/2/3, ο πρώτος": 4100,
-        "κύκλος, τρία ορυχεία 0/2/3, ο επόμενος": 2120,
+# Βήμα 95 (rep95/cost2.py): ο σωρός στο σάρωμα και το DE που μένει, 1.577 ->
+# 1.472 χωρίς ορυχεία, 1.941 -> 1.834 με τρία, 3.841 -> 3.799 ο πρώτος — και
+# ίδια με τα τρία στις τρεις τελευταίες θέσεις του πίνακα. Τα ταβάνια ως το 94
+# ήταν 1.790, 4.100 και 2.120.
+COST = {"κύκλος, χωρίς ορυχεία": 1480, "κύκλος, τρία ορυχεία 0/2/3, ο πρώτος": 3810,
+        "κύκλος, τρία ορυχεία 0/2/3, ο επόμενος": 1840,
+        "κύκλος, τρία ορυχεία στις θέσεις 29-31, ο επόμενος": 1840,
         "θέση 12 χωρίς κύκλο": 690, "θέση 13": 2800,
         "θέση 13, Drill ανοιχτή, κανείς στο παράθυρο": 3500,
         "θέση 13, Drill ανοιχτή, αδρανείς άλλου ρόλου": 3650,
@@ -448,6 +475,15 @@ def cost(sym):
         G.m.poke(sym["EC_FDIV"], 1)
         out[f"κύκλος, τρία ορυχεία 0/2/3, {label}"] = \
             G.call("ECON_FLOW", timed=True) - G.probe([], timed=True)
+    # ΟΙ ΤΕΛΕΥΤΑΙΕΣ ΘΕΣΕΙΣ (βήμα 95): ένα δεύτερο σάρωμα για τους σωρούς θα
+    # πλήρωνε κάθε θέση ως το τελευταίο ορυχείο, ~400 us εδώ.
+    G = Game(sym)
+    for j, n in enumerate([0, 2, 3]):
+        G.put_rec(29 + j, [(-30 + 6 * j) & 255, 20, K_MINE, 0, DS_ACTIVE, 255, n, 0])
+    for _ in range(2):
+        G.m.poke(sym["EC_FDIV"], 1)
+        t = G.call("ECON_FLOW", timed=True) - G.probe([], timed=True)
+    out["κύκλος, τρία ορυχεία στις θέσεις 29-31, ο επόμενος"] = t
     G = Game(sym)
     G.m.poke(sym["EC_FDIV"], 2)
     out["θέση 12 χωρίς κύκλο"] = G.call("ECON_FLOW", timed=True) - G.probe([], timed=True)
@@ -494,18 +530,19 @@ def negatives(sym, g):
     # ld hl,EC_MINES · inc (hl) -> nop
     at6("τα ορυχεία αμέτρητα", "ECON_FLOW", 200, [0x21] + w(g + EC_MINES_OFS) + [0x34],
         [(3, 0)], "flow")
-    # and MINE_OPS · jr z,ef_mine -> and · nop nop: κανείς βγάζει 1
-    hits = find(bytes(G.b6[sym["EF_MINE"] - 0x4000 - 5:sym["EF_MINE"] - 0x4000]),
-                sym["EF_MINE"] - 5, [0xE6, MINE_OPS, 0x28, 0x01, 0x3C])
+    # hl_pile (βήμα 95, src/haul.asm): and MINE_OPS · jr z,hlp_pile · inc a
+    hits = find(m.read_ram(sym["HL_PILE"], 40), sym["HL_PILE"], [0xE6, MINE_OPS, 0x28])
+    ok = len(hits) == 1 and m.peek(hits[0] + 4) == 0x3C
+    # το jr z -> nop nop: κανείς σκάβει και βγάζει, όπως ως το 93
     out.append(("βγάζει χωρίς κανέναν, όπως ως το 93",
-                [(hits[0] + 2, 0), (hits[0] + 3, 0)] if len(hits) == 1 else None, True, "flow"))
-    out.append(("ένας βγάζει 1", [(sym["EF_MINE"] - 1, 0)]
-                if G.b6[sym["EF_MINE"] - 1 - 0x4000] == 0x3C else None, True, "flow"))
+                [(hits[0] + 2, 0), (hits[0] + 3, 0)] if ok else None, False, "flow"))
+    # το inc a -> nop: ένας βγάζει 1
+    out.append(("ένας βγάζει 1", [(hits[0] + 4, 0)] if ok else None, False, "flow"))
     # cp MINE_OPS -> cp 4
     at6("τέσσερις στο ορυχείο", "ECON_FLOW", 200, [0xFE, MINE_OPS, 0xDC], [(1, 4)], "flow")
-    # dr_post: set 7,(ix+ST_OPS) -> nop x4: το σάρωμα των εργασιών σε κάθε κύκλο
-    at0("χωρίς το bit 7", "DR_POST", 30, [0xDD, 0xCB, ST_OPS, 0xFE],
-        [(k, 0) for k in range(4)], "flow")
+    # dr_post: ld a,J_DRILL · ld c,#80 -> ld c,0: κανένα bit, το σάρωμα των
+    # εργασιών σε κάθε κύκλο (βήμα 95: το bit το γράφει το st_post από τον C)
+    at0("χωρίς το bit 7", "DR_POST", 6, [0x3E, J_DRILL, 0x0E, 0x80], [(3, 0)], "flow")
     # ja_oper: res 7,(hl) -> nop nop: η Drill «υπάρχει» για πάντα
     at0("το bit που δεν σβήνει στην άφιξη", "JA_OPER", 10, [0x34, 0xCB, 0xBE],
         [(1, 0), (2, 0)], "death")

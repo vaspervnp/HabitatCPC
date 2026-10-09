@@ -69,8 +69,8 @@ ST_SIZE     equ 3
 ST_STATE    equ 4
 ST_INTEG    equ 5
 ST_JOINED   equ 6           ; airlock: έχει ήδη τον διάδρομό του (βήμα 87)
-ST_OPS      equ 6           ; ορυχείο: όσοι σκάβουν εκεί (βήμα 94, src/drill.asm)
-ST_OWED     equ 7           ; εργοτάξιο: φορτία που χρωστιούνται, μέταλλο<<4 | βιοπλ. (βήμα 88)
+ST_OPS      equ 6           ; ορυχείο: όσοι σκάβουν εκεί (βήμα 94, src/drill.asm), η Drill (bit 7), η Haul (bit 6, βήμα 95)
+ST_OWED     equ 7           ; εργοτάξιο: φορτία που χρωστιούνται, μέταλλο<<4 | βιοπλ. (βήμα 88)· έτοιμο ορυχείο: ο σωρός (βήμα 95, src/haul.asm)
 CORR_REC    equ 5
 C_A         equ 0
 C_B         equ 1

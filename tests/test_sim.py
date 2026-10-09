@@ -164,9 +164,22 @@ def fresh(g, nexthop, src):
     return s
 
 
+def colony_graph():
+    """Ο γράφος της αποικίας, και οι δομές της οικονομίας (64 + i, όσες βάζει
+    το EC.populate) δεμένες σε θόλους. ΑΠΟ ΤΟ ΒΗΜΑ 95: ως τότε οι δομές του
+    populate δεν υπήρχαν στον γράφο (το g_colony έχει τις δικές του στο 32-47),
+    οπότε κανείς δεν έφτανε ποτέ σε ορυχείο — ούτε η Drill του 94, ούτε η Haul
+    — και ό,τι γίνεται στην άφιξη εκεί δεν το έλεγχε τίποτα."""
+    g = G.GRAPHS["colony"]()
+    g.n = g.hw = EC.MAX_DOME + EC.MAX_STRUCT
+    for i in range(EC.POP_STRUCT):
+        g.link(EC.MAX_DOME + i, (i * 7) % EC.POP_DOME)
+    return g
+
+
 def main():
     sym = build()
-    g = G.GRAPHS["colony"]()
+    g = colony_graph()
     dist, nexthop = G.all_pairs(g)
 
     sim0 = E.Sim(g, nexthop, dist)
@@ -1605,6 +1618,7 @@ def meteors(sym, g, nexthop, sim0):
     walk = fresh(g, nexthop, st)
     broke = fixed = 0
     prev = bytes(walk.e.dome)
+    sites, jobs = set(), 0
     for _ in range(METEOR_TICKS):
         walk.tick()
         now = bytes(walk.e.dome)
@@ -1614,20 +1628,24 @@ def meteors(sym, g, nexthop, sim0):
                 broke += bool(prev[i] and not now[i])
                 fixed += bool(not prev[i] and now[i])
         prev = now
-    # Η δομή που χτυπήθηκε έγινε εργοτάξιο και πήρε εργασία Build. Ξαναχτίζεται
-    # μόνο στο κανονικό παιχνίδι (tests/test_meteor.py): ο γράφος αυτής της
-    # δοκιμής έχει μόνο θόλους, και καμία δομή δεν φτάνεται.
-    sites = sum(1 for k in range(EC.MAX_STRUCT)
-                if sim.e.struct[k * 8 + EC.ST_STATE] == EC.DS_BUILDING)
-    jobs = sum(1 for k in range(EC.MAX_JOB)
-               if sim.e.job[k * EC.JOB_REC + EC.J_KIND] == EC.J_BUILD)
-    if sim.e.meteor or not broke or not sites or not jobs:
+        sites |= {k for k in range(EC.MAX_STRUCT)
+                  if walk.e.struct[k * 8 + EC.ST_STATE] == EC.DS_BUILDING}
+        jobs = max(jobs, sum(1 for k in range(EC.MAX_JOB)
+                             if walk.e.job[k * EC.JOB_REC + EC.J_KIND] == EC.J_BUILD))
+    # Η δομή που χτυπήθηκε έγινε εργοτάξιο, πήρε εργασία Build, και — από το
+    # βήμα 95, που οι δομές της αποικίας μπήκαν στον γράφο (colony_graph) —
+    # ξαναχτίστηκε ως το τέλος. Ως τότε καμία δομή δεν φτανόταν, και έμενε
+    # εργοτάξιο· το ξαναχτίσιμο το έλεγχε μόνο το tests/test_meteor.py.
+    rebuilt = [k for k in sites
+               if sim.e.struct[k * 8 + EC.ST_STATE] == EC.DS_ACTIVE]
+    if sim.e.meteor or not broke or not sites or not jobs or rebuilt != sorted(sites):
         print(f"ΑΠΟΤΥΧΙΑ βροχή: έμειναν {sim.e.meteor} κρούσεις, {broke} μηχανές "
-              f"σταμάτησαν, {sites} δομές εργοτάξια, {jobs} εργασίες Build")
+              f"σταμάτησαν, δομές εργοτάξια {sorted(sites)}, ξαναχτισμένες {rebuilt}, "
+              f"ως {jobs} εργασίες Build")
         return 1
     print(f"OK μετεωρίτες: οκτώ κρούσεις, {broke} μηχανές σταμάτησαν ({fixed} "
-          f"επισκευάστηκαν), {sites} δομή ξανά εργοτάξιο με εργασία Build — "
-          f"{METEOR_TICKS} frames, ίδια bytes στον Z80 και στην αναφορά")
+          f"επισκευάστηκαν), {len(sites)} δομή ξανά εργοτάξιο με εργασία Build, "
+          f"και ξαναχτίστηκε — {METEOR_TICKS} frames, ίδια bytes στον Z80 και στην αναφορά")
 
     # 4. ΟΙ ΑΚΡΕΣ ΤΩΝ ΑΠΟΤΥΠΩΜΑΤΩΝ (mt_scan). Ο Z80 ρωτά το αποτύπωμα μόνο
     # για κτίρια με κέντρο ως MT_REACH tiles μακριά στο x· η αναφορά τα ρωτά

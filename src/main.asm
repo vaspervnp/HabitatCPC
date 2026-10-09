@@ -236,6 +236,7 @@ mla_pok:
         include "entity.asm"
         include "econ.asm"
         include "jobs.asm"
+        include "haul.asm"              ; βήμα 95: η μεταφορά
         include "stock.asm"              ; κοινό με το fit.asm (βήμα 46)
         include "needs.asm"
         include "lines.asm"             ; βήμα 91: η γραμμή του πλοίου (93: και το εμπόριο)
@@ -249,11 +250,14 @@ mla_pok:
         include "terrain.asm"
 zz_bank0_end:
         ; ΤΟ ΠΑΤΩΜΑ ΤΩΝ TESTS. Πάνω από τον κώδικα στήνουν stubs, ημερολόγια και
-        ; probes, με διευθύνσεις που παίρνουν από το ZZ_BANK0_END (βήμα 91· ως
-        ; τότε σταθερά στο #3C00): το test_loop θέλει 220 bytes stubs και ένα
-        ; ημερολόγιο γύρου (20 εγγραφές των 6) κάτω από τη σκαλωσιά του #3EC0,
-        ; και τα test_bar, test_place, test_corridor τα δικά τους στο #3D60.
-        assert  zz_bank0_end <= #3D60
+        ; probes: τα probes στο #3E00, το test_loop τα stubs του από το
+        ; ZZ_BANK0_END και τη σκαλωσιά του στο #3F80, τα test_place και
+        ; test_corridor τα stubs τους στο #3F00. Το παιχνίδι δεν αγγίζει τίποτα
+        ; ως το #3FC0, όπου πατά μόνο το επίμετρο του φορτωτή (src/boot.asm).
+        ; ΑΠΟ ΤΟ ΒΗΜΑ 95 ΣΤΟ #3E00: ως τότε #3D60 (βήμα 91· πριν #3C00), επειδή
+        ; η σκαλωσιά του test_loop ήταν στο #3EC0 και τα stubs των άλλων τριών
+        ; στο #3D60 — 160 bytes της τράπεζας 0 άδεια για τις δοκιμές.
+        assert  zz_bank0_end <= #3E00
 
         ; Η ΑΠΟΙΚΙΑ ΔΟΚΙΜΩΝ (βήμα 87), από το βήμα 91 στη ΤΕΛΕΥΤΑΙΑ σελίδα του
         ; ημερολογίου του φαντάσματος: τράπεζα 2, έξω από το game2.bin όπως ήταν

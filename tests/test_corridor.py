@@ -68,8 +68,8 @@ SA, SB = 50, 51
 W_OCC_MASK, W_DUST, W_FOUNDATION = 0x30, 1, 7            # src/const.asm
 MAX_CORR, CORR_REC, MAX_DEGREE = 96, 5, 8
 DK_CONN, DK_CROW, VIEW_TW, VIEW_TH = 3, 7, 20, 10
-# πάνω από τον κώδικα της τράπεζας 0: το main.asm τον κρατά ως το #3D60 (βήμα 91· ως τότε #3C00)
-RLOG, RPTR, STUB = 0x3800, 0x3EFC, 0x3D60                 # το ημερολόγιο του cr_redraw
+# Τα stubs ΠΑΝΩ από το PROBE, στο #3F00 (βήμα 95· ως τότε στο #3D60): βλ. test_place.
+RLOG, RPTR, STUB = 0x3800, 0x3EFC, 0x3F00                 # το ημερολόγιο του cr_redraw
 # µs με το probe (βήμα 72): plan, walk, check, afford, commit ανά γεωμετρία.
 # Στο βήμα 71: 623/939/2496/342/3816, 637/2778/5326/334/5856,
 # 741/2853/5873/347/6205, 739/3070/6512/347/6721, 1087/2095/3475/343/5035 και 413.
