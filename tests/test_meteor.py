@@ -10,7 +10,9 @@ byte προς byte για το ΤΙ χτυπά. Εδώ, στο binary που φ�
   ΟΘΟΝΗ      Οι κρατήρες ζωγραφίζονται από τη λίστα αλλαγών (DK_TILE) χωρίς
              πλήρη σχεδίαση — το κανάρινι ζει — και η εικόνα είναι η πλήρης
              σχεδίαση. ΑΡΝΗΤΙΚΟ: χωρίς το wh_push οι κρατήρες είναι στον χάρτη
-             αλλά όχι στην οθόνη.
+             αλλά όχι στην οθόνη. ΑΡΝΗΤΙΚΟ (βήμα 96): ο διάδρομος στο κέντρο
+             του θόλου πατά μισό πλάτος στο διπλανό tile, και χωρίς τη
+             σφραγίδα του (cr_stampx) ο κρατήρας εκεί σβήνει τη λωρίδα του.
   ΑΠΟΙΚΙΑ    Η πίστα γίνεται εργοτάξιο και ξαναχτίζεται· η μηχανή οξυγόνου
              σταματά και την επισκευάζουν.
   ΠΑΙΚΤΗΣ    Ο πίνακας γράφει METEOR SHOWER, ο ήχος της κρούσης παίζει.
@@ -84,8 +86,28 @@ def seen(t):
     return 0 <= t[0] - CAM[0] < 20 and 0 <= t[1] - CAM[1] < 10
 
 
-def shower(sym, g, cut_push=False):
-    G = R.Game(sym, g)
+def shower(sym, g, cut_push=False, no_half=False):
+    if no_half:
+        # cr_stampx -> JP cr_stamp ΠΡΙΝ χτιστεί η αποικία (src/colony.asm,
+        # στα καρέ του balance.boot): τα tiles του μισού πλάτους μένουν άδεια.
+        boot = R.B.boot
+
+        def unstamped(sym_, snapshot):
+            from cpc import CPC
+            m = CPC()
+            m.run_frames(60)
+            assert m.quickload(snapshot), "quickload απέτυχε"
+            at, st = sym["CR_STAMPX"], sym["CR_STAMP"]
+            m.write_ram(at, bytes([0xC3, st & 0xFF, st >> 8]))
+            m.run_frames(250)
+            return m
+        R.B.boot = unstamped
+        try:
+            G = R.Game(sym, g)
+        finally:
+            R.B.boot = boot
+    else:
+        G = R.Game(sym, g)
     # ΩΣ ΤΗΝ ΠΡΩΤΗ ΔΗΜΟΣΙΕΥΣΗ ΤΗΣ ΡΟΗΣ: πριν από αυτήν το EC_O2PROD είναι 0
     # και ο πίνακας λέει «NO OXYGEN», που είναι σοβαρότερο από τη βροχή.
     for _ in range(300):
@@ -212,6 +234,16 @@ def main():
     check(bad > 0 and n["world1"] == s["world1"],
           f"ΑΡΝΗΤΙΚΟ: χωρίς το wh_push οι ίδιοι κρατήρες είναι στον χάρτη αλλά "
           f"όχι στην οθόνη — {bad} λάθος bytes")
+
+    # --- ΑΡΝΗΤΙΚΟ: χωρίς τα tiles του μισού πλάτους (βήμα 96) ---------------
+    # Ετσι ήταν η πρώτη εκδοχή του 96, και η δοκιμή βρήκε 32 bytes.
+    h = shower(sym, g, no_half=True)
+    bad = sum(1 for i, (a, b) in enumerate(zip(h["pic"], h["ref"]))
+              if a != b and i != h["spot"])
+    check(bad > 0,
+          f"ΑΡΝΗΤΙΚΟ: χωρίς τη σφραγίδα του μισού πλάτους (cr_stampx = cr_stamp) "
+          f"ο κρατήρας σβήνει τη λωρίδα του διαδρόμου στο κέντρο — {bad} λάθος "
+          f"bytes (σπόρος {h['seed']}, κρατήρες {h['craters']})")
 
     frequency()
     return 1 if FAIL else 0

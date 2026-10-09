@@ -4,13 +4,16 @@
 συμφωνούν και τα δύο με την προδιαγραφή.
 
 Η σειρά σχεδίασης είναι του SPRITES.md §10, με τη διόρθωση του §8.4 για τους
-διαδρόμους — μπαίνουν ΑΝΑΜΕΣΑ στους θόλους και στα σημεία σύνδεσης, γιατί το
-`conn_{dir}` ανοίγει την πόρτα ΠΑΝΩ στον δακτύλιο και πρέπει να μείνει από πάνω:
+διαδρόμους. ΑΠΟ ΤΟ ΒΗΜΑ 96 ΚΑΤΩ ΑΠΟ ΤΟΥΣ ΘΟΛΟΥΣ, και χωρίς πόρτες: ο διάδρομος
+σταματά στο εξωτερικό χείλος του δακτυλίου (ο παίκτης· ως το 95 το `conn_{dir}`
+άνοιγε τον δακτύλιο ως τον εσωτερικό κύκλο, και οι διάδρομοι ήταν από πάνω):
 
-    1. δακτύλιοι + θόλοι όλων των θόλων        (μάσκα)
-    2. διάδρομοι                                (μάσκα)
-    3. ανά θόλο: πόρτες, εικονίδιο, μηχανές/φυτά, φιγούρες
+    1. διάδρομοι                                (μάσκα)
+    2. δακτύλιοι + θόλοι όλων των θόλων        (μάσκα)
+    3. ανά θόλο: αρμοί, εικονίδιο, μηχανές/φυτά, φιγούρες
     4. εξωτερικές δομές, ταξινομημένες κατά cy
+
+ΟΙ ΑΡΜΟΙ (βήμα 96, ο παίκτης: «να μπαίνουν 1 pixel πιο μέσα»): δες το joint().
 
 ΘΕΣΗ: κάθε αντικείμενο κρατά το ΚΕΝΤΡΟ του σε μισά tiles (§3.4). Η οθόνη
 βγαίνει με δύο ολισθήσεις ανά άξονα και καμία διαίρεση:
@@ -85,6 +88,7 @@ CORR_STEP = [(0, -16), (4, -16), (4, 0), (4, 16),
 # «καλύτερα λίγη επικάλυψη πάνω στον δακτύλιο παρά κενό»: το γκρι του
 # διαδρόμου και το γκρι του δακτυλίου είναι το ίδιο γκρι.
 DIAG_K = [2, 3, 3]
+
 
 
 class Assets:
@@ -220,33 +224,16 @@ def draw_shell(canvas, a, cam, colony, d, clip):
                  fx + ox, fy + oy, True, clip)
 
 
-def dome_dirs(colony, d):
-    """Ποιες κατευθύνσεις του θόλου έχουν διάδρομο."""
-    out = set()
-    for i in range(colony.n_corr):
-        if colony.c(i, C_STATE) == DS_EMPTY:
-            continue
-        a_, b_, dr = colony.c(i, C_A), colony.c(i, C_B), colony.c(i, C_DIR)
-        if a_ == d:
-            out.add(dr)
-        if b_ == d:
-            # Ο b παίρνει την πόρτα του ΤΕΛΕΥΤΑΙΟΥ τρεξίματος: μια διαδρομή με
-            # στροφή συνεχίζει στην επόμενη εγγραφή (C_A = 255, §9.4) και
-            # φτάνει στον b με τη δική της κατεύθυνση.
-            if i + 1 < colony.n_corr and colony.c(i + 1, C_A) == 255:
-                dr = colony.c(i + 1, C_DIR)
-            out.add((dr + 4) & 7)
-    return out
-
-
 def draw_fittings(canvas, a, cam, colony, d, clip, agents=None):
-    """Βήματα 3-6: πόρτες, εικονίδιο, μηχανές ή φυτά, φιγούρες."""
+    """Βήματα 3-6: αρμοί (ως το 95 οι πόρτες), εικονίδιο, μηχανές ή φυτά, φιγούρες."""
     fx, fy, qw, qh, sz = dome_frame(a, cam, colony, d)
 
     for dr in sorted(dome_dirs(colony, d)):
-        px = a.conn_points[sz * 16 + dr * 2]
-        py = a.conn_points[sz * 16 + dr * 2 + 1]
-        blit(canvas, a.rows(f"conn_{DIRS[dr]}"), fx + px, fy + py, True, clip)
+        for (x, y), bits in joint(a, sz, dr).items():
+            tx, ty = fx + x // 2, fy + y
+            if clip.x0 <= tx < clip.x1 and clip.y0 <= ty < clip.y1:
+                o = ty * SCR_W + tx
+                canvas.buf[o] = (canvas.buf[o] & ~PIX[x & 1] & 255) | bits
 
     # Το εργοτάξιο είναι άδειο: κενό εικονίδιο, καμία μηχανή — βλ. ob_fittings
     # στο src/object.asm. Τα μηχανήματα υπάρχουν ήδη στην εγγραφή από την ώρα
@@ -292,21 +279,22 @@ def draw_corridor(canvas, a, cam, colony, i, clip):
         return              # ΣΥΝΕΧΕΙΑ: τη ζωγραφίζει η εγγραφή που την ξεκίνησε
     dr = colony.c(i, C_DIR)
     n = colony.c(i, C_LEN)
+    if not n:
+        return              # ούτε η συνέχεια
     fx, fy, qw, qh, sz = dome_frame(a, cam, colony, d)
     px = a.conn_points[sz * 16 + dr * 2]
     py = a.conn_points[sz * 16 + dr * 2 + 1]
     x, y = corr_origin(fx + px, fy + py, dr, qw, qh, fx, fy, sz)
     sx, sy = CORR_STEP[dr]
     rows = a.rows(CORR_SPR[dr & 3])
+    j = i + 1
+    cont = j < MAX_CORR and colony.c(j, C_A) == 255 and colony.c(j, C_STATE) != DS_EMPTY
     for _ in range(n):
         blit(canvas, rows, x, y, True, clip)
         lastx, lasty = x, y
         x += sx
         y += sy
-    j = i + 1
-    if j >= MAX_CORR or colony.c(j, C_A) != 255:
-        return
-    if colony.c(j, C_STATE) == DS_EMPTY:
+    if not cont:
         return
     x, y = corr_bend(lastx, lasty, sx, sy, colony.c(j, C_DIR))
     vx, vy = CORR_STEP[colony.c(j, C_DIR)]
@@ -315,6 +303,95 @@ def draw_corridor(canvas, a, cam, colony, i, clip):
         blit(canvas, rows, x, y, True, clip)
         x += vx
         y += vy
+
+
+PIX = (0xAA, 0x55)                      # τα bits του αριστερού και του δεξιού pixel
+N4 = ((1, 0), (-1, 0), (0, 1), (0, -1))
+
+
+def dome_dirs(colony, d):
+    """Ποιες κατευθύνσεις του θόλου έχουν διάδρομο (το dome_conn του Z80)."""
+    out = set()
+    for i in range(colony.n_corr):
+        if colony.c(i, C_STATE) == DS_EMPTY:
+            continue
+        a_, b_, dr = colony.c(i, C_A), colony.c(i, C_B), colony.c(i, C_DIR)
+        if a_ == d:
+            out.add(dr & 7)
+        if b_ == d:
+            # Ο b παίρνει τον αρμό του ΤΕΛΕΥΤΑΙΟΥ τρεξίματος: μια διαδρομή με
+            # στροφή συνεχίζει στην επόμενη εγγραφή (C_A = 255, §9.4) και
+            # φτάνει στον b με τη δική της κατεύθυνση.
+            if i + 1 < MAX_CORR and colony.c(i + 1, C_A) == 255 \
+                    and colony.c(i + 1, C_STATE) != DS_EMPTY:
+                dr = colony.c(i + 1, C_DIR)
+            out.add((dr + 4) & 7)
+    return out
+
+
+_JOINT = {}
+
+
+def joint(a, sz, dr):
+    """Ο ΑΡΜΟΣ ενός θόλου μεγέθους sz στην κατεύθυνση dr (βήμα 96): {(pixel x,
+    γραμμή) στο πλαίσιο: τα bits του pixel}. Ζωγραφίζεται μετά το κέλυφος.
+
+    Από τη ΣΧΕΔΙΑΣΗ ενός θόλου μόνου του και ενός διαδρόμου 3 πλακιδίων μόνου
+    του (με αυτό εδώ το module), όχι από πίνακα:
+      * το κενό της διαγωνίου — τα pixels του πλακιδίου ΕΝΑ ΒΗΜΑ ΠΡΙΝ από το
+        πρώτο (DIAG_K - 1) που φαίνονται: μέσα στο πλαίσιο, όχι κάτω από το
+        κέλυφος ή κάτω από τον διάδρομο. Ως το 95 το έκλεινε η διαγώνια πόρτα·
+      * το ένα pixel μέσα — τα pixels του εξωτερικού περιγράμματος του
+        κελύφους (αδιαφανή, με 4-γείτονα διάφανο) που ακουμπούν 4-γειτονικά
+        ένα γκρι pixel του διαδρόμου που φαίνεται: γίνονται γκρι, το γκρι του
+        εσωτερικού του corr_h.
+    """
+    key = (sz, dr)
+    if key in _JOINT:
+        return _JOINT[key]
+    c = Colony()
+    c.n_dome, c.n_corr = 1, 1
+    c.dome[D_CX], c.dome[D_CY], c.dome[D_SIZE] = 20, 12, sz
+    c.dome[D_STATE] = DS_ACTIVE
+    c.corr[0:CORR_REC] = bytes([0, 1, dr, 3, DS_ACTIVE])
+    cam, clip = Camera(0, 0), Clip(0, 0, SCR_W, SCR_H)
+    fx, fy, qw, qh, _ = dome_frame(a, cam, c, 0)
+
+    def opaque(fn):
+        bufs = []
+        for bg in (0x00, 0xFF):
+            cv = Canvas()
+            cv.buf[:] = bytes([bg]) * len(cv.buf)
+            fn(cv)
+            bufs.append(cv.buf)
+        A, B = bufs
+        return {(o % SCR_W * 2 + p, o // SCR_W): A[o] & PIX[p]
+                for o in range(len(A)) for p in (0, 1)
+                if A[o] & PIX[p] == B[o] & PIX[p]}
+    shell = opaque(lambda cv: draw_shell(cv, a, cam, c, 0, clip))
+    run = opaque(lambda cv: draw_corridor(cv, a, cam, c, 0, clip))
+    vis = {p: v for p, v in run.items() if p not in shell}
+    out = {}
+    if dr & 1:
+        sx, sy = CORR_STEP[dr]
+        x, y = corr_origin(0, 0, dr, qw, qh, fx, fy, sz)
+        rows = a.rows(CORR_SPR[dr & 3])
+        prev = opaque(lambda cv: blit(cv, rows, x - sx, y - sy, True, clip))
+        for p, v in prev.items():
+            if p not in shell and p not in run and 0 <= p[0] - 2 * fx < 4 * qw \
+                    and 0 <= p[1] - fy < 2 * qh:
+                out[p] = v
+        vis.update(out)
+    grey = a.rows("corr_h")[3][3]                   # γραμμή 3, byte 1: το εσωτερικό
+    for p in shell:
+        if not any((p[0] + dx, p[1] + dy) not in shell for dx, dy in N4):
+            continue
+        for dx, dy in N4:
+            q = (p[0] + dx, p[1] + dy)
+            if q in vis and vis[q] == grey & PIX[q[0] & 1]:
+                out[p] = grey & PIX[p[0] & 1]
+    _JOINT[key] = {(x - 2 * fx, y - fy): v for (x, y), v in out.items()}
+    return _JOINT[key]
 
 
 def corr_bend(lastx, lasty, sx, sy, d1):
@@ -327,26 +404,29 @@ def corr_bend(lastx, lasty, sx, sy, d1):
     κοιτάζοντας, όχι υπολογίζοντας· δες το tools/route.py.
     """
     if d1 in (2, 6):                        # -> οριζόντιος
-        return lastx + (0 if sx > 0 else 4), lasty + 8
-    return lastx + 4 + sx, lasty + sy // 2  # -> κάθετος
+        return lastx + (0 if sx > 0 else 4), lasty + 4
+    return lastx + 3 + sx, lasty + sy // 2  # -> κάθετος
 
 
 def corr_origin(cx, cy, dr, qw, qh, fx, fy, sz):
     """Πάνω-αριστερά του ΠΡΩΤΟΥ πλακιδίου διαδρόμου.
 
-    Οι ΑΞΟΝΙΚΟΙ βγαίνουν από το σημείο σύνδεσης: αυτό κάθεται πάνω στον
-    δακτύλιο και ο διάδρομος ξεκινά ακριβώς εκεί που τελειώνει, προς τα έξω.
+    Οι ΑΞΟΝΙΚΟΙ βγαίνουν από το σημείο σύνδεσης, στο εξωτερικό χείλος του
+    δακτυλίου, και ΣΤΟ ΚΕΝΤΡΟ του θόλου (βήμα 96): το conn_points έχει την
+    αριστερή στήλη μιας κάθετης και την πάνω γραμμή μιας οριζόντιας ακριβώς
+    στον άξονα, οπότε ο διάδρομος — 2 bytes x 8 γραμμές — πάει μισό πλάτος
+    πίσω, 1 byte ή 4 γραμμές. Ως το 95 έπεφτε όλος από τη μία μεριά.
     Οι ΔΙΑΓΩΝΙΟΙ όχι — βγαίνουν από το πλέγμα του DIAG_K, μετρημένο από το
     ΚΕΝΤΡΟ του θόλου, γιατί μόνο έτσι κουμπώνουν τα δύο άκρα μεταξύ τους.
     """
     if dr == 0:                     # n: κάθετος, προς τα πάνω
-        return cx, cy - 16
+        return cx - 1, cy - 16
     if dr == 4:                     # s
-        return cx, cy + 8
+        return cx - 1, cy + 8
     if dr == 2:                     # e: οριζόντιος, 4 bytes x 8
-        return cx + 2, cy
+        return cx + 2, cy - 4
     if dr == 6:                     # w
-        return cx - 4, cy
+        return cx - 4, cy - 4
     k = DIAG_K[sz]
     ox, oy = fx + qw - 4, fy + qh - 8        # το πλακίδιο βήματος 0
     sx, sy = CORR_STEP[dr]
@@ -398,11 +478,11 @@ def draw_objects(canvas, a, cam, colony, clip=None, ag=None):
         return
     live = [d for d in range(colony.n_dome)
             if colony.d(d, D_STATE) != DS_EMPTY]
-    for d in live:
-        draw_shell(canvas, a, cam, colony, d, clip)
     for i in range(colony.n_corr):
         if colony.c(i, C_STATE) != DS_EMPTY:
             draw_corridor(canvas, a, cam, colony, i, clip)
+    for d in live:
+        draw_shell(canvas, a, cam, colony, d, clip)
     byd = agents_by_dome(ag)
     for d in live:
         draw_fittings(canvas, a, cam, colony, d, clip, byd)

@@ -224,6 +224,7 @@ goto_st:    db 0
         include "../src/blit.asm"
         include "../src/tiles.asm"
         include "../src/object.asm"
+        include "../src/joint.asm"          ; βήμα 96: στο παιχνίδι στο b6code
         include "../src/objindex.asm"
         include "../src/dirty.asm"
         include "../src/figure.asm"         ; βήμα 89: οι άποικοι έξω

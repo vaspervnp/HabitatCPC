@@ -354,6 +354,7 @@ zz_b1code_end:
         include "ship.asm"              ; βήμα 93: πλοία και ορόσημα, από την τράπεζα 0
         include "crew.asm"              ; βήμα 93: ποιοι έρχονται, από την τράπεζα 0
         include "flow.asm"              ; βήμα 93: η θέση 12, από την τράπεζα 0
+        include "joint.asm"             ; βήμα 96: οι αρμοί, με την 6 στο παράθυρο
 zz_b6code_end:
         assert  zz_b6code_end <= G_b6code + B6C_MAX
         assert  G_b6code + B6C_MAX == G_agent_fields   ; = η δέσμευση του pack.py

@@ -318,7 +318,7 @@ DOME_FIG    equ G_dome_fig
 DK_SLOT     equ 0                   ; a = θόλος, b = θέση δακτυλίου
 DK_MACH     equ 1                   ; a = θόλος, b = υποδοχή
 DK_ICON     equ 2                   ; a = θόλος
-DK_CONN     equ 3                   ; a = θόλος, b = κατεύθυνση
+DK_CONN     equ 3                   ; a = θόλος, b = κατεύθυνση: ο αρμός (ως το 95 η πόρτα)
 DK_TILE     equ 4                   ; a = tx, b = ty (προσημασμένα)
 DK_BUILT    equ 5                   ; a = κόμβος που μόλις τελείωσε (§6.9)
 DK_SITE     equ 6                   ; a = θόλος, b = σειρά tiles του εργοταξίου
@@ -332,7 +332,7 @@ DK_KINDS    equ 9
 ; δεν τα χρησιμοποιούσε κανείς. Ανά εγγραφή x0, x1, y0, y1 σε tiles του
 ; κόσμου +128, και το id· θόλοι, διάδρομοι, δομές, με τη σειρά σχεδίασης.
 OI_REC      equ 5
-OB_IX_FIG   equ 1           ; ob_idx: πόρτες και φιγούρες (ob_conn_scan, ob_fig_scan)
+OB_IX_FIG   equ 1           ; ob_idx: οι φιγούρες (ob_fig_scan· ως το 95 και οι πόρτες)
 OB_IX_DOME  equ 2           ;         τα κελύφη των θόλων
 OB_IX_CORR  equ 4           ;         οι διάδρομοι
 OB_IX_STRUCT equ 8          ;         οι δομές

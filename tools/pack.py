@@ -21,7 +21,7 @@ from sprites import load_map, load_bin, ROOT
 import buttons
 
 TEXT_MAX = 2120                 # = TEXT_MAX του src/uitext.asm (assert εκεί)
-B6C_MAX = 1298                  # = B6C_MAX του src/bots.asm (assert στο main.asm)· 256 ως το 92, 1.280 ως το 93
+B6C_MAX = 1554                  # = B6C_MAX του src/bots.asm (assert στο main.asm)· 256 ως το 92, 1.280 ως το 93, 1.298 ως το 95
 B1C_MAX = 160                   # = B1C_MAX του src/commit.asm (assert στο main.asm), βήμα 94
 
 # --- γεωμετρία ------------------------------------------------------------
@@ -207,6 +207,138 @@ def check_ring(smap, blob, empty, ring):
                            f"ψημένη παραλλαγή")
 
 
+# ---------------------------------------------------------------------------
+# ΟΙ ΑΡΜΟΙ ΔΙΑΔΡΟΜΟΥ-ΔΑΚΤΥΛΙΟΥ (βήμα 96). Ο παίκτης: «οι διάδρομοι να μπαίνουν
+# 1 pixel πιο μέσα». Ο διάδρομος ζωγραφίζεται κάτω από τα κελύφη και σταματά
+# στο εξωτερικό χείλος του δακτυλίου, όπου ένα λευκό περίγραμμα τον χώριζε από
+# το γκρι του δακτυλίου. Ο αρμός ενός θόλου σε μια κατεύθυνση, ζωγραφισμένος
+# ΜΕΤΑ το κέλυφος (src/joint.asm), είναι:
+#   * το κενό της διαγωνίου: τα pixels του πλακιδίου k-1 (ένα βήμα πριν από το
+#     πρώτο, DIAG_K) που φαίνονται — μέσα στο πλαίσιο, όχι κάτω από το κέλυφος
+#     ή το πρώτο πλακίδιο. Ως το 95 το έκλεινε η διαγώνια πόρτα.
+#   * το ένα pixel: όσα pixels του εξωτερικού περιγράμματος του κελύφους
+#     ακουμπούν (4-γειτονικά) ένα γκρι pixel του διαδρόμου που φαίνεται —
+#     γίνονται γκρι.
+# Υπολογίζεται ΕΔΩ από τα sprites, και χωριστά στην tools/scene.py από τη
+# σχεδίαση· το tests/test_object.py συγκρίνει τα δύο.
+#
+# ΕΝΝΙΑ ΣΧΕΔΙΑ με μάσκα στην τράπεζα 5: 0 n, 1 w, 2 e, 3+2s nw, 4+2s ne. Τα
+# νότια είναι τα βόρεια με κάθετο καθρέφτισμα (bit 1 του ob_fl), που δεν θέλει
+# πίνακα· το οριζόντιο θέλει το flip_mode0 της τράπεζας 6, που δεν φαίνεται
+# όσο η 5 είναι στο παράθυρο — γι' αυτό τα ανατολικά είναι δικά τους. Στο
+# build/joint_tab.asm: jt_tab (x σε bytes, γραμμή, σχέδιο | 128 για κάθετο
+# καθρέφτισμα, ανά 8 x μέγεθος + κατεύθυνση) και jt_spr (διεύθυνση, w, h).
+JNT_DIAG_K = (2, 3, 3)          # = diag_k του src/object.asm, DIAG_K του tools/route.py
+JNT_STEP = ((0, -16), (4, -16), (4, 0), (4, 16), (0, 16), (-4, 16), (-4, 0), (-4, -16))
+JNT_PM = (0xAA, 0x55)
+
+
+def _jpx(blob, s, w):
+    """Τα αδιαφανή pixels ενός sprite με μάσκα: {(x, γραμμή): χρώμα ως αριστερό}."""
+    out = {}
+    for y in range(s.h):
+        for b in range(w):
+            m, d = blob[s.off + (y * w + b) * 2], blob[s.off + (y * w + b) * 2 + 1]
+            for p in (0, 1):
+                if m & JNT_PM[p] != JNT_PM[p]:
+                    v = d & JNT_PM[p]
+                    out[(2 * b + p, y)] = v if p == 0 else (v << 1) & 0xFF
+    return out
+
+
+def joint_px(smap, blob, sz, dr):
+    """Ο αρμός (μέγεθος, κατεύθυνση): {(x, γραμμή) στο πλαίσιο: χρώμα ως αριστερό}."""
+    z = "sml"[sz]
+    qw, qh = smap[f"ring_{z}_nw"].w, smap[f"ring_{z}_nw"].h
+    shell = set()
+    for stem in ("ring", "dome"):
+        for (x, y) in _jpx(blob, smap[f"{stem}_{z}_nw"], qw):
+            for mx in (x, 4 * qw - 1 - x):
+                for my in (y, 2 * qh - 1 - y):
+                    shell.add((mx, my))
+    spr = smap[("corr_v", "corr_dl", "corr_h", "corr_dr")[dr & 3]]
+    tile = _jpx(blob, spr, spr.w)
+    sx, sy = JNT_STEP[dr]
+    if dr & 1:
+        k = JNT_DIAG_K[sz]
+        ox, oy = qw - 4 + sx * k, qh - 8 + sy * k
+    else:
+        t = blob[smap["conn_points"].off:]
+        px, py = t[sz * 16 + dr * 2], t[sz * 16 + dr * 2 + 1]
+        ox, oy = {0: (px - 1, py - 16), 4: (px - 1, py + 8),
+                  2: (px + 2, py - 4), 6: (px - 4, py - 4)}[dr]
+
+    def at(j):
+        return {(2 * (ox + sx * j) + x, oy + sy * j + y): v for (x, y), v in tile.items()}
+    run = {}
+    for j in (2, 1, 0):
+        run.update(at(j))
+    vis = {p: v for p, v in run.items() if p not in shell}
+    gap = {}
+    if dr & 1:
+        gap = {p: v for p, v in at(-1).items() if p not in shell and p not in run
+               and 0 <= p[0] < 4 * qw and 0 <= p[1] < 2 * qh}
+    vis.update(gap)
+    s = smap["corr_h"]
+    grey = _jpx(blob, s, s.w)[(2, 3)]                # το εσωτερικό του corr_h
+    n4 = ((1, 0), (-1, 0), (0, 1), (0, -1))
+    out = dict(gap)
+    for p in shell:
+        if any((p[0] + dx, p[1] + dy) not in shell for dx, dy in n4) and \
+                any(vis.get((p[0] + dx, p[1] + dy)) == grey for dx, dy in n4):
+            out[p] = grey
+    return out
+
+
+def joints(smap, blob):
+    """Τα εννιά σχέδια (τράπεζα 5), και jt_tab, jt_spr στο build/joint_tab.asm."""
+    spr, tab = [None] * 9, []
+    for sz in range(3):
+        qh = smap[f"ring_{'sml'[sz]}_nw"].h
+        for dr in range(8):
+            flip = dr in (3, 4, 5)
+            north = (4 - dr) & 7 if flip else dr
+            px = joint_px(smap, blob, sz, north)
+            if flip and joint_px(smap, blob, sz, dr) != \
+                    {(x, 2 * qh - 1 - y): v for (x, y), v in px.items()}:
+                raise Fail(f"αρμός {sz} {dr}: δεν είναι ο βόρειος καθρεφτισμένος")
+            bx, by = min(x for x, _ in px) // 2, min(y for _, y in px)
+            w = max(x for x, _ in px) // 2 - bx + 1
+            h = max(y for _, y in px) - by + 1
+            img = [[0xFF, 0x00] * w for _ in range(h)]
+            for (x, y), v in px.items():
+                b, p = x // 2 - bx, x & 1
+                img[y - by][2 * b] &= ~JNT_PM[p] & 0xFF
+                img[y - by][2 * b + 1] |= v if p == 0 else v >> 1
+            sid = (0 if north == 0 else 2 if north == 2 else 1) if not north & 1 \
+                else 3 + 2 * sz + (north == 1)
+            got = (w, h, b"".join(bytes(r) for r in img))
+            if spr[sid] is not None and spr[sid] != got:
+                raise Fail(f"αρμός {sz} {dr}: το σχέδιο {sid} αλλάζει με το μέγεθος")
+            spr[sid] = got
+            tab.append((bx, 2 * qh - by - h if flip else by, sid | (128 if flip else 0)))
+    data, desc = b"", []
+    for w, h, img in spr:
+        desc.append((len(data), w, h))
+        data += img
+    out = os.path.join(ROOT, "build")
+    os.makedirs(out, exist_ok=True)
+    with open(os.path.join(out, "joint_tab.asm"), "w", encoding="utf-8") as f:
+        f.write("; ΠΑΡΑΓΕΤΑΙ από tools/pack.py (joints) — μην το επεξεργάζεσαι.\n")
+        f.write("; jt_tab, ανά 8 x μέγεθος + κατεύθυνση: x σε bytes και γραμμή από το\n")
+        f.write("; πάνω-αριστερά του πλαισίου, σχέδιο | 128 = κάθετο καθρέφτισμα.\n")
+        f.write("jt_tab:\n")
+        for sz in range(3):
+            f.write("        db      " + ", ".join(f"{x},{y},{k}" for x, y, k in
+                                                   tab[8 * sz:8 * sz + 8])
+                    + f"   ; {'sml'[sz]}: n ne e se s sw w nw\n")
+        f.write("; jt_spr, ανά σχέδιο: διεύθυνση στην τράπεζα 5, πλάτος, ύψος.\n")
+        f.write("jt_spr:\n")
+        for i, (o, w, h) in enumerate(desc):
+            f.write(f"        dw      G_joints + {o}\n        db      {w}, {h}\n")
+    return data
+
+
 def mode1_font(m0):
     """Η γραμματοσειρά 4x8 του Mode 0 (2 bytes ανά γραμμή) σε Mode 1 (1 byte).
 
@@ -301,6 +433,13 @@ def build_runs(smap, blob):
     # ΑΦΟΥ το om_prep σελιδοποιήσει την 5 (τα φυτά έχουν τον δικό τους στην 7).
     bank5.append(Run("mach_ptr", len(MACH) * 2, bytes(len(MACH) * 2),
                      note="παράγεται", page=len(MACH) * 2))
+    # ΟΙ ΑΡΜΟΙ (βήμα 96): ο διάδρομος μπαίνει ΕΝΑ pixel στον δακτύλιο. Τα
+    # pixels του λευκού περιγράμματος δίπλα στο γκρι του διαδρόμου γίνονται
+    # γκρι, πάνω από το κέλυφος (src/joint.asm). Τα ζωγραφίζει το ob_put_in
+    # με την 5 μέσα, όπως τις μηχανές.
+    jdata = joints(smap, blob)
+    bank5.append(Run("joints", len(jdata), jdata,
+                     note="παράγεται: οι αρμοί v, h και d ανά μέγεθος"))
 
     # --- διάδρομοι και συνδέσεις: στην τράπεζα 6 από το βήμα 89 (πιο κάτω) ---
     # Η ΓΡΑΜΜΑΤΟΣΕΙΡΑ ΕΦΥΓΕ ΑΠΟ ΕΔΩ ΣΤΟ ΒΗΜΑ 33 — δες την τράπεζα 7 πιο κάτω.
@@ -435,7 +574,9 @@ def build_runs(smap, blob):
                      note="οι 24 κενές θέσεις δακτυλίου, αδιαφανείς"))
     for n in ("corr_h", "corr_v", "corr_dr", "corr_dl"):
         bank6.append(spr(n))
-    bank6.append(group("connectors", [f"conn_{d}" for d in DIRS]))   # dir*32
+    # ΟΙ ΠΟΡΤΕΣ (conn_{dir}, 8 x 32) ΕΦΥΓΑΝ ΣΤΟ ΒΗΜΑ 96: ο διάδρομος σταματά στο
+    # εξωτερικό χείλος του δακτυλίου (ο παίκτης), και ό,τι ανοίγει τον
+    # δακτύλιο δεν ζωγραφίζεται πια. Τα 256 bytes τους πήγαν στο b6code.
     # ΟΙ ΠΙΝΑΚΕΣ ΤΟΥ ΠΕΡΑΣΜΑΤΟΣ ΑΝΤΙΚΕΙΜΕΝΩΝ, ΑΠΟ ΤΗΝ ΤΡΑΠΕΖΑ 2 (βήμα 90). Τους
     # διαβάζει μόνο το src/object.asm, και πάντα με την 6 στο παράθυρο: ο δείκτης
     # ενός εικονιδίου ή μιας δομής ΠΡΙΝ σελιδοποιηθεί η τράπεζα του sprite, οι

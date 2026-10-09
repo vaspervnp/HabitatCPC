@@ -328,9 +328,42 @@ def ground(world, new, p, fp):
     return bytes(wl)
 
 
+def half_tiles(f, t, runs):
+    """Τα tiles του ΜΙΣΟΥ ΠΛΑΤΟΥΣ (βήμα 96, cr_stampx): ο αξονικός διάδρομος στο
+    κέντρο του θόλου πατά 1 byte στη στήλη αριστερά (κάθετος) ή 4 γραμμές στη
+    σειρά πάνω (οριζόντιος) από κάθε tile του αξονικού τρεξίματος, όταν ο άξονας
+    του t πέφτει σε όριο tile (ζυγό cx ή cy σε μισά tiles)."""
+    if len(runs) == 1:
+        d, n = runs[0]
+        if d & 1:
+            return []
+        tiles = corridor_tiles(f[:2], f[2], t[:2], runs)
+    else:
+        d, n = runs[1]
+        btx, bty = sb(f[0]) >> 1, sb(f[1]) >> 1
+        sx, sy = (sb(t[0]) - sb(f[0])) // 2, (sb(t[1]) - sb(f[1])) // 2
+        Sd, Td = abs(sx), abs(sy)
+        ux, uy = (sx > 0) - (sx < 0), (sy > 0) - (sy < 0)
+        vx, vy = route.DIR_U[d]
+        if vx:
+            c, r = ux * Td - (1 if ux > 0 else 0), uy * Td
+        else:
+            r, c = uy * (Sd - 1) - (1 if uy < 0 else 0), ux * Sd
+        tiles = [(sb(btx + c + vx * k), sb(bty + r + vy * k)) for k in range(n)]
+        if vx and uy < 0:
+            # Οταν η διαγώνιος ανεβαίνει, το πρώτο tile του οριζόντιου είναι
+            # ήδη της διαγωνίου και το cr_walk1 δεν το ξαναπερνά (crw_h1).
+            tiles = tiles[1:]
+    vertical = not d & 2
+    if sb(t[0] if vertical else t[1]) & 1:
+        return []
+    return [(x - 1, y) if vertical else (x, y - 1) for x, y in tiles]
+
+
 def stamp(world, res):
     """Ο κόσμος μετά το FIRE: τα tiles του μονοπατιού θεμέλιο με κατοχή 2, το
-    decor μένει· των διαδρόμων κατοχή 1 (cr_stamp)."""
+    decor μένει· των διαδρόμων κατοχή 1 (cr_stamp), και από το βήμα 96 τα tiles
+    του μισού πλάτους, όσα είναι ελεύθερα (half_tiles)."""
     wl = bytearray(world)
     if res["path"]:
         for x, y in res["path"][2]:
@@ -339,5 +372,8 @@ def stamp(world, res):
     for c in res["corridors"]:
         for x, y in c[4]:
             if -64 <= x < 64 and -64 <= y < 64:
+                wl[widx(x, y)] |= 0x10
+        for x, y in half_tiles(c[1], c[2], c[3]):
+            if -64 <= x < 64 and -64 <= y < 64 and not wl[widx(x, y)] & 0x30:
                 wl[widx(x, y)] |= 0x10
     return bytes(wl)

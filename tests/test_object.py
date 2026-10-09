@@ -4,6 +4,18 @@
 Η αναφορά (tools/scene.py) γράφτηκε από την πρόζα του SPRITES.md §10 και του
 §3.4, όχι από τον Z80. Οταν συμφωνούν, συμφωνούν και οι δύο με το χαρτί.
 
+ΟΙ ΔΙΑΔΡΟΜΟΙ ΑΠΟ ΤΟ ΒΗΜΑ 96 (ο παίκτης): στο κέντρο του θόλου, κάτω από τους
+δακτυλίους, χωρίς πόρτες, και ένα pixel μέσα στον δακτύλιο με τους ΑΡΜΟΥΣ
+μετά το κέλυφος — που κλείνουν και το κενό της διαγωνίου ως τον δακτύλιο. Ο
+Z80 ζωγραφίζει τα σχέδια που φτιάχνει το tools/pack.py από τα sprites· η
+αναφορά υπολογίζει τον ίδιο κανόνα ζωγραφίζοντας (scene.joint). Δύο
+υλοποιήσεις: όταν συμφωνούν, συμφωνεί και ο κανόνας. Αρνητικά, με τον Z80
+πειραγμένο: ο νότιος και ο ανατολικός διάδρομος όπως ως το 95 (από τον άξονα
+προς τα δεξιά ή κάτω), χωρίς αρμούς, ο b χωρίς αρμό, οι νότιοι αρμοί χωρίς
+κάθετο καθρέφτισμα, ο ανατολικός αρμός ένα byte δεξιά — καθένα πρέπει να
+διαφέρει από την αναφορά σε κάποια κάμερα. Τις στροφές τις συγκρίνει το
+test_route, και τον αρμό του b μετά από στροφή το test_link.
+
 ΟΙ ΚΑΜΕΡΕΣ ΔΙΑΛΕΧΤΗΚΑΝ ΓΙΑ ΝΑ ΣΠΑΣΟΥΝ ΠΡΑΓΜΑΤΑ. Η σημαντικότερη είναι εκείνη
 όπου το σημείο τυλίγματος του δαχτυλιδιού των 2 KB πέφτει ΜΕΣΑ σε θόλο: εκεί
 μια γραμμή sprite σπάει στα δύο, και μια υλοποίηση που το αγνοεί γράφει 2 KB
@@ -71,6 +83,76 @@ def reference(a, c, ag, plane, cam, variants):
     return cv
 
 
+def shoot(sym, tx, ty, patch=()):
+    """Η πλήρης σχεδίαση στην κάμερα: (RAM οθόνης, frames, offset CRTC)."""
+    from cpc import CPC
+    m = CPC()
+    m.run_frames(60)
+    assert m.quickload(SNA, start=False), "quickload απέτυχε"
+    for at, v in patch:
+        m.poke(at, v)
+    m.poke(sym["CAM_TX"], tx & 0xFF)
+    m.poke(sym["CAM_TY"], ty & 0xFF)
+    m.set_pc(sym["START"])
+    n = 0
+    while m.peek(sym["DONE_FLAG"]) != 0x5A and n < 400:
+        m.run_frames(1)
+        n += 1
+    return m, n
+
+
+def differs(sym, refs, patch):
+    """Σε πόσες κάμερες η σχεδίαση με το patch διαφέρει από την αναφορά."""
+    bad = 0
+    for (tx, ty, _), ref in zip(CAMERAS, refs):
+        m, _ = shoot(sym, tx, ty, patch)
+        m.run_frames(2)
+        ram = m.read_ram(0xC000, 0x4000)
+        off = S.Camera(tx, ty).off
+        if any(ram[(y & 7) * 0x800 + (((y >> 3) * SCR_W + x + 2 * off) & 0x7FF)]
+               != ref.buf[y * SCR_W + x] for y in range(PLAY) for x in range(SCR_W)):
+            bad += 1
+    return bad
+
+
+def negatives(sym, refs):
+    from cpc import CPC
+    m = CPC()
+    m.run_frames(60)
+    m.quickload(SNA, start=False)
+    fails = 0
+    # corr_dir: εννέα bytes ανά κατεύθυνση, η αρχή x, y στα +6, +7. Η αποικία
+    # του test_object έχει διαδρόμους μόνο προς e, s και se, και καμία στροφή:
+    # τις στροφές τις συγκρίνει με την αναφορά το test_route.
+    cd = sym["CORR_DIR"]
+    # Οι αρμοί (βήμα 96): το call jt_dome στο ob_fittings, το cp MAX_DOME του
+    # jt_mark για τον b, και ο jt_tab — x, γραμμή, σχέδιο | 128 — ανά 8 x
+    # μέγεθος + κατεύθυνση.
+    jd, jm, jt = sym["JT_DOME"], sym["JT_MARK"], sym["JT_TAB"]
+    of = sym["OB_FITTINGS"]
+    ic = bytes(m.read_ram(of, 40)).find(bytes([0xCD, jd & 255, jd >> 8]))
+    ib = bytes(m.read_ram(jm, 40)).find(bytes([0xFE, S.MAX_DOME]))
+    assert m.peek(cd + 4 * 9 + 6) == 0xFF and m.peek(cd + 2 * 9 + 7) == 0xFC \
+        and ic >= 0 and ib >= 0, "δεν βρέθηκαν τα bytes των αρνητικών"
+    south = [(jt + 3 * (8 * z + d) + 2, m.peek(jt + 3 * (8 * z + d) + 2) & 0x7F)
+             for z in range(3) for d in (3, 4, 5)]
+    east = [(jt + 3 * (8 * z + 2), m.peek(jt + 3 * (8 * z + 2)) + 1) for z in range(3)]
+    for label, patch in (("ο νότιος διάδρομος από τον άξονα (το 95)", [(cd + 4 * 9 + 6, 0)]),
+                         ("ο ανατολικός από τον άξονα (το 95)", [(cd + 2 * 9 + 7, 0)]),
+                         ("χωρίς αρμούς (το ob_fittings δεν καλεί το jt_dome)",
+                          [(of + ic + k, 0) for k in range(3)]),
+                         ("ο b χωρίς αρμό (cp 0 στο jt_mark)", [(jm + ib + 1, 0)]),
+                         ("οι νότιοι αρμοί χωρίς κάθετο καθρέφτισμα", south),
+                         ("ο ανατολικός αρμός ένα byte δεξιά", east)):
+        n = differs(sym, refs, patch)
+        if n:
+            print(f"OK ΑΡΝΗΤΙΚΟ: με {label} διαφέρουν {n} κάμερες")
+        else:
+            print(f"ΑΠΟΤΥΧΙΑ ΑΡΝΗΤΙΚΟΥ: με {label} καμία κάμερα δεν διαφέρει")
+            fails += 1
+    return fails
+
+
 def main():
     sym = build()
     a = S.Assets()
@@ -78,7 +160,7 @@ def main():
     variants = a._tab("tile_variants")
     from cpc import CPC
 
-    fails, frames = 0, None
+    fails, frames, refs = 0, None, []
     for tx, ty, why in CAMERAS:
         m = CPC()
         m.run_frames(60)
@@ -103,6 +185,7 @@ def main():
             continue
 
         ref = reference(a, c, ag, plane, cam, variants)
+        refs.append(ref)
         ram = m.read_ram(0xC000, 0x4000)
         # Η λήψη είναι το τελευταίο ΟΛΟΚΛΗΡΩΜΕΝΟ καρέ του βίντεο: αν το START
         # τελείωσε στη μέση ενός, το HUD φαίνεται μισό (βήμα 39, όταν η πλήρης
@@ -135,6 +218,8 @@ def main():
 
     us = frames * 19968
     print(f"\nπλήρης σχεδίαση κάδρου: {frames} frames = {us/1000:.0f} ms")
+    if len(refs) == len(CAMERAS):
+        fails += negatives(sym, refs)
     return 1 if fails else 0
 
 

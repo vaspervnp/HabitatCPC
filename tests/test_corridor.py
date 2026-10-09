@@ -16,9 +16,10 @@
              μετά την τελευταία· πληρωμή μόνο τότε, και ΚΑΜΙΑ ακμή (βήμα 87)
   cr_commit_ln  το ίδιο για το LINK, και η ακμή μόνο αν και οι δύο θόλοι
              είναι έτοιμοι — με έναν από τους δύο εργοτάξιο, όχι
-  cr_redraw  οι δύο πόρτες, μία DK_CROW για κάθε ορατή σειρά της διαγωνίου,
-             το περίγραμμα του αξονικού κομματιού (stubs στο dirty_push και
-             στο view_add)
+  cr_redraw  οι δύο αρμοί (DK_CONN· ως το 95 οι πόρτες), μία DK_CROW για κάθε
+             ορατή σειρά της διαγωνίου, το περίγραμμα του αξονικού κομματιού —
+             από το βήμα 96 με τη στήλη αριστερά ή τη σειρά πάνω όταν ο άξονας
+             του b πέφτει σε όριο tile (stubs στο dirty_push και στο view_add)
 
 Δύο θόλοι στις θέσεις 50 και 51 του πίνακα, σε 1.500 τυχαίες θέσεις: αξονικοί,
 καθαρές διαγώνιες, «σχεδόν» διαγώνιες, μονές αποστάσεις, άδειες θέσεις, θόλοι
@@ -482,13 +483,15 @@ def redraw_stubs(sym):
 
 
 def redraw_rule(ends, side, runs, cam):
-    """Ο κανόνας του cr_redraw: οι δύο πόρτες, μία DK_CROW για κάθε σειρά της
-    διαγωνίου που φαίνεται (τρεις στήλες, από το tile της μείον ένα), και το
-    περίγραμμα του αξονικού κομματιού — όλης της διαδρομής, ή μόνο της στροφής."""
+    """Ο κανόνας του cr_redraw: οι δύο αρμοί (ως το 95 οι πόρτες), μία DK_CROW
+    για κάθε σειρά της διαγωνίου που φαίνεται (τρεις στήλες, από το tile της
+    μείον ένα), και το περίγραμμα του αξονικού κομματιού — όλης της διαδρομής, ή μόνο της στροφής —, με μία στήλη
+    αριστερά (κάθετος) ή μία σειρά πάνω (οριζόντιος) όταν ο άξονας του b είναι
+    ζυγός σε μισά tiles: ο διάδρομος στο κέντρο πατά μισό πλάτος εκεί (βήμα 96)."""
     (fx, fy, fs), (tx, ty, ts) = ends
-    frm, to = (SA, SB) if side == 0 else (SB, SA)
     want = tiles_of(Ends(*ends), 0, runs, 1)
     d0, l0 = runs[0]
+    frm, to = (SA, SB) if side == 0 else (SB, SA)
     out = [DK_CONN, frm, d0, DK_CONN, to, (runs[-1][0] + 4) & 7]
     rows = 0
 
@@ -496,9 +499,16 @@ def redraw_rule(ends, side, runs, cam):
         if not ts_:
             # καμία: το min μένει +127 και το max -128, άρα (127, 127) και 2 x 2
             # (8 bit) — έξω από τον κόσμο, και το view_add δεν το βλέπει
-            return [0xFF, 127, 127, 2, 2]
-        xs, ys = [x for x, _ in ts_], [y for _, y in ts_]
-        return [0xFF, min(xs) & 255, min(ys) & 255, max(xs) - min(xs) + 1, max(ys) - min(ys) + 1]
+            r = [0xFF, 127, 127, 2, 2]
+        else:
+            xs, ys = [x for x, _ in ts_], [y for _, y in ts_]
+            r = [0xFF, min(xs) & 255, min(ys) & 255, max(xs) - min(xs) + 1,
+                 max(ys) - min(ys) + 1]
+        k = 1 + ((runs[-1][0] & 2) >> 1)                 # 1: x (n, s), 2: y (e, w)
+        if not (tx, ty)[k - 1] & 1:
+            r[k] = (r[k] - 1) & 255
+            r[k + 2] += 1
+        return r
 
     if not d0 & 1:
         return out + box(want), rows
@@ -622,7 +632,7 @@ def main():
         print(f"ΑΠΟΤΥΧΙΑ: {why}")
         fails += 1
     else:
-        print("OK cr_redraw = οι δύο πόρτες, οι ορατές σειρές της διαγωνίου, το περίγραμμα "
+        print("OK cr_redraw = οι δύο αρμοί, οι ορατές σειρές της διαγωνίου, το περίγραμμα "
               "του άξονα, και Z μόνο χωρίς σειρές")
     got = timing(sym)
     slow = []
@@ -647,7 +657,10 @@ def main():
     cm = sym["CR_COMMIT"]
     il = m.read_ram(cm, 40).find(bytes([0x78, 0x3D, 0x28]))      # ld a,b · dec a · jr z
     rr = sym["CRR_ROWS"]
-    iv = m.read_ram(rr, 40).find(bytes([0xC6, 2, 0xFE, VIEW_TW + 2]))   # add a,2 · cp
+    iv = m.read_ram(rr, 60).find(bytes([0xC6, 2, 0xFE, VIEW_TW + 2]))   # add a,2 · cp
+    # βήμα 96: bit 0,(hl) · jp nz (crr_half)
+    hh = sym["CRR_HALF"]
+    ih = m.read_ram(hh, 30).find(bytes([0xCB, 0x46, 0xC2]))
     iy = m.read_ram(ck, 12).find(bytes([0x79, 0xC6, 64, 0xB3]))   # ld a,c · add a,64 · or e
     # η ακτίνα size + 2 είναι δύο inc από το βήμα 86, με τον έλεγχο του airlock
     # (μέγεθος 255) ανάμεσα: inc a · ret z · inc a
@@ -657,7 +670,7 @@ def main():
     cs = sym["CR_SIDE"]
     ipe = m.read_ram(cs, 20).find(bytes([0x96, 0xEA]))          # sub (hl) · jp pe
     i64 = m.read_ram(cs, 120).find(bytes([0xCB, 0x77, 0xC2]))    # bit 6,a · jp nz
-    assert min(i2, i4, ik, iy, im, il, iv, ipe, i64) >= 0, \
+    assert min(i2, i4, ik, iy, im, il, iv, ipe, i64, ih) >= 0, \
         "δεν βρέθηκαν τα inc a,ret z,inc a / add a,cr_dtab+4 / ld a,c / ret m / jr z / cp VIEW_TW+2" \
         " / jp pe / bit 6,a"
     for label, patch in (("ακτίνα size+3", [(rk + i2 + 1, 0x3C)]),
@@ -681,7 +694,9 @@ def main():
                              ("ακμή και προς εργοτάξιο", commit_rules,
                               [(sym["CR_LINK"] - 1, 0)]),
                              ("σειρά ορατή μόνο από τη στήλη -1", redraw_rules,
-                              [(rr + iv + 1, 1)])):
+                              [(rr + iv + 1, 1)]),
+                             ("χωρίς τη μισή στήλη ή σειρά", redraw_rules,
+                              [(hh + ih + 2, 0xC3)])):
         why = fn(sym, patch, n=150)
         if why:
             print(f"OK ΑΡΝΗΤΙΚΟ: με {label} αποτυγχάνει ({why[:90]})")

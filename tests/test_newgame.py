@@ -69,6 +69,7 @@ sys.path.insert(0, "/home/vasilhs/cpcemu")
 import test_game as TG                                   # noqa: E402
 import cpc                                               # noqa: E402
 import route                                             # noqa: E402
+import reach                                             # noqa: E402
 import econ as EC                                        # noqa: E402
 from test_route import tiles_of                          # noqa: E402
 from test_corridor import Ends                           # noqa: E402
@@ -228,7 +229,10 @@ def rule_colony(L, before, fill):
         for y in (-6, -5):
             k = (y + 64) * 128 + x + 64
             b4[k] = b4[k] & 0xC0 | 0x10
-    # ...και ΜΟΝΟ κατοχή στους διαδρόμους (cr_stamp: όχι θεμέλιο, §9.4)
+    # ...και ΜΟΝΟ κατοχή στους διαδρόμους (cr_stamp: όχι θεμέλιο, §9.4), και
+    # από το βήμα 96 στα tiles του μισού πλάτους, όσα είναι ελεύθερα
+    # (cr_stampx, το reach.half_tiles): ο διάδρομος στο κέντρο του θόλου πατά
+    # 1 byte ή 4 γραμμές στο διπλανό tile.
     for b in (1, 2, 65):
         a_ = (DOMES[0][0], DOMES[0][1], 0)
         z = (LOCK[0], LOCK[1], route.AIRLOCK) if b == 65 else (DOMES[b][0], DOMES[b][1], 0)
@@ -236,6 +240,10 @@ def rule_colony(L, before, fill):
         ends = (a_, z) if side == 0 else (z, a_)
         for x, y in tiles_of(Ends(*ends), 0, runs, 1):
             b4[(y + 64) * 128 + x + 64] |= 0x10
+        for x, y in reach.half_tiles(ends[0], ends[1], runs):
+            k = (y + 64) * 128 + x + 64
+            if not b4[k] & 0x30:
+                b4[k] |= 0x10
     return b2, b6, b4
 
 
@@ -305,7 +313,8 @@ def main():
         fails += 1
     else:
         print("OK η αποικία δοκιμών (colony.sna) = η αρχή ως το βήμα 86: θόλοι, "
-              "πλατφόρμα, airlock με ST_JOINED, διάδρομοι, άποικοι μέσα, θεμέλιο")
+              "πλατφόρμα, airlock με ST_JOINED, διάδρομοι με τα μισά tiles τους, "
+              "άποικοι μέσα, θεμέλιο")
 
     m = cpc.CPC()
     m.run_frames(60)

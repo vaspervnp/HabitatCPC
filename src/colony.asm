@@ -139,7 +139,7 @@ ngr_lp:
         ld      (cr_a),a
         call    cr_plan
         or      a
-        call    nz,cr_stamp
+        call    nz,cr_stampx            ; και το μισό tile στο κέντρο (βήμα 96)
         pop     hl
         inc     hl
         ld      a,(hl)

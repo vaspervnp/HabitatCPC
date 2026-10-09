@@ -61,6 +61,7 @@ oib_c:
         rra
         push    af
         jr      nc,oib_s
+        call    jt_clear                ; οι αρμοί από την αρχή (βήμα 96)
         ld      hl,OI_CORR
         ld      de,ob_corr
         ld      b,MAX_CORR

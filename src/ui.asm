@@ -1539,3 +1539,137 @@ cur_hy:     db 0
         assert  uid_cy == uid_cx + 1
         assert  gh_bh == gh_bw + 1 && UI_LOOK == 0
         assert  A_HOME == 8 && A_SPD1 >= 8 && A_SPD4 < 16
+
+; crr_conns — οι δύο αρμοί του διαδρόμου που μόλις μπήκε, στη λίστα (DK_CONN),
+; για το cr_redraw: πέφτουν στους δακτυλίους, έξω από το ορθογώνιο και τις
+; σειρές του διαδρόμου. Ο a στην κατεύθυνση του πρώτου τρεξίματος, ο b στην
+; αντίθετη του ΤΕΛΕΥΤΑΙΟΥ, όπως το jt_mark. Ενας αρμός δεν πέφτει πάνω σε θέση
+; δακτυλίου, μηχανή ή εικονίδιο (tests/test_object.py), οπότε γραμμένος μόνος
+; του πάνω από το κέλυφος δίνει ό,τι και το πλήρες πέρασμα. Εδώ και όχι στο
+; route.asm: η τράπεζα 2 είχε 10 bytes.
+crr_conns:
+        ld      a,(cr_from)
+        ld      b,a
+        ld      a,(cr_d0)
+        ld      c,a
+        ld      e,a                     ; το dirty_push κρατά το E
+        ld      a,DK_CONN
+        call    dirty_push
+        ld      a,(cr_n)
+        cp      2
+        ld      a,e
+        jr      c,crc_last
+        ld      a,(cr_d1)
+crc_last:
+        add     a,4
+        and     7
+        ld      c,a
+        ld      a,(cr_to)
+        cp      MAX_DOME
+        ret     nc                      ; airlock: δεν έχει δακτύλιο (βήμα 86)
+        ld      b,a
+        ld      a,DK_CONN
+        jp      dirty_push
+
+; cr_stampx — το cr_stamp, και τα tiles του ΜΙΣΟΥ ΠΛΑΤΟΥΣ (βήμα 96). Ο αξονικός
+; διάδρομος στο κέντρο του θόλου πάει μισό πλάτος πίσω: 1 byte στη στήλη
+; αριστερά από τα tiles του ο κάθετος, 4 γραμμές στη σειρά πάνω ο οριζόντιος,
+; όταν ο άξονας πέφτει σε όριο tile (ζυγό cx ή cy σε μισά tiles, ο κανόνας του
+; crr_half). Και αυτά σφραγίζονται, όσα είναι ελεύθερα: ό,τι ξαναζωγραφίζει
+; μόνο έδαφος όπου η κατοχή λέει «άδειο» (dh_tile, οι φιγούρες έξω) έσβηνε
+; αλλιώς τη λωρίδα του διαδρόμου (tests/test_meteor.py, 32 bytes). Τα πιασμένα
+; μένουν όπως είναι: σε θόλο, δομή ή διάδρομο το πέρασμα αντικειμένων γίνεται
+; ήδη, και ένα μονοπάτι (κατοχή 2) μένει μονοπάτι. Ο έλεγχος της διαδρομής
+; (cr_check) δεν τα κοιτάζει.
+;
+; ΣΤΟ ΙΔΙΟ ΠΕΡΑΣΜΑ με τη σφραγίδα, και φθηνότερα από το cr_cb_stp: το crx_cb
+; βρίσκει τη διεύθυνση του tile μόνο του, με τα x + 64 και y + 64 που μόλις
+; έλεγξε για τα όρια, και ο γείτονας είναι το HL - 1 ή το HL - 128. Ενα
+; δεύτερο πέρασμα της διαδρομής έκανε το cr_commit ως 1,9 ms πιο αργό από το
+; βήμα 72 (tests/test_corridor.py). Σε στροφή το τρέξιμο 0 περνά μόνο με τη
+; σφραγίδα (cr_n = 1 για λίγο: το cr_walk σταματά εκεί), και το 1 με τον
+; γείτονα, από ένα crw_base — το ίδιο tile της στροφής ξαναπερνά, και η
+; σφραγίδα του δεύτερη φορά δεν αλλάζει τίποτα.
+cr_stampx:
+        ld      a,(cr_n)
+        cp      2
+        jr      nc,crx_bend
+        ld      a,(cr_d0)
+        call    crx_sel
+        jp      crw_b4                  ; src/route.asm: η διαδρομή με την 4 μέσα
+crx_bend:
+        ld      hl,cr_n
+        dec     (hl)
+        ld      a,1                     ; διαγώνιος: μόνο η σφραγίδα
+        call    crx_sel
+        call    crw_b4                  ; το τρέξιμο 0
+        ld      hl,cr_n
+        inc     (hl)
+        ld      a,(cr_d1)
+        call    crx_sel
+        ld      bc,GA_PORT + PAGE_B4
+        out     (c),c
+        call    crw_base
+        call    cr_walk1                ; το τρέξιμο 1, η στροφή
+        ld      bc,GA_PORT + PAGE_B1
+        out     (c),c
+        ret
+; crx_sel — A = η κατεύθυνση του τρεξίματος. Στήνει το crx_cb: ret στο
+; crx_mode (μόνο η σφραγίδα), ή το ld de του γείτονα (-1 ή -128). HL = crx_cb,
+; και (cr_cb) το ίδιο.
+crx_sel:
+        ld      b,#C9                   ; ret
+        bit     0,a
+        jr      nz,crx_set              ; διαγώνιος
+        and     2                       ; e, w = 2, 6: οριζόντιος· n, s κάθετος
+        rrca                            ; 0 = x, 1 = y
+        ld      e,a
+        ld      d,0
+        ld      hl,cr_tx                ; ο άξονας του b, όπως στο crr_half
+        add     hl,de
+        ld      a,(hl)
+        bit     0,a
+        jr      nz,crx_set              ; μονό: όλος μέσα στα tiles του
+        sra     a                       ; το tile του άξονα
+        cp      -64
+        jr      z,crx_set               ; ο γείτονας θα ήταν έξω από τον κόσμο
+        ld      b,#11                   ; ld de,nn
+        dec     e
+        ld      de,-1                   ; αριστερά
+        jr      nz,crx_one
+        ld      de,-128                 ; πάνω: μία σειρά του κόσμου
+crx_one:
+        ld      (crx_mode + 1),de
+crx_set:
+        ld      a,b
+        ld      (crx_mode),a
+        ld      hl,crx_cb
+        ld      (cr_cb),hl
+        ret
+; crx_cb — B = x, C = y ενός tile της διαδρομής: κατοχή 1, και (crx_sel) στον
+; γείτονα του μισού πλάτους, αν είναι ελεύθερος.
+crx_cb:
+        ld      a,c
+        add     a,64
+        ld      e,a                     ; y + 64
+        ld      a,b
+        add     a,64
+        ld      l,a                     ; x + 64
+        or      e
+        ret     m                       ; έξω από τον κόσμο
+        ld      a,e                     ; το tile_addr, με τα ίδια· το or
+        rra                             ; μηδένισε το carry
+        jr      nc,crx_ev
+        set     7,l
+crx_ev:
+        add     a,WORLD_BASE >> 8
+        ld      h,a
+        set     4,(hl)                  ; W_OCC_STRUCT
+crx_mode:
+        ld      de,-1                   ; ή ret: μόνο η σφραγίδα (crx_sel)
+        add     hl,de
+        ld      a,(hl)
+        and     W_OCC_MASK
+        ret     nz                      ; πιασμένο: μένει όπως είναι
+        set     4,(hl)
+        ret

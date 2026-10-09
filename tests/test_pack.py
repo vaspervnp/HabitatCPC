@@ -109,7 +109,9 @@ def main():
                   f"{tab}[{i}] -> #{got:04X}, περίμενα #{want:04X} ({n})")
 
     # 7. ό,τι δεικτοδοτείται με πολλαπλασιασμό πρέπει να είναι ΣΥΝΕΧΟΜΕΝΟ
-    for grp, stride, count in (("font_m1", 8, 96 + 5), ("connectors", 32, 8),
+    # (οι πόρτες, connectors 8 x 32, ως το βήμα 95: δεν ζωγραφίζονται πια· οι
+    # αρμοί του 96 τους ελέγχει το test_object, απέναντι στη scene.joint)
+    for grp, stride, count in (("font_m1", 8, 96 + 5),
                                ("slot_empty", 16, 24), ("fig_ring", 32, 8),
                                ("fig_gfx", 32, 8)):
         r = by_name[grp]

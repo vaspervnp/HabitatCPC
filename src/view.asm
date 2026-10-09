@@ -274,7 +274,7 @@ vr_ty:      db 0
 vr_w:       db 0
 vr_h:       db 0
         ; διπλανά: το dirty.asm (dh_site, dh_crow, dh_tile) τα γράφει ανά δύο
-        assert  vr_ty == vr_tx + 1 && vr_h == vr_w + 1
+        assert  vr_ty == vr_tx + 1 && vr_h == vr_w + 1 && vr_w == vr_tx + 2   ; και το crr_half (src/route.asm)
         ; ζεύγη ως λέξεις και ldi: view_scroll, view_cliprect, vr_clip
         assert  cam_ty == cam_tx + 1 && td_c0 == td_nc + 1 && td_nr == td_r0 + 1
         assert  clip_x1 == clip_x0 + 1 && clip_y0 == clip_x0 + 2 && clip_y1 == clip_x0 + 3
