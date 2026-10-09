@@ -626,14 +626,21 @@ def fire(sym, g, patch=()):
         laid, cap = G.worst(), FIRE_PATH_MS if res["path"] else FIRE_MS
         if laid >= cap:
             return f"{name}: ο χειρότερος γύρος του FIRE {laid:.0f} ms (όριο {cap})"
-        # --- ο κόσμος: το αποτύπωμα θεμέλιο (bd_commit), και οι δεσμοί
+        # --- ο κόσμος: το αποτύπωμα πιασμένο (bd_commit) — θεμέλιο μιας δομής,
+        # το ίδιο έδαφος ενός θόλου (βήμα 94) —, η σύνδεση εδάφους ενός airlock
+        # ζωγραφισμένη (lk_draw, βήμα 94), και οι δεσμοί
+        node = m.peek(sym["BD_NODE"])
         want = bytearray(b4)
         tx, ty = (cx - w) >> 1, (cy - h) >> 1
         for y in range(ty, ty + h):
             for x in range(tx, tx + w):
                 k = reach.widx(x, y)
-                want[k] = want[k] & 0xC0 | 0x17
+                want[k] = want[k] & 0xCF | 0x10 if kind == 0 else want[k] & 0xC0 | 0x17
+        a = reach.anchor(structs, list(deg0) + [0] * 32, node, cx, cy)
         want = reach.stamp(bytes(want), res)
+        if kind != 0 and not res["path"] and a != 255:      # μετά τους διαδρόμους
+            want = reach.ground(want, (tx, ty, w, h), (cx >> 1, cy >> 1),
+                                reach.footprint(a, domes, structs, dims))
         got = bytes(G.bank(4)[:0x4000])
         if got != want:
             k = next(k for k in range(0x4000) if got[k] != want[k])
@@ -641,11 +648,9 @@ def fire(sym, g, patch=()):
                     f"#{got[k]:02X}, ο κανόνας λέει #{want[k]:02X}")
         # --- ο γράφος: η ακμή του μονοπατιού, ή η σύνδεση εδάφους στην άγκυρα.
         # Οι διάδρομοι ΟΧΙ ακόμη: το εργοτάξιο δεν έχει αέρα (βήμα 87).
-        node = m.peek(sym["BD_NODE"])
         if res["path"] and not res["corridors"]:
             ends = [res["path"][0]]
         else:
-            a = reach.anchor(structs, list(deg0) + [0] * 32, node, cx, cy)
             ends = [] if a == 255 else [a]
         if not ends:
             return f"{name}: η σκηνή δεν έχει άγκυρα — δεν δοκιμάζει τη σύνδεση εδάφους"
@@ -722,6 +727,8 @@ def first_lock(sym, g, patch=()):
     # (αντικείμενο, κέρσορας, EC_FREELK μετά, οι νέες εγγραφές διαδρόμων)
     for item, at, free, recs in ((9, (-96, 44), 1, 0), (0, (-96, 60), 0, 1)):
         c0 = bytes(G.bank(6)[corr:corr + 480])
+        w0 = bytes(G.bank(4)[:0x4000])
+        s0 = [list(G.bank(6)[R.STRUCT_TBL + 8 * k:R.STRUCT_TBL + 8 * k + 7]) for k in range(32)]
         B.build(m, sym, item, g + 6, at=at, place=False)
         G.settle()
         G.stick(JOY_FIRE)
@@ -741,6 +748,27 @@ def first_lock(sym, g, patch=()):
                 return f"το airlock: κόμβος {node}, γείτονες {nb} (θέλει [65], το έδαφος)"
             if G.bank(6)[R.STRUCT_TBL + 8 * (lock - 64) + 6]:
                 return "το airlock μόνο του έχει ήδη ST_JOINED"
+            # ΚΑΙ Η ΣΥΝΔΕΣΗ ΕΔΑΦΟΥΣ ΖΩΓΡΑΦΙΣΜΕΝΗ (βήμα 94): ένα Γ 48 tiles
+            # κατά x πάνω από το χωράφι και την έρημο, και μετά κάτω μέσα από
+            # την αποικία, όπου δεν αλλάζει τίποτα.
+            dims = m.read_ram(layout("G_struct_dims"), 64)
+            want = bytearray(w0)
+            for y in range(at[1] // 2 - 1, at[1] // 2 + 1):
+                for x in range(at[0] // 2 - 1, at[0] // 2 + 1):
+                    want[reach.widx(x, y)] = want[reach.widx(x, y)] & 0xC0 | 0x17
+            want = reach.ground(bytes(want), (at[0] // 2 - 1, at[1] // 2 - 1, 2, 2),
+                                (at[0] // 2, at[1] // 2),
+                                reach.footprint(65, [[0, 0, 0, 0]] * 64, s0, dims))
+            got = bytes(G.bank(4)[:0x4000])
+            drawn = sum(1 for k in range(0x4000) if want[k] != w0[k] and want[k] & 7 == 7
+                        and not want[k] & 0x30)
+            if got != want:
+                k = next(k for k in range(0x4000) if got[k] != want[k])
+                return (f"το airlock: ο κόσμος στο tile ({(k & 127) - 64}, {(k >> 7) - 64}) "
+                        f"#{got[k]:02X}, η σύνδεση εδάφους λέει #{want[k]:02X}")
+            if drawn < 30:
+                return f"το airlock: μόνο {drawn} tiles θεμέλιο — η σκηνή δεν δοκιμάζει τη σύνδεση"
+            print(f"    το πρώτο airlock: η σύνδεση εδάφους ως τον 65, {drawn} tiles θεμέλιο χωρίς κατοχή")
         elif new != [[node, lock, 0, 5, 2]]:
             return f"ο θόλος {node}: διάδρομος {new}, θέλει [[{node}, {lock}, 0, 5, 2]]"
         elif nb != [lock] or joined != 1:
@@ -792,7 +820,7 @@ def negatives(sym, g):
         ("το airlock κρατά τον τελευταίο θόλο", rules,
          [(find(m, sym["AL_LCK"], [0xBE, 0xD0], 20) + 1, 0)]),
         ("το airlock που μπαίνει μόνο του δεν μετριέται", first_lock,
-         [(find(m, sym["AL_COMMIT"], [0x21] + w(g + 63) + [0x34], 400) + 3, 0)]),
+         [(find(m, sym["ALC_NONE"], [0x21] + w(g + 63) + [0x34], 40) + 3, 0)]),
         # --- βήμα 87 ---
         # cp K_SHIP στο al_scans γίνεται cp 255: το σκάφος μετράει ως δομή
         ("το σκάφος μετράει ως δομή", rules,
@@ -808,6 +836,22 @@ def negatives(sym, g):
          list(zip(range(find(m, sym["UIP_FIRE"], [0xCD] + w(sym["BD_REDRAW"]) + [0xF5, 0xCD]
                              + w(sym["AL_COMMIT"]) + [0xF1], 60), 10**6),
                   [0xCD] + w(sym["AL_COMMIT"]) + [0, 0xCD] + w(sym["BD_REDRAW"]) + [0]))),
+        # --- βήμα 94 ---
+        # ld a,(bd_kind) · or a · jr nz,bst_rl στο bd_link γίνεται jr: θεμέλιο και ο θόλος
+        ("ο θόλος με θεμέλιο, όπως ως το 93", "fire",
+         [(find(m, sym["BD_LINK"], [0x3A] + w(sym["BD_KIND"]) + [0xB7, 0x20], 40) + 4, 0x18)]),
+        # call nz,lk_draw στο al_commit γίνεται nop: η σύνδεση εδάφους δεν φαίνεται
+        ("η σύνδεση εδάφους που δεν ζωγραφίζεται", first_lock,
+         [(find(m, sym["AL_COMMIT"], [0xC4] + w(sym["LK_DRAW"]), 40) + k, 0) for k in range(3)]),
+        # or W_FOUNDATION στο al_cbr γίνεται or W_FOUNDATION + W_OCC_PATH
+        ("η σύνδεση εδάφους με κατοχή, σαν μονοπάτι", first_lock,
+         [(find(m, sym["AL_CBR"], [0xF6, 0x07], 20) + 1, 0x27)]),
+        # jr nz,acr_no στο al_cbr γίνεται nop nop: θεμέλιο πάνω σε ό,τι βρει
+        ("η σύνδεση εδάφους πάνω σε νερό και κτίσματα", first_lock,
+         [(find(m, sym["AL_CBR"], [0x7E, 0x20], 20) + 1 + k, 0) for k in range(2)]),
+        # or a · ret στο acr_no γίνεται jr al_cbb: ξαναζωγραφίζεται όλο το σκέλος
+        ("όλο το σκέλος ξαναζωγραφίζεται", "fire",
+         [(sym["ACR_NO"], 0x18), (sym["ACR_NO"] + 1, (sym["AL_CBB"] - sym["ACR_NO"] - 2) & 255)]),
         ("το bd_nres που μένει από την προηγούμενη θέση", rules,
          [(find(m, sym["UI_VALIDATE"], [0x32] + w(sym["BD_NRES"]), 20) + k, 0) for k in range(3)]),
         ("το ui_bad χωρίς τον λόγο", panel,

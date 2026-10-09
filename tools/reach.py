@@ -311,6 +311,23 @@ def anchor(structs, deg, node, cx, cy):
     return out
 
 
+def ground(world, new, p, fp):
+    """Η σύνδεση εδάφους ζωγραφισμένη (βήμα 94, lk_draw και al_cbr): το Γ
+    πρώτα κατά x από το κεντρικό tile p του νέου (αποτύπωμα new) ως το κεντρικό
+    tile της άγκυρας (fp = footprint(...)), έξω από τα δύο αποτυπώματα.
+    Θεμέλιο ΧΩΡΙΣ κατοχή όπου το tile είναι ελεύθερο έδαφος που χτίζεται
+    (ok_tile), με το decor του· αλλού τίποτα. Χωρίς όριο μήκους."""
+    wl = bytearray(world)
+    rc, q = fp
+    for x, y in lwalk(p, q, 0):
+        if in_rect(new, x, y) or in_rect(rc, x, y):
+            continue
+        i = widx(x, y)
+        if ok_tile(wl[i]):
+            wl[i] = wl[i] & 0xC0 | FOUNDATION
+    return bytes(wl)
+
+
 def stamp(world, res):
     """Ο κόσμος μετά το FIRE: τα tiles του μονοπατιού θεμέλιο με κατοχή 2, το
     decor μένει· των διαδρόμων κατοχή 1 (cr_stamp)."""

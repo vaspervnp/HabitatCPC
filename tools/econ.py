@@ -95,6 +95,7 @@ MAX_STRUCT = 32          # §4.2: 64 θόλοι + 32 δομές = 96 κόμβο�
 # Το έβδομο byte είναι το ST_JOINED των airlock (βήμα 87)· το όγδοο, από το
 # βήμα 88, ό,τι χρωστιέται σε ένα εργοτάξιο: μέταλλο<<4 | βιοπλαστικό.
 ST_CX, ST_CY, ST_KIND, ST_SIZE, ST_STATE, ST_INTEG, ST_OUT, ST_OWED = range(8)
+ST_OPS = ST_OUT                 # ορυχείο: όσοι σκάβουν (βήμα 94, src/drill.asm)
 
 # είδη δομών, με τη σειρά του STRUCTS στο pack.py (solar/turbine/collector/
 # extractor σε τρία μεγέθη, μετά mine/airlock/pad/ship)
@@ -106,7 +107,8 @@ TURBINE_OUT = [3, 12, 27]
 COLLECTOR_CAP = [40, 160, 360]
 EXTRACTOR_OUT = [1, 2, 5]      # ανά κύκλο ροής — δες FLOW_DIV
 EXTRACTOR_POWER = [1, 3, 6]     # ένα τρίτο πάνελ, όχι δύο — βλ. src/econ.asm
-MINE_OUT, MINE_POWER = 2, 8
+MINE_OUT, MINE_POWER = 2, 8         # MINE_OUT: με ΕΝΑΝ που σκάβει (βήμα 94)
+MINE_OPS = 3                        # ως τρεις σε κάθε ορυχείο, όπως το Planetbase
 
 O2_PER_COLONIST = 2
 CW_N = 5                            # οι ειδικότητες των πλοίων αποίκων (βήμα 91)
@@ -194,6 +196,7 @@ class Econ:
         # --- ο έμπορος (βήμα 93) — όσο είναι προσγειωμένος ---
         self.markup = 0             # το κέρδος του, 35-65 (%)
         self.cargo = [0] * (2 * MER_SLOTS)  # [αγαθό, ποσότητα] x 4· αγαθό 0: κενό
+        self.mines = 0              # έτοιμα ορυχεία, από τον κύκλο ροής (βήμα 94)
         self.air_out = 255          # airlock που ξανάγινε εργοτάξιο (βήμα 90)
         self.dist = None            # ο πίνακας αποστάσεων, δίνεται απ' έξω
 
@@ -364,6 +367,7 @@ def flow_balance(e, alive, inside):
 def flow_cycle(e):
     prod = cap = water = ore = 0
     use = e.mach_power
+    e.mines = 0
     for i in range(MAX_STRUCT):
         st = i * STRUCT_REC
         if e.struct[st + ST_STATE] != DS_ACTIVE:
@@ -380,8 +384,19 @@ def flow_cycle(e):
             use += EXTRACTOR_POWER[sz]
             water += EXTRACTOR_OUT[sz]
         elif k == K_MINE:
+            # ΣΚΑΒΕΙ ΟΠΟΙΟΣ ΕΙΝΑΙ ΕΚΕΙ (βήμα 94, src/flow.asm και src/drill.asm):
+            # κανείς 0, ένας MINE_OUT, κάθε επόμενος ένα παραπάνω — το 100, 150,
+            # 200% του Planetbase. Το ρεύμα το τρώει ούτως ή άλλως. Και όσο
+            # λείπει κάποιος, μια εργασία Drill, εδώ στο σάρωμα (dr_post).
             use += MINE_POWER
-            ore += MINE_OUT
+            e.mines += 1
+            n = e.struct[st + ST_OPS]
+            # το bit 7: η Drill του υπάρχει ήδη, ως να φτάσει κάποιος (dr_post)
+            if n < MINE_OPS and post_drill(e, MAX_DOME + i):
+                e.struct[st + ST_OPS] |= 0x80
+            n &= MINE_OPS
+            if n:
+                ore += MINE_OUT + n - 1
 
     e.power_prod, e.power_cap, e.power_use = prod, cap, use
     if prod >= use:
@@ -707,11 +722,12 @@ def to_bytes(e):
     out += bytes([e.nbuild])                                 # βήμα 88
     out += bytes(e.land)                                     # βήμα 91
     out += bytes([e.markup] + list(e.cargo))                 # βήμα 93
+    out += bytes([e.mines])                                  # βήμα 94
     return bytes(out)
 
 
-# + μετεωρίτες, Build, ειδικότητες, έμπορος = 106
-ECON_BYTES = 64 + 8 + 10 + 4 + 5 + 1 + 5 + 9
+# + μετεωρίτες, Build, ειδικότητες, έμπορος, ορυχεία = 107
+ECON_BYTES = 64 + 8 + 10 + 4 + 5 + 1 + 5 + 9 + 1
 
 
 def populate(e, n_dome=24, n_struct=30, seed=11):
@@ -760,6 +776,11 @@ def populate(e, n_dome=24, n_struct=30, seed=11):
         e.struct[b + ST_SIZE] = 0 if k in (K_MINE, K_PAD) else 2
         e.struct[b + ST_STATE] = DS_ACTIVE
         e.struct[b + ST_INTEG] = 255
+        # ΕΝΑΣ ΣΚΑΒΕΙ ΣΕ ΚΑΘΕ ΟΡΥΧΕΙΟ (βήμα 94): ως τότε το ορυχείο έβγαζε
+        # μόνο του, και η «ανεξαρτησία» του §10.2 θέλει μετάλλευμα φτιαγμένο
+        # εδώ. Σαν ρομπότ γεώτρησης, που δεν φεύγει ποτέ.
+        if k == K_MINE:
+            e.struct[b + ST_OPS] = 1
     e.n_struct = n_struct
 
     # Δέκα μικροί θόλοι με γεννήτρια οξυγόνου. Οχι δύο: 2 x 20 = 40 O2 για
@@ -978,6 +999,9 @@ def jobs_tick(e, a, F_ALIVE, F_WORKING):
             continue
         if node < MAX_DOME:
             e.dome[node * DOME_REC + D_OPS] += 1
+        else:                               # το ορυχείο (βήμα 94, op_ptr)
+            b = (node - MAX_DOME) * STRUCT_REC + ST_OPS
+            e.struct[b] = (e.struct[b] + 1) & 0x7F      # και η Drill του έφυγε
         a.flags[i] |= F_WORKING
         a.task[i] = NO_TASK
         jb[b + J_KIND] = NO_JOB
@@ -1054,6 +1078,7 @@ MAXAGENT_J = 128
 # ταβάνι και δεν αναπνέουν: ο μετρητής ζωντανών της θέσης 12 μετρά τους 80.
 AG_BOT0, AG_NBOT = 80, 16
 RL_CBOT, RL_CARRY = 5, 6            # κατασκευής, μεταφοράς (§6.1)
+RL_DRILL = 7                        # γεώτρησης (βήμα 94)
 
 
 # --- ευρετήριο δωματίων (θέση 14) -----------------------------------------
@@ -1361,8 +1386,39 @@ def bot_tick(e, a, occ, F_ALIVE=1, F_INDOORS=2):
     else:
         return None
     e.stock[S_BOT] -= 1
-    born(a, i, F_ALIVE | F_INDOORS, RL_CBOT + (i & 1), d, occ)
+    role = RL_DRILL if drill_need(e, a, F_ALIVE) else RL_CBOT + (i & 1)
+    born(a, i, F_ALIVE | F_INDOORS, role, d, occ)
     return i
+
+
+def drill_need(e, a, F_ALIVE=1):
+    """Το dr_need (βήμα 94, src/bots.asm): θέλουν τα ορυχεία γεωτρύπανο;
+    MINE_OPS θέσεις για κάθε έτοιμο ορυχείο — όσα μέτρησε ο τελευταίος
+    κύκλος ροής, e.mines — μείον τα ζωντανά γεωτρύπανα."""
+    places = MINE_OPS * e.mines             # όπως τα μέτρησε ο κύκλος ροής
+    drills = sum(1 for i in range(AG_BOT0, AG_BOT0 + AG_NBOT)
+                 if a.flags[i] & F_ALIVE and a.role[i] == RL_DRILL)
+    return places > drills
+
+
+def post_drill(e, node):
+    """Το dr_post μέσω του jp_have (src/jobs.asm): μια εργασία Drill για τον
+    κόμβο, αν δεν υπάρχει ήδη, στην πρώτη ελεύθερη θέση· τίποτα αν ο πίνακας
+    γέμισε. True αν υπάρχει πια."""
+    jb = e.job
+    if any(jb[k * JOB_REC + J_KIND] == J_DRILL and jb[k * JOB_REC + J_NODE] == node
+           for k in range(MAX_JOB)):
+        return True
+    for k in range(MAX_JOB):
+        b = k * JOB_REC
+        if jb[b + J_KIND] == NO_JOB:
+            jb[b + J_KIND] = J_DRILL
+            jb[b + J_NODE] = node
+            jb[b + J_AGENT] = 255
+            jb[b + J_PRIO] = JOB_PRIO[J_DRILL]
+            jb[b + J_SITE] = node
+            return True
+    return False
 
 
 def pick_role(e, count):

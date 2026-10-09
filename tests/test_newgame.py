@@ -216,17 +216,18 @@ def rule_colony(L, before, fill):
     b6[gc:gc + 15] = bytes([0, 1, 2, 4, DS_ACTIVE, 0, 2, 4, 4, DS_ACTIVE,
                             0, 65, 0, 2, DS_ACTIVE])
     crew(L, b6, fill, ROLES, 3)                          # F_ALIVE + F_INDOORS
-    # ο κόσμος: θεμέλιο και κατοχή κάτω από τα τέσσερα, το decor μένει...
+    # ο κόσμος: έδαφος και κατοχή κάτω από τα τέσσερα, το decor μένει — ΟΧΙ
+    # θεμέλιο από το βήμα 94 (src/colony.asm: οι θόλοι στο έδαφός τους)...
     for cx, cy in [(d[0], d[1]) for d in DOMES] + [PAD[:2]]:
         tx, ty = (cx >> 1) - 2, (cy >> 1) - 2
         for i in range(4):
             for j in range(4):
                 k = (ty + j + 64) * 128 + tx + i + 64
-                b4[k] = b4[k] & 0xC0 | 0x17
+                b4[k] = b4[k] & 0xC0 | 0x10
     for x in (-1, 0):                                    # το airlock, 2x2
         for y in (-6, -5):
             k = (y + 64) * 128 + x + 64
-            b4[k] = b4[k] & 0xC0 | 0x17
+            b4[k] = b4[k] & 0xC0 | 0x10
     # ...και ΜΟΝΟ κατοχή στους διαδρόμους (cr_stamp: όχι θεμέλιο, §9.4)
     for b in (1, 2, 65):
         a_ = (DOMES[0][0], DOMES[0][1], 0)

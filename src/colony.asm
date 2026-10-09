@@ -71,8 +71,11 @@ ngc_m:
         ld      a,200
         ld      (G_dome_tbl + D_HEALTH),a
 
-        ; --- ο κόσμος κάτω από την αποικία: θεμέλιο και κατοχή, 4x4 στο
-        ; κέντρο κάθε θόλου και της πλατφόρμας, 2x2 του airlock. Το decor μένει.
+        ; --- ο κόσμος κάτω από την αποικία: κατοχή, 4x4 στο κέντρο κάθε
+        ; θόλου και της πλατφόρμας, 2x2 του airlock, σε ΕΔΑΦΟΣ — από το βήμα 94,
+        ; που οι θόλοι δεν έχουν πια θεμέλιο (src/build.asm). Ως τότε θεμέλιο,
+        ; και τα πέντε· η πλατφόρμα και το airlock θα το είχαν και σήμερα, αλλά
+        ; εδώ μένουν 5 bytes και ο έλεγχος θα ήθελε 8. Το decor μένει.
         ld      bc,GA_PORT + PAGE_B4
         out     (c),c
         ld      de,ng_sites
@@ -107,7 +110,7 @@ ngs_rl:
 ngs_cl:
         ld      a,(hl)
         and     #C0
-        or      W_FOUNDATION + W_OCC_STRUCT
+        or      W_OCC_STRUCT            ; έδαφος (W_GROUND = 0)
         ld      (hl),a
         inc     hl
         djnz    ngs_cl

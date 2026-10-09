@@ -129,15 +129,12 @@ ja_lp:
         cp      J_REPAIR
         jr      nc,ja_more              ; επισκευή ή τροφοδοσία
 ja_oper:
-        ; --- ο θόλος αποκτά χειριστή ---
+        ; --- ο θόλος αποκτά χειριστή, ή το ορυχείο κάποιον που σκάβει (βήμα
+        ; 94: ως τότε μια δομή δεν μετρούσε κανέναν, και καμία δεν είχε ανάγκη) ---
         ld      a,c
-        cp      MAX_DOME
-        jr      nc,ja_flags             ; δομή, όχι θόλος: δεν έχει ops
-        call    jb_dome_ptr
-        ld      de,D_OPS
-        add     hl,de
+        call    op_ptr
         inc     (hl)
-ja_flags:
+        res     7,(hl)                  ; το ορυχείο: η Drill του έφυγε (src/drill.asm)
         ld      a,(jb_ag)
         ld      e,a
         ld      d,AG_PG
@@ -480,6 +477,27 @@ jb_dome_ptr:
         add     hl,de
         ret
 
+; op_ptr — A = κόμβος -> HL -> οι χειριστές του: το D_OPS ενός θόλου, ή το
+; ST_OPS μιας δομής — όσοι σκάβουν σε ένα ορυχείο (βήμα 94, src/drill.asm).
+; Η άφιξη (ja_oper), η αναχώρηση (src/entity.asm) και ο θάνατος (nd_die)
+; περνούν από εδώ: ως το 93 ήταν τρία αντίγραφα του «αν είναι θόλος». Κρατά BC.
+op_ptr:
+        cp      MAX_DOME
+        jr      nc,opp_st
+        call    jb_dome_ptr
+        ld      de,D_OPS
+        add     hl,de
+        ret
+opp_st:
+        add     a,a
+        add     a,a
+        add     a,a                     ; (κόμβος - 64) * 8: το 512 φεύγει από το byte
+        add     a,ST_OPS
+        ld      l,a
+        ld      h,G_struct_tbl >> 8
+        ret
+        assert  (G_struct_tbl & 255) == 0 && STRUCT_REC == 8 && MAX_DOME == 64
+
 job_prio:   db 5,3,2,4,6,8,9
 
 ; Προτεραιότητα OPERATE ανά δωμάτιο (§6.7). Πρώτα ό,τι κρατά ανθρώπους στη
@@ -492,53 +510,43 @@ room_prio:  db 3,3,3,5,5,4,3,3,3,4,4,3
 ; 4. ανάθεση: ως JOB_ASSIGN, κοιτάζοντας ως JOB_LOOK πράκτορες
 ; ---------------------------------------------------------------------------
 jb_assign:
-        ; Πρώτα: υπάρχει καθόλου αδιάθετη εργασία; Στη μόνιμη κατάσταση δεν
-        ; υπάρχει, και χωρίς αυτόν τον έλεγχο κάθε αδρανής πράκτορας σάρωνε
-        ; και τις 32 εγγραφές για να μη βρει τίποτα — 36 ms τη θέση.
-        ld      hl,G_job_tbl
-        ld      b,MAX_JOB
-jba_any:
-        ld      a,(hl)
-        inc     a                       ; NO_JOB
-        jr      z,jba_an
-        inc     hl
-        inc     hl
-        ld      a,(hl)
-        dec     hl
-        dec     hl
-        inc     a
-        jr      z,jba_go                ; βρέθηκε αδιάθετη
-jba_an:
-        ld      de,JOB_REC
-        add     hl,de
-        djnz    jba_any
-        jr      jas_done                ; καμία: ο δείκτης προχωράει, τέλος
-jba_go:
-        ld      a,(EC_JAGENT)
-        ld      (jb_i),a
+        ; Πρώτα: ποιοι ρόλοι έχουν αδιάθετη εργασία (jb_open, src/drill.asm);
+        ; Στη μόνιμη κατάσταση κανείς, και χωρίς αυτόν τον έλεγχο κάθε αδρανής
+        ; πράκτορας σάρωνε και τις 32 εγγραφές για να μη βρει τίποτα — 36 ms τη
+        ; θέση. Ως το βήμα 93 ο έλεγχος ήταν «καμία», και μία εργασία που δεν
+        ; την έπαιρνε κανείς από τους αδρανείς τα πλήρωνε πάλι ολόκληρα: με
+        ; τη γεώτρηση, που αφήνει μια Drill ανοιχτή όσο το ορυχείο έχει θέση,
+        ; θα τα πλήρωνε σε κάθε περιστροφή.
+        call    jb_open
+        jr      z,jas_done              ; καμία: ο δείκτης προχωράει, τέλος
         xor     a
         ld      (jb_done),a
+        ld      a,(EC_JAGENT)
+        ld      c,a                     ; C = ο πράκτορας
         ld      b,JOB_LOOK
+        ; Ο ΠΡΑΚΤΟΡΑΣ ΣΤΟΝ C ΚΑΙ Ο ΓΡΗΓΟΡΟΣ ΔΡΟΜΟΣ ΧΩΡΙΣ push (βήμα 94): οι
+        ; περισσότεροι από τους 32 είναι νεκροί ή δουλεύουν, και ο καθένας
+        ; κόστιζε ~155 T με το jb_i και το jb_done στη μνήμη — ~1,2 ms τη θέση
+        ; όποτε υπάρχει αδιάθετη εργασία. Τώρα ~70 T. Αυτό ξεπληρώνει τη
+        ; σάρωση του jb_open, που δεν σταματά στην πρώτη αδιάθετη όπως το
+        ; «καμία;» που αντικατέστησε. Το jb_done ελέγχεται μετά από ανάθεση.
 jas_lp:
-        push    bc
-        ld      a,(jb_done)
-        cp      JOB_ASSIGN
-        jr      nc,jas_stop
-
-        ld      a,(jb_i)
-        ld      e,a
-        ld      d,AG_PG
-        ld      a,(de)                  ; flags
+        ld      l,c
+        ld      h,AG_PG
+        ld      a,(hl)                  ; flags
         and     F_ALIVE + F_WORKING
         cp      F_ALIVE
         jr      nz,jas_next             ; νεκρός, ή δουλεύει ήδη
-        set     7,e
-        ld      d,AG_PG + 3             ; task
-        ld      a,(de)
+        set     7,l
+        ld      h,AG_PG + 3             ; task
+        ld      a,(hl)
         inc     a                       ; NO_TASK
         jr      nz,jas_next
-        ld      d,AG_PG                 ; role, στο πάνω μισό
-        ld      a,(de)
+        push    bc
+        ld      a,c
+        ld      (jb_i),a                ; για το jb_best και το jb_take
+        ld      h,AG_PG                 ; role, στο πάνω μισό
+        ld      a,(hl)
         and     7
         ld      b,a
         inc     b
@@ -547,9 +555,13 @@ jas_rb:
         rlca
         djnz    jas_rb                  ; A = 1 << ρόλος
         ld      (jb_rolebit),a
-        res     7,e
-        inc     d                       ; AG_PG + 1: node
-        ld      a,(de)
+        ld      e,a
+        ld      a,(jb_om)
+        and     e
+        jr      z,jas_nx                ; καμία ανοιχτή για τον ρόλο του
+        res     7,l
+        inc     h                       ; AG_PG + 1: node
+        ld      a,(hl)
         ; Η ΓΡΑΜΜΗ ΤΟΥ DIST μία φορά ανά πράκτορα: #4000 + 128 * κόμβος. Ως το
         ; βήμα 46 υπολογιζόταν ξανά για καθεμία από τις 32 εργασίες.
         ld      h,a
@@ -561,16 +573,27 @@ jas_rb:
 
         call    jb_best
         cp      NO_JOB
-        jr      z,jas_next
+        jr      z,jas_nx
         call    jb_take
         ld      hl,jb_done
         inc     (hl)
-jas_next:
-        ld      a,(jb_i)
-        inc     a
-        and     127
-        ld      (jb_i),a
+        ld      a,(hl)
+        cp      JOB_ASSIGN
+        jr      nc,jas_stop
+        ; Η ΜΑΣΚΑ ΞΑΝΑ: μπορεί να ήταν η τελευταία του ρόλου της, και τότε οι
+        ; επόμενοι του ίδιου ρόλου θα έψαχναν τις 32 για να μη βρουν τίποτα.
+        ; Ενα jb_open (~500 us) ανά ανάθεση, ως JOB_ASSIGN, φθηνότερο από ένα
+        ; jb_best (~1 ms) που αποτυγχάνει: στη θέση 13 του σεναρίου ταυτότητας
+        ; του tests/test_sim.py, 314 ms στα 640 ticks έτσι και 361 με μια μάσκα
+        ; που διορθώνεται στην αποτυχία (363 στο 93, 982 με τη γεώτρηση χωρίς
+        ; μάσκα). Με μάσκα 0 η ανάθεση σταματά.
+        call    jb_open
+        jr      z,jas_stop
+jas_nx:
         pop     bc
+jas_next:
+        inc     c
+        res     7,c
         djnz    jas_lp
         jr      jas_done
 jas_stop:

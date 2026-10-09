@@ -476,12 +476,6 @@ def main():
         print(f"ΑΠΟΤΥΧΙΑ πίνακας: |{hud(m4, 4)}|")
         fails += 1
 
-    fe0 = m4.peek(g + 6) | (m4.peek(g + 7) << 8)
-    m4.joystick(0x10)
-    m4.run_frames(6)
-    m4.joystick(0)
-    m4.run_frames(60)
-
     def snoop(mm, bank, addr, n):
         mm.poke(sym["SNOOP_BK"], bank)
         mm.poke(sym["SNOOP_AD"], addr & 0xFF)
@@ -492,6 +486,14 @@ def main():
         mm.set_pc(sym["LOOP"])
         mm.run_frames(2)
         return out
+
+    # τα τέσσερα tiles της πρώτης σειράς, πριν από το FIRE (βήμα 94)
+    tiles0 = snoop(m4, 0xC4, 0x4000 + ((ty + 64) << 7) + (tx + 64), 4)
+    fe0 = m4.peek(g + 6) | (m4.peek(g + 7) << 8)
+    m4.joystick(0x10)
+    m4.run_frames(6)
+    m4.joystick(0)
+    m4.run_frames(60)
 
     node = m4.peek(sym["BD_NODE"])
     if node == 255:
@@ -520,12 +522,18 @@ def main():
     else:
         print("OK ο θόλος μπήκε άδειος: οκτώ NO_MACH, καμία υγεία")
 
+    # ΧΩΡΙΣ ΘΕΜΕΛΙΟ από το βήμα 94 (ο παίκτης: «δεν χρειάζεται να σχεδιάζεις
+    # βάσεις για τους θόλους»): το έδαφος, ο πόρος και το decor μένουν όπως τα
+    # έβγαλε η γεννήτρια, και αλλάζει μόνο η κατοχή.
     w = snoop(m4, 0xC4, 0x4000 + ((ty + 64) << 7) + (tx + 64), 4)
-    if any((b & 7) != 7 or not (b & 0x30) for b in w):
-        print(f"ΑΠΟΤΥΧΙΑ θεμέλια: τα tiles είναι {[hex(b) for b in w]}")
+    orig = tiles0
+    if any((b & 0x30) != 0x10 or (b & 0xCF) != (o & 0xCF) for b, o in zip(w, orig)):
+        print(f"ΑΠΟΤΥΧΙΑ θεμέλια: τα tiles είναι {[hex(b) for b in w]}, ήταν "
+              f"{[hex(b) for b in orig]} — η πρόζα λέει το ίδιο έδαφος, δεσμευμένο")
         fails += 1
     else:
-        print("OK τα tiles έγιναν θεμέλιο και δεσμευμένα")
+        print(f"OK τα tiles δεσμεύτηκαν και έμειναν το έδαφός τους "
+              f"({[hex(b) for b in w]}), χωρίς θεμέλιο")
 
     # Το κέλυφος μόνο: 12, όχι 20 — οι μηχανές πληρώνονται στον εξοπλισμό.
     # ΚΑΙ ΟΙ ΔΙΑΔΡΟΜΟΙ ΤΟΥ (βήμα 85): ο θόλος δένεται με κάθε θόλο της

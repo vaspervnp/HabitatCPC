@@ -118,6 +118,14 @@ FORMAT = {
          "G_node_adj": 1024},
         {"G_agent_fields": 0x6C00, "G_node_occ": 0x7400, "G_dome_tbl": 0x7500,
          "G_struct_tbl": 0x7B00, "G_corr_tbl": 0x7C00, "G_worldinfo": 0x7DE0}),
+    # βήμα 94: η οικονομία 106 -> 107 (τα ορυχεία, EC_MINES), ό,τι ακολουθεί
+    # +1 — ως το rt_nodes μένει ένα· και το έβδομο byte του ορυχείου μετράει
+    # όσους σκάβουν
+    8: ({"G_mach_op": 91, "G_econ_state": 103, "G_job_tbl": 210, "G_room_n": 370,
+         "G_room_list": 382, "G_crew": 478, "G_rt_nodes": 512, "G_rt_row": 768,
+         "G_node_adj": 1024},
+        {"G_agent_fields": 0x6C00, "G_node_occ": 0x7400, "G_dome_tbl": 0x7500,
+         "G_struct_tbl": 0x7B00, "G_corr_tbl": 0x7C00, "G_worldinfo": 0x7DE0}),
 }
 
 

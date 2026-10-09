@@ -22,7 +22,7 @@ import world
 from world import (W, HALF, GROUND, DUST, ROCK, MOUNTAIN,
                    WATER, DEEPWATER, FOUNDATION, byte)
 
-GEN_VERSION = 1
+GEN_VERSION = 2                 # 2 από το βήμα 94: η ζώνη προσγείωσης έδαφος, όχι θεμέλιο
 
 MID = 128                      # «μέση στάθμη» — το ύψος του ουδέτερου εδάφους
 COARSE = 16                    # σημεία πλέγματος ανά άξονα· κελί = 8 tiles
@@ -246,10 +246,12 @@ def despeckle(plane):
 
 
 def carve_landing(plane):
-    """Ό,τι κι αν είπε ο θόρυβος, το κέντρο είναι επίπεδο και χτίσιμο."""
+    """Ό,τι κι αν είπε ο θόρυβος, το κέντρο είναι επίπεδο και χτίσιμο: ΕΔΑΦΟΣ
+    με το decor που είχε, από το βήμα 94 (ως τότε θεμέλιο με decor (x+y)&1 —
+    μια γκρίζα πλάκα 9x9 κάτω από τους πρώτους θόλους)."""
     for y in range(-4, 5):
         for x in range(-4, 5):
-            plane.set(x, y, byte(FOUNDATION, decor=(x + y) & 1))
+            plane.set(x, y, byte(GROUND, decor=plane.get(x, y) >> 6))
 
 
 # --- έλεγχος παιξιμότητας (DESIGN §13) -----------------------------------

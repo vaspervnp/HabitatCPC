@@ -302,7 +302,10 @@ def main():
     def img(name):
         return open(os.path.join(ROOT, "build", name), "rb").read()
     page2, game2 = img("page2.bin"), img("game2.bin")
-    mach, icons = img("bank5.bin"), img("bank1.bin")
+    # Η BANK1.BIN από το βήμα 94 είναι το bank1c.bin: τα εικονίδια ΚΑΙ ο κώδικας
+    # της τοποθέτησης στη δέσμευση b1code (src/commit.asm), όπως τα έγραψε το
+    # src/main.asm — το bank1.bin του pack.py έχει τη δέσμευση άδεια.
+    mach, icons = img("bank5.bin"), img("bank1c.bin")
     code = sym["ZZ_PAGE2_END"] - len(game2)
     b5base = None
     for line in open(os.path.join(ROOT, "build", "layout.asm"), encoding="utf-8"):
@@ -340,7 +343,8 @@ def main():
               f"#{code:04X} ({dg})")
         check(dm == 0 and di == 0,
               f"οι μηχανές στο #{b5base:04X} της τράπεζας 5 ({len(mach)} bytes, "
-              f"{dm} διαφορετικά) και τα εικονίδια στο #7000 ({len(icons)}, {di})")
+              f"{dm} διαφορετικά) και τα εικονίδια με τον κώδικα της τοποθέτησης "
+              f"στο #7000 ({len(icons)}, {di})")
         check(z1 == 0 and z5 == 0,
               f"το πρόχειρο σβήστηκε όπως στο snapshot: {z1} bytes μη μηδενικά "
               f"στο DIST (#4000-#6FFF), {z5} στο NEXTHOP ως τις μηχανές")

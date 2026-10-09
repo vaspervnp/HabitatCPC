@@ -145,6 +145,9 @@ def move_one(a, i, g, nexthop, occ, e=None):
             if e is not None and a.flags[i] & F_WORKING:
                 if a.node[i] < EC.MAX_DOME:
                     e.dome[a.node[i] * EC.DOME_REC + EC.D_OPS] -= 1
+                else:                   # ένα ορυχείο (βήμα 94, op_ptr): dec (hl)
+                    b = (a.node[i] - EC.MAX_DOME) * EC.STRUCT_REC + EC.ST_OPS
+                    e.struct[b] = (e.struct[b] - 1) & 0xFF
                 a.flags[i] &= ~F_WORKING & 0xFF
             release(occ, a.node[i], a.slot[i])
             a.slot[i] = NO_SLOT
@@ -303,8 +306,12 @@ def satisfy(a, e, i, d):
 
 def die(a, e, occ, i):
     """Ο θάνατος αφήνει πίσω του μια θέση, μια δουλειά και πένθος."""
-    if a.flags[i] & F_WORKING and a.node[i] < EC.MAX_DOME:
-        e.dome[a.node[i] * EC.DOME_REC + EC.D_OPS] -= 1
+    if a.flags[i] & F_WORKING:
+        if a.node[i] < EC.MAX_DOME:
+            e.dome[a.node[i] * EC.DOME_REC + EC.D_OPS] -= 1
+        else:                           # ένα ορυχείο (βήμα 94, op_ptr): dec (hl)
+            b = (a.node[i] - EC.MAX_DOME) * EC.STRUCT_REC + EC.ST_OPS
+            e.struct[b] = (e.struct[b] - 1) & 0xFF
     release(occ, a.node[i], a.slot[i])
     a.flags[i] = 0
     a.slot[i] = NO_SLOT

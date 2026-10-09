@@ -383,7 +383,9 @@ def commit_rules(sym, patch=(), n=300):
             for r in range(h):
                 for c in range(w):
                     a = (ty + r + 64) * 128 + tx + c + 64
-                    want_w[a] = want_w[a] & 0xC0 | 0x17
+                    # θόλος: το έδαφός του, μόνο κατοχή (βήμα 94)· δομή: θεμέλιο
+                    want_w[a] = (want_w[a] & 0xCF | 0x10 if kind == 0
+                                 else want_w[a] & 0xC0 | 0x17)
             stock = (1000 - G.items[i][4], 1000 - G.items[i][5])
             # ο γράφος δεν αλλάζει (βήμα 85): ούτε βαθμοί, ούτε γείτονες, ούτε rt_dirty
             # Supply για ό,τι χρωστιέται, μέταλλο πρώτα· αν τίποτα, Build
@@ -534,6 +536,9 @@ def main():
            # ld de,#C000 + W_FOUNDATION + W_OCC_STRUCT (βήμα 88· ως τότε or #17)
            ("το θεμέλιο χωρίς κατοχή", commit_rules,
             [(find("BD_LINK", [0x11, 0x17, 0xC0]) + 1, 0x07)]),
+           # ld a,(bd_kind) · or a · jr nz,bst_rl γίνεται jr: θεμέλιο και ο θόλος (ως το 93)
+           ("ο θόλος με θεμέλιο", commit_rules,
+            [(find("BD_LINK", [0xB7, 0x20], 40) + 1, 0x18)]),
            # ΤΑ ΧΡΕΗ (βήμα 88): με το ld (hl),d του D_OPS σβησμένο, ο θόλος δεν
            # χρωστά βιοπλαστικό ενώ η εργασία του δημοσιεύεται
            ("το D_OPS χωρίς το βιοπλαστικό", commit_rules,

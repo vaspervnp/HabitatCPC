@@ -241,6 +241,7 @@ nd_die: ret                             ; και εδώ δεν το καλεί �
         include "../src/graph.asm"
         include "../src/route.asm"
         include "../src/link.asm"           ; βήμα 85: το ui.asm το καλεί
+        include "../src/commit.asm"         ; βήμα 94: το al_commit, στην τράπεζα 1 του παιχνιδιού
         include "../src/edges.asm"          ; βήμα 87: οι ακμές
         include "../src/ui.asm"
         include "../src/fit.asm"

@@ -276,6 +276,7 @@ zz_page2_code:                          ; για το tools/mkdsk.py: πού φ�
         include "build.asm"
         include "route.asm"
         include "link.asm"              ; βήμα 85: κάθε κτίσμα δένεται με ένα κοντινό
+        include "drill.asm"             ; βήμα 94: το ορυχείο θέλει ανθρώπους
         include "door.asm"              ; βήμα 87: ένα κτίσμα τελειώνει
         include "edges.asm"             ; βήμα 87: οι ακμές, για όλες τις εκδόσεις
         include "supply.asm"            ; βήμα 88: πρώτα τα υλικά, μετά ο μηχανικός
@@ -322,7 +323,16 @@ zz_page2_end:
         org     #8000
         incbin  "../build/page2.bin"
         org     #7000
-        incbin  "../build/bank1.bin"     ; εικονίδια m και l, πάνω από το DIST
+        incbin  "../build/bank1.bin", 0, G_b1code - #7000   ; εικονίδια m και l, πάνω από το DIST
+        ; ΚΑΙ ΚΩΔΙΚΑΣ ΠΑΝΩ ΤΟΥΣ (βήμα 94): η τοποθέτηση, που τρέχει με την
+        ; τράπεζα 1 στο παράθυρο (src/commit.asm). Η BANK1.BIN του δίσκου είναι
+        ; ολόκληρο αυτό το κομμάτι, εικονίδια και κώδικας (tools/mkdsk.py).
+        org     G_b1code
+        include "commit.asm"
+zz_b1code_end:
+        assert  zz_b1code_end <= G_b1code + B1C_MAX
+        assert  G_b1code + B1C_MAX == #8000
+        save    "../build/bank1c.bin", #7000, #1000
 
         bankset 1
         org     #0000

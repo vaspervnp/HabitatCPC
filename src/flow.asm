@@ -32,16 +32,21 @@ econ_flow:
         ld      (EC_PPROD),hl
         ld      (ef_wat),hl
         ld      (ef_ore),hl
+        xor     a
+        ld      (EC_MINES),a            ; βήμα 94: τα μετρά το σάρωμα
         ld      hl,(EC_MPOWER)
         ld      (EC_PUSE),hl
 
         ld      ix,G_struct_tbl
         ld      b,MAX_STRUCT
+        ; ΟΙ ΑΔΕΙΕΣ ΘΕΣΕΙΣ ΧΩΡΙΣ push / pop (βήμα 94): είναι οι περισσότερες από
+        ; τις 32, και τα 21 T του ζευγαριού σε καθεμιά πλήρωναν τον έλεγχο των
+        ; ορυχείων — 2.065 -> 2.145 us με τρία ορυχεία, πριν από αυτό.
 ef_lp:
-        push    bc
         ld      a,(ix+ST_STATE)
         cp      DS_ACTIVE
-        jr      nz,ef_next
+        jr      nz,ef_skip
+        push    bc
         ld      c,(ix+ST_SIZE)
         ld      b,0
         ld      a,(ix+ST_KIND)
@@ -55,8 +60,21 @@ ef_lp:
         jr      z,ef_extr
         cp      K_MINE
         jr      nz,ef_next
+        ; ΣΚΑΒΕΙ ΟΠΟΙΟΣ ΕΙΝΑΙ ΕΚΕΙ (βήμα 94, src/drill.asm): κανείς 0, ένας 2,
+        ; δύο 3, τρεις 4 — το 100, 150, 200% του Planetbase πάνω στον ρυθμό
+        ; που ως το 93 έβγαζε μόνο του. Και όσο λείπει κάποιος, μια εργασία
+        ; Drill. Το ρεύμα το τρώει είτε σκάβει κανείς είτε όχι.
+        ld      hl,EC_MINES
+        inc     (hl)
+        ld      a,(ix+ST_OPS)
+        cp      MINE_OPS                ; με το bit 7: υπάρχει ήδη, NC
+        call    c,dr_post               ; src/drill.asm· κρατά τον IX και τον A
+        and     MINE_OPS                ; χωρίς το bit 7 (src/drill.asm)
+        jr      z,ef_mine
+        inc     a
+ef_mine:
+        ld      c,a                     ; το μετάλλευμα
         ld      e,8                     ; MINE_POWER
-        ld      c,2                     ; MINE_OUT
         ld      hl,ef_ore
 ; ef_pump — E = ρεύμα, C = προϊόν, HL -> πού πάει: αντλία και ορυχείο, που
 ; ως το βήμα 45 ήταν γραμμένα το καθένα μόνο του.
@@ -71,6 +89,7 @@ ef_addn:
         call    ec_add16                ; (HL) += DE, και η επόμενη δομή
 ef_next:
         pop     bc
+ef_skip:
         ld      de,STRUCT_REC
         add     ix,de
         djnz    ef_lp

@@ -21,7 +21,8 @@ from sprites import load_map, load_bin, ROOT
 import buttons
 
 TEXT_MAX = 2120                 # = TEXT_MAX του src/uitext.asm (assert εκεί)
-B6C_MAX = 1280                  # = B6C_MAX του src/bots.asm (assert στο main.asm)· 256 ως το 92
+B6C_MAX = 1298                  # = B6C_MAX του src/bots.asm (assert στο main.asm)· 256 ως το 92, 1.280 ως το 93
+B1C_MAX = 160                   # = B1C_MAX του src/commit.asm (assert στο main.asm), βήμα 94
 
 # --- γεωμετρία ------------------------------------------------------------
 PAGE2_BASE  = 0x8000                # τράπεζα 2: επίπεδη, πάντα ορατή
@@ -281,6 +282,12 @@ def build_runs(smap, blob):
         for n in names:
             dest.append(spr(n))
         ptr[f"icon_{size}_ptr"] = names
+    # ΚΑΙ ΚΩΔΙΚΑΣ ΠΑΝΩ ΑΠΟ ΤΑ ΕΙΚΟΝΙΔΙΑ (βήμα 94): η τράπεζα 1 είναι η
+    # προεπιλογή του παραθύρου, οπότε ό,τι τρέχει μόνο με αυτήν μέσα — το UI,
+    # όταν ό,τι καλεί γυρίζει με την 1 — μπορεί να ζει εδώ. Το γράφει το
+    # src/main.asm, και η BANK1.BIN του δίσκου βγαίνει από εκεί (bank1c.bin).
+    bank1.append(Run("b1code", B1C_MAX, None, at=BANK1_BASE + BANK1_SIZE - B1C_MAX,
+                     note="ΔΕΣΜΕΥΣΗ — κώδικας της τοποθέτησης (src/commit.asm)"))
 
     # --- μηχανές: *132, ίδιο σκεπτικό ---------------------------------------
     # ΣΤΗΝ ΤΡΑΠΕΖΑ 5 από το βήμα 85, πάνω από το ευρετήριο. Τις ζωγραφίζει μόνο

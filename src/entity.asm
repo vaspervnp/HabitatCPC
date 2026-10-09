@@ -239,11 +239,7 @@ em_have:
         jr      z,emf_rel
         res     5,(hl)
         ld      a,(em_node)
-        cp      MAX_DOME
-        jr      nc,emf_rel
-        call    jb_dome_ptr             ; δεν αγγίζει το BC
-        ld      de,D_OPS
-        add     hl,de
+        call    op_ptr                  ; θόλος, ή ορυχείο (βήμα 94)· κρατά το BC
         dec     (hl)
 emf_rel:
         ; ελευθερώνει τη θέση του και μπαίνει στην ακμή C

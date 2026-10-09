@@ -1243,7 +1243,7 @@ def move_state(rnd, g):
 DK_AGENT = 8                            # src/const.asm (βήμα 89)
 
 
-def move_ref(a, occ, dome, g, nexthop, first, count, marks):
+def move_ref(a, occ, dome, g, nexthop, first, count, marks, st):
     """Η αναφορά, πράκτορα προς πράκτορα — και οι wh_push που πρέπει να βγουν:
     όποιος άφησε θέση θόλου, όποιος πήρε θέση θόλου.
 
@@ -1252,7 +1252,7 @@ def move_ref(a, occ, dome, g, nexthop, first, count, marks):
     ήδη σημειωμένος. Αλλάζει όταν βηματίζει στο έδαφος (όχι στον σωλήνα), όταν
     φτάνει από έξω ή σε δομή, και όταν φεύγει — εκτός από θόλο, μέσα, προς
     μέρος με αέρα: εκεί δεν φαινόταν ούτε πριν ούτε μετά."""
-    e, out = types.SimpleNamespace(dome=dome, struct=STRUCTS), []
+    e, out = types.SimpleNamespace(dome=dome, struct=st), []
     for k in range(count):
         i = (first + k) % 128
         node, slot, edge, f0 = a.node[i], a.slot[i], a.edge[i], a.flags[i]
@@ -1307,6 +1307,9 @@ def move_branches(sym, sim0, n=12, patch=(), quiet=False):
                   0x3E, 0xA5, 0x16, 0x5A, 0x21, 0xAD, 0xDE, 0xB7, 0xC9])   # και χαλάει ό,τι το dirty_push
     for sc in range(n):
         a, occ, dome = move_state(rnd, g)
+        # Ο πίνακας δομών κι αυτός (βήμα 94): όποιος φεύγει από ορυχείο με
+        # F_WORKING κατεβάζει το ST_OPS του. Αντίγραφο ανά κατάσταση.
+        st = bytearray(sim0.e.struct)
         m = CPC()
         m.run_frames(60)
         assert m.quickload(SNA, start=False), "quickload απέτυχε"
@@ -1321,7 +1324,7 @@ def move_branches(sym, sim0, n=12, patch=(), quiet=False):
         m.write_ram(STAGE_AG, a.to_bytes())
         m.write_ram(STAGE_OCC, bytes(occ) + bytes(128))
         m.write_ram(STAGE_DOME, bytes(dome))
-        m.write_ram(STAGE_STR, bytes(sim0.e.struct))
+        m.write_ram(STAGE_STR, bytes(st))
         m.write_ram(sym["G_ECON_STATE"], EC.to_bytes(sim0.e))
         m.write_ram(sym["G_JOB_TBL"], bytes(sim0.e.job))
         m.write_ram(sym["G_ROOM_N"], bytes(sim0.e.room_n))
@@ -1334,14 +1337,14 @@ def move_branches(sym, sim0, n=12, patch=(), quiet=False):
             m.poke(at, v)
         bank6 = lambda: ctypes.string_at(cpc._lib.cpcemu_ram_ptr(m._h, 6), 0x4000)
         spans = [(sym[n] - 0x4000, k) for n, k in (("G_AGENT_FIELDS", 2048),
-                 ("G_NODE_OCC", 256), ("G_DOME_TBL", len(dome)))]
+                 ("G_NODE_OCC", 256), ("G_DOME_TBL", len(dome)), ("G_STRUCT_TBL", 256))]
         mk0 = sym["G_NODE_OCC"] - 0x4000 + 128          # τα σημάδια των φιγούρων
         marks = bytearray(bank6()[mk0:mk0 + 128])
         rest = lambda b: b"".join(b[s + k:e] for (s, k), (e, _) in
                                   zip([(0, 0)] + spans, spans + [(0x4000, 0)]))
         rest0 = rest(bank6())
         for first, count in MOVE_SLICES:
-            want = move_ref(a, occ, dome, g, nexthop, first, count, marks)
+            want = move_ref(a, occ, dome, g, nexthop, first, count, marks, st)
             m.write_ram(rec, bytes([(rec + 2) & 255, (rec + 2) >> 8]))
             # di · ld sp · ld bc,#7FC6: out (c),c (τράπεζα 6) · ld bc · call ·
             # ld a,#5A: ld (σημαία),a · jr $
@@ -1357,11 +1360,13 @@ def move_branches(sym, sim0, n=12, patch=(), quiet=False):
             ag = b6[sym["G_AGENT_FIELDS"] - 0x4000:][:2048]
             oc = b6[sym["G_NODE_OCC"] - 0x4000:][:G.MAXNODE]
             dm = b6[sym["G_DOME_TBL"] - 0x4000:][:len(dome)]
+            sb = b6[sym["G_STRUCT_TBL"] - 0x4000:][:256]
             p = m.peek(rec) | (m.peek(rec + 1) << 8)
             got = pushes(m.read_ram(rec + 2, p - rec - 2))
             mk = b6[mk0:mk0 + 128]
             for what, x, y in (("πεδία", ag, a.to_bytes()), ("κατοχή", oc, bytes(occ)),
-                               ("θόλοι", dm, bytes(dome)), ("wh_push", got, want),
+                               ("θόλοι", dm, bytes(dome)), ("δομές", sb, bytes(st)),
+                               ("wh_push", got, want),
                                ("σημάδια φιγούρων", mk, bytes(marks)),
                                ("η υπόλοιπη τράπεζα 6", rest(b6), rest0)):
                 if bytes(x) != bytes(y):

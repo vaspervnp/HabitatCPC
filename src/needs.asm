@@ -471,12 +471,8 @@ nd_die:
         and     F_WORKING
         jr      z,nd_d_slot
         inc     h
-        ld      a,(hl)                  ; κόμβος
-        cp      MAX_DOME
-        jr      nc,nd_d_slot
-        call    jb_dome_ptr
-        ld      de,D_OPS
-        add     hl,de
+        ld      a,(hl)                  ; κόμβος: θόλος, ή ορυχείο (βήμα 94)
+        call    op_ptr
         dec     (hl)
 nd_d_slot:
         ld      a,(nd_i)

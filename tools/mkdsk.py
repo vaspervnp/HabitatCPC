@@ -50,7 +50,7 @@ FILES = [
     ("GEN.BIN",     "gen.bin",   0x8000, 0x8000),
     ("PAGE2.BIN",   "page2.bin", 0x8000, 0x0000),
     ("BANK5.BIN",   "bank5.bin", 0x7400, 0x0000),   # οι μηχανές (βήμα 85)
-    ("BANK1.BIN",   "bank1.bin", 0x7000, 0x0000),
+    ("BANK1.BIN",   "bank1c.bin", 0x7000, 0x0000),  # με τον κώδικα του b1code (βήμα 94)
     ("BANK6.BIN",   "bank6.bin", 0x4000, 0x0000),
     ("BANK7.BIN",   "bank7.bin", 0x4000, 0x0000),
     ("TEXT.BIN",    "text.bin",  0,      0x0000),   # από το layout: G_text

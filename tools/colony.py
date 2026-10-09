@@ -162,7 +162,8 @@ def stamp(c, plane):
             for tx in range(tx0, tx0 + 2 * r):
                 if -64 <= tx < 64 and -64 <= ty < 64:
                     b = plane.get(tx, ty)
-                    plane.set(tx, ty, (b & ~0x37) | W.FOUNDATION
+                    # ΕΔΑΦΟΣ, όχι θεμέλιο, από το βήμα 94 (src/colony.asm)
+                    plane.set(tx, ty, (b & ~0x37) | W.GROUND
                               | (W.OCC_STRUCT << 4))
     return plane
 
