@@ -581,7 +581,7 @@ rr_clr:
         ld      (hl),a
         inc     hl
         djnz    rr_clr
-        ld      (rr_amen),a
+        ld      (EC_AMENITY),a          ; μετράει εκεί: το nd_gloom τρέχει σε άλλη θέση του τροχού
 
         ld      ix,G_dome_tbl
         ld      c,0                     ; C = δείκτης θόλου
@@ -620,8 +620,6 @@ rr_next:
         ld      a,c
         cp      MAX_DOME
         jr      c,rr_lp
-        ld      a,(rr_amen)
-        ld      (EC_AMENITY),a
 
         ; Το ταβάνι πληθυσμού είναι δουλειά του Control (§6.8), και η πίστα
         ; είναι ο κόμβος όπου κατεβαίνει ο κόσμος (§6.11). Και τα δύο βγαίνουν
@@ -701,13 +699,12 @@ rr_am_n:
         djnz    rr_am_lp
         ret
 rr_am_one:
-        ld      a,(rr_amen)
+        ld      a,(EC_AMENITY)
         inc     a
         ret     z                       ; ταβάνι το 255
-        ld      (rr_amen),a
+        ld      (EC_AMENITY),a
         ret
 
 nd_i:       db 0
 nd_room:    db 0
 nd_best:    db 0
-rr_amen:    db 0

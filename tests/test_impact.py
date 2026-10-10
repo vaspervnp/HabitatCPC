@@ -12,8 +12,10 @@ tile, γεμάτος πίνακας εργασιών, σπόρος που θα �
   η αναφορά       για τη βροχή, τα κτίρια και τις εργασίες (meteor_tick)
   ο κανόνας του   για τον κόσμο: ελεύθερο tile (κατοχή 0) με έδαφος, σκόνη,
   κρατήρα         βράχο ή θεμέλιο γίνεται κρατήρας, και το decor μένει
-  η οθόνη         ο κρατήρας μπαίνει στη λίστα αλλαγών (DK_TILE, x, y)· αν η
-                  λίστα είναι γεμάτη, σηκώνεται η σημαία
+  η οθόνη         ο κρατήρας μπαίνει στη λίστα αλλαγών (DK_TILE, x, y), και
+                  από το βήμα 100 μια μηχανή θόλου που δούλευε και σταμάτησε
+                  (DK_MACH, θόλος, υποδοχή): το σήμα της· αν η λίστα είναι
+                  γεμάτη, σηκώνεται η σημαία
   και ακόμα       mt_boom = 1 σε κάθε κρούση, ec_fdiv = 1 όταν μια δομή ξαναγίνει
                   εργοτάξιο, eb_d/eb_s όταν σταματά μηχανή θόλου, και η τράπεζα 6
                   στο παράθυρο όταν γυρίζει
@@ -47,7 +49,7 @@ import cpc                                               # noqa: E402
 import econ as EC                                        # noqa: E402
 
 PROBE = 0x3E00
-DK_TILE, DIRTY_N = 4, 32
+DK_MACH, DK_TILE, DIRTY_N = 1, 4, 32
 # µs ανά κλήση, μαζί με τη σκαλωσιά του probe· βήμα 76, και στο 75
 CEIL = {
     "ήσυχο": 41,        # καμία βροχή, καμία αρχή                         41
@@ -251,6 +253,7 @@ def expect(R, before, r1):
         inside = -64 <= tx < 64 and -64 <= ty < 64
         node = hit_node(e, tx, ty) if inside else None
     started = not impact and (r1 >> 4) == 0xFFF
+    dome0 = bytes(e.dome)                    # η υγεία πριν, για το σήμα (βήμα 100)
     EC.meteor_tick(e, r1)
     b[6][gd:gd + len(e.dome)] = e.dome
     b[6][gs:gs + len(e.struct)] = e.struct
@@ -264,6 +267,16 @@ def expect(R, before, r1):
         a = sym[name]
         b[a >> 14 if a < 0x4000 else 2][a & 0x3FFF] = v
 
+    def push(kind, a, c):
+        num = b[0][sym["DIRTY_NUM"]]
+        if num < DIRTY_N:
+            slot = (b[0][sym["DIRTY_HEAD"]] + num) % DIRTY_N
+            r = sym["DIRTY_RING"] + 3 * slot
+            b[0][r:r + 3] = bytes([kind, a & 255, c & 255])
+            poke("DIRTY_NUM", num + 1)
+        else:
+            poke("DIRTY_OVER", 1)
+
     if e.flow_div == 1:
         poke("EC_FDIV", 1)
     if not impact:
@@ -275,19 +288,17 @@ def expect(R, before, r1):
         if node < EC.MAX_DOME and e.dome[node * EC.DOME_REC + EC.D_STATE] == EC.DS_ACTIVE:
             poke("EB_D", node)
             poke("EB_S", e.mrnd >> 8)
+            d = node * EC.DOME_REC
+            s = (e.mrnd >> 8) & (EC.MACHINE_COUNT[dome0[d + EC.D_SIZE]] - 1)
+            h = d + EC.D_HEALTH + s
+            if dome0[h] & 0x80 and e.dome[h] == 0:
+                push(DK_MACH, node, s)       # σταμάτησε: το σήμα (βήμα 100)
         return b, "κτίριο"
     at = (ty + 64) * 128 + tx + 64
     t = b[4][at]
     if (t & 0x37) < 3 or (t & 0x37) == 7:
         b[4][at] = (t & 0xC0) | 6
-        num = b[0][sym["DIRTY_NUM"]]
-        if num < DIRTY_N:
-            slot = (b[0][sym["DIRTY_HEAD"]] + num) % DIRTY_N
-            r = sym["DIRTY_RING"] + 3 * slot
-            b[0][r:r + 3] = bytes([DK_TILE, tx & 255, ty & 255])
-            poke("DIRTY_NUM", num + 1)
-        else:
-            poke("DIRTY_OVER", 1)
+        push(DK_TILE, tx, ty)
     return b, "έδαφος"
 
 

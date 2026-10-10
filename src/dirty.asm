@@ -32,14 +32,15 @@ DHS_VAC_US  equ 18000               ; θέση δακτυλίου που αδε�
 ; τα DK_* είναι στο const.asm — τα σπρώχνει και η προσομοίωση
 
 ; ---------------------------------------------------------------------------
-; dirty_reset — άδεια λίστα. Χαλάει A.
+; dirty_reset — άδεια λίστα. Χαλάει A, HL.
 ; ---------------------------------------------------------------------------
 dirty_reset:
         xor     a
         ld      (rv_pend),a
-        ld      (dirty_head),a
-        ld      (dirty_num),a
         ld      (dirty_over),a
+        ld      h,a
+        ld      l,a
+        ld      (dirty_head),hl         ; dirty_head, dirty_num (το assert στα δεδομένα)
         ret
 
 ; ---------------------------------------------------------------------------
@@ -268,7 +269,6 @@ dt_prep:
         jr      z,dt_skip
         call    ob_getdome
         call    ob_vis
-        or      a
         jr      z,dt_skip
         ; fall through
 
@@ -292,8 +292,7 @@ dt_ghost:
         or      a
         ret     nz
         ld      hl,(gh_ptr)
-        ld      de,GH_BUF
-        or      a
+        ld      de,GH_BUF               ; το CY είναι ήδη 0, από το or a
         sbc     hl,de
         ret     z                       ; άδειο αρχείο: τίποτα στην οθόνη
         ld      hl,(clip_x0)
@@ -309,7 +308,6 @@ dt_ghost:
         ld      (clip_y0),hl
         pop     hl
         ld      (clip_x0),hl
-        or      a
         ret     z
         ld      (dt_hid),a
         jp      gh_swap

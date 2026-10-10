@@ -403,13 +403,11 @@ hud_numa:
         ld      h,0
 hud_num:
         ex      de,hl                   ; DE = τιμή
-        push    de
-        ld      e,b
-        ld      d,0
+hn_de:                                  ; DE = τιμή (hd_stock)
+        ld      a,b
+        add     a,a
         ld      hl,hn_pow
-        add     hl,de
-        add     hl,de                   ; HL -> 10^B
-        pop     de
+        call    ob_addu                 ; HL -> 10^B
         call    hn_div                  ; ό,τι ξεπερνά τα B ψηφία πέφτει
         ld      c,' '                   ; τα μπροστινά μηδενικά: κενά
         dec     b
@@ -647,12 +645,11 @@ hd_stock:
         push    hl
         call    ec_stock_ptr            ; DE -> απόθεμα
         ex      de,hl
-        ld      a,(hl)
+        ld      e,(hl)
         inc     hl
-        ld      h,(hl)
-        ld      l,a
+        ld      d,(hl)                  ; DE = το απόθεμα
         ld      b,3
-        call    hud_num
+        call    hn_de
         call    hud_space
         pop     hl
         pop     bc

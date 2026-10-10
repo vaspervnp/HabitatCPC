@@ -197,9 +197,10 @@ ja_supply:
 ja_repair:
         ld      a,c
         ld      (jb_d),a
-        call    jb_broken
+        call    jb_broken               ; και C = η υποδοχή
         inc     a
         jr      z,ja_fail
+        ld      b,c                     ; το ec_have και το ec_sub κρατούν το B
         ld      a,S_SPARE               ; χρειάζεται ένα ανταλλακτικό
         ld      c,1
         call    ec_have
@@ -207,6 +208,10 @@ ja_repair:
         ld      a,c
         call    ec_sub                  ; src/econ.asm
         ld      (ix+D_HEALTH-D_MACH),MACH_HP ; ξαναδουλεύει
+        ld      c,b                     ; και το σήμα φεύγει (βήμα 100)
+        ld      a,(jb_d)
+        ld      b,a
+        call    jb_mpush
         jr      ja_done
 ja_fail:
         ; τζάμπα δρόμος: η εργασία μένει ανοιχτή για τον επόμενο
@@ -280,6 +285,7 @@ jab_inst:
         cp      MAX_DOME
         jr      nc,jab_end              ; δομή: δεν έχει μηχανές
         call    mc_rec                  ; IX -> υποδοχή 0, B = υποδοχές
+        ld      e,0                     ; η υποδοχή, για τη λίστα (βήμα 100)
 jabi_lp:
         ld      a,(ix+D_HEALTH-D_MACH)
         and     #80 | 3                 ; δουλεύει, ή χρωστά υλικά
@@ -288,6 +294,7 @@ jabi_lp:
         jr      nz,jabi_go              ; 0: χαλασμένη ή άδεια — θέλει Repair
 jabi_n:
         inc     ix
+        inc     e
         djnz    jabi_lp
 jab_end:
         ld      hl,EC_NBUILD            ; μία Build λιγότερη (βήμα 88)
@@ -295,9 +302,6 @@ jab_end:
         jp      ja_done
 jabi_go:
         add     a,BUILD_STEP
-        jp      p,jabi_st
-        ld      a,MACH_HP               ; στήθηκε: δουλεύει
-jabi_st:
         ld      (ix+D_HEALTH-D_MACH),a
         ; Ο ΧΤΙΣΤΗΣ ΜΕΝΕΙ ΣΤΟΝ ΘΟΛΟ. Αν το κτίριο μόλις τελείωσε, το lk_done τον
         ; έβγαλε έξω, στο airlock ή στο σκάφος, με την εργασία ακόμη δική του:
@@ -305,7 +309,18 @@ jabi_st:
         ld      hl,(jb_ag)
         ld      h,AG_PG + 2             ; dest
         ld      (hl),c
+        jp      p,ja_next               ; ακόμη στήνεται
+        ld      (ix+D_HEALTH-D_MACH),MACH_HP ; στήθηκε: δουλεύει,
+        ld      b,c                     ; και το σήμα φεύγει (βήμα 100)
+        ld      c,e
+        call    jb_mpush
         jp      ja_next
+
+; jb_mpush — B = θόλος, C = υποδοχή: η υποδοχή ξαναζωγραφίζεται (βήμα 100), με
+; το σήμα της ή χωρίς. Από το ja_repair, το jab_inst και το ec_break_d.
+jb_mpush:
+        ld      a,DK_MACH
+        jp      wh_push
 
 ja_cleartask:
         ld      a,(jb_ag)
@@ -691,7 +706,8 @@ jas_done:
 jb_best:
         ld      hl,NO_JOB               ; jb_bj = NO_JOB, jb_bp = 0
         ld      (jb_bj),hl
-        ld      a,255
+        ld      a,l                     ; 255 (assert)
+        assert  NO_JOB == 255
         ld      (jb_bd),a
 
         ld      bc,GA_PORT + PAGE_B1

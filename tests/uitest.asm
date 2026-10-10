@@ -237,9 +237,9 @@ bit_tab: db 1,2,4,8,16,32,64,128
         include "../src/supply.asm"         ; βήμα 88: το bd_link και το HUD το καλούν
         include "../src/suit.asm"           ; βήμα 90: το su_hud του HUD
 tr_arrive:                              ; το sp_arrive, για μια J_TRADE (src/carry.asm),
-mc_live:                                ; και για τις μηχανές (βήμα 99, src/install.asm),
-mc_arrive:
+mc_arrive:                              ; και για τις μηχανές (βήμα 99, src/install.asm),
 mc_tail:
+jb_dome_ptr:                            ; το mc_live του src/supply.asm (βήμα 100) — εδώ δεν το καλεί κανείς,
 nd_load:                                ; το su_tick γυρίζει εκεί (src/needs.asm),
 nd_die: ret                             ; και εδώ δεν το καλεί κανείς
         include "../src/stock.asm"

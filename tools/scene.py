@@ -178,6 +178,16 @@ class Clip:
         return self.x0 >= self.x1 or self.y0 >= self.y1
 
 
+def mark_rows(k):
+    """Το σήμα k των μηχανών (0 χαλασμένη, 1 περιμένει), όπως το γράφει το
+    tools/pack.py στην τράπεζα 5: αδιαφανές, MARK_W bytes x MARK_H γραμμές."""
+    import pack
+    data = pack.marks()
+    n = pack.MARK_W * pack.MARK_H
+    return [data[k * n + y * pack.MARK_W:k * n + (y + 1) * pack.MARK_W]
+            for y in range(pack.MARK_H)]
+
+
 def blit(canvas, rows, x, y, masked, clip):
     """Ενα sprite με clip. Το `rows` είναι ήδη στον σωστό προσανατολισμό."""
     w = len(rows[0]) // (2 if masked else 1)
@@ -259,6 +269,11 @@ def draw_fittings(canvas, a, cam, colony, d, clip, agents=None):
             continue
         name = f"plant_{PLANTS[m]}" if green else f"mach_{MACH[m]}"
         blit(canvas, a.rows(name), fx + px, fy + py, False, clip)
+        # ΤΟ ΣΗΜΑ (βήμα 100, ob_mach_one): πάνω αριστερά, αν δεν δουλεύει —
+        # χαλασμένη ή μαραμένο φυτό (0), ή περιμένει να στηθεί (1-127).
+        hp = colony.d(d, D_HEALTH + s)
+        if not hp & 0x80:
+            blit(canvas, mark_rows(0 if hp == 0 else 1), fx + px, fy + py, False, clip)
 
     if agents is None:
         return

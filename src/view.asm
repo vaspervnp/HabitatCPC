@@ -28,6 +28,7 @@ PLAY_PAGE   equ 3
 ; 8 bit όπως ήταν: η κάμερα φτάνει ως το -66, και το -65 + 64 είναι 255.
 ; ---------------------------------------------------------------------------
 view_cam:
+        ld      de,(cam_p)              ; Out: DE = το προηγούμενο cam_p
         ld      a,(cam_ty)
         ld      c,a
         add     a,a
@@ -60,8 +61,8 @@ view_cam:
         ; γραμμή 16. Το cam_p μένει η αρχή του ΚΑΔΡΟΥ — όλοι οι υπολογισμοί
         ; θέσης του κόσμου μένουν ίδιοι.
         ld      hl,(cam_off)
-        ld      de,-HUD_TOPB / 2
-        add     hl,de
+        ld      bc,-HUD_TOPB / 2
+        add     hl,bc
         ld      bc,CRTC_SEL + 12
         out     (c),c
         ld      a,h
@@ -115,10 +116,7 @@ view_scroll:
         ldi
         ldi                             ; td_r0, td_nr
         call    view_cliprect
-        ld      hl,(cam_p)
-        push    hl
-        call    view_cam
-        pop     de
+        call    view_cam                ; DE = το παλιό cam_p
         ; Οι λωρίδες του HUD ακολουθούν το δαχτυλίδι ΠΡΙΝ από τη λωρίδα του
         ; κόσμου: στον νότο το κάτω κομμάτι της πατά εκεί που ήταν η B0.
         call    hud_move
@@ -168,10 +166,7 @@ vs_tab:
 ; ---------------------------------------------------------------------------
 view_draw:
         call    fg_build                ; και ob_touch (src/figure.asm, βήμα 89)
-        ld      hl,(cam_p)
-        push    hl
-        call    view_cam
-        pop     de
+        call    view_cam                ; DE = το παλιό cam_p
         ; Η ΚΑΜΕΡΑ ΠΗΔΗΞΕ (σπίτι, φόρτωμα): εκεί που κάθονται τώρα οι λωρίδες
         ; του HUD είναι έδαφος. Σβήνονται, και το ui_hudall που ακολουθεί τις
         ; ξαναγράφει. Χωρίς άλμα (μια πλήρης σχεδίαση στην ίδια θέση, ml_kept)

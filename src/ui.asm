@@ -374,7 +374,7 @@ uds_go:
         ld      (t_saved + 14),a
         ld      (t_loaded + 17),a
         ld      (t_empty + 16),a
-        ld      bc,GA_PORT + PAGE_B1
+        ld      c,PAGE_B1               ; το B είναι ακόμη GA_PORT >> 8
         out     (c),c
         call    ui_hide
         pop     hl
@@ -479,10 +479,10 @@ uim_cs:
 ; (HAS_DISC: το HAS_SIM δεν υπάρχει χωρίς αυτό.)
         ifdef HAS_DISC
 ui_ask:
-        ld      hl,uip_sig
-        ld      (hl),255                ; ui_dirty, που χαλάει το A
         ld      hl,ui_hold
         ld      (hl),0
+        inc     hl                      ; uip_sig
+        ld      (hl),255                ; ui_dirty, που χαλάει το A
         endif
 ; ui_goto — A = η νέα κατάσταση: σβήνει το φάντασμα, αλλάζει, το ξαναδείχνει.
 ; ui_goto_h — το ίδιο, με το φάντασμα ήδη σβηστό.
@@ -605,8 +605,7 @@ uist_link:
         ld      a,255
         jr      uil_set
 uil_fire:
-        call    ui_dome
-        cp      255
+        call    ui_dome                 ; Z: κανένας
         ret     z                       ; ο κέρσορας δεν είναι πάνω σε θόλο
         ld      e,a
         ld      a,(ln_a)
@@ -673,7 +672,7 @@ uid_lp:
         jr      nc,uid_no
         pop     bc
         ld      a,c
-        jr      uid_out
+        jr      uid_cp
 uid_no:
         pop     bc
 uid_next:
@@ -682,6 +681,8 @@ uid_next:
         cp      MAX_DOME
         jr      c,uid_lp
         ld      a,255
+uid_cp:
+        cp      255                     ; Z = κανένας θόλος, για τους καλούντες
 ; uid_out — πίσω η τράπεζα 1, με το AF όπως ήταν. Και για το ui_validate.
 uid_out:
         push    af
@@ -716,8 +717,7 @@ ln_plan:
         ld      a,(ln_a)
         inc     a
         ret     z                       ; δεν έχει διαλεγεί αφετηρία ακόμη
-        call    ui_dome
-        cp      255
+        call    ui_dome                 ; Z: κανένας
         jr      z,lnp_no
         ld      hl,ln_a
         cp      (hl)
@@ -844,8 +844,7 @@ ui_follow:
 uif_x:
         ld      a,(ui_tx)
         ld      hl,cam_tx
-        sub     (hl)
-        or      a                       ; 0, ή αρνητικό: ο κέρσορας αριστερά
+        sub     (hl)                    ; 0, ή αρνητικό: ο κέρσορας αριστερά
         jr      z,uif_west              ; (UI_MARGIN = 1)
         jp      p,uif_x2
 uif_west:
@@ -873,7 +872,6 @@ uif_y:
         ld      a,(ui_ty)
         ld      hl,cam_ty
         sub     (hl)
-        or      a
         jr      z,uif_north
         jp      p,uif_y2
         assert  UI_MARGIN == 1
@@ -980,8 +978,7 @@ ui_rel:
 ; ---------------------------------------------------------------------------
 ; ui_show / ui_hide — το φάντασμα πάνω στη σκηνή, και πίσω.
 ; ---------------------------------------------------------------------------
-ui_hide:
-        jp      gh_undo
+; (το ui_hide είναι ετικέτα πάνω στο gh_undo, src/ghost.asm: βήμα 100)
 
 ; ui_late — το φάντασμα που χρωστά η τοποθέτηση θόλου, ΕΝΑΝ γύρο αφού βγει η
 ; τελευταία σειρά του (rv_pend = 0). Στον ίδιο γύρο θα πλήρωνε και τη σειρά
@@ -1112,7 +1109,7 @@ uip_start:
         ; ΣΥΓΚΡΙΣΗ ΚΑΘΩΣ ΔΙΑΒΑΖΕΙ (βήμα 84), όπως το bar_sync: ως τότε το ui_sig
         ; έγραφε τα έντεκα bytes και ένας βρόχος τα σύγκρινε, ~150 us μόνο ο
         ; βρόχος. Το ui_sig γράφει πια μόνο όταν κάτι διαφέρει.
-        ld      hl,uip_sig
+        inc     hl                      ; uip_sig: το HL είναι ακόμη ui_hold
         ld      a,(ui_state)
         cp      (hl)
         jr      nz,uipc_go
@@ -1462,9 +1459,10 @@ uip_bi:     dw 0
 ; Το ui_hold ζει ΕΞΩ από το ifdef του δίσκου: το ui_panel το διαβάζει πάντα,
 ; και το tests/uitest.asm χτίζεται χωρίς μηνύματα δίσκου. (Το όνομα δεν είναι
 ; UI_HOLD γιατί ο rasm δεν ξεχωρίζει ετικέτα από alias.)
-ui_hold:    db 0
 uip_szc:    db "SML"
+ui_hold:    db 0
 uip_sig:    defs UIP_NSIG, 255
+        assert  uip_sig == ui_hold + 1  ; ui_ask, uip_start: inc hl
 cur_hx:     db 0
 cur_hy:     db 0
 

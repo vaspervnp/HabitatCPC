@@ -23,7 +23,7 @@ import buttons
 TEXT_MAX = 2120                 # = TEXT_MAX του src/uitext.asm (assert εκεί)
 B6C_MAX = 1554                  # = B6C_MAX του src/bots.asm (assert στο main.asm)· 256 ως το 92, 1.280 ως το 93, 1.298 ως το 95
 B1C_MAX = 160                   # = B1C_MAX του src/commit.asm (assert στο main.asm), βήμα 94
-B5C_MAX = 272                   # = B5C_MAX του src/bend.asm (assert στο main.asm), βήμα 97
+B5C_MAX = 248                   # = B5C_MAX του src/bend.asm (assert στο main.asm), βήμα 97· 272 ως το 99
 
 # --- γεωμετρία ------------------------------------------------------------
 PAGE2_BASE  = 0x8000                # τράπεζα 2: επίπεδη, πάντα ορατή
@@ -291,6 +291,31 @@ def joint_px(smap, blob, sz, dr):
     return out
 
 
+# ΤΑ ΣΗΜΑΤΑ ΤΩΝ ΜΗΧΑΝΩΝ (βήμα 100): ένα μικρό σήμα πάνω δεξιά σε μια μηχανή
+# που δεν δουλεύει, όπως τα εικονίδια του Planetbase πάνω από ένα χαλασμένο
+# εξάρτημα. Δύο, επιλογή του παίκτη: ΧΑΛΑΣΜΕΝΗ (υγεία 0 — και μαραμένο φυτό),
+# κόκκινο με λευκό θαυμαστικό· ΠΕΡΙΜΕΝΕΙ να στηθεί (1-127, βήμα 99), κίτρινες
+# και μαύρες λωρίδες, του εργοταξίου. ΑΔΙΑΦΑΝΗ, 2 bytes x 6 γραμμές: όλο το
+# σήμα είναι μέσα στο sprite της μηχανής, που είναι κι αυτό αδιαφανές, οπότε
+# όταν η μηχανή ξαναζωγραφιστεί το σήμα σβήνει χωρίς τίποτα άλλο. Χρώματα έξω
+# από τα 7, 11, 12, 14 του εδάφους, που αλλάζουν ανά πλανήτη (§8.6).
+MARK_PEN = {"R": 8, "W": 5, "Y": 6, "K": 0}
+MARKS = (("RWWR", "RWWR", "RWWR", "RRRR", "RWWR", "RRRR"),     # χαλασμένη
+         ("YYKK", "YKKY", "KKYY", "KYYK", "YYKK", "YKKY"))     # περιμένει
+MARK_W, MARK_H = 2, 6
+
+
+def marks():
+    out = bytearray()
+    for m in MARKS:
+        if len(m) != MARK_H or any(len(r) != 2 * MARK_W for r in m):
+            raise Fail("σήμα: λάθος διαστάσεις")
+        for r in m:
+            for k in range(MARK_W):
+                out.append(_m0_byte(MARK_PEN[r[2 * k]], MARK_PEN[r[2 * k + 1]]))
+    return bytes(out)
+
+
 def joints(smap, blob):
     """Τα εννιά σχέδια (τράπεζα 5), και jt_tab, jt_spr στο build/joint_tab.asm."""
     spr, tab = [None] * 9, []
@@ -454,6 +479,12 @@ def build_runs(smap, blob):
     jdata = joints(smap, blob)
     bank5.append(Run("joints", len(jdata), jdata,
                      note="παράγεται: οι αρμοί v, h και d ανά μέγεθος"))
+    # ΤΑ ΣΗΜΑΤΑ ΤΩΝ ΜΗΧΑΝΩΝ (βήμα 100): στην 5, όπου ζουν οι μηχανές· τα
+    # ζωγραφίζει το ob_mach_one με την 5 μέσα, και για τα φυτά. Πήραν 24 bytes
+    # από τη δέσμευση του b5code, που είχε 43 ελεύθερα.
+    mdata = marks()
+    bank5.append(Run("marks", len(mdata), mdata,
+                     note="παράγεται: χαλασμένη, περιμένει (βήμα 100)"))
     # ΚΑΙ ΚΩΔΙΚΑΣ ΠΑΝΩ ΤΟΥΣ (βήμα 97): οι κοντές στροφές (src/bend.asm), με
     # τις σημαίες τους ανά θόλο. Τρέχει με την 5 στο παράθυρο, μέσα από το
     # jt_b5 (src/object.asm), και ζωγραφίζει με το ob_put τα σχέδια των αρμών

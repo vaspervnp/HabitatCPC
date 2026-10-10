@@ -147,9 +147,9 @@ mutate:
         ld      (G_dome_tbl + D_MACH + 2),a
         ld      a,200
         ld      (G_dome_tbl + D_HEALTH + 2),a
-        ld      a,3                     ; θόλος 1, υποδοχή 0: όπλα
+        ld      a,3                     ; θόλος 1, υποδοχή 0: όπλα, ΧΑΛΑΣΜΕΝΑ —
         ld      (G_dome_tbl + DOME_REC + D_MACH),a
-        ld      a,200
+        xor     a                       ; με το σήμα τους (βήμα 100)
         ld      (G_dome_tbl + DOME_REC + D_HEALTH),a
         ld      bc,GA_PORT + PAGE_B4
         out     (c),c
@@ -262,9 +262,9 @@ done_flag:  db 0
         include "../src/supply.asm"         ; το sp_noeng του hud.asm (βήμα 88)
         include "../src/suit.asm"           ; το su_hud του hud.asm (βήμα 90)
 tr_arrive:                              ; το sp_arrive, για μια J_TRADE (src/carry.asm),
-mc_live:                                ; και για τις μηχανές (βήμα 99, src/install.asm),
-mc_arrive:
+mc_arrive:                              ; και για τις μηχανές (βήμα 99, src/install.asm),
 mc_tail:
+jb_dome_ptr:                            ; το mc_live του src/supply.asm (βήμα 100) — εδώ δεν το καλεί κανείς,
 nd_load:                                ; το su_tick γυρίζει εκεί (src/needs.asm),
 nd_die: ret                             ; και εδώ δεν το καλεί κανείς
         ; Το jtb_cc (src/bend.asm) διαβάζει τη διαδρομή του cr_plan, που εδώ

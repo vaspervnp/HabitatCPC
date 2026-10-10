@@ -288,14 +288,15 @@ bsk_gen:
 ; ---------------------------------------------------------------------------
 bar_want:
         ld      hl,bw_id
+        ld      de,bw_st
         ld      b,BAR_N
+        xor     a                       ; BS_GREEN
 bww_c1: ld      (hl),BT_NONE
         inc     hl
+        ld      (de),a
+        inc     de
         djnz    bww_c1
-        ld      b,BAR_N
-bww_c2: ld      (hl),BS_GREEN
-        inc     hl
-        djnz    bww_c2
+        assert  BS_GREEN == 0
         ld      a,BT_HELP
         ld      (bw_id + BAR_HELP),a
         ld      a,(ui_state)

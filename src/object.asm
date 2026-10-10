@@ -217,7 +217,7 @@ oc_cull:
 ; ---------------------------------------------------------------------------
 ob_mul:
         ld      hl,0
-        ld      d,0
+        ld      d,h
         ld      e,c
         ld      b,8
 obm_lp:
@@ -480,7 +480,7 @@ ob_move:
         ret
 
 ; ---------------------------------------------------------------------------
-; ob_vis — τέμνει το πλαίσιο του θόλου το παράθυρο clip; A = 0 όχι.
+; ob_vis — τέμνει το πλαίσιο του θόλου το παράθυρο clip; A = 0 και Z: όχι.
 ;
 ; ΕΝΑΣ έλεγχος ορθογωνίου ανά θόλο, πριν από οτιδήποτε άλλο. Χωρίς αυτόν κάθε
 ; θόλος πλήρωνε οκτώ πόρτες, οκτώ υποδοχές μηχανών και οκτώ θέσεις αποίκων —
@@ -543,7 +543,6 @@ ob_shell:
         ret     z
         call    ob_getdome
         call    ob_vis
-        or      a
         ret     z
         ld      hl,(d_geo)
         inc     hl
@@ -600,7 +599,6 @@ ob_fittings:
         ret     z
         call    ob_getdome
         call    ob_vis
-        or      a
         ret     z
         call    jt_dome                 ; βήμα 3: οι αρμοί (src/joint.asm, βήμα 96)
         ; ΤΟ ΕΡΓΟΤΑΞΙΟ ΕΙΝΑΙ ΑΔΕΙΟ. Ο εξοπλισμός (src/fit.asm) γράφει μηχανές
@@ -629,8 +627,8 @@ ob_icon:
         call    ob_move                 ; (dx, dy) προσημασμένα
         ; πηγή: icon_{size}_ptr[room]
         ld      hl,(d_geo)
-        ld      a,6
-        call    ob_addu                 ; -> icon_ptr, icon_w, icon_h
+        ld      de,6
+        add     hl,de                   ; -> icon_ptr, icon_w, icon_h
         ld      e,(hl)
         inc     hl
         ld      d,(hl)
@@ -735,7 +733,33 @@ ob_mach_one:
         ret     z                       ; px = 255: αυτή η υποδοχή δεν υπάρχει
         ld      hl,MACH_H*256 + MACH_W
         ld      a,4
-        jp      ob_put
+        call    ob_put
+        ; ΤΟ ΣΗΜΑ (βήμα 100): μια μηχανή που δεν δουλεύει παίρνει ένα σήμα πάνω
+        ; αριστερά — χαλασμένη (υγεία 0, και μαραμένο φυτό) ή καινούργια που
+        ; περιμένει να στηθεί (1-127, βήμα 99). Είναι μέσα στο αδιαφανές sprite
+        ; της, οπότε όταν ξαναδουλέψει η υποδοχή ξαναζωγραφίζεται και σβήνει.
+        ; Τα σήματα ζουν στην 5 (tools/pack.py): για τα φυτά, που ζουν στην 7,
+        ; και για την επόμενη υποδοχή, το om_prep ξαναβάζει την τράπεζά τους.
+        ld      a,(om_slot)
+        ld      hl,d_rec+D_HEALTH
+        call    ob_addu
+        ld      a,(hl)
+        add     a,a                     ; bit 7 -> CY: δουλεύει, κανένα σήμα
+        ret     c
+        ld      hl,G_marks              ; 0: χαλασμένη
+        jr      z,omk_put
+        ld      l,(G_marks + MARK_W * MARK_H) & 255     ; περιμένει
+omk_put:
+        ld      (ob_src),hl
+        ld      hl,MARK_H*256 + MARK_W
+        ld      a,4
+        ld      c,PAGE_B5
+        call    ob_put_in
+        jp      om_prep
+
+MARK_W      equ 2                       ; = MARK_W, MARK_H του tools/pack.py
+MARK_H      equ 6
+        assert  (G_marks & 255) + MARK_W * MARK_H <= 255     ; οι δύο αρχές, μία σελίδα (ld l)
 
 ; --- φιγούρες στις θέσεις του δακτυλίου ------------------------------------
 ; Το DOME_FIG γέμισε με ΕΝΑ πέρασμα πάνω στους 128 πράκτορες (ob_fig_scan).
@@ -752,8 +776,7 @@ of_lp:
         ld      (of_slot),a
         call    of_at
         or      a
-        ld      a,(of_slot)
-        call    nz,ob_fig_one
+        call    nz,obfo_have            ; A = η φιγούρα, (of_slot) = η θέση
         ld      a,(of_slot)
         inc     a
         cp      CORR_SLOTS
@@ -796,6 +819,7 @@ of_at:
 ob_fig_one:
         ld      (of_slot),a
         call    of_at
+obfo_have:                              ; από το ob_figures: το of_at έτρεξε ήδη
         ld      (of_fig),a
         ld      a,(of_slot)
         ld      de,G_corr_slots
@@ -1104,17 +1128,17 @@ obx_4:
         ex      de,hl                   ; DE = απόσταση + πλάτος
         pop     bc                      ; BC = απόσταση
         ld      a,(obx_sgn)
-        or      a
+        or      a                       ; και CY = 0, για το sbc
         ret     p
-        or      a
         sbc     hl,bc                   ; αρνητικό βήμα: αρχή = τελευταίο πλακίδιο
         ret
 
 ; ob_addsx — HL += A προσημασμένο.
 ob_addsx:
-        push    hl
-        call    ob_sext                 ; HL = sext(A)
-        pop     de
+        ld      e,a
+        rla
+        sbc     a,a
+        ld      d,a                     ; DE = sext(A)
         add     hl,de
         ret
 
@@ -1123,13 +1147,11 @@ ob_addsx:
 ; γυρίζει με την 6 μέσα.
 ; ---------------------------------------------------------------------------
 ob_struct:
+        add     a,a
+        add     a,a
+        add     a,a                     ; 8*id: μία σελίδα (assert)
         ld      l,a
-        ld      h,0
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl                   ; 8*id
-        ld      de,G_struct_tbl
-        add     hl,de
+        ld      h,G_struct_tbl >> 8
         ld      de,s_rec                ; πρώτα η αντιγραφή, μετά η ερώτηση:
         ld      bc,STRUCT_REC           ; το s_rec είναι πρόχειρο
         ldir
@@ -1191,11 +1213,12 @@ ob_struct:
         xor     a
 os_opaque:
         ld      (ob_fl),a
+        ld      e,a
         ld      a,(ob_meas)
         or      a
         jp      nz,os_meas              ; src/objindex.asm
         ld      hl,(ob_w)
-        ld      a,(ob_fl)
+        ld      a,e                     ; (ob_fl)
         ld      c,PAGE_B7
         jp      ob_put_in
 
@@ -1224,12 +1247,12 @@ ofs_lp:
         ld      a,(hl)                  ; slot
         cp      255
         jr      z,ofs_next
-        ld      (ofs_slot),a
+        ld      b,a                     ; B = slot: το pop bc τα ξαναφέρνει
         res     7,l
         ld      a,(hl)                  ; node
         cp      MAX_DOME
         jr      nc,ofs_next             ; δομή, όχι θόλος
-        ld      (ofs_node),a
+        ld      c,a                     ; C = node
         ld      h,AG_FLAGS >> 8
         set     7,l
         ld      a,(hl)                  ; role
@@ -1238,22 +1261,19 @@ ofs_lp:
         ld      h,0
         ld      de,role_fig
         add     hl,de
-        ld      a,(hl)
-        ld      c,a
-        ld      a,(ofs_node)
-        ld      l,a
+        ld      e,(hl)                  ; E = η φιγούρα
+        ld      l,c
         ld      h,0
         add     hl,hl
         add     hl,hl
         add     hl,hl                   ; node*8
-        ld      a,(ofs_slot)
+        ld      a,b
         and     7
-        ld      e,a
-        ld      d,0
-        add     hl,de
-        ld      de,DOME_FIG
-        add     hl,de
-        ld      (hl),c
+        or      l                       ; + slot: τα τρία κάτω bits είναι 0
+        ld      l,a
+        ld      bc,DOME_FIG
+        add     hl,bc
+        ld      (hl),e
 ofs_next:
         pop     bc
         inc     c
@@ -1486,10 +1506,9 @@ osa_gather:
         ld      (de),a
         inc     de
 osa_gskip:
-        push    de
-        ld      de,STRUCT_REC
-        add     hl,de
-        pop     de
+        ld      a,l
+        add     a,STRUCT_REC            ; μία σελίδα (assert)
+        ld      l,a
         inc     c
         djnz    osa_gather
         ld      a,e
@@ -1534,20 +1553,21 @@ osa_place:
         djnz    osa_out
         ret
 
-; osa_key — A = id -> A = cy+128. Κρατά τα HL, DE.
+; osa_key — A = id -> A = cy+128. Κρατά τα BC, DE, HL.
 osa_key:
         push    hl
+        add     a,a
+        add     a,a
+        add     a,a
+        add     a,ST_CY
         ld      l,a
-        ld      h,0
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl
-        ld      bc,G_struct_tbl + ST_CY
-        add     hl,bc
+        ld      h,G_struct_tbl >> 8
         ld      a,(hl)
         add     a,128
         pop     hl
         ret
+; ob_struct, osa_gskip, osa_key: id*8 + ST_* σε μία σελίδα (βήμα 100)
+        assert  (G_struct_tbl & 255) == 0 && MAX_STRUCT * STRUCT_REC == 256
 
 ; ---------------------------------------------------------------------------
 ; ob_touch — τα ευρετήρια είναι παλιά· ξαναχτίσου στην επόμενη σχεδίαση.
@@ -1694,8 +1714,6 @@ om_tab:     dw 0                ; G_mach_ptr ή G_plant_ptr (om_prep)
 of_slot:    db 0
 of_fig:     db 0
 
-ofs_node:   db 0
-ofs_slot:   db 0
 
 st_n:       db 0
 obx_w:      db 0

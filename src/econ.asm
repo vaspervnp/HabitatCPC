@@ -637,7 +637,11 @@ ec_break_d:
         bit     7,(ix+D_HEALTH)
         ret     z
         ld      (ix+D_HEALTH),0
-        ret
+        ; ΚΑΙ ΦΑΙΝΕΤΑΙ (βήμα 100): η υποδοχή ξαναζωγραφίζεται με το σήμα της.
+        ld      c,e                     ; η υποδοχή
+        ld      a,(eb_d)
+        ld      b,a
+        jp      jb_mpush                ; src/jobs.asm
 
 ev_newday:  db 0
 ev_r1:      dw 0

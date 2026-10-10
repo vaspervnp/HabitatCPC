@@ -33,7 +33,7 @@
 ; tests/uitest.asm στην τράπεζα 5, όπως το παιχνίδι.
 ; ---------------------------------------------------------------------------
 
-B5C_MAX     equ 272                     ; = B5C_MAX του tools/pack.py
+B5C_MAX     equ 248                     ; = B5C_MAX του tools/pack.py (272 ως το βήμα 99: 24 στα σήματα των μηχανών)
 
         assert  C_LEN == C_DIR + 1      ; ld hl,(oc_cr + C_DIR) στο jtm_bend (src/object.asm)
 

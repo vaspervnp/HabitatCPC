@@ -57,8 +57,7 @@ fe_go:
 ; ανοίγει: γράφει μόνο τις μεταβλητές του εξοπλισμού, που εκτός FIT δεν τις
 ; διαβάζει κανείς.
 fit_can:
-        call    ui_dome
-        cp      255
+        call    ui_dome                 ; Z: κανένας
         ret     z                       ; NC, Z
         ld      (fit_d),a
         ld      a,D_SIZE
