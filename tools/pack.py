@@ -23,6 +23,7 @@ import buttons
 TEXT_MAX = 2120                 # = TEXT_MAX του src/uitext.asm (assert εκεί)
 B6C_MAX = 1554                  # = B6C_MAX του src/bots.asm (assert στο main.asm)· 256 ως το 92, 1.280 ως το 93, 1.298 ως το 95
 B1C_MAX = 160                   # = B1C_MAX του src/commit.asm (assert στο main.asm), βήμα 94
+B5C_MAX = 272                   # = B5C_MAX του src/bend.asm (assert στο main.asm), βήμα 97
 
 # --- γεωμετρία ------------------------------------------------------------
 PAGE2_BASE  = 0x8000                # τράπεζα 2: επίπεδη, πάντα ορατή
@@ -321,6 +322,16 @@ def joints(smap, blob):
     for w, h, img in spr:
         desc.append((len(data), w, h))
         data += img
+    # Η ΠΡΩΤΗ ΓΡΑΜΜΗ ΤΩΝ ΔΥΤΙΚΩΝ ΚΑΙ ΤΩΝ ΑΝΑΤΟΛΙΚΩΝ είναι ένα pixel: το γκρι
+    # στο άκρο του πλαισίου, αριστερό (1) ή δεξί (2). Το src/bend.asm τη
+    # ζωγραφίζει μόνη της για τις κοντές στροφές (βήμα 97, jt_pxl, jt_pxr).
+    s_ = smap["corr_h"]
+    grey = _jpx(blob, s_, s_.w)[(2, 3)]
+    for sid, p in ((1, 0), (2, 1)):
+        w, h, img = spr[sid]
+        want = bytes([0xFF & ~JNT_PM[p], grey if p == 0 else grey >> 1])
+        if w != 1 or img[:2] != want:
+            raise Fail(f"αρμός {sid}: η πρώτη γραμμή δεν είναι το pixel {want.hex()}")
     out = os.path.join(ROOT, "build")
     os.makedirs(out, exist_ok=True)
     with open(os.path.join(out, "joint_tab.asm"), "w", encoding="utf-8") as f:
@@ -332,6 +343,9 @@ def joints(smap, blob):
             f.write("        db      " + ", ".join(f"{x},{y},{k}" for x, y, k in
                                                    tab[8 * sz:8 * sz + 8])
                     + f"   ; {'sml'[sz]}: n ne e se s sw w nw\n")
+        f.write("; Η πρώτη γραμμή του δυτικού και του ανατολικού: ένα pixel (src/bend.asm).\n")
+        f.write(f"jt_pxl  equ G_joints + {desc[1][0]}\n")
+        f.write(f"jt_pxr  equ G_joints + {desc[2][0]}\n")
         f.write("; jt_spr, ανά σχέδιο: διεύθυνση στην τράπεζα 5, πλάτος, ύψος.\n")
         f.write("jt_spr:\n")
         for i, (o, w, h) in enumerate(desc):
@@ -440,6 +454,13 @@ def build_runs(smap, blob):
     jdata = joints(smap, blob)
     bank5.append(Run("joints", len(jdata), jdata,
                      note="παράγεται: οι αρμοί v, h και d ανά μέγεθος"))
+    # ΚΑΙ ΚΩΔΙΚΑΣ ΠΑΝΩ ΤΟΥΣ (βήμα 97): οι κοντές στροφές (src/bend.asm), με
+    # τις σημαίες τους ανά θόλο. Τρέχει με την 5 στο παράθυρο, μέσα από το
+    # jt_b5 (src/object.asm), και ζωγραφίζει με το ob_put τα σχέδια των αρμών
+    # που βλέπει δίπλα του. Το γράφει το src/main.asm, και η BANK5.BIN του
+    # δίσκου βγαίνει από εκεί (bank5c.bin), όπως η BANK1.BIN του b1code.
+    bank5.append(Run("b5code", B5C_MAX, None, at=BANK5_BASE + BANK5_SIZE - B5C_MAX,
+                     note="ΔΕΣΜΕΥΣΗ — οι κοντές στροφές (src/bend.asm)"))
 
     # --- διάδρομοι και συνδέσεις: στην τράπεζα 6 από το βήμα 89 (πιο κάτω) ---
     # Η ΓΡΑΜΜΑΤΟΣΕΙΡΑ ΕΦΥΓΕ ΑΠΟ ΕΔΩ ΣΤΟ ΒΗΜΑ 33 — δες την τράπεζα 7 πιο κάτω.

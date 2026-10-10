@@ -1552,24 +1552,11 @@ crr_conns:
         ld      b,a
         ld      a,(cr_d0)
         ld      c,a
-        ld      e,a                     ; το dirty_push κρατά το E
         ld      a,DK_CONN
         call    dirty_push
-        ld      a,(cr_n)
-        cp      2
-        ld      a,e
-        jr      c,crc_last
-        ld      a,(cr_d1)
-crc_last:
-        add     a,4
-        and     7
-        ld      c,a
-        ld      a,(cr_to)
-        cp      MAX_DOME
-        ret     nc                      ; airlock: δεν έχει δακτύλιο (βήμα 86)
-        ld      b,a
-        ld      a,DK_CONN
-        jp      dirty_push
+        ld      hl,jtb_cc               ; ο b (src/bend.asm, βήμα 97)
+        ld      de,dt_end               ; πίσω με την 1
+        jp      jt_b5c
 
 ; cr_stampx — το cr_stamp, και τα tiles του ΜΙΣΟΥ ΠΛΑΤΟΥΣ (βήμα 96). Ο αξονικός
 ; διάδρομος στο κέντρο του θόλου πάει μισό πλάτος πίσω: 1 byte στη στήλη

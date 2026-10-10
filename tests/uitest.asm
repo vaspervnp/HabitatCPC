@@ -207,14 +207,12 @@ plan_b:     db 0
 plan_bad:   db 0
 walk_p:     dw 0
 walk_n:     db 0
-walk_buf:   defs 240
 
 ready_flag: db 0
 done_flag:  db 0
 snoop_bk:   db PAGE_B6
 snoop_ad:   dw 0
 snoop_n:    db 0
-snoop_buf:  defs 96
 tick_n:     db 0
 goto_x:     db 0
 goto_y:     db 0
@@ -225,6 +223,9 @@ goto_st:    db 0
         include "../src/tiles.asm"
         include "../src/object.asm"
         include "../src/joint.asm"          ; βήμα 96: στο παιχνίδι στο b6code
+        ; Το src/entity.asm δεν είναι εδώ· το jtm_set και το jtb_mark θέλουν το
+        ; bit_tab του ΚΑΤΩ από το #4000, που τα βλέπει με την 5 ή την 6 μέσα.
+bit_tab: db 1,2,4,8,16,32,64,128
         include "../src/objindex.asm"
         include "../src/dirty.asm"
         include "../src/figure.asm"         ; βήμα 89: οι άποικοι έξω
@@ -248,10 +249,23 @@ nd_die: ret                             ; και εδώ δεν το καλεί �
         include "../src/fit.asm"
         include "../src/rooms.asm"
         include "../src/hw.asm"
-        include "../src/sound.asm"
+        ; ΟΙ ΑΝΙΧΝΕΥΣΕΙΣ ΤΩΝ ΔΟΚΙΜΩΝ γράφουν στο #3F00-#3FFF (test_build,
+        ; test_terrain, test_view, test_game). Ως το βήμα 96 ο κώδικας έφτανε ως
+        ; το #3FFD και του έσβηναν την ουρά του ήχου· στο 97 το src/bend.asm θα
+        ; τον έφερνε ως το #4108, πάνω στο rm_build. Γι' αυτό τα δύο αρχεία των
+        ; ανιχνεύσεων και ο ήχος πήγαν στην τράπεζα 2, και το bend.asm στην 5,
+        ; όπως στο παιχνίδι.
+        assert  $ <= #3F00
 
         org     #8000
         incbin  "../build/page2.bin"
+        ; Πάνω από το αρχείο του φαντάσματος, όπου το παιχνίδι έχει τον κώδικα
+        ; της τράπεζας 2 και εδώ δεν υπάρχει τίποτα: πάντα στο παράθυρο.
+        org     PAGE2_CODE
+walk_buf:   defs 240
+snoop_buf:  defs 96
+        include "../src/sound.asm"
+        assert  $ <= #C000
         org     #7000
         incbin  "../build/bank1.bin"     ; εικονίδια m και l (§4.2)
 
@@ -259,7 +273,9 @@ nd_die: ret                             ; και εδώ δεν το καλεί �
         org     #0000
         incbin  "../build/world_col.bin"
         org     B5_BASE                 ; οι μηχανές στην τράπεζα 5 (βήμα 85)
-        incbin  "../build/bank5.bin"
+        incbin  "../build/bank5.bin", 0, G_b5code - B5_BASE
+        org     G_b5code                ; και οι κοντές στροφές (βήμα 97), όπως
+        include "../src/bend.asm"       ; στο src/main.asm
         org     #8000
         incbin  "../build/bank6_col.bin"
         org     #C000

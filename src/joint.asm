@@ -36,19 +36,29 @@ jt_mark:
         or      a
         ld      a,(c_rec+C_DIR)
         jr      z,jtm_b
+        call    jtm_bend                ; κοντή στροφή; (βήμα 97, src/object.asm)
+        ld      a,(c_rec+C_B)
+        ld      c,a
         ld      a,(oc_cr+C_DIR)
 jtm_b:
         add     a,4                     ; η αντίθετη φορά για τον b
 ; jtm_set — C = θόλος, A = κατεύθυνση (μόνο τα bits 0-2): ανάβει το bit.
+;
+; ΜΕ ΤΟ bit_tab, ΟΧΙ ΜΕ ΒΡΟΧΟ (βήμα 97): το rlca/djnz ήταν 3,5 ms στο
+; χειρότερο ευρετήριο διαδρόμων, δύο κλήσεις ανά διάδρομο, και πλήρωσε τις
+; κοντές στροφές (src/bend.asm). Δεκαέξι bits γιατί ο πίνακας πέφτει όπου
+; πέφτει στις δοκιμαστικές εκδόσεις.
 jtm_set:
         and     7
-        ld      b,a
-        inc     b
-        ld      a,#80
-jtm_bit:
-        rlca
-        djnz    jtm_bit                 ; A = 1 << κατεύθυνση, B = 0
+        ld      hl,bit_tab              ; src/entity.asm
+        add     a,l
+        ld      l,a
+        adc     a,h
+        sub     l
+        ld      h,a
+        ld      a,(hl)                  ; 1 << κατεύθυνση
         ld      hl,dome_conn
+        ld      b,0
         add     hl,bc
         or      (hl)
         ld      (hl),a
@@ -79,14 +89,18 @@ jtd_next:
         inc     c
         or      a                       ; CY = 0: το rra σπρώχνει μηδενικά
         jr      nz,jtd_lp
-        ret
+        jp      jtd_end                 ; και οι κοντές στροφές (src/object.asm)
 
 ; jt_one — ο αρμός του θόλου (d_rec, το πλαίσιο d_fx, d_fy) στην κατεύθυνση A:
 ; ένα σχέδιο της τράπεζας 5 στη θέση του jt_tab (tools/pack.py), με κάθετο
 ; καθρέφτισμα για τα νότια. Το οριζόντιο θα ήθελε το flip_mode0 της 6, που δεν
 ; φαίνεται όσο η 5 είναι μέσα: τα ανατολικά έχουν δικά τους σχέδια.
+;
+; ΧΩΡΙΣ ΤΟ and 7 του 96, και με sbc αντί για ld a,0 · rla · add a,a (βήμα
+; 97): 3 µs ανά αρμό, 120 στις πέντε κάμερες του tests/test_object.py, που
+; πληρώνουν το jp στο jtd_end. Το A είναι πάντα 0-7: το c του jt_dome, το
+; dt_b ενός DK_CONN (crr_conns, jtb_cc).
 jt_one:
-        and     7
         ld      c,a
         ld      a,(d_rec+D_SIZE)
         add     a,a
@@ -129,9 +143,8 @@ jt_one:
         ld      d,(hl)                  ; ύψος
         ex      de,hl
         pop     af
-        ld      a,0
-        rla
-        add     a,a                     ; bit 1 του ob_fl: κάθετα
+        sbc     a,a                     ; #FF με το καθρέφτισμα
+        and     2                       ; bit 1 του ob_fl: κάθετα
         ld      c,PAGE_B5
         jp      ob_put_in
 

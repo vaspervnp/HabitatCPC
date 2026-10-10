@@ -304,8 +304,10 @@ def main():
     page2, game2 = img("page2.bin"), img("game2.bin")
     # Η BANK1.BIN από το βήμα 94 είναι το bank1c.bin: τα εικονίδια ΚΑΙ ο κώδικας
     # της τοποθέτησης στη δέσμευση b1code (src/commit.asm), όπως τα έγραψε το
-    # src/main.asm — το bank1.bin του pack.py έχει τη δέσμευση άδεια.
-    mach, icons = img("bank5.bin"), img("bank1c.bin")
+    # src/main.asm — το bank1.bin του pack.py έχει τη δέσμευση άδεια. Το ίδιο η
+    # BANK5.BIN από το βήμα 97: bank5c.bin, οι μηχανές, οι αρμοί ΚΑΙ ο κώδικας
+    # των κοντών στροφών (src/bend.asm) στη δέσμευση b5code.
+    mach, icons = img("bank5c.bin"), img("bank1c.bin")
     code = sym["ZZ_PAGE2_END"] - len(game2)
     b5base = None
     for line in open(os.path.join(ROOT, "build", "layout.asm"), encoding="utf-8"):

@@ -228,8 +228,10 @@ def draw_fittings(canvas, a, cam, colony, d, clip, agents=None):
     """Βήματα 3-6: αρμοί (ως το 95 οι πόρτες), εικονίδιο, μηχανές ή φυτά, φιγούρες."""
     fx, fy, qw, qh, sz = dome_frame(a, cam, colony, d)
 
-    for dr in sorted(dome_dirs(colony, d)):
-        for (x, y), bits in joint(a, sz, dr).items():
+    px = [joint(a, sz, dr) for dr in sorted(dome_dirs(colony, d))]
+    px += [bend(a, sz, k) for k in sorted(dome_bends(colony, d))]
+    for j in px:
+        for (x, y), bits in j.items():
             tx, ty = fx + x // 2, fy + y
             if clip.x0 <= tx < clip.x1 and clip.y0 <= ty < clip.y1:
                 o = ty * SCR_W + tx
@@ -329,6 +331,21 @@ def dome_dirs(colony, d):
     return out
 
 
+def dome_bends(colony, d):
+    """Οι ΚΟΝΤΕΣ ΣΤΡΟΦΕΣ του θόλου (βήμα 97): διάδρομοι που φτάνουν σε αυτόν
+    οριζόντια με ΕΝΑ tile μετά τη στροφή. Για καθέναν η πλευρά k (1 βα, 3 να,
+    5 νδ, 7 βδ) όπου βρίσκεται η διαγώνιος, η αντίθετη της φοράς της."""
+    out = set()
+    for i in range(colony.n_corr - 1):
+        if colony.c(i, C_STATE) == DS_EMPTY or colony.c(i, C_B) != d:
+            continue
+        j = i + 1
+        if colony.c(j, C_A) == 255 and colony.c(j, C_STATE) != DS_EMPTY \
+                and colony.c(j, C_LEN) == 1 and colony.c(j, C_DIR) in (2, 6):
+            out.add((colony.c(i, C_DIR) + 4) & 7)
+    return out
+
+
 _JOINT = {}
 
 
@@ -392,6 +409,92 @@ def joint(a, sz, dr):
                 out[p] = grey & PIX[p[0] & 1]
     _JOINT[key] = {(x - 2 * fx, y - fy): v for (x, y), v in out.items()}
     return _JOINT[key]
+
+
+_BEND = {}
+
+
+def _outline_px(a, c, d, run_corr, cam, clip):
+    """Τα pixels του περιγράμματος του κελύφους d που ακουμπούν γκρι ορατού
+    διαδρόμου, {(x, γραμμή) στο πλαίσιο: bits} — ο κανόνας του αρμού."""
+    def opaque(fn):
+        bufs = []
+        for bg in (0x00, 0xFF):
+            cv = Canvas()
+            cv.buf[:] = bytes([bg]) * len(cv.buf)
+            fn(cv)
+            bufs.append(cv.buf)
+        A, B = bufs
+        return {(o % SCR_W * 2 + p, o // SCR_W): A[o] & PIX[p]
+                for o in range(len(A)) for p in (0, 1)
+                if A[o] & PIX[p] == B[o] & PIX[p]}
+    fx, fy, qw, qh, _ = dome_frame(a, cam, c, d)
+    shell = opaque(lambda cv: draw_shell(cv, a, cam, c, d, clip))
+    shells = opaque(lambda cv: [draw_shell(cv, a, cam, c, e, clip)
+                                for e in range(c.n_dome)])
+    run = opaque(lambda cv: [draw_corridor(cv, a, cam, c, i, clip)
+                             for i in run_corr])
+    vis = {p: v for p, v in run.items() if p not in shells}
+    grey = a.rows("corr_h")[3][3]
+    out = {}
+    for p in shell:
+        if not any((p[0] + dx, p[1] + dy) not in shell for dx, dy in N4):
+            continue
+        for dx, dy in N4:
+            q = (p[0] + dx, p[1] + dy)
+            if q in vis and vis[q] == grey & PIX[q[0] & 1]:
+                out[(p[0] - 2 * fx, p[1] - fy)] = grey & PIX[p[0] & 1]
+    return out
+
+
+def bend(a, sz, k):
+    """Ο ΑΡΜΟΣ ΜΙΑΣ ΚΟΝΤΗΣ ΣΤΡΟΦΗΣ (βήμα 97): {(pixel x, γραμμή) στο πλαίσιο:
+    bits}, πάνω από το κέλυφος, μαζί με τους άλλους αρμούς.
+
+    Ο διάδρομος φτάνει στον θόλο ΟΡΙΖΟΝΤΙΑ με ένα μόνο tile μετά τη στροφή
+    (dome_bends), και η διαγώνιος του, από την πλευρά k, ακουμπά τον δακτύλιο
+    δίπλα στον αρμό του οριζόντιου (joint). Ο κανόνας είναι ο ίδιος: τα pixels
+    του εξωτερικού περιγράμματος που ακουμπούν γκρι του διαδρόμου γίνονται
+    γκρι. Εδώ είναι όσα από αυτά ΔΕΝ είναι ήδη του joint().
+
+    Από τη ΣΧΕΔΙΑΣΗ, όπως το joint(): ένας θόλος μεγέθους sz στο (40, 30) και
+    ένας μικρός από όπου το route.plan βγάζει τέτοια διαδρομή, με τον ίδιο τον
+    διάδρομο και τα δύο κελύφη. Στις άλλες γεωμετρίες (κάθετος, μακρύτερος)
+    δεν μένει κανένα pixel έξω από το joint() — μετρημένο σε όλες τις
+    θέσεις ως 12 tiles (βήμα 97).
+    """
+    key = (sz, k)
+    if key in _BEND:
+        return _BEND[key]
+    import route
+    tx, ty = 40, 30
+    for dy in range(-30, 31):
+        for dx in range(-60, 61):
+            p = route.plan(tx + dx, ty + dy, 0, tx, ty, sz)
+            if p is None or p[0] != 0 or len(p[1]) != 2:
+                continue
+            (d0, _), (d1, n1) = p[1]
+            if n1 == 1 and d1 in (2, 6) and (d0 + 4) & 7 == k:
+                break
+        else:
+            continue
+        break
+    else:
+        raise ValueError(f"καμία κοντή στροφή για το ({sz}, {k})")
+    c = Colony()
+    c.n_dome, c.n_corr = 2, 2
+    for i, (cx, cy, s) in enumerate(((tx + dx, ty + dy, 0), (tx, ty, sz))):
+        b = i * DOME_REC
+        c.dome[b + D_CX], c.dome[b + D_CY] = cx & 255, cy & 255
+        c.dome[b + D_SIZE], c.dome[b + D_STATE] = s, DS_ACTIVE
+    (d0, n0), (d1, n1) = p[1]
+    c.corr[0:2 * CORR_REC] = bytes([0, 1, d0, n0, DS_ACTIVE,
+                                    255, 255, d1, n1, DS_ACTIVE])
+    cam = Camera((2 * tx - 40) // 4, (8 * ty - 100) // 16)
+    need = _outline_px(a, c, 1, (0,), cam, Clip(0, 0, SCR_W, SCR_H))
+    have = joint(a, sz, (d1 + 4) & 7)
+    _BEND[key] = {p_: v for p_, v in need.items() if have.get(p_) != v}
+    return _BEND[key]
 
 
 def corr_bend(lastx, lasty, sx, sy, d1):

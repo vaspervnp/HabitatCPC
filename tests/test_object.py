@@ -16,6 +16,21 @@ Z80 ζωγραφίζει τα σχέδια που φτιάχνει το tools/pa
 διαφέρει από την αναφορά σε κάποια κάμερα. Τις στροφές τις συγκρίνει το
 test_route, και τον αρμό του b μετά από στροφή το test_link.
 
+ΟΙ ΚΟΝΤΕΣ ΣΤΡΟΦΕΣ (βήμα 97, ο παίκτης: «κλείσε και τα λευκά pixels μετά τις
+στροφές»). Ενας διάδρομος που φτάνει στον θόλο οριζόντια με ΕΝΑ tile μετά τη
+στροφή αφήνει τη διαγώνιο να ακουμπά το περίγραμμα δίπλα στον αρμό: ένα pixel
+ακόμα, που ο Z80 βάζει από τις σημαίες του src/bend.asm και η αναφορά το
+βρίσκει ζωγραφίζοντας (scene.bend). Δώδεκα σκηνές, μία για κάθε μέγεθος και
+πλευρά, και δύο ελέγχου — οριζόντιος με δύο tiles μετά τη στροφή, κάθετος με
+ένα, με κι έναν οριζόντιο στον ίδιο θόλο — όπου δεν μπαίνει τίποτα. Κάθε
+σκηνή διαφέρει χωρίς τη στροφή στην αναφορά, αλλιώς δεν δοκιμάζει τίποτα.
+Αρνητικά: ο διακόπτης του jtd_end κλειστός, η διαγώνιος από την άλλη πλευρά,
+χωρίς τον έλεγχο του μήκους, χωρίς τον έλεγχο του οριζόντιου, και το pixel μία
+γραμμή πάνω. Η σκηνή ελέγχου με τον κάθετο βρήκε και ένα λάθος: το CY που
+άφηνε το ob_addu, όταν ο πίνακας περνούσε σελίδα, έμπαινε στο πρώτο rra του
+jtb_dome σαν στροφή στην πλευρά 8. Ο βρόχος έχει πια srl, και το CY της
+εισόδου δεν μετρά.
+
 ΟΙ ΚΑΜΕΡΕΣ ΔΙΑΛΕΧΤΗΚΑΝ ΓΙΑ ΝΑ ΣΠΑΣΟΥΝ ΠΡΑΓΜΑΤΑ. Η σημαντικότερη είναι εκείνη
 όπου το σημείο τυλίγματος του δαχτυλιδιού των 2 KB πέφτει ΜΕΣΑ σε θόλο: εκεί
 μια γραμμή sprite σπάει στα δύο, και μια υλοποίηση που το αγνοεί γράφει 2 KB
@@ -153,6 +168,162 @@ def negatives(sym, refs):
     return fails
 
 
+# --- οι κοντές στροφές (βήμα 97) -------------------------------------------
+
+BEND_T = (8, 6)                          # ο θόλος με τη στροφή, σε μισά tiles
+
+
+def bend_route(sz, want):
+    """Ενας μικρός θόλος από όπου το route.plan φτάνει στον BEND_T (μέγεθος
+    sz) με στροφή που ικανοποιεί το want(d0, d1, l1): (f, τρεξίματα)."""
+    import route
+    tx, ty = BEND_T
+    for dy in range(-30, 31):
+        for dx in range(-60, 61):
+            p = route.plan(tx + dx, ty + dy, 0, tx, ty, sz)
+            if p and p[0] == 0 and len(p[1]) == 2 and want(p[1][0][0], *p[1][1]):
+                return (tx + dx, ty + dy), p[1]
+    raise AssertionError(f"καμία διαδρομή για το μέγεθος {sz}")
+
+
+def bend_scenes():
+    """(όνομα, colony, κάμερα): οι δώδεκα κοντές στροφές και οι δύο έλεγχοι."""
+    out = []
+    cases = [(f"στροφή {'sml'[sz]} k={k}", sz,
+              lambda d0, d1, l1, k=k: l1 == 1 and d1 in (2, 6) and (d0 + 4) & 7 == k)
+             for sz in range(3) for k in (1, 3, 5, 7)]
+    cases += [("έλεγχος: οριζόντιος, δύο tiles", 1,
+               lambda d0, d1, l1: l1 == 2 and d1 in (2, 6)),
+              ("έλεγχος: κάθετος, ένα tile, και οριζόντιος", 1,
+               lambda d0, d1, l1: l1 == 1 and d1 in (0, 4))]
+    for name, sz, want in cases:
+        f, runs = bend_route(sz, want)
+        c = S.Colony()
+        c.n_dome, c.n_corr = 2, 2
+        for i, (cx, cy, s_) in enumerate(((f[0], f[1], 0), (*BEND_T, sz))):
+            b = i * S.DOME_REC
+            c.dome[b + S.D_CX], c.dome[b + S.D_CY] = cx & 255, cy & 255
+            c.dome[b + S.D_SIZE], c.dome[b + S.D_STATE] = s_, S.DS_ACTIVE
+            c.dome[b + 5] = 255
+            for k in range(8):
+                c.dome[b + S.D_MACH + k] = S.NO_MACH
+        (d0, n0), (d1, n1) = runs
+        c.corr[0:2 * S.CORR_REC] = bytes([0, 1, d0, n0, S.DS_ACTIVE,
+                                          255, 255, d1, n1, S.DS_ACTIVE])
+        if d1 in (0, 4):
+            # Κι ένας οριζόντιος αξονικός στον ίδιο θόλο, από την άλλη μεριά
+            # της διαγωνίου: ο θόλος έχει αρμό ανατολικά ή δυτικά, και μόνο ο
+            # έλεγχος του οριζόντιου στο jtm_bend κρατά έξω τον κάθετο.
+            import route
+            ux = 1 if d0 in (1, 3) else -1
+            for dx in range(8, 40):
+                g = (BEND_T[0] + ux * dx, BEND_T[1])
+                p = route.plan(*BEND_T, sz, *g, 0)
+                if p and p[0] == 0 and len(p[1]) == 1:
+                    break
+            b = 2 * S.DOME_REC
+            c.dome[b + S.D_CX], c.dome[b + S.D_CY] = g[0] & 255, g[1] & 255
+            c.dome[b + S.D_SIZE], c.dome[b + S.D_STATE] = 0, S.DS_ACTIVE
+            c.dome[b + 5] = 255
+            for k in range(8):
+                c.dome[b + S.D_MACH + k] = S.NO_MACH
+            c.corr[2 * S.CORR_REC:3 * S.CORR_REC] = bytes([1, 2, *p[1][0], S.DS_ACTIVE])
+            c.n_dome, c.n_corr = 3, 3
+        cam = S.Camera((BEND_T[0] >> 1) - S.VIEW_TW // 2, (BEND_T[1] >> 1) - S.VIEW_TH // 2)
+        out.append((name, c, cam))
+    return out
+
+
+def layout_addr(name):
+    for line in open(os.path.join(ROOT, "build", "layout.asm"), encoding="utf-8"):
+        p = line.split()
+        if len(p) >= 3 and p[0] == name and p[1] == "equ":
+            return int(p[2].lstrip("#"), 16)
+    raise KeyError(name)
+
+
+def shoot_colony(sym, c, cam, patch=()):
+    """Η πλήρης σχεδίαση με ΑΥΤΟΥΣ τους θόλους και διαδρόμους (και καμία δομή)
+    στην τράπεζα 6: η οθόνη, γραμμική."""
+    import ctypes
+    from cpc import CPC, _lib
+    m = CPC()
+    m.run_frames(60)
+    assert m.quickload(SNA, start=False), "quickload απέτυχε"
+    b6 = _lib.cpcemu_ram_ptr(m._h, 6)
+    for name, data in (("G_dome_tbl", c.dome), ("G_struct_tbl", c.struct),
+                       ("G_corr_tbl", c.corr)):
+        ctypes.memmove(ctypes.addressof(b6.contents) + layout_addr(name) - 0x4000,
+                       bytes(data), len(data))
+    for at, v in patch:
+        m.poke(at, v)
+    m.poke(sym["CAM_TX"], cam.tx & 0xFF)
+    m.poke(sym["CAM_TY"], cam.ty & 0xFF)
+    m.set_pc(sym["START"])
+    n = 0
+    while m.peek(sym["DONE_FLAG"]) != 0x5A and n < 400:
+        m.run_frames(1)
+        n += 1
+    m.run_frames(2)
+    ram = m.read_ram(0xC000, 0x4000)
+    return bytes(ram[(y & 7) * 0x800 + (((y >> 3) * SCR_W + x + 2 * cam.off) & 0x7FF)]
+                 for y in range(PLAY) for x in range(SCR_W)), m
+
+
+def bends(sym, a, ag, plane, variants):
+    fails = 0
+    scenes = bend_scenes()
+    refs = []
+    for name, c, cam in scenes:
+        ref = bytes(reference(a, c, ag, plane, cam, variants).buf[:PLAY * SCR_W])
+        keep = S.dome_bends
+        S.dome_bends = lambda c_, d: set()
+        plain = bytes(reference(a, c, ag, plane, cam, variants).buf[:PLAY * SCR_W])
+        S.dome_bends = keep
+        refs.append(ref)
+        got, m = shoot_colony(sym, c, cam)
+        bad = sum(1 for x, y in zip(got, ref) if x != y)
+        seen = sum(1 for x, y in zip(plain, ref) if x != y)
+        control = name.startswith("έλεγχος")
+        ok = bad == 0 and (seen == 0 if control else seen > 0)
+        print(("OK " if ok else "ΑΠΟΤΥΧΙΑ ") + f"{name}: {bad} λάθος bytes, "
+              f"{seen} bytes κάνει η στροφή στην αναφορά"
+              + (" (έλεγχος: κανένα)" if control else ""))
+        if not ok:
+            fails += 1
+            m.screenshot(os.path.join(HERE, "golden", f"bend_got_{len(refs)}.png"),
+                         aspect=True)
+    # --- αρνητικά: ο Z80 πειραγμένος, κάποια σκηνή πρέπει να διαφέρει ----
+    from cpc import CPC
+    m = CPC()
+    m.run_frames(60)
+    m.quickload(SNA, start=False)
+
+    def find(at, pat, span=40):
+        k = bytes(m.read_ram(at, span)).find(bytes(pat))
+        assert k >= 0, f"δεν βρέθηκε το {pat} μετά το #{at:04X}"
+        return at + k
+    jm, jp, jb = sym["JTB_MARK"], sym["JTB_PX"], sym["JTM_BEND"]
+    # Ο διακόπτης του jtd_end (jtd_sw) τον ανοίγει το jtm_bend στη μέτρηση: ένα
+    # ret στη θέση του θα το έσβηνε, γι' αυτό πειράζεται το ld a,#21.
+    neg = [("τον διακόπτη κλειστό (ld a,#C9 στο jtm_bend)", [(find(jb, [0x3E, 0x21]) + 1, 0xC9)]),
+           ("η διαγώνιος από την άλλη πλευρά (add a,0 στο jtb_mark)",
+            [(find(jm, [0xC6, 4]) + 1, 0)]),
+           ("χωρίς τον έλεγχο του μήκους (jtm_bend)", [(find(jb, [0x25, 0xC0]) + 1, 0)]),
+           ("χωρίς τον έλεγχο του οριζόντιου (jtm_bend)",
+            [(find(jb, [0xCB, 0x4D, 0xC8]) + 2, 0)]),
+           ("το pixel από κάτω μία γραμμή πάνω (add a,8)", [(find(jp, [0xC6, 9]) + 1, 8)])]
+    for label, patch in neg:
+        n = sum(1 for (_, c, cam), ref in zip(scenes, refs)
+                if shoot_colony(sym, c, cam, patch)[0] != ref)
+        if n:
+            print(f"OK ΑΡΝΗΤΙΚΟ: με {label} διαφέρουν {n} σκηνές")
+        else:
+            print(f"ΑΠΟΤΥΧΙΑ ΑΡΝΗΤΙΚΟΥ: με {label} καμία σκηνή δεν διαφέρει")
+            fails += 1
+    return fails
+
+
 def main():
     sym = build()
     a = S.Assets()
@@ -220,6 +391,7 @@ def main():
     print(f"\nπλήρης σχεδίαση κάδρου: {frames} frames = {us/1000:.0f} ms")
     if len(refs) == len(CAMERAS):
         fails += negatives(sym, refs)
+    fails += bends(sym, a, ag, plane, variants)
     return 1 if fails else 0
 
 

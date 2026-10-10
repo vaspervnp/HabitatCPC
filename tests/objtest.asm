@@ -253,6 +253,7 @@ done_flag:  db 0
         include "../src/tiles.asm"
         include "../src/object.asm"
         include "../src/joint.asm"          ; βήμα 96: στο παιχνίδι στο b6code
+        include "../src/bend.asm"           ; βήμα 97: στο παιχνίδι στο b5code
         include "../src/objindex.asm"
         include "../src/dirty.asm"
         include "../src/figure.asm"         ; βήμα 89: οι άποικοι έξω
@@ -262,6 +263,13 @@ done_flag:  db 0
         include "../src/suit.asm"           ; το su_hud του hud.asm (βήμα 90)
 nd_load:                                ; το su_tick γυρίζει εκεί (src/needs.asm),
 nd_die: ret                             ; και εδώ δεν το καλεί κανείς
+        ; Το jtb_cc (src/bend.asm) διαβάζει τη διαδρομή του cr_plan, που εδώ
+        ; δεν υπάρχει (src/route.asm): ποτέ δεν καλείται.
+bit_tab: db 1,2,4,8,16,32,64,128        ; src/entity.asm, που εδώ δεν υπάρχει
+cr_to:  db 0
+cr_n:   db 0
+cr_d0:  db 0
+cr_d1:  db 0
         include "../src/view.asm"
         include "../src/hw.asm"
         ; Η λίστα αλλαγών ξέρει από το βήμα 34 το φάντασμα (dt_ghost: δεν

@@ -23,7 +23,10 @@
             αντίθετη του ΤΕΛΕΥΤΑΙΟΥ τρεξίματος (ως το 95 πόρτα): ως το βήμα 36
             την έπαιρνε στην αντίθετη της διαγωνίου, όπου δεν φτάνει τίποτα —
             το ίδιο λάθος στον Z80 και στην αναφορά σε Python, γι' αυτό η
-            σύγκρισή τους περνούσε.
+            σύγκρισή τους περνούσε. Από το βήμα 97 και η ΚΟΝΤΗ ΣΤΡΟΦΗ, ΕΝΑ
+            tile οριζόντια ως τον προορισμό: η σημαία της (src/bend.asm) και
+            το pixel της γκρι στην οθόνη — όχι μόνο ίδιο με την πλήρη σχεδίαση,
+            που χωρίς σημαία δεν το έχει ούτε εκείνη.
   ΣΕΙΡΑ-ΣΕΙΡΑ  Από το βήμα 37 η διαγώνιος βγαίνει μία σειρά tiles ανά γύρο
             (DK_CROW), όσες σειρές της φαίνονται, και ο κέρσορας την περιμένει.
             Σε κάθε καρέ ό,τι ήδη φαινόταν πρέπει να μένει· ένας κέρσορας πάνω
@@ -198,7 +201,10 @@ class Pair:
             for i in range(wide):
                 b4[W.index(FIELD[0] + i, FIELD[1] + j)] = 0
         for k, v in (patch or {}).items():
-            G.m.poke(k, v)
+            if isinstance(k, tuple):         # (τράπεζα, διεύθυνση): το b5code
+                G.bank(k[0])[k[1] - 0x4000] = v
+            else:
+                G.m.poke(k, v)
         B.no_link(G.m, sym)                  # ο διάδρομος ζητιέται με το χέρι
         G.camera(FIELD[0] + wide // 2 - 10, FIELD[1] + high // 2 - 5)
         B.build(G.m, sym, sa, g + 6, at=self.ca, room=R.R_FACTORY)
@@ -328,6 +334,15 @@ def third(sym, g):
           f"{P.bad} κακά, όσα tiles του περνά η διαδρομή ({len(on)})")
 
 
+_ASSETS = []
+
+
+def assets():
+    if not _ASSETS:
+        _ASSETS.append(S.Assets())
+    return _ASSETS[0]
+
+
 # --- ΧΤΙΣΙΜΟ ----------------------------------------------------------------
 def build(sym, g, sa, sb, dx, dy, what, patch=None):
     """Χτίζει τον διάδρομο ως το τέλος της εμφάνισης. Με `patch`, μόνο τα
@@ -370,9 +385,26 @@ def build(sym, g, sa, sb, dx, dy, what, patch=None):
     most = max((a - b for a, b in zip(G.pend, G.pend[1:])), default=0)
     pic, ref = G.truth()                     # το byte 0 είναι το κανάρινι
     bad = sum(1 for i, (a, b) in enumerate(zip(pic, ref)) if a != b and i)
+    # Η ΚΟΝΤΗ ΣΤΡΟΦΗ (βήμα 97): ΕΝΑ tile οριζόντια ως τον b μετά τη διαγώνιο.
+    # Το pixel της (scene.bend) είναι γκρι στην οθόνη του παιχνιδιού, όχι το
+    # λευκό του περιγράμματος: το φέρνει μία από τις δύο τελευταίες σειρές της
+    # διαγωνίου, που ξαναζωγραφίζουν και τον θόλο (tests/test_corridor.py). Η πλήρης σχεδίαση δεν
+    # αρκεί για μέτρο: χωρίς τη σημαία δεν το έχει ούτε εκείνη.
+    short = len(runs) > 1 and runs[1][1] == 1 and runs[1][0] in (2, 6)
+    grey = None
+    if short:
+        (bx, by), bs = (P.cb, sb) if side == 0 else (P.ca, sa)
+        a = assets()
+        qw, qh = a.dims(f"dome_{S.SIZES[bs]}_nw")
+        fx, fy = 2 * bx - 4 * cam[0] - qw, 8 * by - 16 * cam[1] - qh
+        px = S.bend(a, bs, (runs[0][0] + 4) & 7)
+        assert all(0 <= fx + x // 2 < 80 and 0 <= fy + y < 160 for x, y in px), \
+            "το pixel της στροφής έξω από το κάδρο"
+        grey = all(pic[(fy + y) * 80 + fx + x // 2] & S.PIX[x & 1] == v
+                   for (x, y), v in px.items())
     if patch:
         G.go(on)
-        return bad, bands, most
+        return bad, bands, most, grey
     paid = metal - (m.peek(g + 6) | (m.peek(g + 7) << 8))
     rec = [bytes(b6[tbl + (slot + k) * CORR_REC:
                     tbl + (slot + k + 1) * CORR_REC]) for k in range(2)]
@@ -412,6 +444,13 @@ def build(sym, g, sa, sb, dx, dy, what, patch=None):
           f"{what}: αρμοί {da:08b} / {db:08b} — ο a στο {joint_a}, ο b στο "
           f"{joint_b}, την αντίθετη του τελευταίου τρεξίματος"
           + (f" (όχι στο {wrong})" if wrong != joint_b else ""))
+    # Και οι κοντές στροφές (βήμα 97): ο b παίρνει το bit της πλευράς της
+    # διαγωνίου όταν η συνέχεια είναι ΕΝΑ tile οριζόντια (src/bend.asm).
+    fb = G.bank(5)[sym["JTB_FLAGS"] - 0x4000 + node_b]
+    want_b = 1 << ((runs[0][0] + 4) & 7) if short else 0
+    check(fb == want_b, f"{what}: κοντή στροφή στον b {fb:08b} (θέλει {want_b:08b})")
+    if short:
+        check(grey, f"{what}: και το pixel της είναι γκρι στην οθόνη")
     G.go(on)
     return laid
 
@@ -618,6 +657,15 @@ def main():
     build(sym, g, 0, 2, 12, 6, "S -> L με στροφή σε οριζόντιο")
     build(sym, g, 2, 1, 6, 12, "L -> M με στροφή σε κάθετο")
     build(sym, g, 2, 0, 8, 0, "L δίπλα σε S, στροφή στην πόρτα")
+    # Βήμα 97: ΕΝΑ tile οριζόντια μετά τη στροφή, η διαγώνιος από κάτω και
+    # από πάνω — το pixel της κοντής στροφής το φέρνει μία από τις δύο
+    # τελευταίες σειρές της διαγωνίου, με τη σημαία του jtb_mark ήδη γραμμένη.
+    build(sym, g, 0, 1, 5, -4, "S -> M, ένα tile ανατολικά μετά τη στροφή")
+    build(sym, g, 0, 2, -9, -5, "S -> L, ένα tile δυτικά μετά τη στροφή")
+    _, _, _, grey = build(sym, g, 0, 1, 5, -4, "χωρίς σημαία",
+                          patch={(5, sym["JTB_MARK"]): 0xC9})
+    check(grey is False, f"ΑΡΝΗΤΙΚΟ: με το jtb_mark κομμένο, το pixel της κοντής "
+                         f"στροφής μένει λευκό")
     for c in [(0, 0, 10, 10), (0, 0, -10, 10), (1, 1, 12, -12), (0, 2, 12, 6),
               (0, 0, 12, -6), (0, 0, -12, -6)]:
         bad, runs = trail(sym, g, *c)
@@ -663,7 +711,7 @@ def main():
     at = sym["CRRW_BS"] - 1
     m0 = R.Game(sym, g).m
     assert m0.peek(at) == 0x05, f"στο #{at:04X} δεν είναι DEC B"
-    bad, _, _ = build(sym, g, 0, 0, -10, 10, "", patch={at: 0x00})
+    bad, _, _, _ = build(sym, g, 0, 0, -10, 10, "", patch={at: 0x00})
     check(bad > 0, f"ΑΡΝΗΤΙΚΟ: με τη λωρίδα του «/» ένα tile δεξιά, η οθόνη "
                    f"δεν είναι η πλήρης σχεδίαση — {bad} λάθος bytes")
     # ΑΡΝΗΤΙΚΟ για τη μέτρηση των γύρων (βήμα 62, βλ. test_reveal.Game.hook):
@@ -671,7 +719,7 @@ def main():
     # η μέτρηση πρέπει να το δει.
     dc = sym["DIRTY_COST"] + 2 * 7                      # DK_CROW
     assert m0.peek(dc) | (m0.peek(dc + 1) << 8) == 12000, "το dirty_cost άλλαξε"
-    _, bands, most = build(sym, g, 0, 2, 12, 6, "",
+    _, bands, most, _ = build(sym, g, 0, 2, 12, 6, "",
                            patch={dc: 6000 & 255, dc + 1: 6000 >> 8})
     check(most >= 2, f"ΑΡΝΗΤΙΚΟ: με τη σειρά διαγωνίου στα 6.000 βγαίνουν δύο σε "
                      f"έναν γύρο — {bands} γύροι, το πολύ {most} σειρές σε έναν")

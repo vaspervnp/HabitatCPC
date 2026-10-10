@@ -20,6 +20,11 @@
              ορατή σειρά της διαγωνίου, το περίγραμμα του αξονικού κομματιού —
              από το βήμα 96 με τη στήλη αριστερά ή τη σειρά πάνω όταν ο άξονας
              του b πέφτει σε όριο tile (stubs στο dirty_push και στο view_add)
+  κοντές στροφές  (βήμα 97) ο διάδρομος φτάνει στον b ΟΡΙΖΟΝΤΙΑ με ΕΝΑ tile
+             μετά τη διαγώνιο: το pixel της στροφής (src/bend.asm) πέφτει σε
+             ό,τι ξαναζωγραφίζει το cr_redraw — σε μία από τις δύο τελευταίες
+             σειρές της διαγωνίου — σε κάθε τέταρτη από τις 2.024 ως 12 tiles, κάθε μέγεθος
+             και κάθε μισό tile. Γι' αυτό ο αρμός του b (DK_CONN) δεν το φέρνει.
 
 Δύο θόλοι στις θέσεις 50 και 51 του πίνακα, σε 1.500 τυχαίες θέσεις: αξονικοί,
 καθαρές διαγώνιες, «σχεδόν» διαγώνιες, μονές αποστάσεις, άδειες θέσεις, θόλοι
@@ -43,8 +48,10 @@ cr_plan όχι πιο αργά από το βήμα 81. Με το route.asm το
 δρομολογητής του βήματος 80, που αναδιπλωνόταν), το -64 κοντά, ο πίνακας κατευθύνσεων
 ένα byte πίσω, το αποτύπωμα των άκρων στον έλεγχο ένα tile μικρότερο, ο
 έλεγχος που δεν βλέπει το y έξω από τον κόσμο, η σφραγίδα χωρίς το όριο του
-κόσμου, ζευγάρι εγγραφών και στην τελευταία θέση, και σειρά διαγωνίου ορατή
-μόνο από τη στήλη -1.
+κόσμου, ζευγάρι εγγραφών και στην τελευταία θέση, σειρά διαγωνίου ορατή
+μόνο από τη στήλη -1, χωρίς τη μισή στήλη ή σειρά (βήμα 96), και η λωρίδα της
+σειράς ένα tile δεξιά (χωρίς το dec b του crr_rows), που αφήνει έξω pixels
+κοντών στροφών (βήμα 97· 411 από τα 2.024 στο μοντέλο).
 
 ΤΟ x ΕΞΩ ΑΠΟ ΤΟΝ ΚΟΣΜΟ ΔΕΝ ΦΤΑΝΕΤΑΙ: σε 2.709.202 διαδρομές της αναφοράς, με
 τον ένα θόλο σε κάθε άκρη, κανένα tile δεν βγήκε έξω στο x. Ενα λάθος στον
@@ -580,6 +587,71 @@ def redraw_rules(sym, patch=(), n=500):
     return None
 
 
+def short_bends():
+    """Οι κοντές στροφές (βήμα 97): ο b παίρνει τον διάδρομο ΟΡΙΖΟΝΤΙΑ με ΕΝΑ
+    tile μετά τη διαγώνιο. Κάθε μέγεθος στα δύο άκρα, κάθε μισό tile του ενός,
+    διαδρομές ως 12 tiles: ό,τι μέτρησε το βήμα 97. -> [(a, b, side, runs)]."""
+    out = []
+    for ts in range(3):
+        for px, py in ((0, 0), (1, 0), (0, 1), (1, 1)):
+            t = (40 + px, 30 + py, ts)
+            for fs in range(3):
+                for dy in range(-34, 35):
+                    for dx in range(-60, 61):
+                        f = (t[0] + dx, t[1] + dy, fs)
+                        p = route.plan(*f, *t)
+                        if (p and sum(n for _, n in p[1]) <= 12 and len(p[1]) > 1
+                                and p[1][1][1] == 1 and p[1][1][0] in (2, 6)):
+                            out.append((f, t) + tuple(p))
+    return out
+
+
+def bend_cover(sym, patch=(), n=None):
+    """Το pixel κάθε κοντής στροφής (src/bend.asm) πέφτει σε tile που
+    ξαναζωγραφίζει το cr_redraw (μια DK_CROW ή το περίγραμμα), με την κάμερα
+    πάνω στον b. Μία στις τέσσερις από τις 2.024 (όλες: 0,5 s στο μοντέλο, 30 στον
+    Z80). Η πρώτη που μένει έξω, ή None."""
+    G = Game(sym, list(patch) + redraw_stubs(sym))
+    m = G.m
+    a = S.Assets()
+    cases = short_bends()
+    assert len(cases) == 2024, f"{len(cases)} κοντές στροφές (ήταν 2.024 στο βήμα 97)"
+    cases = cases[::4][:n]
+    for f, t, side, runs in cases:
+        bx, by, bs = t if side == 0 else f
+        cam = ((2 * bx - 40) // 4, (8 * by - 80) // 16)
+        G.restore()
+        G.plan(f, t)
+        m.poke(sym["CAM_TX"], cam[0] & 255)
+        m.poke(sym["CAM_TY"], cam[1] & 255)
+        m.poke(sym["RV_PEND"], 0)
+        m.write_ram(RPTR, bytes([RLOG & 255, RLOG >> 8]))
+        G.run("CR_REDRAW")
+        log = list(m.read_ram(RLOG, G.w16(RPTR) - RLOG))
+        cov, i = set(), 0
+        while i < len(log):
+            if log[i] == 0xFF:                           # view_add
+                x0, y0, w, h = sb(log[i + 1]), sb(log[i + 2]), log[i + 3], log[i + 4]
+                cov |= {(x0 + u, y0 + v) for u in range(w) for v in range(h)}
+                i += 5
+            else:
+                if log[i] == DK_CROW:
+                    cov |= {(sb(log[i + 1]) + u, sb(log[i + 2])) for u in range(3)}
+                i += 3
+        qw, qh = a.dims(f"dome_{S.SIZES[bs]}_nw")
+        fx, fy = 2 * bx - 4 * cam[0] - qw, 8 * by - 16 * cam[1] - qh
+        k = (runs[0][0] + 4) & 7                         # η πλευρά της διαγωνίου
+        x = fx if k & 4 else fx + 2 * qw - 1
+        y = fy + qh + 4 if k in (3, 5) else fy + qh - 5
+        assert 0 <= x < 4 * VIEW_TW and 0 <= y < 16 * VIEW_TH, "το pixel έξω από το κάδρο"
+        tile = (cam[0] + x // 4, cam[1] + y // 16)
+        if tile not in cov:
+            return (f"θόλοι {f} -> {t}, {runs}: το pixel της στροφής στο tile {tile}, "
+                    f"έξω από ό,τι ξαναζωγραφίζεται ({sorted(cov)})")
+    print(f"    {len(cases)} κοντές στροφές, το pixel πάντα μέσα")
+    return None
+
+
 def timing(sym):
     """µs ανά γεωμετρία: plan, walk (κενό callback), check, afford, και commit
     με τον πίνακα γεμάτο εκτός από τις δύο τελευταίες θέσεις."""
@@ -634,6 +706,13 @@ def main():
     else:
         print("OK cr_redraw = οι δύο αρμοί, οι ορατές σειρές της διαγωνίου, το περίγραμμα "
               "του άξονα, και Z μόνο χωρίς σειρές")
+    why = bend_cover(sym)
+    if why:
+        print(f"ΑΠΟΤΥΧΙΑ: {why}")
+        fails += 1
+    else:
+        print("OK το pixel κάθε κοντής στροφής πέφτει σε ό,τι ξαναζωγραφίζει το cr_redraw: "
+              "ο αρμός του b δεν το χρειάζεται (βήμα 97)")
     got = timing(sym)
     slow = []
     for name, (_, ceil) in GEOM.items():
@@ -696,7 +775,11 @@ def main():
                              ("σειρά ορατή μόνο από τη στήλη -1", redraw_rules,
                               [(rr + iv + 1, 1)]),
                              ("χωρίς τη μισή στήλη ή σειρά", redraw_rules,
-                              [(hh + ih + 2, 0xC3)])):
+                              [(hh + ih + 2, 0xC3)]),
+                             # βήμα 97: η λωρίδα ένα tile δεξιά (το test_link
+                             # σβήνει το ίδιο dec b)
+                             ("τη σειρά ένα tile δεξιά, για τις κοντές στροφές", bend_cover,
+                              [(sym["CRRW_BS"] - 1, 0)])):
         why = fn(sym, patch, n=150)
         if why:
             print(f"OK ΑΡΝΗΤΙΚΟ: με {label} αποτυγχάνει ({why[:90]})")

@@ -27,7 +27,11 @@
                   με διάδρομο, ο b με την κατεύθυνση της συνέχειας (scene.py).
                   Ως το βήμα 95 οι πόρτες, με το bit των φιγούρων· από το 96 το
                   γράφει η ίδια η μέτρηση των διαδρόμων (jt_mark), και ο
-                  αρμός ζωγραφίζεται μετά το κέλυφος
+                  αρμός ζωγραφίζεται μετά το κέλυφος. Και από το 97 οι
+                  κοντές στροφές, στο jtb_flags της τράπεζας 5: ένα bit στην
+                  πλευρά της διαγωνίου (scene.dome_bends) — και ο διακόπτης
+                  jtd_sw του src/object.asm, #21 (ld hl) αν υπάρχει έστω μία,
+                  #C9 (ret) αν όχι
   και ακόμα       ob_idx = 0, ob_meas = 0, η κάμερα όπως ήταν, η τράπεζα 6 στο
                   παράθυρο
 
@@ -54,7 +58,8 @@
 Αρνητικά, με τον κώδικα πειραγμένο στη μνήμη: η δομή με το id της θέσης της
 στο st_ord, το κάτω άκρο στρογγυλεμένο προς τα κάτω, το ob_meas που μένει 1,
 και οι άδειες εγγραφές μέσα στο ευρετήριο, οι κατηγορίες από το A των
-σαρώσεων, και το oi_build του βήματος 81, που δεν ξεχνά τον θόλο του ob_corr.
+σαρώσεων, το oi_build του βήματος 81, που δεν ξεχνά τον θόλο του ob_corr, και
+ο διακόπτης των κοντών στροφών που δεν κλείνει ή δεν ανοίγει (βήμα 97).
 """
 import ctypes, os, random, sys
 
@@ -212,6 +217,16 @@ def model(a, col):
     return domes, corrs, structs, order
 
 
+def bends(col):
+    """jtb_flags (τράπεζα 5, src/bend.asm): ένα bit ανά κοντή στροφή, στην
+    πλευρά της διαγωνίου (scene.dome_bends) — βήμα 97."""
+    out = bytearray(S.MAX_DOME)
+    for d in range(S.MAX_DOME):
+        for k in S.dome_bends(col, d):
+            out[d] |= 1 << k
+    return out
+
+
 def doors(col):
     """dome_conn: ένα bit ανά κατεύθυνση με διάδρομο (scene.dome_dirs) — οι
     αρμοί του βήματος 96, ως το 95 οι πόρτες."""
@@ -294,6 +309,11 @@ def scene(R, a, rnd, case):
         m.poke(sym[v], rnd.randrange(256))
     R.put(0, sym["ST_ORD"], bytes(rnd.randrange(256) for _ in range(S.MAX_STRUCT)))
     R.put(0, sym["DOME_CONN"], bytes(rnd.randrange(256) for _ in range(S.MAX_DOME)))
+    # Βήμα 97: σκουπίδια και στις σημαίες των στροφών — από δικό τους rnd, ώστε
+    # οι 300 καταστάσεις, και άρα τα ταβάνια, να μένουν ίδιες.
+    frnd = random.Random(9700 + case)
+    R.put(5, sym["JTB_FLAGS"] - 0x4000, bytes(frnd.randrange(256) for _ in range(S.MAX_DOME)))
+    m.poke(sym["JTD_SW"], frnd.choice((0xC9, 0x21)))     # ο διακόπτης, ανοιχτός ή κλειστός
     m.poke(sym["CAM_TX"], rnd.randrange(-64, 64) & 255)
     m.poke(sym["CAM_TY"], rnd.randrange(-64, 64) & 255)
     m.poke(sym["D_ID"], 255)
@@ -327,6 +347,9 @@ def expect(R, a, before, col, mask):
     if mask & CORR:                     # βήμα 96: με τους διαδρόμους
         for k, v in enumerate(doors(col)):
             poke("DOME_CONN", v, k)
+        jf = sym["JTB_FLAGS"] - 0x4000  # βήμα 97: και οι κοντές στροφές
+        b[5][jf:jf + S.MAX_DOME] = bends(col)
+        poke("JTD_SW", 0x21 if any(bends(col)) else 0xC9)   # ld hl,jtb_dome ή ret
     poke("OB_IDX", 0)
     free = {(0, off) for off in range(0x00A0, 0x0100)}                 # η στοίβα
     free |= {(0, off) for off in range(0x3E00, 0x3F00)}                # το probe
@@ -431,7 +454,9 @@ def main():
             [(find("OB_INDEX", [0xF5, 0xCD]), 0), (find("OB_INDEX", [0xF1, 0xC3]), 0)]),
            ("το oi_build του βήματος 81, που δεν ξεχνά τον θόλο του ob_corr",
             [(find("OI_BUILD", [0x2D, 0x24, 0x22], 30) + k, v)
-             for k, v in enumerate([0x21, meas & 255, meas >> 8, 0x34, 0x00])])]
+             for k, v in enumerate([0x21, meas & 255, meas >> 8, 0x34, 0x00])]),
+           ("τον διακόπτη που δεν κλείνει (jt_clear)", [(find("JT_CLEAR", [0x3E, 0xC9]) + 1, 0x21)]),
+           ("τον διακόπτη που δεν ανοίγει (jtm_bend)", [(find("JTM_BEND", [0x3E, 0x21]) + 1, 0xC9)])]
     for label, patch in neg:
         why = run(sym, a, patch, n=100)
         if why:

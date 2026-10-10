@@ -342,7 +342,16 @@ zz_b1code_end:
         org     #0000
         incbin  "../build/world_new.bin"
         org     B5_BASE                 ; οι μηχανές στην τράπεζα 5 (βήμα 85)
-        incbin  "../build/bank5.bin"
+        incbin  "../build/bank5.bin", 0, G_b5code - B5_BASE
+        ; ΚΑΙ ΚΩΔΙΚΑΣ ΠΑΝΩ ΤΟΥΣ (βήμα 97): οι κοντές στροφές, που τρέχουν με την
+        ; 5 στο παράθυρο (src/bend.asm). Η BANK5.BIN του δίσκου είναι ολόκληρο
+        ; αυτό το κομμάτι (tools/mkdsk.py).
+        org     G_b5code
+        include "bend.asm"
+zz_b5code_end:
+        assert  zz_b5code_end <= G_b5code + B5C_MAX
+        assert  G_b5code + B5C_MAX == #8000
+        save    "../build/bank5c.bin", B5_BASE, #8000 - B5_BASE
         ; Η ΤΡΑΠΕΖΑ 6 ΣΕ ΔΥΟ ΚΟΜΜΑΤΙΑ, με τον κώδικα του τροχού στη μέση (βήμα
         ; 92), όπως η 7 με τα κείμενα. Τα bytes γράφονται στη φυσική θέση του
         ; bankset 1 (#8000 + ...) και οι ετικέτες δείχνουν στο #4000 + ..., εκεί
