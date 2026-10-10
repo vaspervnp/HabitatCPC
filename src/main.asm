@@ -237,6 +237,7 @@ mla_pok:
         include "econ.asm"
         include "jobs.asm"
         include "haul.asm"              ; βήμα 95: η μεταφορά
+        include "carry.asm"             ; βήμα 98: τα αγαθά του εμπόρου
         include "stock.asm"              ; κοινό με το fit.asm (βήμα 46)
         include "needs.asm"
         include "lines.asm"             ; βήμα 91: η γραμμή του πλοίου (93: και το εμπόριο)

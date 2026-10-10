@@ -28,21 +28,18 @@ hp_show:
         call    hw_clear
         ld      bc,GA_PORT + PAGE_B7
         call    hud_page                ; ο γλύφος γυρίζει στην 7: εκεί τα κείμενα
-        xor     a
-        ld      (hp_id),a
+        ld      hl,HP_ROWS * 256
+        ld      (hp_id),hl              ; hp_id = 0, hp_row = HP_ROWS
         ld      hl,t_help               ; τα κείμενα στη σειρά, όχι bt_text για
         ld      (hp_txt),hl             ; το καθένα: ~90 ms λιγότερα
         ld      hl,-HUD_TOPB            ; σειρά οθόνης 0, στήλη 0
         ld      (hp_at),hl
-        ld      a,HP_ROWS
-        ld      (hp_row),a
 hp_lp:
         ; --- το κουμπί: λευκό αν είναι ομάδα, όπως στη μπάρα ---
         ld      a,(hp_id)
         add     a,a
         add     a,a
-        add     a,3
-        ld      hl,bt_tab
+        ld      hl,bt_tab + 3
         call    ob_addu
         ld      a,(hl)
         and     #E0                     ; KB_GROUP << 5 == 0
@@ -54,47 +51,39 @@ hp_grp:
         ld      a,(hp_id)
         call    sl_draw
         ; --- το όνομα λευκό, η γραμμή του πράσινη από κάτω ---
-        ld      hl,(hp_at)
         ld      a,HP_TEXT
-        call    ob_addu
-        call    hp_go
+        call    hp_goa
         ld      hl,(hp_txt)
         call    hud_text
         inc     hl
         push    hl
-        ld      hl,(hp_at)
         ld      a,HP_TEXT + 80
-        call    ob_addu
-        call    hp_go
+        call    hp_goa
         pop     hl
         call    hp_green
         inc     hl
         ld      (hp_txt),hl
         ; --- το επόμενο: δύο σειρές πιο κάτω, ή η επόμενη στήλη ---
-        ld      hl,(hp_at)
         ld      de,160
-        add     hl,de
-        ld      a,(hp_row)
-        dec     a
+        ld      hl,hp_row
+        dec     (hl)
         jr      nz,hp_same
-        ld      de,HP_COLW - 160 * HP_ROWS
-        add     hl,de
-        ld      a,HP_ROWS
+        ld      (hl),HP_ROWS
+        ld      de,HP_COLW - 160 * (HP_ROWS - 1)
 hp_same:
-        ld      (hp_row),a
-        ld      (hp_at),hl
-        ld      hl,hp_id
+        dec     hl                      ; hp_id
         inc     (hl)
         ld      a,(hl)
+        ld      hl,(hp_at)
+        add     hl,de
+        ld      (hp_at),hl
         cp      BT_N
         jr      c,hp_lp
         ; --- η σειρά 24 ---
         ld      hl,-HUD_TOPB + 24 * 80
         call    hp_go
         ld      hl,t_hfoot
-        call    hud_text
-        ld      bc,GA_PORT + PAGE_B1
-        call    hud_page
+        call    hud_text7               ; η 7 είναι ήδη μέσα· γυρίζει στην 1
         ; --- ΕΝΑ ΠΛΗΚΤΡΟ: πρώτα να αφεθεί το ?, μετά ένα οποιοδήποτε, και να
         ; αφεθεί κι αυτό — αλλιώς το ίδιο πάτημα θα έκανε κάτι στο παιχνίδι ---
         call    hp_up
@@ -130,17 +119,14 @@ hpa_lp:
         ret
 
 ; hp_go — HL = θέση από το cam_p: εκεί το επόμενο κελί του HUD, χωρίς κρυφή μνήμη.
+; hp_goa — το ίδιο, στη θέση hp_at + A.
+hp_goa:
+        ld      hl,(hp_at)
+        call    ob_addu
 hp_go:
-        ld      de,(cam_p)
-        add     hl,de
-        ld      a,h
-        and     7
-        or      SCR_BASE / 256
-        ld      h,a
-        ld      (hud_de),hl
-        ld      hl,0
-        ld      (hud_sp),hl
-        ret
+        ld      de,0
+        ld      (hud_sp),de
+        jp      hg_p                    ; src/hud.asm: το τέλος του hud_go
 
 ; hp_green — HL = κείμενο (τράπεζα 7, μέσα): όπως το hud_text, σε pen 2.
 hp_green:
@@ -176,3 +162,4 @@ hp_at:      dw 0
 hp_txt:     dw 0
 hp_id:      db 0
 hp_row:     db 0
+        assert  hp_row == hp_id + 1

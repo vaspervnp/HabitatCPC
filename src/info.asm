@@ -62,7 +62,7 @@ inp_rec:
         ; --- σειρά 3: το κτίριο ---
         ld      a,(in_t)
         or      a
-        jp      z,inp_none
+        jr      z,inp_none
         ; Το όνομα από τον κατάλογο: δέκα bytes το καθένα, οι θόλοι κατά
         ; μέγεθος από το t_dome_s, οι δομές κατά είδος από το t_solar.
         dec     a
@@ -87,23 +87,18 @@ inp_nm:
         ld      bc,10
         cpir
         jr      nz,inp_noroom           ; άδειο ή αεροθάλαμος: κανένα όνομα
-        ld      a,9
-        sub     c                       ; η θέση στον κατάλογο
-        add     a,a
-        ld      hl,rm_names
+        ld      a,18                    ; HL = rm_list + θέση + 1, θέση = 9 - C:
+        sub     c                       ; rm_names + 2 x θέση = HL + 18 - C
         call    ob_addu
         ld      a,(hl)
         inc     hl
         ld      h,(hl)
         ld      l,a
         call    hud_text7
-        jr      inp_state
 inp_noroom:
-        ld      b,10
-        call    hud_blank
+        ld      b,20                    ; 9 + 10 στήλες, και ένα κενό
+        call    hud_to
 inp_state:
-        ld      b,1
-        call    hud_blank
         ld      a,(in_st)
         cp      DS_ACTIVE
         ld      hl,t_i_act
@@ -111,8 +106,7 @@ inp_state:
         ld      hl,t_i_site
 inp_st:
         call    hud_text7
-        ld      b,1
-        call    hud_blank
+        call    hud_space
         ld      hl,t_i_hp
         call    hud_text7
         ; Η ακεραιότητα είναι 0-255 (και στο εργοτάξιο η πρόοδος, §6.9): στα
@@ -125,7 +119,6 @@ inp_st:
         call    hud_numa
         ld      a,'%'
         call    hud_char
-        ld      b,35 - 34               ; ένα κενό πριν από την ταχύτητα
         jr      inp_r3
 inp_none:
         ; Κατοχή χωρίς θόλο ή δομή από πάνω: διάδρομος. Το cr_stamp σφραγίζει
@@ -134,7 +127,6 @@ inp_none:
         ld      a,(in_w)
         and     W_OCC_MASK
         ld      hl,t_corr               ; τράπεζα 2
-        ld      b,35 - 9
         cp      W_OCC_PATH
         jr      nz,inp_cor
         ld      hl,t_pathw
@@ -143,17 +135,12 @@ inp_cor:
         jr      nz,inp_name
         ld      hl,t_i_none
         call    hud_text7
-        ld      b,35 - 13
         jr      inp_r3
 inp_name:
-        push    bc
         call    hud_text
-        pop     bc
 inp_r3:
-        call    hud_blank
         ; --- σειρά 4: το έδαφος, και η φλέβα αν είναι βουνό με μετάλλευμα ---
-        ld      a,4
-        call    hud_go
+        call    ln_row4                 ; κενά ως τη στήλη 35, και η σειρά 4
         ld      a,(in_w)
         and     7
         ld      c,a
@@ -165,17 +152,12 @@ inp_r3:
         ld      hl,t_i_cls
         call    ob_addu
         call    hud_text7
-        ld      b,40 - 10
         ld      a,(in_w)
         and     #0F
         cp      #08 + W_MOUNTAIN        ; βουνό, με το bit του πόρου
-        jr      nz,inp_r4
         ld      hl,t_i_ore
-        call    hud_text7
-        ld      b,40 - 19
-inp_r4:
-        call    hud_blank
-        jp      uip_spd
+        call    z,hud_text7
+        jp      acp_end                 ; κενά ως τη στήλη 40, uip_spd
 
 in_t:       db 0                ; 0 τίποτα, 1 θόλος, 2 δομή
 in_k:       db 0                ; μέγεθος θόλου / είδος δομής

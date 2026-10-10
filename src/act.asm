@@ -35,21 +35,22 @@ ac_open:
         call    ob_addu
         ld      a,(hl)                  ; η ομάδα του τελευταίου
         ld      hl,ac_l_grp
-        ld      bc,7 * 256 + 0          ; B = πόσα, C = ομάδες
+        ld      bc,0 * 256 + 7          ; B = ομάδες, C = πόσα
         jr      aco_set
 ac_manage:
         call    fit_can                 ; CY = ο εξοπλισμός ανοίγει εδώ
         sbc     a,a
         ld      (ac_fit),a
         ld      hl,ac_l_man
-        ld      bc,6 * 256 + 1
+        ld      bc,1 * 256 + 6
         xor     a
 aco_set:
-        ld      (ac_sel),a
         ld      (ac_lst),hl
+        ld      l,c
+        ld      h,a
+        ld      (ac_n),hl               ; ac_n = C, ac_sel = A
         ld      a,b
-        ld      (ac_n),a
-        ld      a,c
+aco_mode:                               ; A = ac_mode (cw_open, tr_open)
         ld      (ac_mode),a
         call    ui_click
         ld      a,UI_ACT
@@ -61,26 +62,20 @@ aco_set:
 ac_tick:
         ld      a,(act_hit)
         bit     A_CANCEL,a
-        jr      z,act_fire
-        xor     a                       ; UI_LOOK
-        jp      ui_goto
+        jr      nz,ac_look
 act_fire:
         ld      c,a
         ld      a,(ac_mode)
         cp      CW_MODE
         ld      a,c
-        jp      nc,ln_tick              ; οι γραμμές: του πλοίου και του εμπόρου
-                                        ; (src/lines.asm, βήμα 93)
+        jp      z,cw_tick               ; οι γραμμές: του πλοίου
+        jp      nc,tr_tick              ; και του εμπόρου (src/lines.asm, βήμα 93)
         and     1 << A_FIRE | 1 << A_MENU
         jr      nz,ac_do
         ld      hl,ac_sel
         ld      a,(ac_n)
         ld      c,a
-        call    ui_lr
-        ret     z
-        call    ui_click
-        call    ui_dirty                ; το ac_sel δεν είναι στην υπογραφή
-        jp      ui_panel
+        jp      cw_lr                   ; το ac_sel δεν είναι στην υπογραφή
 ac_do:
         call    ac_cur
         ; fall through
@@ -91,8 +86,7 @@ ac_do:
 bt_key:
         add     a,a
         add     a,a
-        add     a,3
-        ld      hl,bt_tab
+        ld      hl,bt_tab + 3
         call    ob_addu
         ld      a,(hl)                  ; είδος << 5 | παράμετρος
         ld      b,a
@@ -129,7 +123,8 @@ btk_group:
         ld      a,(ui_state)
         dec     a                       ; MENU 0, PLACE 1, LINK 2
         cp      3
-        jp      nc,ui_build             ; κλειστή: ανοίγει, ίδιο αντικείμενο
+        jr      nc,btg_bld              ; κλειστή: ανοίγει, ίδιο αντικείμενο
+ac_look:
         xor     a                       ; UI_LOOK
         jp      ui_goto
 btg_new:
@@ -138,16 +133,17 @@ btg_new:
         call    ob_addu
         ld      a,(hl)
         ld      (ui_sel),a
+btg_bld:
         jp      ui_build                ; ui_hide, MENU, το φάντασμα του ui_sel
 btk_man:
         ld      a,(ui_state)
         cp      UI_ACT
-        jp      nz,ac_manage
+        jr      nz,btm_open
         ld      a,(ac_mode)
         or      a
-        jp      z,ac_manage
-        xor     a                       ; ανοιχτή: κλείνει
-        jp      ui_goto
+        jr      nz,ac_look              ; ανοιχτή: κλείνει
+btm_open:
+        jp      ac_manage
 
 ; --- μέγεθος θόλου: η κατάσταση μένει (MENU ή PLACE) ---
 btk_size:
@@ -172,10 +168,9 @@ btk_item:
         ld      a,(ui_sel)
         call    bd_select
 btk_place:
-        ld      a,UI_PLACE
-        ld      (ui_state),a
         call    ui_click
-        jp      ui_show
+        ld      a,UI_PLACE
+        jp      ui_goto_h               ; ld (ui_state),a, ui_show
 
 ; --- ενέργεια: από το LOOK, σαν να πατήθηκε το πλήκτρο της ---
 btk_act:
@@ -204,14 +199,10 @@ ac_info:
 ; cw_open — το κουμπί του πλοίου και το C: η γραμμή, στο UI_ACT.
 cw_open:
         ld      a,CW_MODE
-        ld      (ac_mode),a
-        call    ui_click
-        ld      a,UI_ACT
-        jp      ui_ask
+        jp      aco_mode
 
-; cw_tick — από το ac_tick, όταν δεν πατήθηκε ESC. A = act_hit.
+; cw_tick — από το ac_tick, όταν δεν πατήθηκε ESC. A = C = act_hit.
 cw_tick:
-        ld      c,a
         and     1 << A_FIRE | 1 << A_MENU   ; και το SPACE, όπως στο μενού
         jr      nz,cw_call
         ld      a,c
@@ -219,6 +210,9 @@ cw_tick:
         jp      nz,cw_ud                ; src/crew.asm, τράπεζα 0
         ld      hl,cw_sel
         ld      c,CW_N
+; cw_lr — HL -> τιμή, C = πόσες: το ui_lr, και αν άλλαξε το cw_draw. Και για
+; το ac_sel και το tr_sel.
+cw_lr:
         call    ui_lr
         ret     z
 cw_draw:
@@ -228,21 +222,26 @@ cw_draw:
 cw_call:
         xor     a                       ; UI_LOOK, όπως το btk_act
         ld      (ui_state),a
-        jp      ac_ship
+        ; fall through
 ; ac_ship — το FIRE της γραμμής του πλοίου (src/crew.asm, βήμα 91· ως τότε
 ; το ίδιο το κουμπί). Το μήνυμα του πλοίου γράφει μόνο τη σειρά 3 (ui_msg), και
 ; η 4 θα έμενε με την περιγραφή ως το τέλος του μηνύματος — σε παύση, για πάντα.
 ac_ship:
+        call    ac_clr4
+        jp      ui_ship
+; ac_clr4 — η σειρά 4 σβήνει, για ένα μήνυμα στη σειρά 3· και η συμφωνία με
+; τον έμπορο (tr_deal, src/lines.asm).
+ac_clr4:
         ld      a,4
         call    hud_go
         ld      b,40
-        call    hud_blank
-        jp      ui_ship
+        jp      hud_blank
 ac_save:
         xor     a                       ; 0 = σώσιμο
-        jp      ui_askslot
+        jr      ac_slot
 ac_load:
         ld      a,1                     ; 1 = φόρτωμα
+ac_slot:
         jp      ui_askslot
 ac_home:
         call    ui_hide
@@ -261,14 +260,15 @@ ac_cur:
 ; uip_spd, όπως το in_panel. Το όνομα και η γραμμή είναι της οθόνης βοήθειας.
 ; ---------------------------------------------------------------------------
 ac_panel:
+        ld      bc,GA_PORT + PAGE_B7
+        call    hud_page                ; τα κείμενα στην 7, και για τις γραμμές
         ld      a,(ac_mode)
         cp      CW_MODE
-        jp      nc,ln_panel             ; οι γραμμές (src/lines.asm, βήμα 93)
+        jp      z,cw_panel              ; οι γραμμές (src/lines.asm, βήμα 93)
+        jp      nc,tr_panel
         ld      a,'<'
         call    hud_char
         call    hud_space
-        ld      bc,GA_PORT + PAGE_B7
-        call    hud_page
         call    ac_cur
         call    bt_text
         call    hud_text
@@ -282,17 +282,13 @@ ac_panel:
         call    hud_blank
         ld      hl,t_a_keys
         call    hud_text
-        ld      b,35                    ; ως τον δείκτη ταχύτητας
-        call    hud_to
-        ld      a,4
-        call    hud_go
+        call    ln_row4                 ; ως τον δείκτη ταχύτητας, και η σειρά 4
         pop     hl
         call    hud_text
 acp_end:                                ; οι γραμμές (src/lines.asm)
         ld      b,40
         call    hud_to
-        ld      bc,GA_PORT + PAGE_B1
-        call    hud_page
+        call    hud_page1
         jp      uip_spd
 
 
@@ -301,3 +297,4 @@ ac_n:       db 7
 ac_sel:     db 0
 ac_mode:    db 0                        ; 0 οι ομάδες, 1 η ΔΙΑΧΕΙΡΙΣΗ
 ac_fit:     db 0                        ; #FF: ο εξοπλισμός ανοίγει εκεί που ήταν το M
+        assert  ac_sel == ac_n + 1      ; aco_set

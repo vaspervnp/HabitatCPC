@@ -32,9 +32,15 @@
              μεταλλεύματα, βιοπλαστικά, άμυλο, λαχανικά, βότανα, κρέας· 5 μέταλλα
              και ανταλλακτικά· 4 φάρμακα· 2 επεξεργαστές· 1 όπλο, 1 ρομπότ.
   FIRE, SPACE  αν δεν φτάνει, τίποτα. Αν κάτι από όσα δίνεις λιγόστεψε στο
-             μεταξύ, NOT ENOUGH MATERIAL και τίποτα. Αλλιώς η ανταλλαγή: τα
-             αποθέματα αλλάζουν ακριβώς, το σερί της ανεξαρτησίας σπάει, ο
-             έμπορος φεύγει, TRADE DONE, πίσω στο LOOK.
+             μεταξύ, NOT ENOUGH MATERIAL και τίποτα· και χωρίς καμία θέση στον
+             πίνακα εργασιών, ή χωρίς πίστα (ένας μετεωρίτης την έριξε), τίποτα. Αλλιώς η ανταλλαγή, ΟΠΩΣ ΤΑ
+             ΕΡΓΟΤΑΞΙΑ (βήμα 98): όσα δίνεις φεύγουν ακριβώς, και χρωστιούνται
+             στον έμπορο σε φορτία ως δέκα (EC_MARKUP)· όσα παίρνεις μένουν στο
+             πλοίο του (οι ποσότητες του φορτίου του) ώσπου να κουβαληθούν (tests/
+             test_carry.py)· δύο J_TRADE στην πίστα· το σερί της ανεξαρτησίας
+             σπάει· ο έμπορος περιμένει, και η γραμμή του δεν ξανανοίγει
+             (SK_DEALT)· TRADE DONE, πίσω στο LOOK. Ως το 97 όλα στιγμιαία, και
+             ο έμπορος έφευγε.
   ESC        κλείνει, και η προσφορά ξεχνιέται.
   ΦΕΥΓΕΙ     όταν τελειώσει το μισό sol η γραμμή κλείνει μόνη της.
   ΚΟΥΜΠΙ     κόκκινο όσο δεν είναι εδώ, και τότε δεν ανοίγει τίποτα· λευκό στη
@@ -51,9 +57,11 @@
 χωρίς mod 31, βήμα χωρίς + 1, μένει οκτώ περιστροφές όπως τα άλλα. Γραμμή:
 χωρίς το ταβάνι της αποθήκης, χωρίς το 99, χωρίς το «όσα έχεις», τιμή χωρίς
 στρογγύλεμα, τα δικά του όχι πρώτα. Ανταλλαγή: χωρίς το ζύγι, χωρίς τον
-έλεγχο του αποθέματος, χωρίς το σερί, ο έμπορος μένει. Η γραμμή που δεν
-κλείνει όταν φύγει, το κουμπί που δεν κοκκινίζει, το κουμπί που ανοίγει χωρίς
-έμπορο, η γραμμή του πλοίου στη ΔΙΑΧΕΙΡΙΣΗ όπως ως το 92, το μήνυμα που λείπει.
+έλεγχο του αποθέματος, χωρίς το σερί, η γραμμή του ξανανοίγει, χωρίς
+μεταφορείς, συμφωνία με τον πίνακα γεμάτο, συμφωνία χωρίς πίστα, ένα φορτίο
+ανά αγαθό, το πλοίο του κρατά όλο το φορτίο. Η γραμμή που δεν κλείνει όταν
+φύγει, το κουμπί που δεν κοκκινίζει, το κουμπί που ανοίγει χωρίς έμπορο, η
+γραμμή του πλοίου στη ΔΙΑΧΕΙΡΙΣΗ όπως ως το 92, το μήνυμα που λείπει.
 """
 import os, random, re, sys
 
@@ -291,6 +299,7 @@ def deal(sym, patch=(), quiet=False):
     say = (lambda s: None) if quiet else (lambda s: print("    " + s))
     G = Game(sym, patch)
     m = G.m
+    jt = TO.layout()["G_job_tbl"]
     G.set_stock(STOCK)
     G.m.poke(G.EC["EC_TRADED"], 0)
     G.merchant()
@@ -317,21 +326,54 @@ def deal(sym, patch=(), quiet=False):
             or G.stock(S.S_METAL) != 595 or not r3.startswith(TI.same("NOT ENOUGH MATERIAL"))):
         return (f"ΑΠΟΘΕΜΑ: με 15 μεταλλεύματα για 20 κατάσταση {G.state()}, «{r3}», "
                 f"μετάλλευμα {G.stock(S.S_ORE)}, μέταλλο {G.stock(S.S_METAL)}")
-    # η ανταλλαγή, με SPACE
+    # ο πίνακας εργασιών γεμάτος: τίποτα
     G.set_stock({S.S_ORE: 120})
     m.run_frames(120)                              # το μήνυμα κρατά δύο δευτερόλεπτα
+    board = m.read_ram(jt, 160)
+    full = bytes([EC.J_OPERATE, 0, 255, 3, 0] * 32)
+    m.write_ram(jt, full)
+    before = G.stock()
+    G.tap(cpc.KEY_SPACE)
+    m.run_frames(4)
+    if (G.state() != UI_ACT or not G.here() or G.stock() != before
+            or m.read_ram(jt, 160) != full):
+        return (f"ΠΙΝΑΚΑΣ ΓΕΜΑΤΟΣ: κατάσταση {G.state()}, έμπορος {G.here()}, αποθέματα "
+                f"{'ίδια' if G.stock() == before else G.stock()}")
+    m.write_ram(jt, board)
+    # χωρίς πίστα — ένας μετεωρίτης τη ρίχνει, EC_PADNODE 255 — τίποτα (σε παύση
+    # το πέρασμα δωματίων δεν την ξαναβρίσκει στο μεταξύ)
+    pad0 = m.peek(G.EC["EC_PADNODE"])
+    m.poke(G.EC["EC_PADNODE"], 255)
+    before = G.stock()
+    G.tap(cpc.KEY_SPACE)
+    m.run_frames(4)
+    if (G.state() != UI_ACT or not G.here() or G.stock() != before
+            or m.read_ram(jt, 160) != board):
+        return (f"ΧΩΡΙΣ ΠΙΣΤΑ: κατάσταση {G.state()}, έμπορος {G.here()}, αποθέματα "
+                f"{'ίδια' if G.stock() == before else G.stock()}, εργασίες "
+                f"{'ίδιες' if m.read_ram(jt, 160) == board else 'άλλαξαν'}")
+    m.poke(G.EC["EC_PADNODE"], pad0)
+    # η ανταλλαγή, με SPACE: 5 μέταλλα για 20 μεταλλεύματα
+    m.run_frames(120)
     before = G.stock()
     G.tap(cpc.KEY_SPACE)
     m.run_frames(4)
     after = G.stock()
     diff = {k: after[k] - before[k] for k in range(14) if after[k] != before[k]}
     r3, r4 = G.rows()
-    if (diff != {S.S_METAL: 5, S.S_ORE: -20} or G.state() != UI_LOOK or G.here()
-            or m.peek(G.EC["EC_SHSTATE"]) != 0 or m.peek(G.EC["EC_TRADED"]) != 1
-            or not r3.startswith(TI.same("TRADE DONE")) or r4.strip()):
-        return (f"ΑΝΤΑΛΛΑΓΗ: διαφορές {diff}, κατάσταση {G.state()}, πλοίο "
-                f"{m.peek(G.EC['EC_SHSTATE'])}, σερί {m.peek(G.EC['EC_TRADED'])}, «{r3}» / «{r4}»")
-    # και με FIRE: ένα ρομπότ (176) για 18 μεταλλεύματα (180)
+    pad = m.peek(G.EC["EC_PADNODE"])
+    new = [list(m.read_ram(jt + 5 * j, 5)) for j in range(32) if m.peek(jt + 5 * j) == EC.J_TRADE]
+    cargo = list(m.read_ram(G.EC["EC_CARGO"], 8))
+    got = (diff, G.state(), G.here(), m.peek(G.EC["EC_SHSTATE"]), m.peek(G.EC["EC_SHKIND"]),
+           G.w16(G.EC["EC_SHETA"]), m.peek(G.EC["EC_TRADED"]), m.peek(G.EC["EC_MARKUP"]), cargo)
+    want = ({S.S_ORE: -20}, UI_LOOK, False, 2, EC.SK_DEALT, 0xFFFF, 1, 2,
+            [S.S_METAL, 5, S.S_PROC, 0, S.S_BOT, 0, S.S_FOOD, 0])
+    # οι δύο μπορεί να τις πήρε ήδη κάποιος: ο πράκτορας και ο κόμβος αλλάζουν
+    if (got != want or not r3.startswith(TI.same("TRADE DONE")) or r4.strip()
+            or len(new) != 2 or any(j[0] != EC.J_TRADE or j[3] != 4 or j[4] for j in new)):
+        return (f"ΑΝΤΑΛΛΑΓΗ: {got}, «{r3}» / «{r4}», J_TRADE {new} (πίστα {pad}) — η πρόζα "
+                f"λέει {want}, δύο J_TRADE άδειες, προτεραιότητα 4")
+    # και με FIRE: ένα ρομπότ (176) για 18 μεταλλεύματα (180) — δύο φορτία
     G.merchant()
     m.poke(G.EC["EC_TRADED"], 0)
     G.open()
@@ -342,11 +384,27 @@ def deal(sym, patch=(), quiet=False):
     m.run_frames(4)
     after = G.stock()
     diff = {k: after[k] - before[k] for k in range(14) if after[k] != before[k]}
-    if diff != {S.S_BOT: 1, S.S_ORE: -20} or G.here() or m.peek(G.EC["EC_TRADED"]) != 1:
-        return f"FIRE: διαφορές {diff}, έμπορος {G.here()}"
+    cargo = list(m.read_ram(G.EC["EC_CARGO"], 8))
+    if (diff != {S.S_ORE: -20} or G.here() or m.peek(G.EC["EC_TRADED"]) != 1
+            or m.peek(G.EC["EC_MARKUP"]) != 2 or cargo[5] != 1):
+        return (f"FIRE: διαφορές {diff}, έμπορος {G.here()}, χρωστιούνται "
+                f"{m.peek(G.EC['EC_MARKUP'])}, φορτίο του {cargo}")
+    # 5 μέταλλα (110) για 99 τρόφιμα (495): δέκα φορτία, το τελευταίο εννιά
+    G.merchant()
+    G.set_stock({S.S_FOOD: 300, S.S_METAL: 595})
+    G.open()
+    for k in [UP] + [RIGHT] * 3 + [DOWN] * 10:      # μέταλλο, και τα τρόφιμα τέταρτα
+        G.tap(k)
+    G.tap(cpc.KEY_SPACE)
+    m.run_frames(4)
+    if m.peek(G.EC["EC_MARKUP"]) != 10 or G.stock(S.S_FOOD) != 300 - 99:
+        return (f"ΦΟΡΤΙΑ: 99 τρόφιμα, χρωστιούνται {m.peek(G.EC['EC_MARKUP'])} φορτία, "
+                f"τρόφιμα {G.stock(S.S_FOOD)} — η πρόζα λέει 10, 201")
     say("FIRE και SPACE: 100 για 110 τίποτα· 20 μεταλλεύματα όταν έμειναν 15, "
-        "NOT ENOUGH MATERIAL και τίποτα· 5 μέταλλα (ως το 600) για 20 μεταλλεύματα, "
-        "και ένα ρομπότ για 20 — TRADE DONE, το σερί σπάει, ο έμπορος φεύγει")
+        "NOT ENOUGH MATERIAL και τίποτα· με τον πίνακα εργασιών γεμάτο ή χωρίς πίστα τίποτα· 5 μέταλλα "
+        "για 20 μεταλλεύματα: τα 20 φεύγουν, 2 φορτία για τον έμπορο, τα 5 στο πλοίο του, "
+        "δύο J_TRADE, TRADE DONE, το σερί σπάει, ο έμπορος περιμένει· ένα ρομπότ για 20 "
+        "με FIRE· 99 τρόφιμα είναι 10 φορτία")
     return None
 
 
@@ -610,9 +668,19 @@ def negatives(sym):
     add("χωρίς το σερί", ram("TR_DEAL", 160, [0x32, G.EC["EC_TRADED"] & 255,
                                                G.EC["EC_TRADED"] >> 8]),
         [(0, 0), (1, 0), (2, 0)], False, "deal")
-    add("ο έμπορος μένει", ram("TR_DEAL", 160, [0x32, G.EC["EC_SHSTATE"] & 255,
-                                                 G.EC["EC_SHSTATE"] >> 8]),
+    add("η γραμμή του ξανανοίγει", ram("TR_DEAL", 200, [0x32, G.EC["EC_SHKIND"] & 255,
+                                                         G.EC["EC_SHKIND"] >> 8]),
         [(0, 0), (1, 0), (2, 0)], False, "deal")
+    # trd_post: ld a,(EC_PADNODE) -> or 1 · ret (NZ, καμία εργασία)
+    add("χωρίς μεταφορείς", [sym["TRD_POST"]], [(0, 0xF6), (1, 1), (2, 0xC9)], False, "deal")
+    tp = sym["TRD_POST"]
+    add("συμφωνία με τον πίνακα γεμάτο", ram("TR_DEAL", 200, [0xCD, tp & 255, tp >> 8, 0xCA]),
+        [(3, 0), (4, 0), (5, 0)], False, "deal")          # call trd_post · jp z,uip_deny
+    add("συμφωνία χωρίς πίστα", [sym["TRD_POST"]], [(4, 0)], False, "deal")   # ret z -> nop
+    add("ένα φορτίο ανά αγαθό", ram("TR_DEAL", 200, [0xD6, EC.TRADE_LOAD, 0x28]),
+        [(4, 0), (5, 0)], False, "deal")                  # sub 10 · jr z · jr nc,trd_ld
+    add("το πλοίο του κρατά όλο το φορτίο", ram("TR_DEAL", 200, [0x23, 0x77, 0x23, 0x10]),
+        [(1, 0)], False, "deal")                          # trd_cg: inc hl · ld (hl),a
     # --- κουμπί, γραμμή που κλείνει, μήνυμα ---
     mh = sym["MER_HERE"]
     add("η γραμμή δεν κλείνει όταν φύγει", ram("TR_TICK", 8, [0xCD, mh & 255, mh >> 8, 0x28]),

@@ -78,6 +78,7 @@ hg_sp:  ld      (hud_sp),hl
         ld      l,a
         ld      b,d
         add     hl,bc
+hg_p:                                   ; HL = θέση από το cam_p (hp_go)
         ld      de,(cam_p)
         add     hl,de
         ld      a,h
@@ -371,6 +372,7 @@ hud_text7:
         ld      bc,GA_PORT + PAGE_B7
         call    hud_page
         call    hud_text
+hud_page1:
         ld      bc,GA_PORT + PAGE_B1
 hud_page:
         ld      (hud_pg),bc

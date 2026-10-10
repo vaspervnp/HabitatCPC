@@ -878,11 +878,12 @@ J_KIND, J_NODE, J_AGENT, J_PRIO, J_SITE = range(5)
 NO_JOB = 255
 
 J_BUILD, J_OPERATE, J_HAUL, J_DRILL, J_REPAIR, J_HEAL, J_DEFEND, J_SUPPLY = range(8)
+J_TRADE = 9                 # τα αγαθά του εμπόρου (βήμα 98, src/carry.asm)
 # J_SUPPLY μέταλλο, J_SUPPLY + 1 βιοπλαστικό (βήμα 88, src/supply.asm)
 
 # ποιοι ρόλοι δέχονται ποια εργασία — bitmask ανά είδος (§6.7). Η Supply:
 # όλοι οι άποικοι και το ρομπότ μεταφοράς.
-JOB_ROLES = [0x22, 0x05, 0x41, 0x81, 0x02, 0x08, 0x10, 0x5F, 0x5F]
+JOB_ROLES = [0x22, 0x05, 0x41, 0x81, 0x02, 0x08, 0x10, 0x5F, 0x5F, 0x5F]
 JOB_PRIO = [5, 3, 5, 4, 6, 8, 9]        # η Haul 5 από το βήμα 95: πάνω από τη Drill
 BUILD_STEP = 32                     # src/jobs.asm — οκτώ επισκέψεις
 # Το OPERATE δεν έχει μία προτεραιότητα αλλά μία ανά ΔΩΜΑΤΙΟ (§6.7): με κοινή
@@ -946,8 +947,9 @@ def jobs_tick(e, a, F_ALIVE, F_WORKING):
         if not (a.flags[i] & F_ALIVE) or a.task[i] != j:
             jb[b + J_AGENT] = 255
             # μια Supply γυρίζει στο εργοτάξιο· μια Haul όχι: φορτωμένη, ο
-            # επόμενος παραδίδει ό,τι έμεινε στη μέση (βήμα 95)
-            if jb[b + J_KIND] != J_HAUL:
+            # επόμενος παραδίδει ό,τι έμεινε στη μέση (βήμα 95). Ούτε μια
+            # J_TRADE: το J_SITE της είναι το φορτίο (βήμα 98)
+            if jb[b + J_KIND] not in (J_HAUL, J_TRADE):
                 jb[b + J_NODE] = jb[b + J_SITE]
 
     # 2. όποιος έφτασε, πιάνει δουλειά: ο θόλος αποκτά χειριστή
@@ -960,6 +962,47 @@ def jobs_tick(e, a, F_ALIVE, F_WORKING):
             continue
         node = jb[b + J_NODE]
         if a.node[i] != node or a.edge[i] != 255:
+            continue
+        if jb[b + J_KIND] == J_TRADE:
+            # ΤΑ ΑΓΑΘΑ ΤΟΥ ΕΜΠΟΡΟΥ (βήμα 98, tr_arrive): το φορτίο είναι της
+            # εργασίας (J_SITE). Στην πίστα ένα φορτίο από το πλοίο του και ο
+            # προορισμός του sp_take· σε αποθήκη ή στο σκάφος ένα δικό του
+            # στα αποθέματα, και ένα για τον έμπορο.
+            pad = e.pad_node
+            store = node != pad
+            done = False
+            if not store:
+                load = trade_pick(e)
+                if load or e.markup:
+                    jb[b + J_SITE] = load
+                    a.spare[i] = 0
+                    dst = supply_source(e, node)
+                    if dst != 255:
+                        jb[b + J_NODE] = dst
+                        a.dest[i] = dst
+                        continue
+                    store = True        # καμία αποθήκη δεν φτάνεται: εδώ
+                else:
+                    done = True
+            if store:
+                ld = jb[b + J_SITE]
+                if ld != TRADE_GIVE:    # ένα για τον έμπορο, αφημένο: συνεχίζει
+                    if ld > TRADE_GIVE:
+                        add_stock(e, ld & 15, ld >> 4)
+                    jb[b + J_SITE] = 0
+                    if e.markup:
+                        e.markup -= 1
+                        jb[b + J_SITE] = TRADE_GIVE
+                    elif not any(e.cargo[2 * k + 1] for k in range(MER_SLOTS)):
+                        done = True
+                if not done:
+                    if pad != 255:      # η πίστα έπεσε: περιμένει εδώ (tra_go)
+                        jb[b + J_NODE] = pad
+                        a.dest[i] = pad
+                    continue
+            trade_bye(e)
+            a.task[i] = NO_TASK
+            jb[b + J_KIND] = NO_JOB
             continue
         if jb[b + J_KIND] >= J_SUPPLY:
             # ΤΡΟΦΟΔΟΣΙΑ (βήμα 88, sp_arrive): στην πηγή φορτώνει και πάει
@@ -1225,6 +1268,10 @@ def nearest_room(e, room, node):
 # --- πλοία, εμπόριο, ορόσημα (§6.11, §10.2) --------------------------------
 SHIP_NONE, SHIP_INCOMING, SHIP_LANDED = 0, 1, 2
 SK_COLONIST, SK_MERCHANT, SK_VISITOR = 0, 1, 2
+SK_DEALT = 3                # ο έμπορος μετά τη συμφωνία, ώσπου να κουβαληθούν όλα
+TRADE_JOBS = 2              # εργασίες J_TRADE ανά συμφωνία (src/carry.asm)
+TRADE_LOAD = 10
+TRADE_GIVE = 0x0F           # J_SITE μιας J_TRADE: ένα φορτίο ΓΙΑ τον έμπορο
 SHIP_TRIP = 24              # περιστροφές ταξιδιού
 SHIP_STAY = 8               # πόσο μένει προσγειωμένο
 COLONISTS_PER_SHIP = 4
@@ -1326,9 +1373,9 @@ def trade_totals(e, net):
 
 def trade(e, net):
     """Η ανταλλαγή, αν γίνεται: κάτι παίρνεις, και δίνεις τουλάχιστον όσο
-    παίρνεις, από όσα έχεις ΤΩΡΑ. Μετά ο έμπορος φεύγει (Planetbase: όταν
-    παραδοθούν όλα· εδώ η παράδοση είναι στιγμιαία). Σπάει το σερί της
-    ανεξαρτησίας."""
+    παίρνεις, από όσα έχεις ΤΩΡΑ, και υπάρχει θέση για τους μεταφορείς. Μετά
+    ο έμπορος περιμένει ώσπου να κουβαληθούν όλα (βήμα 98, Planetbase· ως το
+    97 η παράδοση ήταν στιγμιαία). Σπάει το σερί της ανεξαρτησίας."""
     if not mer_here(e):
         return False
     take, give = trade_totals(e, net)
@@ -1336,14 +1383,65 @@ def trade(e, net):
         return False
     if any(n < 0 and -n > e.stock[g] for g, n in enumerate(net)):
         return False
+    # ΟΙ ΜΕΤΑΦΟΡΕΙΣ ΠΡΩΤΑ (trd_post): χωρίς θέση στον πίνακα, ή χωρίς πίστα,
+    # ούτε συμφωνία
+    posted = 0
+    for _ in range(TRADE_JOBS if e.pad_node != 255 else 0):
+        b = post_build(e, e.pad_node)
+        if b is None:
+            break
+        e.nbuild -= 1                           # δεν είναι Build
+        e.job[b + J_KIND] = J_TRADE
+        e.job[b + J_PRIO] = SP_PRIO
+        e.job[b + J_SITE] = 0                   # άδεια: το φορτίο της
+        posted += 1
+    if not posted:
+        return False
+    # ΟΠΩΣ ΤΑ ΕΡΓΟΤΑΞΙΑ (βήμα 98): όσα δίνεις φεύγουν τώρα, σε φορτία των
+    # δέκα που οφείλονται στον έμπορο (στο markup, που δεν χρειάζεται πια)·
+    # όσα παίρνεις μένουν στο πλοίο του (οι ποσότητες του cargo) ώσπου να
+    # κουβαληθούν. Ο έμπορος περιμένει (SK_DEALT, eta #FFFF).
+    loads = 0
     for g, n in enumerate(net):
-        if n > 0:
-            add_stock(e, g, n)
-        elif n < 0:
+        if n < 0:
             e.stock[g] += n
+            loads += (-n + TRADE_LOAD - 1) // TRADE_LOAD
+    for k in range(MER_SLOTS):
+        g = e.cargo[2 * k]
+        e.cargo[2 * k + 1] = max(net[g], 0) if g else 0
+    e.markup = loads
     e.traded = 1
-    e.ship_state = SHIP_NONE
+    e.ship_kind = SK_DEALT
+    e.ship_eta = 0xFFFF
     return True
+
+
+def trade_pick(e):
+    """Το tra_pick: ένα φορτίο από το πλοίο του εμπόρου, ποσότητα << 4 | αγαθό,
+    από την πρώτη θέση με κάτι ακόμη, ως TRADE_LOAD· 0 αν δεν μένει τίποτα."""
+    for k in range(MER_SLOTS):
+        q = e.cargo[2 * k + 1]
+        if q:
+            n = min(q, TRADE_LOAD)
+            e.cargo[2 * k + 1] = q - n
+            return (n << 4) | e.cargo[2 * k]
+    return 0
+
+
+def trade_bye(e):
+    """Το tra_bye: η εργασία τελειώνει. Οι άλλες J_TRADE χωρίς πράκτορα και
+    χωρίς φορτίο σβήνουν· αν δεν μένει καμία άλλη, ο έμπορος φεύγει."""
+    out = 0
+    for j in range(MAX_JOB):
+        b = j * JOB_REC
+        if e.job[b + J_KIND] != J_TRADE:
+            continue
+        if e.job[b + J_AGENT] == 255 and e.job[b + J_SITE] == 0:
+            e.job[b + J_KIND] = NO_JOB
+        else:
+            out += 1
+    if out == 1:
+        e.ship_eta = 0
 
 
 def call_ship(e, kind):

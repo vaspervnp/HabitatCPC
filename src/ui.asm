@@ -43,13 +43,14 @@ PEN_NO      equ 8                       ; έντονο κόκκινο — δεν
 ; ui_init — κέρσορας στο κέντρο του κόσμου, κατάσταση LOOK.
 ; ---------------------------------------------------------------------------
 ui_init:
-        xor     a
-        ld      (ui_state),a
-        ld      (ui_sel),a
+        ld      hl,0
+        ld      (ui_state),hl           ; ui_state, ui_sel διπλανά
         call    gh_reset
         jr      ui_home
 
-; ui_center — η κάμερα με τον κέρσορα στη μέση του κάδρου.
+        ifndef HAS_SIM
+; ui_center — η κάμερα με τον κέρσορα στη μέση του κάδρου. Μόνο για το
+; do_goto του tests/uitest.asm: το ui_home ξέρει τον κέρσορα (0, 0).
 ui_center:
         call    ui_curt
         ld      a,l
@@ -60,6 +61,7 @@ ui_center:
         ld      h,a
         ld      (cam_tx),hl             ; cam_tx, cam_ty διπλανά
         ret
+        endif
 
 ; ---------------------------------------------------------------------------
 ; ui_tick — ένα καρέ εισόδου.
@@ -85,7 +87,9 @@ ui_tick:
 ui_home:
         ld      hl,0
         ld      (cur_hx),hl
-        call    ui_center
+        ; η κάμερα με τον κέρσορα (tile 0, 0) στη μέση του κάδρου
+        ld      hl,(256 - VIEW_TH/2) * 256 + 256 - VIEW_TW/2
+        ld      (cam_tx),hl             ; cam_tx, cam_ty διπλανά
         call    view_draw
         call    ui_hudall
         jp      ui_show
@@ -95,10 +99,9 @@ uit_state:
         ; δείχνει κουμπιά για πάτημα: όχι στη θέση δίσκου και στον εξοπλισμό,
         ; που έχουν δικά τους πλήκτρα και η μπάρα εκεί είναι μόνο εικόνα.
         ld      a,(ui_state)
-        cp      UI_SLOT
-        jr      z,uit_nobar
-        cp      UI_FIT
-        jr      z,uit_nobar
+        sub     UI_SLOT                 ; SLOT 0, FIT 1 (assert στο fit.asm)
+        cp      2
+        jr      c,uit_nobar
         call    bk_scan
         jp      c,bt_key                ; src/act.asm, τράπεζα 2
 uit_nobar:
@@ -106,22 +109,23 @@ uit_nobar:
         ld      a,(ui_state)
         ; ΠΡΩΤΑ ΤΟ LOOK, όπου κάθεται το παιχνίδι: ως το βήμα 80 περνούσε από
         ; πέντε συγκρίσεις για να φτάσει εδώ με πτώση.
+        ; Οι υπόλοιπες με dec a, με τη σειρά των τιμών (assert στο fit.asm).
         or      a
         jr      z,uist_look
-        cp      UI_MENU
-        jp      z,uist_menu
-        cp      UI_PLACE
-        jp      z,uist_place
-        cp      UI_LINK
-        jp      z,uist_link
-        cp      UI_FIT
-        jp      z,uist_fit
+        dec     a
+        jp      z,uist_menu             ; 1
+        dec     a
+        jp      z,uist_place            ; 2
+        dec     a
+        jp      z,uist_link             ; 3
+        dec     a
         ifdef HAS_DISC
-        cp      UI_SLOT
-        jp      z,uist_slot
+        jp      z,uist_slot             ; 4
         endif
+        dec     a
+        jp      z,uist_fit              ; 5
         ifdef HAS_SIM
-        cp      UI_ACT
+        cp      UI_ACT - UI_FIT
         jp      z,ac_tick               ; src/act.asm, τράπεζα 2
         endif
         ; fall through — UI_INFO
@@ -154,9 +158,7 @@ usl_still:
 usl_esc:
         ld      a,(ui_state)
         cp      UI_INFO
-        jr      nz,usl_go
-        xor     a                       ; UI_LOOK
-        jp      ui_goto
+        jp      z,ui_golook
 usl_go:
         endif
         ; ΤΑ ΥΠΟΛΟΙΠΑ ΠΛΗΚΤΡΑ ΤΟΥ LOOK ΜΕ ΔΥΟ and (βήμα 84). Ως τότε πέντε
@@ -175,24 +177,22 @@ usl_go:
         ifdef HAS_SIM
         jp      ac_open                 ; η μπάρα (src/act.asm)
         else
-        jr      ui_build
+        jp      ui_build
         endif
 usl_rare:
         ; Ο δίσκος υπάρχει μόνο στο πλήρες παιχνίδι: τα tests/uitest.asm και
         ; tests/objtest.asm δένουν τον renderer χωρίς τροχό και χωρίς οδηγό
         ; δισκέτας, και δεν έχουν πού να σώσουν.
         ifdef HAS_DISC
-        ld      a,A_SAVE
-        call    in_hit
+        ; Το A είναι ακόμη το act_hit + 1 με τη μάσκα: τα bits του, όχι in_hit.
+        bit     A_SAVE - 8,a
         jr      z,usv_load
         xor     a                       ; 0 = σώσιμο
         jp      ui_askslot
 usv_load:
-        ld      a,A_LOAD
-        call    in_hit
-        jr      z,usv_none
+        bit     A_LOAD - 8,a
         ld      a,1                     ; 1 = φόρτωμα
-        jp      ui_askslot
+        jp      nz,ui_askslot
 usv_none:
         endif
         ifdef HAS_SIM
@@ -201,13 +201,6 @@ usv_none:
         ret
         endif
         assert  A_SAVE >= 8 && A_LOAD >= 8 && A_SHIP >= 8 && A_FIRE < 8 && A_MENU < 8
-; ui_build — ο κατάλογος χτισίματος. Από το SPACE στις δοκιμές χωρίς
-; προσομοίωση, από το κουμπί μιας ομάδας στο παιχνίδι (src/act.asm, btk_group).
-ui_build:
-        call    ui_hide
-        ld      a,UI_MENU
-        ld      (ui_state),a
-        jp      uim_pick
 
 ; ---------------------------------------------------------------------------
 ; ui_speed — τα πλήκτρα 1-4 (§9.1). Δουλεύουν σε ΚΑΘΕ κατάσταση: η παύση είναι
@@ -230,28 +223,23 @@ ui_speed:
         ld      a,(act_hit + 1)
         and     1 << (A_SPD1 - 8) | 1 << (A_SPD2 - 8) | 1 << (A_SPD3 - 8) | 1 << (A_SPD4 - 8)
         ret     z
-        ld      a,(ui_spd)
-        ld      (uis_was),a
-        ld      hl,ui_spd_tab
-        ld      c,A_SPD1
-        ld      b,4
+        ; Τα bits 1-4 ένα-ένα από τα δεξιά, όχι in_hit: το τελευταίο πατημένο
+        ; κερδίζει, όπως ως τώρα. Το bit 0 (A_HOME) είναι σβηστό από το and,
+        ; άρα το ui_spd_tab - 1 δεν γράφεται ποτέ.
+        ld      hl,ui_spd
+        ld      c,(hl)                  ; C = η ταχύτητα πριν
+        ld      b,a
+        ld      de,ui_spd_tab - 1
 uis_lp:
-        push    bc
-        push    hl
-        ld      a,c
-        call    in_hit
-        pop     hl
-        pop     bc
-        jr      z,uis_next
-        ld      a,(hl)
-        ld      (ui_spd),a
+        srl     b
+        jr      nc,uis_next
+        ld      a,(de)
+        ld      (hl),a
 uis_next:
-        inc     hl
-        inc     c
-        djnz    uis_lp
-        ld      a,(ui_spd)
-        ld      hl,uis_was
-        cp      (hl)
+        inc     de                      ; δεν αγγίζει τις σημαίες του srl
+        jr      nz,uis_lp
+        ld      a,(hl)
+        cp      c
         ret     z
         call    ui_dirty                ; στην παύση ο τροχός δεν ξαναφτάνει
         jp      ui_panel                ; στη θέση 0: δείξ' το τώρα ή ποτέ
@@ -259,7 +247,7 @@ uis_next:
 ui_owed:    db 0                    ; το φάντασμα δεν ξαναμπήκε μετά την τοποθέτηση
 ui_spd_tab: db 0, 1, 2, 4
 ui_spd:     db 1                    ; 0 παύση · 1 κανονικά · 2 γρήγορα · 4 πολύ
-uis_was:    db 1
+        assert  A_SPD1 == A_HOME + 1 && A_SPD2 == A_SPD1 + 1 && A_SPD3 == A_SPD2 + 1 && A_SPD4 == A_SPD3 + 1
 
         ifdef HAS_SIM
 ; --- ΤΟ ΠΛΟΙΟ ΤΩΝ ΑΠΟΙΚΩΝ (§6.11) -----------------------------------------
@@ -284,7 +272,7 @@ ui_ship:
         jr      z,ush_say
         ld      hl,t_nopad              ; η πίστα είναι όρος του ship_call
         ld      a,(EC_PADNODE)
-        cp      255
+        inc     a                       ; 255: καμία πίστα
         jr      z,ush_say
         ld      a,SK_COLONIST
         call    ship_call
@@ -306,6 +294,7 @@ ui_dosave:
         call    sv_save
         ld      hl,t_saved
         jr      z,ui_say
+uds_err:
         ld      hl,t_dskerr
 ; ui_say — HL = μήνυμα: στη σειρά 3, ο πίνακας άκυρος, ο κέρσορας πίσω.
 ui_say:
@@ -313,51 +302,13 @@ ui_say:
         call    ui_dirty
         jp      ui_show
 
-ui_doload:
-        ld      hl,t_loading
-        call    uds_go
-        call    sv_load                 ; πετυχαίνοντας, ξανασχεδιάζει τα πάντα
-        push    af
-        ld      hl,t_loaded
-        jr      z,udl_end
-        ; Αδεια θέση ΔΕΝ είναι βλάβη δίσκου, και το μήνυμα το έλεγε λάθος: το
-        ; sv_hdr_ok γυρίζει #FF όταν η υπογραφή δεν ταιριάζει, ο ελεγκτής
-        ; οτιδήποτε άλλο.
-        cp      #FF
-        ld      hl,t_empty
-        jr      z,udl_end
-        ld      hl,t_dskerr
-udl_end:
-        call    ui_msg
-        call    ui_dirty
-        pop     af
-        jp      nz,ui_show              ; αποτυχία: ο κέρσορας ήταν κρυμμένος
-        ret                             ; επιτυχία: το sv_after τον έδειξε ήδη
-
-
 ; --- SLOT: ποιο από τα τρία -------------------------------------------------
 ; Ο δίσκος είχε ΠΑΝΤΑ τρεις θέσεις (§11) και το παιχνίδι έγραφε πάντα στην
 ; πρώτη: το sv_save έπαιρνε slot σε A και το UI έδινε `xor a`. Δύο από τις
 ; τρεις — 46 KB δίσκου — δεν είχαν γραφτεί ποτέ, ούτε σε δοκιμή.
 ;
 ; Η κατάσταση είναι κοινή για σώσιμο και φόρτωμα· το sl_mode ξεχωρίζει.
-uist_slot:
-        ld      a,A_CANCEL
-        call    in_hit
-        jr      z,usl_fire
-        xor     a                       ; UI_LOOK
-        ld      (ui_state),a
-        ret
-usl_fire:
-        ld      a,A_FIRE
-        call    in_hit
-        jr      z,usl_lr
-        xor     a                       ; UI_LOOK
-        ld      (ui_state),a
-        ld      a,(sl_mode)
-        or      a
-        jr      z,ui_dosave
-        jr      ui_doload
+; (Το usl_lr πρώτο, ώστε το uist_slot να πέφτει στο ui_doload.)
 usl_lr:
         ld      hl,sl_pick
         ld      c,SV_SLOTS
@@ -367,6 +318,35 @@ usl_lr:
         ; ως το βήμα 80 η θέση άλλαζε χωρίς να το λέει η σειρά 3.
         call    ui_click
         jp      ui_panel
+uist_slot:
+        ld      a,(act_hit)             ; ESC ή FIRE: πίσω στο LOOK
+        and     1 << A_CANCEL | 1 << A_FIRE
+        jr      z,usl_lr
+        ld      hl,ui_state
+        ld      (hl),UI_LOOK
+        and     1 << A_CANCEL           ; το ESC πρώτο, όπως ως τώρα
+        ret     nz
+        ld      a,(sl_mode)
+        or      a
+        jr      z,ui_dosave
+        ; fall through
+
+ui_doload:
+        ld      hl,t_loading
+        call    uds_go
+        call    sv_load                 ; πετυχαίνοντας, ξανασχεδιάζει τα πάντα
+        ld      hl,t_loaded
+        jr      z,udl_ok
+        ; Αδεια θέση ΔΕΝ είναι βλάβη δίσκου, και το μήνυμα το έλεγε λάθος: το
+        ; sv_hdr_ok γυρίζει #FF όταν η υπογραφή δεν ταιριάζει, ο ελεγκτής
+        ; οτιδήποτε άλλο. Αποτυχία: ui_say, ο κέρσορας ήταν κρυμμένος.
+        cp      #FF
+        ld      hl,t_empty
+        jr      z,ui_say
+        jr      uds_err
+udl_ok:
+        call    ui_msg                  ; επιτυχία: το sv_after τον έδειξε ήδη
+        jp      ui_dirty
 
 ; ui_askslot — μπαίνει στην επιλογή. A = 0 σώσιμο, 1 φόρτωμα.
 ; (ΟΧΙ «ui_slot»: ο rasm δεν ξεχωρίζει ετικέτα από alias, και το UI_SLOT
@@ -407,33 +387,17 @@ sl_pick:    db 0
 
 ; ui_msg — μία γραμμή στη σειρά 3 του HUD, και το υπόλοιπο σβηστό.
 ui_msg:
-        ; Η τράπεζα 7 ανοίγει ΜΙΑ φορά και για τα δύο: και το τύπωμα και το
-        ; μέτρημα του μήκους διαβάζουν από εκεί (§4.2).
-        ld      bc,GA_PORT + PAGE_B7
-        call    hud_page                ; ο γλύφος (τράπεζα 7) γυρίζει ΕΔΩ
+        ; Κενά ως τη στήλη 40 με το hud_to, όπως το uip_say: στις σειρές 3-4 το
+        ; hud_sp είναι η στήλη, και δεν χρειάζεται δεύτερο πέρασμα για το μήκος.
         push    hl
         ld      a,3
-        call    hud_go
+        call    hud_go                  ; δεν διαβάζει τράπεζα
         pop     hl
-        push    hl
-        call    hud_text
-        pop     hl
-        ld      b,40
-um_len:
-        ld      a,(hl)
-        or      a
-        jr      z,um_blank
-        inc     hl
-        dec     b
-        jr      um_len
-um_blank:
-        push    bc
-        ld      bc,GA_PORT + PAGE_B1
-        call    hud_page
-        pop     bc
+        call    hud_text7
         ld      a,MSG_TICKS
         ld      (ui_hold),a
-        jp      hud_blank
+        ld      b,40
+        jp      hud_to
 
         endif
 
@@ -441,18 +405,20 @@ um_blank:
 uist_menu:
         ; ΚΑΘΕ πλήκτρο του MENU είναι ακμή (ESC, FIRE, τα βελάκια): χωρίς καμία,
         ; τίποτα να ελεγχθεί (βήμα 84 — ως τότε πέντε in_hit ανά frame).
+        ; Και τα bits τους από το L, όχι in_hit: όλα είναι στο act_hit, και το
+        ; L μένει ως το uim_dn (assert πιο κάτω).
         ld      hl,(act_hit)
         ld      a,h
         or      l
         ret     z
-        ld      a,A_CANCEL
-        call    in_hit
+        bit     A_CANCEL,l
         jr      z,uim_fire
+; ui_golook — πίσω στο LOOK (το ui_goto με A = UI_LOOK).
+ui_golook:
         xor     a                       ; UI_LOOK
         jr      ui_goto
 uim_fire:
-        ld      a,A_FIRE
-        call    in_hit
+        bit     A_FIRE,l
         jr      z,uim_lr
         call    ui_hide
         ld      a,(bd_kind)
@@ -463,23 +429,20 @@ uim_fire:
         ld      (ln_a),a                ; ακόμη δεν έχει διαλεγεί αφετηρία
         ld      a,UI_LINK
 uim_go:
-        ld      (ui_state),a
-        call    ui_click                ; «διάλεξες»: το FIRE στον κατάλογο δεν
-        jp      ui_show                 ; αλλάζει τίποτα ορατό εκτός φαντάσματος
+        ld      (ui_state),a            ; «διάλεξες»: το FIRE στον κατάλογο δεν
+        jr      uim_cs                  ; αλλάζει τίποτα ορατό εκτός φαντάσματος
 uim_lr:
         ; ΔΥΟ ΑΞΟΝΕΣ ΣΤΟ ΙΔΙΟ ΜΕΝΟΥ: δεξιά-αριστερά το αντικείμενο, πάνω-κάτω το
         ; δωμάτιο του θόλου (§6.1). Το πάνω-κάτω δεν έκανε τίποτα ως τώρα.
         ld      a,(bd_kind)
         or      a                       ; BK_DOME
         jr      nz,uim_item
-        ld      a,A_UP
-        call    in_hit                  ; Z = ΔΕΝ πατήθηκε (βλ. uim_fire πιο πάνω)
+        bit     A_UP,l                  ; Z = ΔΕΝ πατήθηκε
         jr      z,uim_dn
         ld      a,255                   ; πάνω = πίσω στη λίστα
         jr      uim_room
 uim_dn:
-        ld      a,A_DOWN
-        call    in_hit
+        bit     A_DOWN,l
         jr      z,uim_item
         ld      a,1
 uim_room:
@@ -492,14 +455,22 @@ uim_item:
         ld      c,BLD_N
         call    ui_lr
         ret     z
+        ; fall through: η κατάσταση είναι ήδη MENU, και το ui_build την ξαναγράφει
+; ui_build — ο κατάλογος χτισίματος. Από το SPACE στις δοκιμές χωρίς
+; προσομοίωση, από το κουμπί μιας ομάδας στο παιχνίδι (src/act.asm, btk_group).
+ui_build:
         call    ui_hide
+        ld      a,UI_MENU
+        ld      (ui_state),a
 ; uim_pick — το αντικείμενο του ui_sel στο φάντασμα, με το «κλικ». Και από
 ; το LOOK, όταν ανοίγει ο κατάλογος.
 uim_pick:
         ld      a,(ui_sel)
         call    bd_select
+uim_cs:
         call    ui_click
         jp      ui_show
+        assert  A_CANCEL < 8 && A_FIRE < 8 && A_UP < 8 && A_DOWN < 8   ; uist_menu: το L
 
 ; ui_ask — A = μια κατάσταση που ΖΗΤΗΣΕ ο παίκτης και ζει στις σειρές 3-4
 ; (INFO, ACT, SLOT): το ui_goto, με τον πίνακα άκυρο και χωρίς μήνυμα από
@@ -580,7 +551,7 @@ uip_fire:
         jr      nz,uip_deny             ; ούτε τα υλικά φτάνουν
         call    ui_hide
         call    bd_commit
-        cp      255
+        inc     a                       ; 255: δεν χωρά
         jr      z,uip_nospace
         ld      a,SFX_BUILD
         call    snd_play
@@ -632,18 +603,20 @@ uist_link:
         ld      a,UI_MENU
         jp      z,ui_goto_h             ; χωρίς αφετηρία: έξω
         ld      a,255
-        ld      (ln_a),a
-        jp      ui_show
+        jr      uil_set
 uil_fire:
         call    ui_dome
         cp      255
         ret     z                       ; ο κέρσορας δεν είναι πάνω σε θόλο
-        ld      (ln_pick),a             ; ΣΤΗ ΜΝΗΜΗ: το ui_hide ζωγραφίζει
+        ld      e,a
         ld      a,(ln_a)
         inc     a
         jr      nz,uil_second
+        ld      a,e
+        push    af                      ; ΣΤΗ ΣΤΟΙΒΑ: το ui_hide ζωγραφίζει
         call    ui_hide
-        ld      a,(ln_pick)
+        pop     af
+uil_set:
         ld      (ln_a),a
         jp      ui_show
 uil_second:
@@ -677,25 +650,25 @@ ui_dome:
         ld      c,0
 uid_lp:
         ld      a,c
-        call    ob_dome_live
+        call    ob_dome_live            ; HL -> D_STATE του θόλου
         jr      z,uid_next              ; άδεια θέση
         push    bc
-        call    ob_domeadr
-        ld      e,(hl)                  ; cx, cy σε μισά tiles — ΣΤΗ ΜΝΗΜΗ: το
-        inc     hl                      ; cr_look παρακάτω χαλάει το DE
-        ld      d,(hl)
-        inc     hl
-        ld      (uid_cx),de             ; uid_cx, uid_cy διπλανά
-        ld      a,(hl)                  ; μέγεθος
-        ld      hl,uid_wt
-        call    cr_look
-        ld      b,a                     ; W σε tiles
-        ld      hl,uid_cx
-        ld      de,uid_tx
+        dec     hl
+        dec     hl                      ; D_SIZE
+        ld      a,(hl)
+        add     a,2
+        add     a,a
+        ld      b,a                     ; W σε tiles: 4, 6, 8
+        dec     hl
+        ld      d,(hl)                  ; cy σε μισά tiles
+        dec     hl
+        ld      e,(hl)                  ; cx
+        ld      hl,(uid_tx)             ; L = tx, H = ty
+        ld      a,e
         call    uid_in
         jr      nc,uid_no
-        inc     hl
-        inc     de
+        ld      a,d
+        ld      l,h
         call    uid_in
         jr      nc,uid_no
         pop     bc
@@ -717,21 +690,19 @@ uid_out:
         pop     af
         ret
 
-; uid_in — ένας άξονας. (HL) = κέντρο σε μισά tiles, (DE) = το tile του
-; κέρσορα, B = W σε tiles. Out: C αν ο κέρσορας είναι μέσα. Το BC του βρόχου
-; είναι στη στοίβα· το C εδώ είναι πρόχειρο.
+; uid_in — ένας άξονας. A = κέντρο σε μισά tiles, L = το tile του κέρσορα,
+; B = W σε tiles. Out: C αν ο κέρσορας είναι μέσα. Το BC του βρόχου είναι στη
+; στοίβα· το C εδώ είναι πρόχειρο.
 ;       left = (κέντρο - W) / 2, ακριβές: κέντρο και W έχουν την ίδια ισοτιμία
 uid_in:
-        ld      a,(hl)
         sub     b
         sra     a
         ld      c,a
-        ld      a,(de)
+        ld      a,l
         sub     c
         cp      b
         ret
-
-uid_wt:     db 4,6,8
+        assert  D_CY == D_CX + 1 && D_SIZE == D_CY + 1 && D_STATE == D_SIZE + 2
 
 ; ---------------------------------------------------------------------------
 ; ln_plan — η διαδρομή από τον (ln_a) στον θόλο κάτω από τον κέρσορα.
@@ -752,14 +723,13 @@ ln_plan:
         cp      (hl)
         jr      z,lnp_no                ; ο ίδιος θόλος με τον εαυτό του
         ld      (cr_b),a
-        ld      a,(ln_a)
+        ld      a,(hl)                  ; HL = ln_a
         ld      (cr_a),a
         call    cr_plan
         or      a
         jr      z,lnp_none
         call    cr_check
-        ld      (ui_bad),a
-        ret
+        jr      lnp_bad
 lnp_none:
         ld      a,(cr_far)
         inc     a
@@ -807,27 +777,26 @@ ui_curt:
 ; το κρατημένο πλήκτρο επαναλαμβάνει, όπως περιμένει κανείς από κέρσορα, και ο
 ; ρυθμός επανάληψης είναι ο ρυθμός του κύκλου.
 ui_move:
-        ld      de,0                    ; E = dx, D = dy: το in_held τα κρατά
-        ld      a,A_LEFT
-        call    in_held
+        ; Τα τέσσερα bits του act_now με bit, όχι τέσσερα in_held.
+        ld      de,0                    ; E = dx, D = dy
+        ld      a,(act_now)
+        bit     A_LEFT,a
         jr      z,um_r
         ld      e,-2
 um_r:
-        ld      a,A_RIGHT
-        call    in_held
+        bit     A_RIGHT,a
         jr      z,um_u
         ld      e,2
 um_u:
-        ld      a,A_UP
-        call    in_held
+        bit     A_UP,a
         jr      z,um_d
         ld      d,-2
 um_d:
-        ld      a,A_DOWN
-        call    in_held
+        bit     A_DOWN,a
         jr      z,um_go
         ld      d,2
 um_go:
+        assert  A_LEFT < 8 && A_RIGHT < 8 && A_UP < 8 && A_DOWN < 8
         ld      a,d
         or      e
         ret     z                       ; τίποτα δεν πατήθηκε
@@ -876,10 +845,9 @@ uif_x:
         ld      a,(ui_tx)
         ld      hl,cam_tx
         sub     (hl)
-        bit     7,a                     ; ο κέρσορας αριστερά της κάμερας
-        jr      nz,uif_west
-        cp      UI_MARGIN
-        jr      nc,uif_x2
+        or      a                       ; 0, ή αρνητικό: ο κέρσορας αριστερά
+        jr      z,uif_west              ; (UI_MARGIN = 1)
+        jp      p,uif_x2
 uif_west:
         ld      a,(hl)                  ; HL = cam_tx
         cp      CAM_MIN
@@ -905,10 +873,10 @@ uif_y:
         ld      a,(ui_ty)
         ld      hl,cam_ty
         sub     (hl)
-        bit     7,a
-        jr      nz,uif_north
-        cp      UI_MARGIN
-        jr      nc,uif_y2
+        or      a
+        jr      z,uif_north
+        jp      p,uif_y2
+        assert  UI_MARGIN == 1
 uif_north:
         ld      a,(hl)                  ; HL = cam_ty
         cp      CAM_MIN
@@ -940,16 +908,16 @@ ui_rect:
         cp      UI_PLACE
         jr      z,uir_foot
         call    ui_curt
-        ld      (ui_tx),hl              ; ui_tx, ui_ty διπλανά
-        ld      hl,#0101
-        ld      (ui_w),hl               ; ui_w, ui_h διπλανά
-        ret
+        ld      de,#0101
+        jr      uir_set
 uir_foot:
         call    bd_rect
-        ld      hl,(bd_tx)              ; bd_tx, bd_ty διπλανά (build.asm)
-        ld      (ui_tx),hl
-        ld      hl,(bd_w)               ; bd_w, bd_h διπλανά
-        ld      (ui_w),hl
+        ld      hl,(bd_w)               ; bd_w, bd_h διπλανά (build.asm)
+        ex      de,hl
+        ld      hl,(bd_tx)              ; bd_tx, bd_ty διπλανά
+uir_set:
+        ld      (ui_tx),hl              ; ui_tx, ui_ty διπλανά
+        ld      (ui_w),de               ; ui_w, ui_h διπλανά
         ret
 
 ; ---------------------------------------------------------------------------
@@ -970,6 +938,45 @@ ui_validate:
         call    bd_check
         jp      al_plan                 ; τελειώνει στο uid_out
 
+; uis_box — το πλαίσιο του (ui_tx, ui_ty, ui_w, ui_h) σε συντεταγμένες οθόνης.
+uis_box:
+        ld      a,(ui_tx)
+        ld      de,cam_tx
+        call    ui_rel
+        add     hl,hl                   ; x = 4*(tx - cam_tx)
+        ld      (gh_bx),hl
+        ld      a,(ui_ty)
+        ld      de,cam_ty
+        call    ui_rel
+        add     hl,hl
+        add     hl,hl
+        add     hl,hl                   ; y = 16*(ty - cam_ty)
+        ld      (gh_by),hl
+        ld      hl,(ui_w)               ; L = w, H = h, σε tiles
+        ld      a,l
+        add     a,a
+        add     a,a
+        ld      l,a                     ; x4 bytes
+        ld      a,h
+        add     a,a
+        add     a,a
+        add     a,a
+        add     a,a
+        ld      h,a                     ; x16 γραμμές
+        ld      (gh_bw),hl              ; gh_bw, gh_bh διπλανά
+        jp      gh_box
+
+; ui_rel — tile -> οθόνη, προσημασμένα 16 bit (το uis_box):
+;       x = 4*(tx - cam_tx) = 2*(2*tx - 2*cam_tx)
+;       y = 16*(ty - cam_ty) = 8*(2*ty - 2*cam_ty)
+; Το 2*tile - 2*κάμερα είναι το ob_rel με το A διπλασιασμένο σε 16 bit: ένα
+; αποτύπωμα στο χείλος του κόσμου αρχίζει πριν από το -64, και το 2*tx δεν
+; χωρά σε byte.
+ui_rel:
+        call    ob_sext
+        add     hl,hl
+        jp      obr_t
+
 ; ---------------------------------------------------------------------------
 ; ui_show / ui_hide — το φάντασμα πάνω στη σκηνή, και πίσω.
 ; ---------------------------------------------------------------------------
@@ -988,7 +995,7 @@ ui_late:
         inc     (hl)                    ; 1 -> 2: ο επόμενος γύρος
         dec     a
         ret     z
-        jp      ui_show
+        ; fall through
 
 ui_show:
         xor     a
@@ -998,12 +1005,13 @@ ui_show:
         ld      a,(ui_state)
         cp      UI_LINK
         jr      nz,uis_np
-        call    ln_plan
+        call    ln_plan                 ; A = (ui_bad), σε κάθε δρόμο
+        ld      b,a
         ld      a,(ln_a)
         inc     a
         ld      a,PEN_CUR               ; δεν έχει αφετηρία ακόμη
         jr      z,uis_set
-        ld      a,(ui_bad)
+        ld      a,b
         jr      uis_okno
 uis_np:
         cp      UI_FIT
@@ -1017,7 +1025,8 @@ uis_okno:
         or      a
         ld      a,PEN_OK
         jr      z,uis_set
-        ld      a,PEN_NO
+        dec     a                       ; PEN_NO
+        assert  PEN_NO == PEN_OK - 1
 uis_set:
         call    gh_setpen
         call    uis_box
@@ -1028,7 +1037,7 @@ uis_set:
 uis_bad:
         ; --- τα άκυρα tiles ---
         cp      UI_PLACE
-        jp      nz,ui_panel
+        jr      nz,ui_panel
         ld      a,(ui_bad)
         or      a
         jp      z,al_ghost              ; οι δεσμοί, πράσινοι (βήμα 85)
@@ -1059,62 +1068,17 @@ uisb_rn:
         inc     hl
         inc     d
         djnz    uisb_row
-        jp      ui_panel
+        jr      ui_panel
 
 ; --- το φάντασμα της διαδρομής ---------------------------------------------
 uis_route:
         ld      a,(cr_n)
         or      a
-        jp      z,ui_panel
+        jr      z,ui_panel
         ld      hl,ui_mark
         ld      (cr_cb),hl
         call    cr_walk
-        jp      ui_panel
-
-; uis_box — το πλαίσιο του (ui_tx, ui_ty, ui_w, ui_h) σε συντεταγμένες οθόνης.
-uis_box:
-        ld      a,(ui_tx)
-        call    ui_sxt
-        ld      (gh_bx),hl
-        ld      a,(ui_ty)
-        call    ui_syt
-        ld      (gh_by),hl
-        ld      hl,(ui_w)               ; L = w, H = h, σε tiles
-        ld      a,l
-        add     a,a
-        add     a,a
-        ld      l,a                     ; x4 bytes
-        ld      a,h
-        add     a,a
-        add     a,a
-        add     a,a
-        add     a,a
-        ld      h,a                     ; x16 γραμμές
-        ld      (gh_bw),hl              ; gh_bw, gh_bh διπλανά
-        jp      gh_box
-
-; ui_sxt / ui_syt — tile -> οθόνη, προσημασμένα 16 bit:
-;       x = 4*(tx - cam_tx) = 2*(2*tx - 2*cam_tx)
-;       y = 16*(ty - cam_ty) = 8*(2*ty - 2*cam_ty)
-; Το 2*tile - 2*κάμερα είναι το ob_rel με το A διπλασιασμένο σε 16 bit: ένα
-; αποτύπωμα στο χείλος του κόσμου αρχίζει πριν από το -64, και το 2*tx δεν
-; χωρά σε byte.
-ui_sxt:
-        ld      de,cam_tx
-        call    ui_rel
-        add     hl,hl
-        ret
-ui_syt:
-        ld      de,cam_ty
-        call    ui_rel
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl
-        ret
-ui_rel:
-        call    ob_sext
-        add     hl,hl
-        jp      obr_t
+        ; fall through
 
 ; ---------------------------------------------------------------------------
 ; ui_panel — οι σειρές 3-4 του HUD: τι κρατάς και τι σου λέει το έδαφος.
@@ -1199,249 +1163,12 @@ uip_start:
         cp      (hl)
         ret     z                       ; τίποτα δεν άλλαξε
 uipc_go:
-        call    ui_sig
-        ld      hl,uip_now
-        ld      de,uip_sig
-        ld      bc,UIP_NSIG
-        ldir
-        ld      a,3
-        call    hud_go
-        ld      a,(ui_state)
-        or      a
-        jr      nz,uip_notlook
-        ld      hl,t_look
-        call    hud_text7
-        ld      b,35-33                 ; ως τον δείκτη ταχύτητας (uip_spd)
-        call    hud_blank
-        jp      uip_row4
-uip_notlook:
-        ifdef HAS_SIM
-        cp      UI_INFO
-        jp      z,in_panel              ; src/info.asm, τράπεζα 2
-        cp      UI_ACT
-        jp      z,ac_panel              ; src/act.asm, τράπεζα 2
-        endif
-        ifdef HAS_DISC
-        cp      UI_SLOT
-        jr      nz,uip_item
-        ld      hl,t_slsave             ; «SAVE TO SLOT  » / «LOAD FROM SLOT»
-        ld      a,(sl_mode)
-        or      a
-        jr      z,uip_slt
-        ld      hl,t_slload
-uip_slt:
-        call    hud_text7
-        ld      b,1
-        call    hud_blank
-        ld      a,(sl_pick)
-        add     a,'1'
-        call    hud_char
-        ld      b,40-16
-        call    hud_blank
-        jp      uip_row4
-        endif
-uip_item:
-        ; Το κόστος που δείχνεται είναι ΟΛΗΣ της διαδρομής όταν υπάρχει
-        ; διαδρομή: ο κατάλογος γράφει την τιμή ενός πλακιδίου διαδρόμου, και
-        ; το μήκος δεν το διαλέγει ο παίκτης αλλά η γεωμετρία (§9.4).
-        ld      a,(bd_metal)
-        ld      l,a
-        ld      h,0
-        ld      (uip_fe),hl
-        ld      a,(bd_biop)
-        ld      l,a
-        ld      h,0
-        ld      (uip_bi),hl
-        ld      a,(ui_state)
-        cp      UI_PLACE
-        jr      z,uipi_tot              ; το σύνολο του al_plan (βήμα 85)
-        cp      UI_LINK
-        jr      nz,uipi_go
-        ld      a,(cr_n)
-        or      a
-        jr      z,uipi_go
-        call    cr_cost
-uipi_tot:
-        ld      hl,(cr_metal)
-        ld      (uip_fe),hl
-        ld      hl,(cr_biop)
-        ld      (uip_bi),hl
-uipi_go:
-        ld      a,'<'
-        call    hud_char
-        ld      b,1
-        call    hud_blank
-        ld      a,(ui_state)
-        cp      UI_FIT
-        jp      z,fit_name              ; η μηχανή στη θέση του ονόματος
-        ; ΓΙΑ ΘΟΛΟ ΤΟ ΟΝΟΜΑ ΕΙΝΑΙ ΤΟ ΔΩΜΑΤΙΟ, και το μέγεθος ένα γράμμα από
-        ; πίσω: «OXYGEN     S» λέει και τα δύο σε μία λέξη λιγότερη από
-        ; «DOME S». Τα υπόλοιπα του καταλόγου κρατούν το όνομά τους, που ζει
-        ; στην τράπεζα 2 μαζί με το build.asm.
-        ld      a,(bd_kind)
-        or      a
-        jr      nz,uipi_nm
-        call    rm_name
-        call    hud_text7
-        ld      b,1
-        call    hud_blank
-        ld      a,(bd_param)
-        ld      hl,uip_szc
-        call    ob_addu
-        ld      a,(hl)
-        call    hud_char
-        jr      uipi_arrow
-uipi_nm:
-        ld      hl,(bd_name)
-        call    hud_text   ; τράπεζα 2, όχι 7
-        ld      b,3                     ; τα ονόματα καταλόγου είναι 9· τα
-        call    hud_blank               ; δωμάτια 10 συν το γράμμα μεγέθους
-uipi_arrow:
-        ld      b,1
-        call    hud_blank
-        ld      a,'>'
-        call    hud_char
-        ld      b,2
-        call    hud_blank
-        ld      hl,t_fe
-        call    hud_text7
-        ld      hl,(uip_fe)
-        ld      b,3
-        call    hud_num
-        ld      b,2
-        call    hud_blank
-        ld      hl,t_bi
-        call    hud_text7
-        ld      hl,(uip_bi)
-        ld      b,3
-        call    hud_num
-        ld      b,40-34
-        call    hud_blank
-uip_row4:
-        ld      a,4
-        call    hud_go
-        ld      a,(ui_state)
-        cp      UI_LINK
-        jr      z,uip_ln
-        cp      UI_PLACE
-        jr      z,uip_st
-        cp      UI_FIT
-        jp      z,fit_row4
-        ifdef HAS_DISC
-        cp      UI_SLOT
-        ld      hl,t_slkeys
-        jp      z,uip_say
-        endif
-        ; ΜΕΝΟΥΝ LOOK ΚΑΙ MENU. Στο LOOK η σειρά 4 έλεγε «FIRE=PLACE» ως το
-        ; βήμα 44, όταν το FIRE εκεί δεν έκανε τίποτα· από το 45 ανοίγει τον
-        ; εξοπλισμό, και το λέει η σειρά 3.
-        or      a
-        ld      b,40
-        jr      z,uip_blk
-        ld      hl,t_keys
-        ld      b,40-20                 ; το t_keys είναι 20 χαρακτήρες, όχι 24:
-                                        ; οι τέσσερις τελευταίες στήλες έμεναν
-        ld      a,(bd_kind)
-        or      a                       ; σε θόλο, το πάνω-κάτω κάνει κάτι
-        jr      nz,uip_ks
-        ld      hl,t_keysr
-        ld      b,40-22
-uip_ks:
-        push    bc
-        call    hud_text7
-        pop     bc
-uip_blk:
-        call    hud_blank
-        jr      uip_spd
-uip_st:
-        ld      a,(ui_bad)
-        or      a
-        jr      nz,uip_blocked
-        call    al_afford
-        jr      nz,uip_poor
-        ld      hl,t_ok
-        jr      uip_say
-uip_blocked:
-        ; ΓΙΑΤΙ ΟΧΙ, ΟΧΙ ΜΟΝΟ ΟΧΙ. Οταν φταίνε τα tiles, το φάντασμα τα δείχνει
-        ; ένα προς ένα με κόκκινο· όταν λείπει το υλικό της δομής (§6.5) δεν
-        ; υπάρχει κακό tile να δειχτεί, και ένα σκέτο BLOCKED πάνω σε καθαρό
-        ; έδαφος διαβάζεται ως σφάλμα του παιχνιδιού.
-        ld      a,(bd_nres)
-        ld      hl,t_block
-        or      a
-        jr      z,uip_say
-        dec     a
-        ld      hl,t_nowat
-        jr      z,uip_say
-        dec     a
-        ld      hl,t_noore
-        jr      z,uip_say
-        dec     a
-        ld      hl,t_far                ; 3: κανένα κτίσμα σε απόσταση (βήμα 85)
-        jr      z,uip_say
-        dec     a
-        ld      hl,t_path               ; 4: κάποιο, αλλά ο δρόμος κομμένος
-        jr      z,uip_say
-        ld      hl,t_nofit              ; 5: κανένα σχήμα διαδρόμου (βήμα 86)
-        jr      uip_say
-uip_poor:
-        ld      hl,t_poor
-        jr      uip_say
-uip_ln:
-        ld      a,(ln_a)
-        inc     a
-        ld      hl,t_ln1
-        jr      z,uip_say
-        ld      a,(cr_n)
-        or      a
-        jr      nz,uip_lnr
-        ld      a,(ui_bad)
-        dec     a
-        ld      hl,t_ln2                ; 1: το σχήμα δεν βγαίνει
-        jr      z,uip_say
-        ld      hl,t_far                ; 2: >= 64 tiles (βήμα 81)
-        jr      uip_say
-uip_lnr:
-        ld      a,(ui_bad)
-        or      a
-        ld      hl,t_block
-        jr      nz,uip_say
-        call    cr_afford
-        ld      hl,t_poor
-        jr      nz,uip_say
-        ld      hl,t_ok
-uip_say:
-        call    hud_text7
-        ld      b,40                    ; ως το τέλος, όσο κι αν είναι: από το
-        call    hud_to                  ; βήμα 91 τα κείμενα δεν έχουν κενά στο
-        ; fall through                  ; τέλος (ως τότε 20 στήλες ακριβώς)
-
-; uip_spd — η ταχύτητα, στις πέντε τελευταίες στήλες της σειράς 3. Είναι το
-; μόνο σημείο του HUD που γράφεται από τα δεξιά: οι σειρές 0-2 είναι γεμάτες
-; ως το τελευταίο κελί (§9.2) και η σειρά 3 τελειώνει με κενά σε κάθε
-; κατάσταση.
-uip_spd:
-        ld      a,3
-        ld      c,35
-        call    hud_goc
-        ld      a,(ui_spd)
-        add     a,a
-        ld      hl,t_spd_ptr
-        call    ob_addu
-        ld      a,(hl)
-        inc     hl
-        ld      h,(hl)
-        ld      l,a
-        jp      hud_text7
-
-t_spd_ptr:  dw t_pause, t_x1, t_x2, t_x2, t_x4
-
-; ui_sig — η υπογραφή των σειρών 3-4 στο uip_now.
-; ΓΡΑΜΜΕΝΗ ΕΥΘΕΙΑ, ΟΧΙ ΑΠΟ ΠΙΝΑΚΑ. Με πίνακα διευθύνσεων είναι 12 bytes
-; μικρότερη (βήμα 44) — και 139 us ακριβότερη σε ΚΑΘΕ βήμα κέρσορα, που
-; τρέχει το ui_panel και άρα αυτήν (4.942 -> 5.081 us).
-ui_sig:
-        ld      hl,uip_now
+        ; ΤΟ ui_sig, ΕΔΩ: η υπογραφή των σειρών 3-4 γράφεται κατευθείαν στο
+        ; uip_sig (ως το βήμα 97 στο uip_now, και ένα ldir την αντέγραφε).
+        ; ΓΡΑΜΜΕΝΗ ΕΥΘΕΙΑ, ΟΧΙ ΑΠΟ ΠΙΝΑΚΑ. Με πίνακα διευθύνσεων είναι 12 bytes
+        ; μικρότερη (βήμα 44) — και 139 us ακριβότερη σε ΚΑΘΕ βήμα κέρσορα, που
+        ; τρέχει το ui_panel και άρα αυτήν (4.942 -> 5.081 us).
+        ld      hl,uip_sig
         ld      a,(ui_state)
         ld      (hl),a
         inc     hl
@@ -1485,7 +1212,218 @@ ui_sig:
         inc     hl
         ld      a,(bd_rsel)             ; το δωμάτιο γράφεται στη σειρά 3
         ld      (hl),a
-        ret
+        ld      a,3
+        call    hud_go
+        ld      a,(ui_state)
+        or      a
+        jr      nz,uip_notlook
+        ld      hl,t_look
+        call    hud_text7
+        ld      b,35-33                 ; ως τον δείκτη ταχύτητας (uip_spd)
+        call    hud_blank
+        jp      uip_row4
+uip_notlook:
+        ifdef HAS_SIM
+        cp      UI_INFO
+        jp      z,in_panel              ; src/info.asm, τράπεζα 2
+        cp      UI_ACT
+        jp      z,ac_panel              ; src/act.asm, τράπεζα 2
+        endif
+        ifdef HAS_DISC
+        cp      UI_SLOT
+        jr      nz,uip_item
+        ld      hl,t_slsave             ; «SAVE TO SLOT  » / «LOAD FROM SLOT»
+        ld      a,(sl_mode)
+        or      a
+        jr      z,uip_slt
+        ld      hl,t_slload
+uip_slt:
+        call    hud_text7
+        call    hud_space
+        ld      a,(sl_pick)
+        add     a,'1'
+        call    hud_char
+        ld      b,40-16
+        call    hud_blank
+        jp      uip_row4
+        endif
+uip_item:
+        ; Το κόστος που δείχνεται είναι ΟΛΗΣ της διαδρομής όταν υπάρχει
+        ; διαδρομή: ο κατάλογος γράφει την τιμή ενός πλακιδίου διαδρόμου, και
+        ; το μήκος δεν το διαλέγει ο παίκτης αλλά η γεωμετρία (§9.4).
+        ld      hl,(bd_metal)           ; L = μέταλλο, H = βιοπλαστικό
+        ld      e,h
+        ld      h,0
+        ld      (uip_fe),hl
+        ld      l,e
+        ld      (uip_bi),hl
+        ld      a,(ui_state)
+        cp      UI_PLACE
+        jr      z,uipi_tot              ; το σύνολο του al_plan (βήμα 85)
+        cp      UI_LINK
+        jr      nz,uipi_go
+        ld      a,(cr_n)
+        or      a
+        jr      z,uipi_go
+        call    cr_cost
+uipi_tot:
+        ld      hl,(cr_metal)
+        ld      (uip_fe),hl
+        ld      hl,(cr_biop)
+        ld      (uip_bi),hl
+uipi_go:
+        ld      a,'<'
+        call    hud_char
+        call    hud_space
+        ld      a,(ui_state)
+        cp      UI_FIT
+        jp      z,fit_name              ; η μηχανή στη θέση του ονόματος
+        ; ΓΙΑ ΘΟΛΟ ΤΟ ΟΝΟΜΑ ΕΙΝΑΙ ΤΟ ΔΩΜΑΤΙΟ, και το μέγεθος ένα γράμμα από
+        ; πίσω: «OXYGEN     S» λέει και τα δύο σε μία λέξη λιγότερη από
+        ; «DOME S». Τα υπόλοιπα του καταλόγου κρατούν το όνομά τους, που ζει
+        ; στην τράπεζα 2 μαζί με το build.asm.
+        ld      a,(bd_kind)
+        or      a
+        jr      nz,uipi_nm
+        call    rm_name
+        call    hud_text7
+        call    hud_space
+        ld      a,(bd_param)
+        ld      hl,uip_szc
+        call    ob_addu
+        ld      a,(hl)
+        call    hud_char
+        jr      uipi_arrow
+uipi_nm:
+        ld      hl,(bd_name)
+        call    hud_text   ; τράπεζα 2, όχι 7
+        ld      b,3                     ; τα ονόματα καταλόγου είναι 9· τα
+        call    hud_blank               ; δωμάτια 10 συν το γράμμα μεγέθους
+uipi_arrow:
+        call    hud_space
+        ld      a,'>'
+        call    hud_char
+        ld      b,2
+        call    hud_blank
+        ld      hl,t_fe
+        call    hud_text7
+        ld      hl,(uip_fe)
+        ld      b,3
+        call    hud_num
+        ld      b,2
+        call    hud_blank
+        ld      hl,t_bi
+        call    hud_text7
+        ld      hl,(uip_bi)
+        ld      b,3
+        call    hud_num
+        ld      b,40-34
+        call    hud_blank
+uip_row4:
+        ld      a,4
+        call    hud_go
+        ld      a,(ui_state)
+        cp      UI_LINK
+        jr      z,uip_ln
+        cp      UI_PLACE
+        jr      z,uip_st
+        cp      UI_FIT
+        jp      z,fit_row4
+        ifdef HAS_DISC
+        cp      UI_SLOT
+        ld      hl,t_slkeys
+        jr      z,uip_say
+        endif
+        ; ΜΕΝΟΥΝ LOOK ΚΑΙ MENU. Στο LOOK η σειρά 4 έλεγε «FIRE=PLACE» ως το
+        ; βήμα 44, όταν το FIRE εκεί δεν έκανε τίποτα· από το 45 ανοίγει τον
+        ; εξοπλισμό, και το λέει η σειρά 3.
+        or      a
+        ld      b,40
+        jr      z,uip_blk
+        ; Το MENU με το uip_say, που σβήνει ως τη στήλη 40 ό,τι μήκος κι αν
+        ; έχει το κείμενο (t_keys 20 χαρακτήρες, t_keysr 22).
+        ld      hl,t_keys
+        ld      a,(bd_kind)
+        or      a                       ; σε θόλο, το πάνω-κάτω κάνει κάτι
+        jr      nz,uip_say
+        ld      hl,t_keysr
+        jr      uip_say
+uip_blk:
+        call    hud_blank
+        jr      uip_spd
+uip_st:
+        ld      a,(ui_bad)
+        or      a
+        jr      nz,uip_blocked
+        call    al_afford
+        jr      uip_aff
+uip_blocked:
+        ; ΓΙΑΤΙ ΟΧΙ, ΟΧΙ ΜΟΝΟ ΟΧΙ. Οταν φταίνε τα tiles, το φάντασμα τα δείχνει
+        ; ένα προς ένα με κόκκινο· όταν λείπει το υλικό της δομής (§6.5) δεν
+        ; υπάρχει κακό tile να δειχτεί, και ένα σκέτο BLOCKED πάνω σε καθαρό
+        ; έδαφος διαβάζεται ως σφάλμα του παιχνιδιού. Το κείμενο από το
+        ; uip_nres, με δείκτη το bd_nres (0-5).
+        ld      a,(bd_nres)
+        add     a,a
+        ld      hl,uip_nres
+        call    ob_addu
+        ld      a,(hl)
+        inc     hl
+        ld      h,(hl)
+        ld      l,a
+        jr      uip_say
+uip_ln:
+        ld      a,(ln_a)
+        inc     a
+        ld      hl,t_ln1
+        jr      z,uip_say
+        ld      a,(cr_n)
+        or      a
+        jr      nz,uip_lnr
+        ld      a,(ui_bad)
+        dec     a
+        ld      hl,t_ln2                ; 1: το σχήμα δεν βγαίνει
+        jr      z,uip_say
+        ld      hl,t_far                ; 2: >= 64 tiles (βήμα 81)
+        jr      uip_say
+uip_lnr:
+        ld      a,(ui_bad)
+        or      a
+        ld      hl,t_block
+        jr      nz,uip_say
+        call    cr_afford
+uip_aff:                                ; NZ: δεν φτάνουν (και το uip_st)
+        ld      hl,t_poor
+        jr      nz,uip_say
+        ld      hl,t_ok
+uip_say:
+        call    hud_text7
+        ld      b,40                    ; ως το τέλος, όσο κι αν είναι: από το
+        call    hud_to                  ; βήμα 91 τα κείμενα δεν έχουν κενά στο
+        ; fall through                  ; τέλος (ως τότε 20 στήλες ακριβώς)
+
+; uip_spd — η ταχύτητα, στις πέντε τελευταίες στήλες της σειράς 3. Είναι το
+; μόνο σημείο του HUD που γράφεται από τα δεξιά: οι σειρές 0-2 είναι γεμάτες
+; ως το τελευταίο κελί (§9.2) και η σειρά 3 τελειώνει με κενά σε κάθε
+; κατάσταση.
+uip_spd:
+        ld      a,3
+        ld      c,35
+        call    hud_goc
+        ld      a,(ui_spd)
+        add     a,a
+        ld      hl,t_spd_ptr
+        call    ob_addu
+        ld      a,(hl)
+        inc     hl
+        ld      h,(hl)
+        ld      l,a
+        jp      hud_text7
+
+t_spd_ptr:  dw t_pause, t_x1, t_x2, t_x2, t_x4
+; uip_blocked — ανά bd_nres: 0 τα tiles, 1 νερό, 2 φλέβα, 3 κανένα κτίσμα σε
+; απόσταση (βήμα 85), 4 ο δρόμος κομμένος, 5 κανένα σχήμα διαδρόμου (βήμα 86).
+uip_nres:   dw t_block, t_nowat, t_noore, t_far, t_path, t_nofit
 
 ; uis_aff — A = φτάνουν τα υλικά; του διαδρόμου στο LINK, του καταλόγου αλλού.
 uis_aff:
@@ -1517,11 +1455,8 @@ ui_w:       db 1
 ui_h:       db 1
 ui_bad:     db 0
 ln_a:       db 255
-ln_pick:    db 255
 uid_tx:     db 0
 uid_ty:     db 0
-uid_cx:     db 0
-uid_cy:     db 0
 uip_fe:     dw 0
 uip_bi:     dw 0
 ; Το ui_hold ζει ΕΞΩ από το ifdef του δίσκου: το ui_panel το διαβάζει πάντα,
@@ -1530,13 +1465,12 @@ uip_bi:     dw 0
 ui_hold:    db 0
 uip_szc:    db "SML"
 uip_sig:    defs UIP_NSIG, 255
-uip_now:    defs UIP_NSIG
 cur_hx:     db 0
 cur_hy:     db 0
 
         assert  cam_ty == cam_tx + 1 && cur_hy == cur_hx + 1
         assert  ui_ty == ui_tx + 1 && ui_h == ui_w + 1 && uid_ty == uid_tx + 1
-        assert  uid_cy == uid_cx + 1
+        assert  ui_sel == ui_state + 1
         assert  gh_bh == gh_bw + 1 && UI_LOOK == 0
         assert  A_HOME == 8 && A_SPD1 >= 8 && A_SPD4 < 16
 
@@ -1598,9 +1532,7 @@ crx_bend:
         out     (c),c
         call    crw_base
         call    cr_walk1                ; το τρέξιμο 1, η στροφή
-        ld      bc,GA_PORT + PAGE_B1
-        out     (c),c
-        ret
+        jp      uid_out                 ; πίσω η 1
 ; crx_sel — A = η κατεύθυνση του τρεξίματος. Στήνει το crx_cb: ret στο
 ; crx_mode (μόνο η σφραγίδα), ή το ld de του γείτονα (-1 ή -128). HL = crx_cb,
 ; και (cr_cb) το ίδιο.
@@ -1608,12 +1540,13 @@ crx_sel:
         ld      b,#C9                   ; ret
         bit     0,a
         jr      nz,crx_set              ; διαγώνιος
-        and     2                       ; e, w = 2, 6: οριζόντιος· n, s κάθετος
-        rrca                            ; 0 = x, 1 = y
-        ld      e,a
-        ld      d,0
         ld      hl,cr_tx                ; ο άξονας του b, όπως στο crr_half
-        add     hl,de
+        ld      de,-1                   ; αριστερά
+        and     2                       ; e, w = 2, 6: οριζόντιος· n, s κάθετος
+        jr      z,crx_x                 ; κάθετος: το x
+        inc     hl                      ; cr_ty
+        ld      de,-128                 ; πάνω: μία σειρά του κόσμου
+crx_x:
         ld      a,(hl)
         bit     0,a
         jr      nz,crx_set              ; μονό: όλος μέσα στα tiles του
@@ -1621,11 +1554,6 @@ crx_sel:
         cp      -64
         jr      z,crx_set               ; ο γείτονας θα ήταν έξω από τον κόσμο
         ld      b,#11                   ; ld de,nn
-        dec     e
-        ld      de,-1                   ; αριστερά
-        jr      nz,crx_one
-        ld      de,-128                 ; πάνω: μία σειρά του κόσμου
-crx_one:
         ld      (crx_mode + 1),de
 crx_set:
         ld      a,b

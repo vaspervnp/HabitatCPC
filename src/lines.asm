@@ -38,6 +38,7 @@ cw_ud:
         inc     (hl)
         call    cw_ext
         dec     (hl)
+cwu_draw:
         jp      cw_draw                 ; src/act.asm
 cwu_dn:
         or      a
@@ -46,15 +47,14 @@ cwu_dn:
         dec     c                       ; #FF: η μικρότερη
         call    cw_ext
         inc     (hl)
-        jp      cw_draw
+        jr      cwu_draw
 
-; cw_ext — E = s, C = 0 ή #FF: HL -> το t της μεγαλύτερης (ή, με το xor, της
+; cw_ext — E = s, D = 0, C = 0 ή #FF: HL -> το t της μεγαλύτερης (ή, με το xor, της
 ; μικρότερης) από τις άλλες τέσσερις. Από το τέλος προς την αρχή, και το ίσο
 ; κερδίζει: σε ισοπαλία μένει η πρώτη.
 cw_ext:
         ld      hl,EC_LAND + CW_N - 1
         ld      b,CW_N
-        ld      d,0
         inc     e                       ; E = s + 1, όπως το B
 cwe_lp:
         ld      a,b
@@ -77,14 +77,9 @@ cwe_n:
 ; στη σειρά 3 θα κολλούσαν στην ταχύτητα (35-39) — οι δύο σειρές είναι μία
 ; γραμμή οθόνης. Τελειώνει όπως εκείνο.
 cw_panel:
-        ld      bc,GA_PORT + PAGE_B7
-        call    hud_page                ; τα κείμενα στην 7
         ld      hl,t_cw_keys
         call    hud_text
-        ld      b,35
-        call    hud_to
-        ld      a,4
-        call    hud_go
+        call    ln_row4
         call    hud_space               ; ένα κενό μετά το PAUSE
         ld      hl,t_cw_names
         xor     a
@@ -125,6 +120,13 @@ cw_sel:     db 0
 cw_i:       db 0
 cw_ptr:     dw 0
 
+; ln_row4 — κενά ως τη στήλη 35 της σειράς 3, και η σειρά 4 από τη στήλη 0.
+ln_row4:
+        ld      b,35
+        call    hud_to
+        ld      a,4
+        jp      hud_go
+
         assert  A_UP == 0 && A_DOWN == 1        ; το djnz του cw_ud
 
 ; ---------------------------------------------------------------------------
@@ -157,19 +159,11 @@ TR_ORD      equ G_crew + 14             ; 13: η σειρά των βελών
         assert  (EC_CARGO >> 8) == ((EC_CARGO + 2 * MER_SLOTS - 1) >> 8)
         assert  TR_MODE == CW_MODE + 1 && BT_TRADE == BT_SHIP + 1  ; το bww_act
 
-; ln_tick, ln_panel — από το ac_tick και το ac_panel, για ac_mode >= CW_MODE.
-ln_tick:
-        ld      c,a
-        ld      a,(ac_mode)
-        cp      TR_MODE
-        ld      a,c
-        jp      nz,cw_tick              ; src/act.asm
+; tr_tick — από το ac_tick (act_fire), για ac_mode == TR_MODE: A = C = act_hit.
 tr_tick:
-        ld      c,a
         call    mer_here                ; σε κάθε frame: αν έφυγε, κλείνει
         jr      z,trt_here
-        xor     a                       ; UI_LOOK
-        jp      ui_goto
+        jp      ac_look                 ; xor a, ui_goto (src/act.asm)
 trt_here:
         ld      a,c
         and     1 << A_FIRE | 1 << A_MENU
@@ -179,21 +173,11 @@ trt_here:
         jp      nz,tr_ud
         ld      hl,tr_sel
         ld      c,TRADE_N
-        call    ui_lr
-        ret     z
-        jp      cw_draw                 ; ήχος, ui_dirty, ui_panel (src/act.asm)
-
-ln_panel:
-        ld      a,(ac_mode)
-        cp      TR_MODE
-        jp      nz,cw_panel
-        ; fall through
+        jp      cw_lr                   ; ui_lr, ήχος, ui_dirty, ui_panel (src/act.asm)
 
 ; tr_panel — σειρά 3, στήλη 0. Τελειώνει όπως το cw_panel.
 tr_panel:
         call    tr_sum
-        ld      bc,GA_PORT + PAGE_B7
-        call    hud_page                ; τα κείμενα στην 7
         ld      a,'+'
         call    hud_char
         ld      a,(EC_MARKUP)
@@ -212,14 +196,9 @@ tr_panel:
         ld      b,4
         call    hud_num
         call    tr_ok
-        jr      c,trp_r3
         ld      hl,t_tr_fire
-        call    hud_text
-trp_r3: ld      b,35
-        call    hud_to
-        ; --- σειρά 4 ---
-        ld      a,4
-        call    hud_go
+        call    nc,hud_text
+        call    ln_row4                 ; --- σειρά 4 ---
         call    tr_load                 ; HL -> net
         push    hl
         call    hud_space               ; ένα κενό μετά το PAUSE, όπως το cw_panel:
@@ -311,10 +290,7 @@ tro_rn: inc     c
         xor     a
         ld      (tr_sel),a
         ld      a,TR_MODE
-        ld      (ac_mode),a
-        call    ui_click
-        ld      a,UI_ACT
-        jp      ui_ask
+        jp      aco_mode                ; src/act.asm
 
 ; tr_find — C = απόθεμα. Z, και A = πόσα φέρνει, αν το φέρνει· αλλιώς NZ και
 ; A = 0. Χαλάει B, DE.
@@ -339,9 +315,9 @@ tr_price:
         call    ob_addu
         ld      a,(hl)
         push    af
-        ld      e,a
+        ld      c,a
         ld      a,(EC_MARKUP)
-        call    tr_mul                  ; HL = αξία x κέρδος (ως 120 x 65)
+        call    ob_mul                  ; HL = αξία x κέρδος (ως 120 x 65)
         ld      de,50
         add     hl,de
         ld      de,-100
@@ -353,20 +329,8 @@ trp_d:  inc     a
         add     a,b
         ret
 
-; tr_mul — HL = A x E. Χαλάει A, B, D.
-tr_mul:
-        ld      hl,0
-        ld      d,h
-        ld      b,8
-trm_lp: add     hl,hl
-        rla
-        jr      nc,trm_n
-        add     hl,de
-trm_n:  djnz    trm_lp
-        ret
-
 ; tr_load — το διαλεγμένο: tr_g, tr_cq (όσα φέρνει), tr_hv (όσα έχεις). Out:
-; HL -> net του. Χαλάει όλους.
+; HL -> net του, C = tr_g (το tr_ud). Χαλάει τους άλλους.
 tr_load:
         ld      a,(tr_sel)
         add     a,TR_ORD & 255
@@ -384,7 +348,9 @@ tr_load:
         inc     hl
         ld      d,(hl)
         ld      (tr_hv),de
+tr_netc:                                ; C = απόθεμα -> HL -> net του, χαλάει AF
         ld      a,c
+tr_neta:                                ; A = απόθεμα
         add     a,TR_NET & 255
         ld      l,a
         ld      h,TR_NET >> 8
@@ -394,8 +360,8 @@ tr_load:
 tr_ud:
         rra                             ; CY = πάνω
         push    af
-        call    tr_load                 ; HL -> net
-        ld      a,(tr_g)
+        call    tr_load                 ; HL -> net, C = tr_g
+        ld      a,c
         push    hl
         ld      hl,tr_lot
         call    ob_addu
@@ -462,24 +428,22 @@ tr_sum:
         ld      hl,0
         ld      (tr_take),hl
         ld      (tr_give),hl
-        ld      c,0                     ; C = θέση φορτίου
+        ld      c,l                     ; C = θέση φορτίου (0)
 trs_c:  ld      a,c
         add     a,a
         add     a,EC_CARGO & 255
         ld      l,a
         ld      h,EC_CARGO >> 8
         ld      a,(hl)                  ; το απόθεμα (0: κενή θέση, net 0)
-        add     a,TR_NET & 255
-        ld      l,a
-        ld      h,TR_NET >> 8
+        ld      b,a
+        call    tr_neta
         ld      a,(hl)
         dec     a
         jp      m,trs_cn                ; <= 0: δεν το παίρνεις
         inc     a
         push    bc
         push    af
-        ld      a,l
-        sub     TR_NET & 255            ; το απόθεμα
+        ld      a,b                     ; το απόθεμα
         call    tr_price                ; ~0,5 ms: μόνο όταν πατηθεί πλήκτρο
         ld      e,a                     ; η τιμή του
         pop     af
@@ -491,10 +455,7 @@ trs_cn: inc     c
         cp      MER_SLOTS
         jr      c,trs_c
         ld      c,1                     ; C = απόθεμα
-trs_g:  ld      a,c
-        add     a,TR_NET & 255
-        ld      l,a
-        ld      h,TR_NET >> 8
+trs_g:  call    tr_netc
         ld      a,(hl)
         or      a
         jp      p,trs_gn                ; >= 0: δεν το δίνεις
@@ -517,7 +478,8 @@ trs_gn: inc     c
 trs_add:
         push    bc
         push    hl
-        call    tr_mul
+        ld      c,e
+        call    ob_mul                  ; HL = A x C
         ex      de,hl
         pop     hl
         ld      a,(hl)
@@ -546,20 +508,18 @@ tr_ok:
 ; ---------------------------------------------------------------------------
 ; tr_deal — FIRE ή SPACE. Αν δεν φτάνει, ο ήχος του «όχι» και η γραμμή μένει.
 ; Αλλιώς από όσα έχεις ΤΩΡΑ — κάτι μπορεί να το έφαγαν από τη στιγμή της
-; προσφοράς — και τότε η ανταλλαγή: τα δικά του με ταβάνι (ec_add_stock), τα
-; δικά σου αφαιρούνται, το σερί της ανεξαρτησίας σπάει, και ο έμπορος φεύγει.
-; Στο Planetbase φεύγει όταν του παραδοθούν όλα· εδώ η παράδοση είναι
-; στιγμιαία. tools/econ.py: trade.
+; προσφοράς — και τότε η ανταλλαγή, ΟΠΩΣ ΤΑ ΕΡΓΟΤΑΞΙΑ (βήμα 98, src/carry.asm):
+; τα δικά σου φεύγουν τώρα, σε φορτία που οφείλονται στον έμπορο (EC_MARKUP),
+; τα δικά του μένουν στο πλοίο του (οι ποσότητες του EC_CARGO) ώσπου να
+; κουβαληθούν, δύο εργασίες J_TRADE στην πίστα τα κουβαλούν, το σερί της
+; ανεξαρτησίας σπάει, και ο έμπορος περιμένει (SK_DEALT). tools/econ.py: trade.
 ; ---------------------------------------------------------------------------
 tr_deal:
         call    tr_sum
         call    tr_ok
         jp      c,uip_deny
         ld      c,1
-trd_ck: ld      a,c
-        add     a,TR_NET & 255
-        ld      l,a
-        ld      h,TR_NET >> 8
+trd_ck: call    tr_netc
         ld      a,(hl)
         or      a
         jp      p,trd_kn
@@ -581,48 +541,82 @@ trd_kn: inc     c
         ld      a,c
         cp      TRADE_N + 1
         jr      c,trd_ck
+        ; ΟΙ ΜΕΤΑΦΟΡΕΙΣ ΠΡΩΤΑ: χωρίς θέση στον πίνακα εργασιών, ή χωρίς πίστα,
+        ; ούτε συμφωνία — ο έμπορος θα περίμενε για πάντα
+        call    trd_post
+        jp      z,uip_deny
+        call    trd_post
+        xor     a
+        ld      (EC_MARKUP),a           ; από εδώ: τα φορτία που του οφείλονται
         ld      c,1
-trd_lp: ld      a,c
-        add     a,TR_NET & 255
-        ld      l,a
-        ld      h,TR_NET >> 8
+trd_lp: call    tr_netc
         ld      a,(hl)
         or      a
-        jr      z,trd_n
-        push    bc
-        jp      m,trd_gv
-        ld      e,a
-        ld      d,0
-        ld      a,c
-        call    ec_add_stock            ; με ταβάνι
-        jr      trd_nx
-trd_gv: neg
-        ld      b,a
-        ld      a,c
-        call    ec_stock_ptr
+        jp      p,trd_n                 ; παίρνεις, ή τίποτα: πιο κάτω
+        neg
+        ld      b,a                     ; B = όσα δίνεις
+        ld      hl,EC_MARKUP
+trd_ld: inc     (hl)                    ; ένα φορτίο ακόμη, ως TRADE_LOAD μονάδες
+        sub     TRADE_LOAD
+        jr      z,trd_gv
+        jr      nc,trd_ld
+trd_gv: ld      a,c
+        call    ec_stock_ptr            ; κρατά BC
         ex      de,hl
         ld      a,(hl)
         sub     b
         ld      (hl),a
-        jr      nc,trd_nx
+        jr      nc,trd_n
         inc     hl
         dec     (hl)
-trd_nx: pop     bc
 trd_n:  inc     c
         ld      a,c
         cp      TRADE_N + 1
         jr      c,trd_lp
+        ; όσα παίρνεις μένουν στο πλοίο του: η ποσότητα κάθε θέσης του φορτίου
+        ; γίνεται όσα πήρες (οι κενές θέσεις έχουν απόθεμα 0, και το TR_NET 0)
+        ld      hl,EC_CARGO
+        ld      b,MER_SLOTS
+trd_cg: ld      a,(hl)
+        add     a,TR_NET & 255
+        ld      e,a
+        ld      d,TR_NET >> 8
+        ld      a,(de)
+        or      a
+        jp      p,trd_c1
+        xor     a
+trd_c1: inc     hl
+        ld      (hl),a
+        inc     hl
+        djnz    trd_cg
         ld      a,1
         ld      (EC_TRADED),a           ; το σερί της ανεξαρτησίας σπάει
+        ld      a,SK_DEALT
+        ld      (EC_SHKIND),a           ; η γραμμή του δεν ξανανοίγει
+        ld      hl,#FFFF
+        ld      (EC_SHETA),hl           ; περιμένει: 4.096 sol
         xor     a
-        ld      (EC_SHSTATE),a          ; SHIP_NONE: φεύγει
         ld      (ui_state),a            ; UI_LOOK
-        ld      a,4                     ; το μήνυμα γράφει μόνο τη σειρά 3
-        call    hud_go
-        ld      b,40
-        call    hud_blank
+        call    ac_clr4                 ; το μήνυμα γράφει μόνο τη σειρά 3
         ld      hl,t_deal
         jp      ui_say
+
+; trd_post — μια J_TRADE στην πίστα, άδεια: J_SITE = 0, το φορτίο της.
+; Z: ο πίνακας γέμισε, ή η πίστα έπεσε (EC_PADNODE = 255, src/carry.asm).
+trd_post:
+        ld      a,(EC_PADNODE)
+        inc     a
+        ret     z
+        dec     a
+        ld      c,J_TRADE
+        call    sp_post                 ; src/supply.asm: HL -> J_KIND
+        inc     b
+        dec     b
+        ret     z
+        ld      de,J_SITE
+        add     hl,de
+        ld      (hl),d                  ; NZ ακόμη
+        ret
 
 ; Το όνομα κάθε αποθέματος στο t_f_names (x8): μεταλλεύματα 18, το δικό τους.
 tr_name:    db 0, 6, 18, 1, 2, 4, 7, 8, 3, 5, 12, 13, 14, 9

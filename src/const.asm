@@ -196,6 +196,7 @@ SHIP_LANDED equ 2
 SK_COLONIST equ 0
 SK_MERCHANT equ 1
 SK_VISITOR  equ 2
+SK_DEALT    equ 3                       ; ο έμπορος μετά τη συμφωνία (βήμα 98, src/carry.asm)
 MER_SLOTS   equ 4                       ; αγαθά στο φορτίο, ως
 MER_ROLL    equ #5A5                    ; τα 11 κάτω bits του r2 (src/econ.asm)
 MARKUP_MIN  equ 35                      ; + 0..30 %
@@ -254,6 +255,13 @@ J_REPAIR    equ 4
 J_HEAL      equ 5
 J_DEFEND    equ 6
 J_SUPPLY    equ 7               ; μέταλλο· J_SUPPLY + 1 βιοπλαστικό (βήμα 88, src/supply.asm)
+J_TRADE     equ 9               ; τα αγαθά του εμπόρου (βήμα 98, src/carry.asm)
+; Μια J_TRADE κρατά το φορτίο της στο J_SITE, όχι στον πράκτορα (βήμα 98): ό,τι
+; κουβαλά συνεχίζει με τον επόμενο, αν ο πρώτος πεινάσει ή πεθάνει. 0 άδεια,
+; TRADE_GIVE ένα φορτίο για τον έμπορο, ποσότητα << 4 | απόθεμα ένα δικό του.
+TRADE_JOBS  equ 2               ; εργασίες ανά συμφωνία: δύο μεταφορείς
+TRADE_LOAD  equ 10              ; μονάδες ανά φορτίο, όπως της τροφοδοσίας
+TRADE_GIVE  equ #0F
 ; οι ρόλοι (§6.1) που χτίζουν: μηχανικός και ρομπότ κατασκευής
 RL_ENGINEER equ 1
 RL_CBOT     equ 5

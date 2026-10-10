@@ -109,9 +109,8 @@ bt_tab:
 bt_end:
         assert  bt_end - bt_tab == 4 * BT_N
 
-; Οι ομάδες: το πρώτο κουμπί, πόσα, και το πρώτο αντικείμενο του καταλόγου.
-grp_first:  db 0, 14, 15, 19, 22, 27
-grp_n:      db 14, 1, 4, 3, 5, 6
+; Οι ομάδες: το πρώτο αντικείμενο του καταλόγου. (Το πρώτο κουμπί και πόσα
+; τα δίνει το ac_l_grp πιο κάτω, που είναι οι ομάδες με τη σειρά και το ?.)
 grp_bld:    db 0, 3, 4, 7, 9
 ; Ο κατάλογος (src/build.asm, ui_sel): η ομάδα και το κουμπί κάθε αντικειμένου.
 bld_grp:    db 0, 0, 0, 1, 2, 2, 2, 3, 3, 4, 4
@@ -120,6 +119,8 @@ bld_end:
 ; Οι λίστες του αριστερά/δεξιά στο μενού (src/act.asm): οι ομάδες και το ?,
 ; και η ΔΙΑΧΕΙΡΙΣΗ. Η πρώτη είναι και η μπάρα του LOOK, στις θέσεις 0-5.
 ac_l_grp:   db 0, 14, 15, 19, 22, BT_MANAGE, BT_HELP
+        ; bww_group: η ομάδα g είναι τα κουμπιά ac_l_grp[g] .. ac_l_grp[g + 1] - 1
+        assert  BT_CORR == 14 && BT_MANAGE == 27 && BT_HELP == BT_MANAGE + 6
 ac_l_man:   db 28, 29, 30, 31, 32, BT_HELP
 
 ; ---------------------------------------------------------------------------
@@ -237,36 +238,23 @@ bar_sync:
         cp      (hl)
         ret     z
 bsc_go:
-        ld      hl,bsg_was
-        ld      a,(ui_state)
-        ld      (hl),a
+        ; Η ΕΓΓΡΑΦΗ ΑΠΟ ΠΙΝΑΚΑ: τρέχει μόνο όταν κάτι άλλαξε, όχι σε κάθε βήμα
+        ; κέρσορα όπως η σύγκριση από πάνω, που μένει ξετυλιγμένη.
+        ld      hl,bsg_src
+        ld      de,bsg_was
+        ld      b,BSG_N
+bsc_cp:
+        ld      a,(hl)
         inc     hl
-        ld      a,(ui_sel)
-        ld      (hl),a
+        push    hl
+        ld      h,(hl)
+        ld      l,a
+        ld      a,(hl)
+        ld      (de),a
+        pop     hl
         inc     hl
-        ld      a,(bd_rsel)
-        ld      (hl),a
-        inc     hl
-        ld      a,(ac_sel)
-        ld      (hl),a
-        inc     hl
-        ld      a,(ac_mode)
-        ld      (hl),a
-        inc     hl
-        ld      a,(ac_fit)
-        ld      (hl),a
-        inc     hl
-        ld      a,(hud_gen)
-        ld      (hl),a
-        inc     hl
-        ld      a,(G_room_n + R_CONTROL)
-        ld      (hl),a
-        inc     hl
-        ld      a,(EC_PADNODE)
-        ld      (hl),a
-        inc     hl
-        ld      a,(EC_SHSTATE)
-        ld      (hl),a
+        inc     de
+        djnz    bsc_cp
         ld      a,(hud_gen)
         ld      hl,bs_gen
         cp      (hl)
@@ -287,14 +275,12 @@ bsc_want:
 bsk_lp:
         ld      a,(de)
         cp      (hl)
-        jr      nz,bsk_gen
-        inc     hl
+        inc     hl                      ; δεν αγγίζουν τις σημαίες
         inc     de
+        jr      nz,bsk_gen
         djnz    bsk_lp
-        jr      bsc_draw
 bsk_gen:
-        call    bk_gen
-bsc_draw:
+        call    nz,bk_gen               ; NZ: κάποιο διέφερε
         jp      bar_more                ; src/button.asm, τράπεζα 2
 
 ; ---------------------------------------------------------------------------
@@ -314,89 +300,44 @@ bww_c2: ld      (hl),BS_GREEN
         ld      (bw_id + BAR_HELP),a
         ld      a,(ui_state)
         cp      UI_ACT
-        jp      z,bww_act
+        jr      z,bww_act
         cp      UI_LINK
-        jp      z,bww_corr
+        jr      z,bww_corr
         dec     a                       ; MENU 0, PLACE 1
         cp      2
-        jp      nc,bww_groups
+        jr      nc,bww_groups
         ; --- MENU, PLACE: η ομάδα του αντικειμένου ---
         ld      a,(ui_sel)
         ld      hl,bld_grp
         call    ob_addu
         ld      a,(hl)
         cp      G_CORR
-        jp      z,bww_corr
-        push    af
+        jr      z,bww_corr
+        ld      de,BLD_N                ; bld_btn = bld_grp + BLD_N (src/act.asm)
+        add     hl,de
+        ld      e,(hl)                  ; το κουμπί του, στο E: το bww_group
+        push    af                      ; δεν αγγίζει το DE
         call    bww_group
-        ld      a,(ui_sel)
-        ld      hl,bld_btn
-        call    ob_addu
-        ld      a,(hl)
+        ld      a,e
         call    bww_lit
         pop     af
         or      a                       ; G_DOMES
-        jr      z,bww_domes
+        jp      z,bww_domes
         cp      G_TRANS
         ret     nz
 bww_trans:
         call    bar_shipok
         jr      nz,bwt_mer
         ld      a,BT_SHIP
-        ld      c,BS_RED
-        call    bww_st
+        call    bww_red
 bwt_mer:
         ; ΤΟ ΕΜΠΟΡΙΟ ΜΟΝΟ ΟΣΟ ΕΙΝΑΙ ΕΔΩ (βήμα 93). Αλλάζει με το EC_SHSTATE,
-        ; που είναι ήδη στην υπογραφή: το είδος αλλάζει μόνο μαζί του.
+        ; που είναι ήδη στην υπογραφή· το είδος αλλάζει μόνο μαζί του, ή στη
+        ; συμφωνία (SK_DEALT, βήμα 98), που αλλάζει και το ui_state.
         call    mer_here
         ret     z
         ld      a,BT_TRADE
-        ld      c,BS_RED
-        jp      bww_st
-bww_domes:
-        ld      a,(bd_rsel)
-        add     a,BT_ROOM0
-        call    bww_lit
-        ; ΤΑ ΚΟΚΚΙΝΑ ΑΝΑ ΜΕΓΕΘΟΣ, ΜΙΑ ΦΟΡΑ: δέκα rm_fits είναι 3,3 ms, και ό,τι
-        ; λένε εξαρτάται μόνο από το μέγεθος (assets: room_machines,
-        ; machine_rules). Το bw_fitm έχει bit 1 για όποιο δεν χωρά.
-        ld      a,(bd_param)
-        ld      hl,bw_fitp
-        cp      (hl)
-        jr      z,bwd_have
-        ld      (hl),a
-        ld      de,0
-        ld      c,RM_N - 1
-bwd_lp:
-        ld      a,c
-        call    rm_fits                 ; κρατά BC, DE
-        add     a,a                     ; CY = δεν χωρά
-        rl      e
-        rl      d
-        dec     c
-        jp      p,bwd_lp
-        ld      (bw_fitm),de
-bwd_have:
-        ld      de,(bw_fitm)
-        ld      c,0
-bwd_mk:
-        srl     d
-        rr      e
-        jr      nc,bwd_ok
-        push    bc
-        push    de
-        ld      a,c
-        add     a,BT_ROOM0
-        ld      c,BS_RED
-        call    bww_st
-        pop     de
-        pop     bc
-bwd_ok:
-        inc     c
-        ld      a,c
-        cp      RM_N
-        jr      c,bwd_mk
-        ret
+        jr      bww_red
 bww_act:
         ld      a,(ac_mode)
         or      a
@@ -412,7 +353,7 @@ bww_act:
         call    bww_group
         call    bww_trans               ; τα κόκκινα, και μετά το λευκό από πάνω
         pop     af
-        jp      bww_lit
+        jr      bww_lit
 bww_man:
         ld      a,G_MANAGE
         call    bww_group
@@ -420,8 +361,7 @@ bww_man:
         or      a
         jr      nz,bww_asel
         ld      a,BT_FIT
-        ld      c,BS_RED
-        call    bww_st
+        call    bww_red
         jr      bww_asel
 bww_agrp:
         call    bww_groups
@@ -441,17 +381,16 @@ bww_groups:
         ld      bc,6
         ldir
         ret
-
 ; bww_group — A = ομάδα: τα κουμπιά της από τη θέση 0, η ίδια λευκή.
 bww_group:
-        ld      c,a
-        ld      hl,grp_n
+        ld      hl,ac_l_grp
         call    ob_addu
-        ld      b,(hl)
+        ld      c,(hl)                  ; το πρώτο κουμπί
+        inc     hl
+        ld      a,(hl)                  ; το πρώτο της επόμενης (ή το ?)
+        sub     c
+        ld      b,a                     ; πόσα
         ld      a,c
-        ld      hl,grp_first
-        call    ob_addu
-        ld      a,(hl)
         ld      hl,bw_id
 bwg_lp:
         ld      (hl),a
@@ -462,9 +401,13 @@ bwg_lp:
         ld      (bw_st),a
         ret
 
-; bww_lit — A = κουμπί: λευκό, αν είναι στη μπάρα. bww_st — με C = κατάσταση.
+; bww_lit — A = κουμπί: λευκό, αν είναι στη μπάρα. bww_red — κόκκινο.
+; bww_st — με C = κατάσταση. Κρατούν το DE.
 bww_lit:
         ld      c,BS_WHITE
+        jr      bww_st
+bww_red:
+        ld      c,BS_RED
 bww_st:
         ld      hl,bw_id
         ld      b,BAR_N
@@ -497,6 +440,52 @@ bar_shipok:
 bso_no:
         xor     a
         ret
+
+; (bww_domes: στο τέλος, ώστε ο διαλογέας του bar_want να φτάνει με jr)
+bww_domes:
+        ld      a,(bd_rsel)
+        add     a,BT_ROOM0
+        call    bww_lit
+        ; ΤΑ ΚΟΚΚΙΝΑ ΑΝΑ ΜΕΓΕΘΟΣ, ΜΙΑ ΦΟΡΑ: δέκα rm_fits είναι 3,3 ms, και ό,τι
+        ; λένε εξαρτάται μόνο από το μέγεθος (assets: room_machines,
+        ; machine_rules). Το bw_fitm έχει bit 1 για όποιο δεν χωρά.
+        ld      a,(bd_param)
+        ld      hl,bw_fitp
+        cp      (hl)
+        jr      z,bwd_have
+        ld      (hl),a
+        ld      de,0
+        ld      c,RM_N - 1
+bwd_lp:
+        ld      a,c
+        call    rm_fits                 ; κρατά BC, DE
+        add     a,a                     ; CY = δεν χωρά
+        rl      e
+        rl      d
+        dec     c
+        jp      p,bwd_lp
+        ld      (bw_fitm),de
+bwd_have:
+        ld      de,(bw_fitm)
+        ld      a,BT_ROOM0              ; το κουμπί του δωματίου 0
+bwd_mk:
+        srl     d
+        rr      e
+        jr      nc,bwd_ok
+        push    af
+        call    bww_red                 ; κρατά το DE
+        pop     af
+bwd_ok:
+        inc     a
+        cp      BT_ROOM0 + RM_N
+        jr      c,bwd_mk
+        ret
+
+; Τα bytes της υπογραφής, με τη σειρά της σύγκρισης του bar_sync.
+bsg_src:    dw ui_state, ui_sel, bd_rsel, ac_sel, ac_mode, ac_fit, hud_gen
+            dw G_room_n + R_CONTROL, EC_PADNODE, EC_SHSTATE
+bsg_end:
+        assert  bsg_end - bsg_src == 2 * BSG_N
 
 ; --- μεταβλητές ------------------------------------------------------------
 bk_held:    dw BT_NONE * 257

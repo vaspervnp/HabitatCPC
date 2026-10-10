@@ -31,6 +31,8 @@ MACH_HP     equ 200                     ; καινούργια μηχανή (ό�
         assert  A_UP + 1 == A_DOWN && A_LEFT + 1 == A_RIGHT
         assert  FT_MIX == FT_CLS + 4 && FT_EMPTY == FT_MIX + 1
         assert  PEN_NO == PEN_OK ^ 1            ; fit_show: xor με το A του bd_afford
+        ; ο διαλογέας του ui_tick (src/ui.asm): dec a ανά κατάσταση
+        assert  UI_MENU == 1 && UI_PLACE == 2 && UI_LINK == 3 && UI_SLOT == 4 && UI_FIT == 5
 
 ; ---------------------------------------------------------------------------
 ; fit_enter — από το LOOK: ο θόλος κάτω από τον κέρσορα, αν δέχεται κάτι.
@@ -115,11 +117,9 @@ fl_green:   db FT_EMPTY, FT_MIX, FT_CLS, FT_CLS+1, FT_CLS+2, FT_CLS+3
 ; uist_fit — ένα καρέ εισόδου στον εξοπλισμό.
 ; ---------------------------------------------------------------------------
 uist_fit:
-        ld      a,A_CANCEL
-        call    in_hit
-        jr      z,uf_lr
-        xor     a                       ; UI_LOOK
-        jp      ui_goto
+        ld      a,(act_hit)             ; το ESC: το bit του, όχι in_hit
+        bit     A_CANCEL,a
+        jp      nz,ui_golook
 uf_lr:
         ld      hl,fit_n
         ld      c,(hl)
@@ -450,10 +450,8 @@ fit_row4:
         call    hud_char
         ld      b,2
         call    hud_blank
-        ld      hl,t_f_keys
-        call    hud_text7
-        call    hud_space               ; 39 στήλες ως εδώ, η 40ή κενή
-        jp      uip_spd
+        ld      hl,t_f_keys             ; 39 στήλες ως εδώ: το uip_say σβήνει
+        jp      uip_say                 ; την 40ή και γράφει την ταχύτητα
 
 fit_rm:     db 0
 fit_n:      db 0                        ; πόσες υποδοχές έχει

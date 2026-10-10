@@ -9,7 +9,7 @@
   ΣΥΝΕΠΕΙΑ    οι μάσκες θέσεων συμφωνούν με το πού στέκεται ο καθένας.
   ΚΟΣΤΟΣ      us ανά θέση τροχού, απέναντι στα 1.800 us του §7.2.
 """
-import ctypes, os, random, subprocess, sys, types
+import ctypes, os, random, re, subprocess, sys, types
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -367,7 +367,9 @@ def main():
 
     # Το εμπόριο είναι πράξη του παίκτη: εδώ ο μηχανισμός της αναφοράς (βήμα
     # 93· η γραμμή και ο Z80 στο tests/test_trade.py). Τέσσερα μέταλλα με 40%
-    # είναι 4 x 21 = 84, και εννιά μεταλλεύματα 90: γίνεται, και φεύγει.
+    # είναι 4 x 21 = 84, και εννιά μεταλλεύματα 90: γίνεται, και από το βήμα
+    # 98 όπως τα εργοτάξια — τα 9 φεύγουν, ένα φορτίο για τον έμπορο, τα 4
+    # μένουν στο πλοίο του, δύο J_TRADE, και ο έμπορος περιμένει.
     tr = fresh(g, nexthop, sim0)
     tr.e.ship_state, tr.e.ship_kind = EC.SHIP_LANDED, EC.SK_MERCHANT
     tr.e.markup, tr.e.cargo = 40, [EC.S_METAL, 10] + [0] * 6
@@ -383,9 +385,17 @@ def main():
     if not EC.trade(tr.e, net):
         print("ΑΠΟΤΥΧΙΑ: η ανταλλαγή με τον έμπορο δεν έγινε")
         return 1
-    if (tr.e.stock[EC.S_METAL] != before_metal + 4 or tr.e.stock[EC.S_ORE] != 41
-            or not tr.e.traded or tr.e.ship_state != EC.SHIP_NONE):
-        print("ΑΠΟΤΥΧΙΑ: η ανταλλαγή δεν άλλαξε τα αποθέματα σωστά, ή ο έμπορος έμεινε")
+    tj = [tr.e.job[b:b + EC.JOB_REC] for b in range(0, EC.MAX_JOB * EC.JOB_REC, EC.JOB_REC)
+          if tr.e.job[b + EC.J_KIND] == EC.J_TRADE]
+    if (tr.e.stock[EC.S_METAL] != before_metal or tr.e.stock[EC.S_ORE] != 41
+            or not tr.e.traded or tr.e.ship_state != EC.SHIP_LANDED
+            or tr.e.ship_kind != EC.SK_DEALT or tr.e.ship_eta != 0xFFFF or tr.e.markup != 1
+            or tr.e.cargo != [EC.S_METAL, 4] + [0] * 6
+            or [list(j) for j in tj] != [[EC.J_TRADE, tr.e.pad_node, 255, 4, 0]] * 2):
+        print("ΑΠΟΤΥΧΙΑ: η ανταλλαγή δεν έγινε όπως τα εργοτάξια (βήμα 98): μέταλλο "
+              f"{tr.e.stock[EC.S_METAL] - before_metal:+}, μετάλλευμα {tr.e.stock[EC.S_ORE]}, "
+              f"πλοίο {tr.e.ship_state}/{tr.e.ship_kind}/{tr.e.ship_eta:#x}, χρωστιούνται "
+              f"{tr.e.markup}, φορτίο του {tr.e.cargo}, J_TRADE {[list(j) for j in tj]}")
         return 1
     print(f"OK πλοία:    {landings} προσγειώσεις, {crew_landed} άποικοι στην "
           f"πίστα (κόμβος {got_econ[81]}), ταβάνι {got_econ[74]}")
@@ -487,6 +497,10 @@ def main():
 
     # --- πρώτα τα υλικά, μετά ο μηχανικός (βήμα 88, src/supply.asm) ---
     if supply(sym, g, nexthop, sim0):
+        return 1
+
+    # --- τα αγαθά του εμπόρου κουβαλιούνται (βήμα 98, src/carry.asm) ---
+    if carry(sym, g, nexthop, sim0):
         return 1
 
     # --- κάθε ζαριά της θέσης 15, στημένη (βήμα 46) ---
@@ -1801,6 +1815,111 @@ def supply(sym, g, nexthop, sim0):
             print(f"ΑΠΟΤΥΧΙΑ ΑΡΝΗΤΙΚΟ τροφοδοσίας: με «{label}» ο Z80 συμφώνησε")
             return 1
         print(f"OK ΑΡΝΗΤΙΚΟ τροφοδοσίας: με «{label}» ο Z80 διαφωνεί με την αναφορά")
+    return 0
+
+
+CARRY_TICKS = 2400              # 150 περιστροφές: τέσσερα φορτία για τον έμπορο, τρία δικά του
+CARRY_PAD = 12                  # η «πίστα»: ο γράφος της αποικίας δεν φτάνει δομές
+
+
+def carry_scene(g, nexthop, sim0, storage=True):
+    """Ο έμπορος μόλις έκλεισε συμφωνία, με τη συμφωνία της αναφοράς (EC.trade):
+    12 μέταλλα και ένας επεξεργαστής (252 + 56) για 31 μεταλλεύματα (310) —
+    τέσσερα φορτία για τον έμπορο (10, 10, 10, 1), τρία δικά του (10, 2, 1).
+    Η «πίστα» είναι ένας θόλος. Χωρίς αποθήκη, ο θόλος της γίνεται σαλόνι."""
+    st = fresh(g, nexthop, sim0)
+    e = st.e
+    if not storage:
+        for d in range(EC.MAX_DOME):
+            if e.dome[d * EC.DOME_REC + EC.D_ROOM] == EC.R_STORAGE:
+                e.dome[d * EC.DOME_REC + EC.D_ROOM] = EC.R_LOUNGE
+    EC.rooms_rebuild(e, st.pc)
+    e.pad_node = CARRY_PAD
+    e.ship_state, e.ship_kind, e.ship_eta, e.markup = EC.SHIP_LANDED, EC.SK_MERCHANT, 100, 40
+    e.cargo = [EC.S_METAL, 12, EC.S_PROC, 6, EC.S_BOT, 2, 0, 0]
+    e.stock[EC.S_ORE], e.stock[EC.S_METAL], e.stock[EC.S_PROC] = 100, 50, 0
+    net = [0] * EC.N_STOCK
+    net[EC.S_METAL], net[EC.S_PROC], net[EC.S_ORE] = 12, 1, -31
+    assert EC.trade(e, net)
+    return st
+
+
+def carry(sym, g, nexthop, sim0):
+    """Η μεταφορά στον Z80 και στην αναφορά, byte προς byte, και τι έγινε.
+
+    Με αποθήκη: οι μεταφορείς ανάμεσα στην πίστα και στην αποθήκη. Χωρίς:
+    όλα στην πίστα. Και στα δύο: +12 μέταλλα και +1 επεξεργαστής, ένα φορτίο τη
+    φορά, ο έμπορος φεύγει μετά το τελευταίο, καμία J_TRADE στο τέλος.
+    ΑΡΝΗΤΙΚΑ: ο Z80 χωρίς το «ως δέκα», και με τον έμπορο που δεν φεύγει ποτέ,
+    ΠΡΕΠΕΙ να διαφωνήσει με την αναφορά. (Το μάζεμα που γυρίζει τη J_TRADE στο
+    J_SITE της δεν φαίνεται εδώ: κανείς δεν την αφήνει στη μέση· το πιάνει το
+    tests/test_carry.py.)
+    """
+    for storage in (True, False):
+        what = "μεταφορά " + ("από αποθήκη" if storage else "χωρίς αποθήκη")
+        st = carry_scene(g, nexthop, sim0, storage)
+        if same(sym, g, nexthop, st, CARRY_TICKS, what) is None:
+            return 1
+        # ΤΙ ΕΓΙΝΕ, στην αναφορά: ό,τι λείπει από το φορτίο του εμπόρου είναι
+        # ένα φορτίο που πάρθηκε, και ένα φορτίο του που φεύγει από το J_SITE
+        # μιας J_TRADE μια παράδοση — χωρίς αποθήκη, στο ίδιο tick, οπότε δεν
+        # φαίνεται. Τα αποθέματα δεν μετρούν: αλλάζουν και από τα εργοστάσια.
+        walk = fresh(g, nexthop, st)
+        store = walk.e.room_list[EC.R_STORAGE * EC.ROOM_MAX] if storage else None
+        picks, drops, at_store, left, carriers = [], [], 0, None, set()
+        held, cargo = {}, list(walk.e.cargo)
+        for t in range(CARRY_TICKS):
+            walk.tick()
+            for k in range(1, 8, 2):
+                if walk.e.cargo[k] != cargo[k]:
+                    picks.append((cargo[k] - walk.e.cargo[k], cargo[k - 1], walk.e.ship_state))
+            cargo = list(walk.e.cargo)
+            jb = walk.e.job
+            now = {}
+            for b in range(0, EC.MAX_JOB * EC.JOB_REC, EC.JOB_REC):
+                if jb[b + EC.J_KIND] == EC.J_TRADE:
+                    now[b] = jb[b + EC.J_SITE]
+                    at_store += jb[b + EC.J_NODE] == store
+                    if jb[b + EC.J_AGENT] != 255:
+                        carriers.add(jb[b + EC.J_AGENT])
+            for b, ld in held.items():
+                if ld > EC.TRADE_GIVE and now.get(b) != ld:
+                    drops.append((ld >> 4, ld & 15, walk.e.ship_state))
+            held = now
+            if left is None and walk.e.ship_state == EC.SHIP_NONE:
+                left = t
+        want = [(10, EC.S_METAL, EC.SHIP_LANDED), (2, EC.S_METAL, EC.SHIP_LANDED),
+                (1, EC.S_PROC, EC.SHIP_LANDED)]
+        if (picks != want or sorted(drops) != (sorted(want) if storage else [])
+                or left is None or held or bool(at_store) != storage or len(carriers) < 2):
+            print(f"ΑΠΟΤΥΧΙΑ {what}: πάρθηκαν {picks}, παραδόσεις {drops} (μονάδες, "
+                  f"απόθεμα, πλοίο), έφυγε "
+                  f"{left}, J_TRADE στο τέλος {len(held)}, {at_store} δείγματα προς την "
+                  f"αποθήκη, μεταφορείς {sorted(carriers)}")
+            return 1
+        print(f"OK {what}: {len(carriers)} μεταφορείς, 10 + 2 μέταλλα και 1 επεξεργαστής "
+              + ("κουβαλήθηκαν ως την αποθήκη" if storage else "παραδόθηκαν στην πίστα")
+              + f" με τον έμπορο εδώ, και φεύγει στο tick {left}"
+              + (f", {at_store} δείγματα προς την αποθήκη" if storage else "")
+              + "; ίδια bytes στον Z80")
+
+    # ΑΡΝΗΤΙΚΑ: ο Z80 αλλαγμένος, η αναφορά όχι
+    st = carry_scene(g, nexthop, sim0, True)
+    m = boot_only()
+    find = lambda at, pat, n=200: next((at + k for k in range(n)
+                                        if list(m.read_ram(at + k, len(pat))) == pat), None)
+    l_at = find(sym["TR_ARRIVE"], [0xD6, EC.TRADE_LOAD, 0x30])      # sub TRADE_LOAD · jr nc
+    const = open(os.path.join(ROOT, "src", "const.asm"), encoding="utf-8").read()
+    eta = sym["G_ECON_STATE"] + int(re.search(r"^EC_SHETA\s+equ G_econ_state \+ (\d+)",
+                                              const, re.M).group(1))
+    e_at = find(sym["TRA_BYE"], [0x22, eta & 255, eta >> 8], 60)      # ld (EC_SHETA),hl
+    for label, patch in (("χωρίς το «ως δέκα»", l_at and [(l_at + 1, 0)]),
+                         ("ο έμπορος δεν φεύγει ποτέ", e_at and [(e_at, 0), (e_at + 1, 0),
+                                                                 (e_at + 2, 0)])):
+        if not patch or same(sym, g, nexthop, st, CARRY_TICKS, label, patch, quiet=True):
+            print(f"ΑΠΟΤΥΧΙΑ ΑΡΝΗΤΙΚΟ μεταφοράς: με «{label}» ο Z80 συμφώνησε")
+            return 1
+        print(f"OK ΑΡΝΗΤΙΚΟ μεταφοράς: με «{label}» ο Z80 διαφωνεί με την αναφορά")
     return 0
 
 
