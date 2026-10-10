@@ -310,11 +310,16 @@ spa_site:
         xor     a
         ld      (de),a                  ; spare = 0
         ld      a,b
+        ; ΚΑΙ ΣΤΙΣ ΜΗΧΑΝΕΣ (βήμα 99, src/install.asm): ένας θόλος σε λειτουργία
+        ; δεν χρωστά ο ίδιος — το D_POWER και το D_OPS του είναι ρεύμα και
+        ; χειριστές — και ένα εργοτάξιο που δεν το χρωστά το δίνει σε αυτές.
+        call    mc_live
+        jp      nz,mc_arrive
         push    af
         call    sp_owed                 ; HL, DE, B = φορτίο, C = μάσκα
         ld      a,(hl)
         and     c
-        jr      z,spa_paid              ; δεν χρωστιόταν (δεν γίνεται): χωρίς δανεικό
+        jr      z,spa_mach              ; δεν το χρωστά: μια μηχανή του
         ld      a,(hl)
         sub     b
         ld      (hl),a
@@ -331,8 +336,48 @@ spa_paid:
         pop     bc                      ; B = το εργοτάξιο
         ld      a,b
         call    z,sp_build              ; όλα έφτασαν: σειρά του χτίστη
-        xor     a
-        inc     a                       ; NZ, NC
+        jp      mc_tail                 ; NZ: τελειώνει, ή CY αν μια μηχανή το χρωστά
+spa_mach:
+        pop     af
+        jp      mc_arrive
+
+; ---------------------------------------------------------------------------
+; mc_order — A = θόλος, από το fit_set (src/fit.asm): μία Supply ανά υλικό
+; για τη μηχανή που μόλις μπήκε, αν δεν υπάρχει ήδη μία για αυτόν τον θόλο —
+; του εργοταξίου του ή άλλης μηχανής του (βήμα 99, src/install.asm). Κρατά
+; το A και το HL.
+; ---------------------------------------------------------------------------
+mc_order:
+        push    hl
+        ld      c,J_SUPPLY
+        call    mco_one
+        inc     c                       ; J_SUPPLY + 1: βιοπλαστικό
+        call    mco_one
+        pop     hl
+        ret
+mco_one:
+        call    sp_find
+        ret     z
+        jp      sp_post                 ; κρατά τα A, C
+
+; sp_find — A = κόμβος, C = είδος: Z αν υπάρχει εργασία αυτού του είδους με
+; J_SITE αυτόν τον κόμβο. Κρατά τα A, C· χαλάει B, DE, L, IX. Μια ελεύθερη
+; θέση είναι NO_JOB, που δεν είναι κανένα είδος.
+sp_find:
+        ld      ix,G_job_tbl
+        ld      de,JOB_REC
+        ld      b,MAX_JOB
+spf_lp:
+        cp      (ix+J_SITE)
+        jr      nz,spf_n
+        ld      l,a
+        ld      a,c
+        cp      (ix+J_KIND)
+        ld      a,l
+        ret     z
+spf_n:
+        add     ix,de                   ; το add ix δεν αγγίζει το Z: NZ στο τέλος
+        djnz    spf_lp
         ret
 
 ; ---------------------------------------------------------------------------

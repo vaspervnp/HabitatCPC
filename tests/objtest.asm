@@ -262,6 +262,9 @@ done_flag:  db 0
         include "../src/supply.asm"         ; το sp_noeng του hud.asm (βήμα 88)
         include "../src/suit.asm"           ; το su_hud του hud.asm (βήμα 90)
 tr_arrive:                              ; το sp_arrive, για μια J_TRADE (src/carry.asm),
+mc_live:                                ; και για τις μηχανές (βήμα 99, src/install.asm),
+mc_arrive:
+mc_tail:
 nd_load:                                ; το su_tick γυρίζει εκεί (src/needs.asm),
 nd_die: ret                             ; και εδώ δεν το καλεί κανείς
         ; Το jtb_cc (src/bend.asm) διαβάζει τη διαδρομή του cr_plan, που εδώ

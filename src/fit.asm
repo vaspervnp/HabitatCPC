@@ -24,7 +24,6 @@ FT_MIX      equ 254
 FT_EMPTY    equ NO_MACH                 ; η άδεια υποδοχή: γράφεται όπως είναι
 PLANT_FE    equ 2                       ; ένα φυτό: δύο μέταλλο, καθόλου βιοπλαστικό
 FIT_MAX     equ 13                      ; ΑΔΕΙΟ και ως δώδεκα μηχανές (RM_MACH)
-MACH_HP     equ 200                     ; καινούργια μηχανή (όπως στο newgame)
 
         assert  D_ROOM == D_SIZE + 1 && D_STATE == D_SIZE + 2
         assert  DS_BUILDING == 1 && DS_ACTIVE == 2
@@ -202,10 +201,20 @@ fit_set:
         ld      (hl),c
         ld      de,D_HEALTH - D_MACH
         add     hl,de
+        ; Η ΥΓΕΙΑ (βήμα 99): άδεια 0· ένα φυτό δουλεύει αμέσως· μια μηχανή
+        ; χρωστά τα υλικά της (MACH_OWED), που θα τα κουβαλήσουν δύο Supply,
+        ; και μετά τη στήνει ένας μηχανικός (src/install.asm).
         ld      a,c
-        cp      NO_MACH
-        sbc     a,a                     ; FF μηχανή, 0 άδεια υποδοχή
-        and     MACH_HP
+        inc     a                       ; NO_MACH: 0
+        jr      z,fs_hp
+        ld      a,(fit_rm)
+        cp      R_GREENHS
+        ld      a,MACH_HP
+        jr      z,fs_hp                 ; φυτό
+        ld      a,(fit_d)
+        call    mc_order                ; src/supply.asm· κρατά το HL
+        ld      a,MACH_OWED
+fs_hp:
         ld      (hl),a
         ld      a,D_STATE
         call    fit_fld

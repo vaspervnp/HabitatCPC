@@ -146,6 +146,7 @@ rtr_lp:
         include "../src/jobs.asm"
         include "../src/haul.asm"           ; βήμα 95: η μεταφορά
         include "../src/carry.asm"          ; βήμα 98: τα αγαθά του εμπόρου
+        include "../src/install.asm"        ; βήμα 99: οι μηχανές κουβαλιούνται
         include "../src/supply.asm"         ; βήμα 88: η τροφοδοσία
         include "../src/suit.asm"           ; βήμα 90: οι στολές
         include "../src/stock.asm"

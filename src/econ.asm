@@ -138,9 +138,8 @@ erd_lp:
         push    bc
         ld      de,D_HEALTH - D_MACH
         add     hl,de
-        inc     (hl)
-        dec     (hl)                    ; υγεία 0: χαλασμένη μηχανή, μαραμένο φυτό
-        call    nz,ec_run_one
+        bit     7,(hl)                  ; 0: χαλασμένη μηχανή, μαραμένο φυτό· 1-127:
+        call    nz,ec_run_one           ; δεν στήθηκε ακόμη (βήμα 99, src/install.asm)
         pop     bc
         pop     hl
 erd_next:
@@ -632,10 +631,12 @@ ec_break_d:
         ld      e,a
         ld      d,0
         add     ix,de                   ; IX -> η υποδοχή, μέσα στην εγγραφή
-        ld      a,(ix+D_MACH)
-        cp      NO_MACH
+        ; Μόνο μία που δουλεύει (bit 7). Μια άδεια υποδοχή έχει υγεία 0· μια
+        ; σταματημένη μένει όπως είναι· μια που περιμένει υλικά ή χτίστη (βήμα
+        ; 99) δεν χάνει όσα της έφεραν — αλλιώς ένα ανταλλακτικό θα την έστηνε.
+        bit     7,(ix+D_HEALTH)
         ret     z
-        ld      (ix+D_HEALTH),0         ; ήδη σταματημένη: το ίδιο μηδέν
+        ld      (ix+D_HEALTH),0
         ret
 
 ev_newday:  db 0

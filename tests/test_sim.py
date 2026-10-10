@@ -503,6 +503,10 @@ def main():
     if carry(sym, g, nexthop, sim0):
         return 1
 
+    # --- οι μηχανές κουβαλιούνται και στήνονται (βήμα 99, src/install.asm) ---
+    if machines(sym, g, nexthop, sim0):
+        return 1
+
     # --- κάθε ζαριά της θέσης 15, στημένη (βήμα 46) ---
     if event_branches(sym, g, nexthop, sim0):
         return 1
@@ -1920,6 +1924,111 @@ def carry(sym, g, nexthop, sim0):
             print(f"ΑΠΟΤΥΧΙΑ ΑΡΝΗΤΙΚΟ μεταφοράς: με «{label}» ο Z80 συμφώνησε")
             return 1
         print(f"OK ΑΡΝΗΤΙΚΟ μεταφοράς: με «{label}» ο Z80 διαφωνεί με την αναφορά")
+    return 0
+
+
+MACH_TICKS = 2400               # 150 περιστροφές: φορτία, Build, τέσσερα στησίματα ανά μηχανή
+STAGE = {EC.MACH_OWED: 0, 5: 1, 6: 1, EC.MACH_READY: 2, 36: 3, 68: 4, 100: 5, EC.MACH_HP: 6}
+
+
+def mach_scene(g, nexthop, sim0):
+    """Μηχανές που μόλις μπήκαν στο FIT (βήμα 99): οι δύο πρώτες υποδοχές με
+    μηχανή σε δύο θόλους σε λειτουργία (μεσαίοι ή μεγάλοι, όχι θερμοκήπια), και
+    η πρώτη ενός θόλου που ξαναγίνεται εργοτάξιο που χρωστά (όπως στο
+    supply_scene). Υγεία MACH_OWED, και οι Supply του mc_order."""
+    st = fresh(g, nexthop, sim0)
+    e, picked = st.e, []
+    for d in range(EC.MAX_DOME):
+        r = d * EC.DOME_REC
+        if (e.dome[r + EC.D_STATE] != EC.DS_ACTIVE or e.dome[r + EC.D_SIZE] == 0
+                or e.dome[r + EC.D_ROOM] == EC.R_GREENHOUSE or d == SITES[0][0]):
+            continue
+        slots = [k for k in range(EC.MACHINE_COUNT[e.dome[r + EC.D_SIZE]])
+                 if e.dome[r + EC.D_MACH + k] != EC.NO_MACH][:2]
+        if len(slots) < 2:
+            continue
+        for k in slots:
+            e.dome[r + EC.D_HEALTH + k] = EC.MACH_OWED
+        EC.order_machine(e, d)
+        picked.append((d, slots))
+        if len(picked) == 2:
+            break
+    d, mt, bi = SITES[0]
+    r = d * EC.DOME_REC
+    e.dome[r + EC.D_STATE], e.dome[r + EC.D_INTEG] = EC.DS_BUILDING, 0
+    e.dome[r + EC.D_POWER], e.dome[r + EC.D_OPS] = mt, bi
+    for i in range(EC.MAXAGENT_J):
+        if st.a.node[i] == d:
+            st.a.flags[i] &= ~E.F_WORKING & 0xFF
+    k = next(k for k in range(EC.MACHINE_COUNT[e.dome[r + EC.D_SIZE]])
+             if e.dome[r + EC.D_MACH + k] != EC.NO_MACH)
+    e.dome[r + EC.D_HEALTH + k] = EC.MACH_OWED
+    if mt:
+        EC.post_supply(e, d, EC.J_SUPPLY)
+    if bi:
+        EC.post_supply(e, d, EC.J_SUPPLY + 1)
+    EC.order_machine(e, d)
+    picked.append((d, [k]))
+    EC.rooms_rebuild(e, st.pc)
+    return st, picked
+
+
+def machines(sym, g, nexthop, sim0):
+    """Οι μηχανές κουβαλιούνται και στήνονται (βήμα 99), στον Z80 και στην
+    αναφορά, byte προς byte, και τι έγινε: κάθε υποδοχή περνά τα στάδια με τη
+    σειρά (7, 5 ή 6, 4, 36, 68, 100, 200) και φτάνει στο 200· ΜΙΑ Supply ανά
+    υλικό ανά θόλο· τις Build τις παίρνει μόνο μηχανικός ή ρομπότ κατασκευής.
+    ΑΡΝΗΤΙΚΑ: ο Z80 χωρίς τη Build της μηχανής, και με την παραγωγή να τρέχει
+    κάθε υγεία όχι μηδέν όπως ως το 98, ΠΡΕΠΕΙ να διαφωνήσει με την αναφορά."""
+    what = "μηχανές που κουβαλιούνται"
+    st, picked = mach_scene(g, nexthop, sim0)
+    sup = sorted((st.e.job[b], st.e.job[b + EC.J_SITE]) for b in range(0, 160, 5)
+                 if st.e.job[b] in (EC.J_SUPPLY, EC.J_SUPPLY + 1))
+    if sup != sorted((k, d) for d, _ in picked for k in (EC.J_SUPPLY, EC.J_SUPPLY + 1)):
+        print(f"ΑΠΟΤΥΧΙΑ {what}: οι Supply στην αρχή {sup}, θόλοι {picked}")
+        return 1
+    if same(sym, g, nexthop, st, MACH_TICKS, what) is None:
+        return 1
+    walk = fresh(g, nexthop, st)
+    seen = {(d, k): [EC.MACH_OWED] for d, ks in picked for k in ks}
+    builders, done_at = set(), {}
+    for t in range(MACH_TICKS):
+        walk.tick()
+        for (d, k), hist in seen.items():
+            h = walk.e.dome[d * EC.DOME_REC + EC.D_HEALTH + k]
+            if (d, k) not in done_at and h != hist[-1]:
+                hist.append(h)
+                if h == EC.MACH_HP:
+                    done_at[(d, k)] = t
+        jb = walk.e.job
+        for b in range(0, EC.MAX_JOB * EC.JOB_REC, EC.JOB_REC):
+            if jb[b] == EC.J_BUILD and jb[b + EC.J_AGENT] != 255:
+                builders.add(walk.a.role[jb[b + EC.J_AGENT]])
+    bad = {s: h for s, h in seen.items()
+           if any(v not in STAGE for v in h) or h[-1] != EC.MACH_HP
+           or [STAGE[v] for v in h] != sorted(STAGE[v] for v in h)}
+    if bad or not builders or builders - {E.ENGINEER, E.BOT_CONSTR}:
+        print(f"ΑΠΟΤΥΧΙΑ {what}: υγείες εκτός σειράς {bad}, χτίστες ρόλων {sorted(builders)}")
+        return 1
+    print(f"OK {what}: {len(seen)} υποδοχές σε {len(picked)} θόλους (ο τελευταίος "
+          f"εργοτάξιο) πέρασαν τα στάδια ως το 200, στα ticks {sorted(done_at.values())}; "
+          f"Build από ρόλους {sorted(builders)}; ίδια bytes στον Z80")
+
+    # ΑΡΝΗΤΙΚΑ: ο Z80 αλλαγμένος, η αναφορά όχι
+    m = boot_only()
+    find = lambda at, pat, n=60: next((at + k for k in range(n)
+                                       if list(m.read_ram(at + k, len(pat))) == pat), None)
+    sb = sym["SP_BUILD"]
+    b_at = find(sym["MCA_GOT"], [0xC4, sb & 255, sb >> 8])          # call nz,sp_build
+    p_at = find(sym["ERD_LP"], [0xCB, 0x7E, 0xC4], 24)               # bit 7,(hl) · call nz
+    for label, patch in (("καμία Build για τη μηχανή", b_at and [(b_at, 0), (b_at + 1, 0),
+                                                                (b_at + 2, 0)]),
+                         ("παραγωγή με «υγεία όχι μηδέν»", p_at and [(p_at, 0x34),
+                                                                     (p_at + 1, 0x35)])):
+        if not patch or same(sym, g, nexthop, st, MACH_TICKS, label, patch, quiet=True):
+            print(f"ΑΠΟΤΥΧΙΑ ΑΡΝΗΤΙΚΟ μηχανών: με «{label}» ο Z80 συμφώνησε")
+            return 1
+        print(f"OK ΑΡΝΗΤΙΚΟ μηχανών: με «{label}» ο Z80 διαφωνεί με την αναφορά")
     return 0
 
 

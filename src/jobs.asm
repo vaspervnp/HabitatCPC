@@ -206,7 +206,7 @@ ja_repair:
         jr      c,ja_fail
         ld      a,c
         call    ec_sub                  ; src/econ.asm
-        ld      (ix+D_HEALTH-D_MACH),200 ; ξαναδουλεύει
+        ld      (ix+D_HEALTH-D_MACH),MACH_HP ; ξαναδουλεύει
         jr      ja_done
 ja_fail:
         ; τζάμπα δρόμος: η εργασία μένει ανοιχτή για τον επόμενο
@@ -234,8 +234,11 @@ BUILD_STEP  equ 32                  ; οκτώ επισκέψεις = ~2,6 δε�
 ja_build:
         ld      a,c
         call    mt_rec                  ; HL = εγγραφή (src/meteor.asm)
-        ld      de,D_INTEG
+        ld      de,D_STATE
         add     hl,de
+        bit     1,(hl)                  ; DS_ACTIVE: χτισμένο, οι μηχανές του
+        jr      nz,jab_inst
+        inc     hl                      ; D_INTEG
         ld      a,(hl)
         add     a,BUILD_STEP
         jr      nc,jab_st
@@ -255,18 +258,54 @@ jab_st:
         ; ΤΟ ΚΤΙΡΙΟ ΠΡΕΠΕΙ ΝΑ ΦΑΝΕΙ — και η σκηνή μαθαίνει ΠΟΙΟ. Ως το βήμα 34
         ; ήταν μια σημαία, και ο βρόχος ξαναζωγράφιζε ολόκληρο το κάδρο γιατί
         ; δεν ήξερε τι άλλαξε: 0,36-0,92 s παγωμένη οθόνη ανά κτίριο (§6.9).
+        push    bc
         ld      b,c
         ld      a,DK_BUILT
         call    wh_push
+        pop     bc
         ; ΚΑΙ ΤΟ ΙΣΟΖΥΓΙΟ ΞΑΝΑΜΕΤΡΑΕΙ ΑΜΕΣΩΣ. Ο κύκλος ροής είναι 64
         ; περιστροφές (~20 δευτερόλεπτα): χωρίς αυτό, το πρώτο ηλιακό πάνελ
         ; του παίκτη έβγαζε ρεύμα και το HUD συνέχιζε να γράφει NO POWER ως
         ; να έρθει η σειρά του κύκλου. Οτι αλλάζει την αποικία, ξαναμετριέται.
         ld      a,1
         ld      (ec_fdiv),a
+        ; ΚΑΙ ΟΙ ΜΗΧΑΝΕΣ ΤΟΥ (βήμα 99): όσες πήραν τα υλικά τους όσο ήταν
+        ; εργοτάξιο τις στήνει ο ίδιος χτίστης, από αυτή κιόλας την επίσκεψη.
+; --- η Build σε θόλο σε λειτουργία: στήνει τις μηχανές του (βήμα 99,
+; src/install.asm). Η πρώτη υποδοχή που πήρε τα υλικά της και δεν δουλεύει
+; ακόμη (4 + 32k) ανεβαίνει BUILD_STEP, και πάνω από το 127 γίνεται MACH_HP.
+; Η εργασία μένει όσο βρίσκει μία. ---
+jab_inst:
+        ld      a,c
+        cp      MAX_DOME
+        jr      nc,jab_end              ; δομή: δεν έχει μηχανές
+        call    mc_rec                  ; IX -> υποδοχή 0, B = υποδοχές
+jabi_lp:
+        ld      a,(ix+D_HEALTH-D_MACH)
+        and     #80 | 3                 ; δουλεύει, ή χρωστά υλικά
+        jr      nz,jabi_n
+        or      (ix+D_HEALTH-D_MACH)
+        jr      nz,jabi_go              ; 0: χαλασμένη ή άδεια — θέλει Repair
+jabi_n:
+        inc     ix
+        djnz    jabi_lp
+jab_end:
         ld      hl,EC_NBUILD            ; μία Build λιγότερη (βήμα 88)
         dec     (hl)
-        jr      ja_done
+        jp      ja_done
+jabi_go:
+        add     a,BUILD_STEP
+        jp      p,jabi_st
+        ld      a,MACH_HP               ; στήθηκε: δουλεύει
+jabi_st:
+        ld      (ix+D_HEALTH-D_MACH),a
+        ; Ο ΧΤΙΣΤΗΣ ΜΕΝΕΙ ΣΤΟΝ ΘΟΛΟ. Αν το κτίριο μόλις τελείωσε, το lk_done τον
+        ; έβγαλε έξω, στο airlock ή στο σκάφος, με την εργασία ακόμη δική του:
+        ; ο προορισμός του ξαναγίνεται ο θόλος, αλλιώς περίμενε εκεί για πάντα.
+        ld      hl,(jb_ag)
+        ld      h,AG_PG + 2             ; dest
+        ld      (hl),c
+        jp      ja_next
 
 ja_cleartask:
         ld      a,(jb_ag)
@@ -400,6 +439,7 @@ jb_slots:
         ld      a,(hl)
         cp      DS_ACTIVE
         ret     nz
+jbs_any:
         push    hl
         pop     ix
         ld      a,(ix+D_SIZE-D_STATE)
@@ -413,6 +453,15 @@ jb_slots:
         ld      a,(ix+D_ROOM-D_MACH)
         cp      a                       ; Z: το add a,n πιο πάνω το είχε χαλάσει
         ret
+
+; mc_rec — A = θόλος, χτισμένος ή όχι: IX -> υποδοχή 0, B = υποδοχές, HL ->
+; D_STATE. Χαλάει DE. Οι μηχανές που κουβαλιούνται (βήμα 99, src/install.asm)
+; έχουν υποδοχές και σε εργοτάξιο.
+mc_rec:
+        call    jb_dome_ptr
+        ld      de,D_STATE
+        add     hl,de
+        jr      jbs_any
 
 ; jb_broken — (jb_d) = θόλος. A = η πρώτη σταματημένη υποδοχή, και IX ->
 ; αυτήν· ή A = 255.
@@ -450,9 +499,8 @@ jn_lp:
         cp      NO_MACH
         jr      z,jn_next
         ld      e,a
-        ld      a,(ix+D_HEALTH-D_MACH)
-        or      a
-        jr      z,jn_next               ; χαλασμένη
+        bit     7,(ix+D_HEALTH-D_MACH)
+        jr      z,jn_next               ; χαλασμένη, ή δεν στήθηκε ακόμη (βήμα 99)
         ld      a,e
         add     a,G_mach_op & 255
         ld      e,a

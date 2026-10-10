@@ -81,6 +81,9 @@ DS_EMPTY    equ 0
 DS_BUILDING equ 1
 DS_ACTIVE   equ 2
 NO_MACH     equ 255
+MACH_HP     equ 200             ; υγεία: δουλεύει (bit 7· όπως στο newgame)
+MACH_OWED   equ 7               ; καινούργια: χρωστά μέταλλο (bit 0), βιοπλαστικό (bit 1), περιμένει χτίστη (βήμα 99, src/install.asm)
+MACH_READY  equ 4               ; τα υλικά ήρθαν: τη στήνει μια Build
 ; --- οι δώδεκα τύποι δωματίου, με τη σειρά των εικονιδίων του pack.py ---
 R_EMPTY     equ 0
 R_CONTROL   equ 1

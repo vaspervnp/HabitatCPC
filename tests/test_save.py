@@ -273,7 +273,13 @@ def main():
             n += 1
             r = hud_row(3)
             if "SLOT" in r or "ERROR" in r:
-                LAST_MSG = r.rstrip()
+                # ΚΑΙ ΕΝΑ FRAME ΜΕΤΑ (βήμα 99): η σειρά μπορεί να πιαστεί στη
+                # μέση της σχεδίασης — «LOADED FROM SLOT» χωρίς το ψηφίο, όταν
+                # ο κώδικας της τράπεζας 0 μετακινήθηκε και η φάση άλλαξε.
+                m.run_frames(1)
+                n += 1
+                r2 = hud_row(3)
+                LAST_MSG = (r2 if "SLOT" in r2 or "ERROR" in r2 else r).rstrip()
                 break
         m.run_frames(30)
         return n + 4

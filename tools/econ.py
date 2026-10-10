@@ -80,6 +80,11 @@ RECIPE = [
 DOME_REC = 24
 MAX_DOME = 64
 MACH_SLOTS = 8
+# Η ΥΓΕΙΑ ΜΙΑΣ ΥΠΟΔΟΧΗΣ (βήμα 99, src/install.asm): 0 σταματημένη ή άδεια,
+# MACH_HP δουλεύει (bit 7), και ό,τι είναι από κάτω περιμένει: MACH_OWED
+# χρωστά μέταλλο (bit 0) και βιοπλαστικό (bit 1), MACH_READY + 32k περιμένει
+# τον χτίστη. Η παραγωγή, ο χειριστής και η βλάβη κοιτάζουν μόνο το bit 7.
+MACH_HP, MACH_OWED, MACH_READY = 200, 7, 4
 MACHINE_COUNT = [1, 4, 8]           # ανά μέγεθος s/m/l — από τα assets
 
 D_CX, D_CY, D_SIZE, D_ROOM, D_STATE, D_INTEG, D_POWER, D_OPS = range(8)
@@ -292,7 +297,7 @@ def run_dome(e, d, plant_class=None):
     for s in range(n):
         if green:
             p = e.dome[base + D_MACH + s]
-            if p == NO_MACH or e.dome[base + D_HEALTH + s] == 0:
+            if p == NO_MACH or not e.dome[base + D_HEALTH + s] & 0x80:
                 continue
             if not ops:                         # ΕΝΑΣ βιολόγος ποτίζει όλο
                 continue                        # τον κήπο (βλ. src/econ.asm)
@@ -301,7 +306,7 @@ def run_dome(e, d, plant_class=None):
         m = e.dome[base + D_MACH + s]
         if m == NO_MACH:
             continue
-        if e.dome[base + D_HEALTH + s] == 0:        # χαλασμένη
+        if not e.dome[base + D_HEALTH + s] & 0x80:  # χαλασμένη, ή δεν στήθηκε
             continue
         r = RECIPE[m]
         if r[9] & MF_OPERATOR:
@@ -466,7 +471,9 @@ def break_one(e, x):
         return
     n = MACHINE_COUNT[e.dome[b + D_SIZE]]
     s = (x >> 6) % n
-    if e.dome[b + D_MACH + s] == NO_MACH or e.dome[b + D_HEALTH + s] == 0:
+    # Μόνο μία που δουλεύει: μια που περιμένει υλικά ή χτίστη (βήμα 99) δεν
+    # χάνει όσα της έφεραν, και μια άδεια υποδοχή έχει υγεία 0.
+    if not e.dome[b + D_HEALTH + s] & 0x80:
         return
     e.dome[b + D_HEALTH + s] = 0
 
@@ -915,6 +922,8 @@ def needs_operators(e, d):
             continue
         if green:
             return 1
+        if not e.dome[base + D_HEALTH + s] & 0x80:
+            continue                            # δεν στήθηκε ακόμη (βήμα 99)
         if RECIPE[m][9] & MF_OPERATOR:
             n += 1
     return n
@@ -930,6 +939,81 @@ def broken_slot(e, d):
            and e.dome[base + D_HEALTH + s] == 0:
             return s
     return None
+
+
+def build_done(e, a, rec, rb, node, F_ALIVE):
+    """Ενα εργοτάξιο τελείωσε (ja_build)."""
+    rec[rb + D_STATE] = DS_ACTIVE
+    # Το lk_done του src/door.asm (βήμα 87). Ενας θόλος με σύνδεση
+    # εδάφους σφραγίζεται: φεύγει, και όσοι στέκονται εκεί βγαίνουν —
+    # αυτό θέλει τον γράφο, και το ελέγχει το tests/test_outside.py
+    # στο ίδιο το παιχνίδι. Ενα airlock: όσοι στέκονται εκεί, ο
+    # χτίστης και οι μεταφορείς του (βήμα 88), είναι πια μέσα. Κάθε
+    # άλλη δομή: ήταν ήδη έξω.
+    if node < MAX_DOME:
+        # Η αναφορά δεν έχει γράφο εδώ: οι σκηνές της είναι θόλοι με
+        # διαδρόμους ως ακμές, που το lk_done αφήνει όπως είναι.
+        pass
+    elif indoor_node(e, node):
+        for k in range(MAXAGENT_J):
+            if a.node[k] == node and a.edge[k] == 255 and a.flags[k] & F_ALIVE:
+                a.flags[k] |= 2         # F_INDOORS
+    e.flow_div = 1
+
+
+def find_job(e, kind, node):
+    """Το sp_find: υπάρχει εργασία αυτού του είδους με J_SITE τον κόμβο;"""
+    return any(e.job[k * JOB_REC + J_KIND] == kind
+               and e.job[k * JOB_REC + J_SITE] == node for k in range(MAX_JOB))
+
+
+def mach_live(e, node):
+    """Το mc_live: θόλος σε λειτουργία — τα χρωστάνε μόνο οι μηχανές του."""
+    return node < MAX_DOME and e.dome[node * DOME_REC + D_STATE] == DS_ACTIVE
+
+
+def mach_arrive(e, node, mat, done):
+    """Το mc_arrive (done = False) και το mc_tail (True). Το φορτίο του
+    υλικού mat πάει στην πρώτη μηχανή που το χρωστά· αν εκείνη δεν χρωστά πια
+    τίποτα και ο θόλος δουλεύει, μία Build αν δεν υπάρχει. True = κάποια το
+    χρωστά ακόμη: η εργασία ξανανοίγει."""
+    if node >= MAX_DOME:
+        return False
+    b = node * DOME_REC
+    bit = mat + 1
+    for s in range(MACHINE_COUNT[e.dome[b + D_SIZE]]):
+        h = e.dome[b + D_HEALTH + s]
+        if not h & bit:
+            continue
+        if done:
+            return True
+        h ^= bit
+        e.dome[b + D_HEALTH + s] = h
+        if h == MACH_READY and e.dome[b + D_STATE] == DS_ACTIVE \
+           and not find_job(e, J_BUILD, node):
+            post_build(e, node)
+        return mach_arrive(e, node, mat, True)
+    return False
+
+
+def ready_slot(e, node):
+    """Το jab_inst: η πρώτη υποδοχή που πήρε τα υλικά της και περιμένει τον
+    χτίστη (1-127 χωρίς τα bits των υλικών), ή None."""
+    if node >= MAX_DOME:
+        return None
+    b = node * DOME_REC
+    for s in range(MACHINE_COUNT[e.dome[b + D_SIZE]]):
+        h = e.dome[b + D_HEALTH + s]
+        if h and not h & 0x83:
+            return s
+    return None
+
+
+def order_machine(e, node):
+    """Το mc_order του fit_set: μία Supply ανά υλικό, αν δεν υπάρχει ήδη."""
+    for kind in (J_SUPPLY, J_SUPPLY + 1):
+        if not find_job(e, kind, node):
+            post_supply(e, node, kind)
 
 
 def jobs_tick(e, a, F_ALIVE, F_WORKING):
@@ -1015,15 +1099,24 @@ def jobs_tick(e, a, F_ALIVE, F_WORKING):
                 a.dest[i] = site
                 continue
             a.spare[i] = 0
+            # ΚΑΙ ΟΙ ΜΗΧΑΝΕΣ (βήμα 99, mc_live / mc_arrive / mc_tail): ένας
+            # θόλος σε λειτουργία δεν χρωστά ο ίδιος, και ό,τι δεν χρωστά το
+            # εργοτάξιο πάει στην πρώτη μηχανή που το χρωστά.
             rec, me, other, unit, mask = owed(e, site, mat)
-            if rec[me] & mask:
+            if not mach_live(e, site) and rec[me] & mask:
                 rec[me] = (rec[me] - unit) & 0xFF
                 if rec[me] & mask:
-                    jb[b + J_AGENT] = 255       # κι άλλο ταξίδι: ξανανοίγει
-                    a.task[i] = NO_TASK
-                    continue
-            if not (rec[me] | rec[other]):
-                post_build(e, site)             # όλα έφτασαν: σειρά του χτίστη
+                    more = True
+                else:
+                    if not (rec[me] | rec[other]):
+                        post_build(e, site)     # όλα έφτασαν: σειρά του χτίστη
+                    more = mach_arrive(e, site, mat, True)
+            else:
+                more = mach_arrive(e, site, mat, False)
+            if more:
+                jb[b + J_AGENT] = 255           # κι άλλο ταξίδι: ξανανοίγει
+                a.task[i] = NO_TASK
+                continue
             a.task[i] = NO_TASK
             jb[b + J_KIND] = NO_JOB
             continue
@@ -1059,26 +1152,20 @@ def jobs_tick(e, a, F_ALIVE, F_WORKING):
             # βήμα 38 η αναφορά τον έκανε χειριστή — δεν το είχε ζητήσει καμία
             # δοκιμή, γιατί η αποικία της δεν έχει εργοτάξια.
             rec, rb = _node_rec(e, node)
-            v = min(255, rec[rb + D_INTEG] + BUILD_STEP)
-            rec[rb + D_INTEG] = v
-            if v != 255:
+            if rec[rb + D_STATE] != DS_ACTIVE:
+                v = min(255, rec[rb + D_INTEG] + BUILD_STEP)
+                rec[rb + D_INTEG] = v
+                if v != 255:
+                    continue
+                build_done(e, a, rec, rb, node, F_ALIVE)
+            # ΟΙ ΜΗΧΑΝΕΣ ΤΟΥ (βήμα 99, jab_inst): η πρώτη που πήρε τα υλικά
+            # της ανεβαίνει BUILD_STEP, και η εργασία μένει όσο βρίσκει μία.
+            s = ready_slot(e, node)
+            if s is not None:
+                h = e.dome[node * DOME_REC + D_HEALTH + s] + BUILD_STEP
+                e.dome[node * DOME_REC + D_HEALTH + s] = MACH_HP if h & 0x80 else h
+                a.dest[i] = node                # το lk_done τον έβγαλε ίσως έξω
                 continue
-            rec[rb + D_STATE] = DS_ACTIVE
-            # Το lk_done του src/door.asm (βήμα 87). Ενας θόλος με σύνδεση
-            # εδάφους σφραγίζεται: φεύγει, και όσοι στέκονται εκεί βγαίνουν —
-            # αυτό θέλει τον γράφο, και το ελέγχει το tests/test_outside.py
-            # στο ίδιο το παιχνίδι. Ενα airlock: όσοι στέκονται εκεί, ο
-            # χτίστης και οι μεταφορείς του (βήμα 88), είναι πια μέσα. Κάθε
-            # άλλη δομή: ήταν ήδη έξω.
-            if node < MAX_DOME:
-                # Η αναφορά δεν έχει γράφο εδώ: οι σκηνές της είναι θόλοι με
-                # διαδρόμους ως ακμές, που το lk_done αφήνει όπως είναι.
-                pass
-            elif indoor_node(e, node):
-                for k in range(MAXAGENT_J):
-                    if a.node[k] == node and a.edge[k] == 255 and a.flags[k] & F_ALIVE:
-                        a.flags[k] |= 2         # F_INDOORS
-            e.flow_div = 1
             e.nbuild -= 1                       # EC_NBUILD
             a.task[i] = NO_TASK
             jb[b + J_KIND] = NO_JOB
@@ -1092,7 +1179,7 @@ def jobs_tick(e, a, F_ALIVE, F_WORKING):
                 a.task[i] = NO_TASK
                 continue
             e.stock[S_SPARE] -= 1
-            e.dome[node * DOME_REC + D_HEALTH + s] = 200
+            e.dome[node * DOME_REC + D_HEALTH + s] = MACH_HP
             a.task[i] = NO_TASK
             jb[b + J_KIND] = NO_JOB
             continue
