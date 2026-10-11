@@ -28,6 +28,7 @@ FIT_MAX     equ 13                      ; ΑΔΕΙΟ και ως δώδεκα μ
         assert  D_ROOM == D_SIZE + 1 && D_STATE == D_SIZE + 2
         assert  DS_BUILDING == 1 && DS_ACTIVE == 2
         assert  A_UP + 1 == A_DOWN && A_LEFT + 1 == A_RIGHT
+        assert  A_DOWN < 8 && A_RIGHT < 8 && A_FIRE < 8 && A_MENU < 8 ; ui_lr, uist_fit: act_hit
         assert  FT_MIX == FT_CLS + 4 && FT_EMPTY == FT_MIX + 1
         assert  PEN_NO == PEN_OK ^ 1            ; fit_show: xor με το A του bd_afford
         ; ο διαλογέας του ui_tick (src/ui.asm): dec a ανά κατάσταση
@@ -76,8 +77,9 @@ fit_can:
         cp      2
         jr      nc,fc_no
         ld      a,e
-        ld      hl,G_machine_count
-        call    ob_addu
+        add     a,G_machine_count & 255
+        ld      l,a
+        ld      h,G_machine_count >> 8  ; μία σελίδα (assert στο τέλος)
         ld      a,(hl)
         ld      (fit_n),a
         ; --- fit_lst = ΑΔΕΙΟ και ό,τι δέχεται το δωμάτιο σε αυτό το μέγεθος,
@@ -96,10 +98,11 @@ fit_can:
         ld      c,a
         ld      hl,rm_buf - 1
 fl_copy:
-        ld      de,fit_lst
+        ld      de,fit_c
         inc     c
         ld      a,c
-        ld      (fit_c),a
+        ld      (de),a
+        inc     de                      ; fit_lst (assert στα δεδομένα)
         ld      b,0
         ldir
         cp      2                       ; δωμάτιο χωρίς μηχανές: μόνο το ΑΔΕΙΟ
@@ -136,14 +139,13 @@ uf_click:
         ld      a,SFX_MENU
         jr      uf_snd
 uf_fire:
-        ld      a,A_FIRE
-        call    in_hit
+        ld      a,(act_hit)             ; τα bits, όχι in_hit (βήμα 103)
+        bit     A_FIRE,a
         jr      z,uf_all
         call    fit_set
         jr      uf_paid
 uf_all:
-        ld      a,A_MENU
-        call    in_hit
+        and     1 << A_MENU
         ret     z
         ; ΟΛΕΣ ΟΙ ΥΠΟΔΟΧΕΣ, από την πρώτη. Οσες δεν πληρώνονται μένουν όπως
         ; ήταν, και ο ήχος της άρνησης λέει «όχι όλες».
@@ -175,8 +177,7 @@ uf_snd:
         ; Η ΥΠΟΓΡΑΦΗ ΤΟΥ ΠΙΝΑΚΑ (ui_sig) δεν ξέρει τίποτα από υποδοχές και
         ; επιλογές — μόνο το ui_state, που εδώ δεν αλλάζει.
         call    ui_dirty
-        call    ui_hide                 ; το πλαίσιο αλλάζει θέση ή χρώμα
-        jp      ui_show
+        jp      ui_redo                 ; το πλαίσιο αλλάζει θέση ή χρώμα (src/ui.asm)
 
 ; ---------------------------------------------------------------------------
 ; fit_set — η υποδοχή fit_s παίρνει το fit_lst[fit_i].
@@ -226,8 +227,7 @@ fs_hp:
         call    dirty_push
 fs_give:
         pop     af                      ; ΤΑ ΜΙΣΑ ΠΙΣΩ για ό,τι βγήκε
-        call    fit_price
-        ld      hl,(bd_metal)           ; L = μέταλλο, H = βιοπλαστικό
+        call    fit_price               ; HL = (bd_metal): L = μέταλλο, H = βιοπλ.
         push    hl
         ld      e,l
         ld      a,S_METAL
@@ -263,9 +263,9 @@ fit_want:
 ; όπως για ό,τι άλλο χτίζεται. Χαλάει C, DE, HL.
 fit_price:
         ld      hl,0
-        cp      NO_MACH
-        jr      z,fpr_st
         ld      c,a
+        inc     a                       ; NO_MACH = 255
+        jr      z,fpr_st
         ld      a,(fit_rm)
         cp      R_GREENHS
         ld      hl,PLANT_FE
@@ -362,8 +362,9 @@ fit_pick:
         cp      R_GREENHS
         ld      a,c
         jr      nz,fp_find
-        ld      hl,G_plant_class        ; στο θερμοκήπιο ψάχνεται η ΚΛΑΣΗ
-        call    ob_addu
+        add     a,G_plant_class & 255   ; στο θερμοκήπιο ψάχνεται η ΚΛΑΣΗ
+        ld      l,a
+        ld      h,G_plant_class >> 8    ; μία σελίδα (assert στο τέλος)
         ld      a,(hl)
         add     a,FT_CLS
 fp_find:
@@ -389,17 +390,14 @@ fit_fld:
         call    ob_domeadr
         ld      a,c
         call    ob_addu
-        ld      bc,GA_PORT + PAGE_B6
-        out     (c),c
-        ret
+        jp      ob_b6
 
 ; ---------------------------------------------------------------------------
 ; fit_show — το ui_show στον εξοπλισμό: ένα πλαίσιο γύρω από την υποδοχή, ροζ
 ; αν η επιλογή είναι ήδη μέσα, πράσινο αν πληρώνεται, κόκκινο αν όχι.
 ; ---------------------------------------------------------------------------
 fit_show:
-        ld      bc,GA_PORT + PAGE_B6
-        out     (c),c
+        call    ob_b6
         ld      a,(fit_d)
         call    ob_getdome              ; d_rec και το πλαίσιο, για την κάμερα
         call    uid_out                 ; που ισχύει ΤΩΡΑ
@@ -441,8 +439,7 @@ fn_m:
         call    ob_addu
         call    hud_text7
         ld      b,12 - 7
-        call    hud_blank
-        jp      uipi_arrow
+        jp      uipi_bl                 ; hud_blank, και τα βέλη (src/ui.asm)
 
 ; fit_row4 — «SLOT 2/4  UP/DN=PICK FIRE=FIT SPACE=ALL».
 fit_row4:
@@ -472,3 +469,4 @@ fit_lst:    defs FIT_MAX
         ; ld hl,fit_c: ld c,(hl): dec hl για το fit_i, inc hl για το fit_lst
         assert  fit_s == fit_n + 1 && fit_d == fit_s + 1
         assert  fit_c == fit_i + 1 && fit_lst == fit_c + 1
+        assert  (G_machine_count & 255) + 3 <= 256 && (G_plant_class & 255) + PLANT_TYPES <= 256

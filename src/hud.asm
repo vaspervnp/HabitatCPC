@@ -179,8 +179,7 @@ hud_move:
         and     7
         ld      h,a
         ld      (hm_dl),hl              ; Δ mod 2048
-        ld      a,h
-        or      l
+        or      l                       ; A = H ήδη (ld h,a)
         ret     z                       ; η κάμερα δεν κουνήθηκε
         ex      de,hl                   ; HL = το παλιό cam_p, D = Δ >> 8
         bit     2,d                     ; Δ >= 1024: αρνητικό
@@ -256,14 +255,12 @@ hm_sd:
 
 ; hm_room — DE = min(DE, 2048 - HL). hm_min — DE = min(DE, HL). Χαλάνε HL.
 hm_room:
-        ld      a,l
-        cpl
+        xor     a
+        sub     l
         ld      l,a
-        ld      a,h
-        cpl
-        add     a,8
-        ld      h,a
-        inc     hl                      ; 2048 - HL
+        ld      a,8
+        sbc     a,h
+        ld      h,a                     ; 2048 - HL (το A: νεκρό, το hmc το γράφει)
 hm_min:
         or      a
         sbc     hl,de
@@ -407,7 +404,7 @@ hud_num:
 hn_de:                                  ; DE = τιμή (hd_stock)
         ld      a,b
         add     a,a
-        ld      hl,hn_pow
+        ld      hl,hn_pow - 2
         call    ob_addu                 ; HL -> 10^B
         call    hn_div                  ; ό,τι ξεπερνά τα B ψηφία πέφτει
         ld      c,' '                   ; τα μπροστινά μηδενικά: κενά
@@ -418,14 +415,14 @@ hn_lp:
         cp      '0'
         jr      z,hn_zero
         ld      c,'0'                   ; από εδώ και πέρα τα μηδενικά μετράνε
-        jr      hn_put
+        db      #FE                     ; cp n: προσπερνά το ld a,c (μόνο σημαίες)
 hn_zero:
         ld      a,c
-hn_put:
         call    hn_out
         djnz    hn_lp
 hn_last:
-        call    hn_div                  ; το τελευταίο: και το 0 ως «0»
+        ld      a,e                     ; το τελευταίο: DE < 10 μετά τη διαίρεση με
+        add     a,'0'                   ; το 10, και το 0 ως «0» (βήμα 103: χωρίς hn_div)
 hn_out:
         push    hl
         push    de
@@ -487,14 +484,13 @@ hud_bar:
         ld      b,h
         ld      c,l
         add     hl,hl                   ; 4v
-        push    hl
         or      a
         sbc     hl,de                   ; κάτω από το ένα τέταρτο: κόκκινη
         ld      a,PEN_FULL
         jr      nc,hb_pen
         ld      a,PEN_LOW
 hb_pen:
-        pop     hl
+        add     hl,de                   ; 4v ξανά
         add     hl,bc                   ; 6v
         ld      b,BAR_CELLS
 hb_cell:
@@ -797,13 +793,12 @@ mer_here:
 ; 52 και οι σκαλωσιές των δοκιμών χωρίς οικονομία (tests/objtest.asm).
 hd_short:
         call    ec_stock_ptr
-        ex      de,hl
-        ld      c,(hl)
-        inc     hl
-        ld      a,(hl)
+        inc     de
+        ld      a,(de)
         or      a
         ret     nz                      ; πάνω από 255: άφθονο, χωρίς CY
-        ld      a,c
+        dec     de
+        ld      a,(de)
         ld      hl,EC_ALIVE
         cp      (hl)
         ret
@@ -819,13 +814,13 @@ stock_row:
         db      "ME", 0, S_MEDI
         db      "BO", 0, S_BOT
 
-; Το byte ενός συμπαγούς pen στο Mode 0, ανά pen. Το HUD δεν το χρειάζεται πια
-; (βήμα 83)· το διαβάζει το ghost.asm.
+; Το byte ενός συμπαγούς pen στο Mode 0, για τα pens 8-15. Το HUD δεν το
+; χρειάζεται πια (βήμα 83)· το διαβάζει το gh_setpen, που παίρνει μόνο τα 8, 9
+; και 15 (PEN_NO, PEN_OK, PEN_CUR): τα 0-7 έφυγαν στο βήμα 103 (assert στο ui.asm).
 hud_solid:
-        db      #00, #C0, #0C, #CC, #30, #F0, #3C, #FC
         db      #03, #C3, #0F, #CF, #33, #F3, #3F, #FF
 
-hn_pow: dw      1, 10, 100, 1000, 10000   ; το 10000: τέσσερα ψηφία (βήμα 93)
+hn_pow: dw      10, 100, 1000, 10000      ; 10^B στο hn_pow - 2 + 2B, B = 1-4 (βήμα 93: το 10000)
 
 ; --- μεταβλητές ------------------------------------------------------------
 hud_gen:    db 0

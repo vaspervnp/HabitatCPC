@@ -35,15 +35,45 @@ HAS_VIEW    equ 1                        ; ...και το wh_hook γεμάτο �
 start:
         di
         ld      sp,#0100
-        call    is_init                 ; η διακοπή των λωρίδων (src/isr.asm)
+        ; --- η διακοπή των λωρίδων (src/isr.asm): το διάνυσμα, IM 1, το R7, και
+        ; τα pens του κάδρου. Οι διακοπές μένουν κλειστές: τις ανοίγει ο βρόχος.
+        ; Το «jp isr» γράφεται στο #0038 εδώ και όχι από τη μεταγλώττιση: ο
+        ; δίσκος φορτώνει από το #0100, και κάτω από αυτό είναι ό,τι άφησε το
+        ; firmware. (Ως το βήμα 102 το is_init, με μόνο αυτόν τον καλούντα.)
+        ld      a,#C3                   ; jp
+        ld      (IS_VEC),a
+        ld      hl,is_vs
+        ld      (IS_VEC + 1),hl
+        im      1
+        ld      bc,CRTC_SEL + 7
+        out     (c),c
+        ld      bc,CRTC_VAL + IS_R7
+        out     (c),c
+        ld      hl,G_palette_fw + 1
+        ld      de,is_pal + 3
+        ld      b,3
+isi_lp: ld      a,(hl)
+        inc     hl
+        push    hl
+        ld      hl,fw_to_hw
+        add     a,l
+        ld      l,a
+        adc     a,h
+        sub     l
+        ld      h,a
+        ld      a,(hl)
+        or      GA_INK
+        ld      (de),a
+        inc     de
+        pop     hl
+        djnz    isi_lp
         call    hw_mode0
         call    hw_clear                ; ό,τι άφησε ο φορτωτής, φεύγει τώρα
         ld      hl,G_palette_fw
         call    pal_set
         ; Ο πλανήτης ζει στα τέσσερα bytes που άφησε η γεννήτρια στην τράπεζα 6
         ; (§5.7): τέσσερα pens εδάφους, τίποτε άλλο.
-        ld      bc,GA_PORT + PAGE_B6
-        out     (c),c
+        call    ob_b6                   ; BC = GA_PORT + PAGE_B6
         ld      a,(G_worldinfo + 2)
         ld      c,PAGE_B1               ; το B είναι ακόμη GA_PORT >> 8
         out     (c),c
@@ -276,12 +306,30 @@ zz_bank0_end:
 ; αποικία δοκιμών: 904 bytes. Τώρα ολόκληρο το GH_LOG, 1.160: η αποικία τρέχει
 ; στο game_new, πριν από κάθε κατεδάφιση, και ό,τι γράψει πάνω της το ov_run
 ; δεν το ξαναζητά κανείς — όπως ένα μεγάλο φάντασμα. ---
-OV_LOAD     equ #7000 - GH_LOG          ; = το OV_LOAD του src/boot.asm
+;
+; ΚΑΙ ΤΟ ΣΩΣΙΜΟ ΜΕ ΤΟΝ ΟΔΗΓΟ ΤΟΥ ΔΙΣΚΟΥ (βήμα 103): ένα δεύτερο κομμάτι, από τη
+; γραμμή μετά την κατεδάφιση, που τρέχει στο SV_ORG = GH_BUF + 512 — τα πρώτα
+; 512 του GH_BUF είναι η κεφαλίδα του σωσίματος (SV_HDR, src/save.asm), όπως
+; ήταν πάντα. Το φέρνει το sv_ovl (src/demolish.asm) σε κάθε S και L. Ως το
+; βήμα 102 τα 633 bytes του ζούσαν στην τράπεζα 2. Το OV_LOAD κρατά 2 KB κάτω
+; από τα εικονίδια, 64 γραμμές του DIST, για όσα κομμάτια έρθουν. ---
+OV_LOAD     equ #6800                   ; = το OV_LOAD του src/boot.asm
+OV_MAX      equ #7000 - OV_LOAD
         org     GH_BUF, OV_LOAD
         include "dm_ovl.asm"
 zz_ovl_end:
         assert  zz_ovl_end <= GH_BUF + GH_LOG
         save    "../build/ovl.bin", OV_LOAD, zz_ovl_end - GH_BUF
+OV1_PAD     equ ((zz_ovl_end - GH_BUF + 31) >> 5) << 5   ; ως το τέλος της γραμμής του
+SV_ORG      equ GH_BUF + 512
+        org     SV_ORG, OV_LOAD + OV1_PAD
+zz_ov2:
+        include "save.asm"
+        include "fdc.asm"
+zz_ov2_end:
+        assert  zz_ov2_end <= GH_BUF + GH_LOG
+        assert  OV1_PAD + zz_ov2_end - SV_ORG <= OV_MAX
+        save    "../build/ovl2.bin", OV_LOAD + OV1_PAD, zz_ov2_end - SV_ORG
 
         org     PAGE2_CODE - 256
 zz_colony:
@@ -324,7 +372,8 @@ zz_page2_code:                          ; για το tools/mkdsk.py: πού φ�
         ; #3E00. Το test_save έσβηνε κώδικα του παιχνιδιού πριν τον δοκιμάσει
         ; και έβγαζε «ο δίσκος δεν σώζει». Βλ. tools/mkdsk.py: το πάτωμα των
         ; δοκιμών ελέγχεται πια σε κάθε build.
-        include "save.asm"
+        ; (Το save.asm έφυγε στις τρύπες του DIST στο βήμα 103· εδώ μένουν οι
+        ; δύο είσοδοί του, στο src/demolish.asm.)
         include "hw.asm"
         ; ΚΑΙ Ο ΥΠΟΛΟΙΠΟΣ ΚΡΥΟΣ ΚΩΔΙΚΑΣ, ΒΗΜΑ 33. Το §15 τα έγραφε από το βήμα 30:
         ; «newgame.asm και fdc.asm — 957 bytes κρύου κώδικα που ακολουθούν το
@@ -333,7 +382,7 @@ zz_page2_code:                          ; για το tools/mkdsk.py: πού φ�
         ; ui_cursor (256). Το newgame τρέχει μία φορά ανά παρτίδα, ο οδηγός του
         ; δίσκου μόνο στο S και στο L: κανένα από τα δύο δεν είναι σε καρέ που
         ; μετράει.
-        include "fdc.asm"
+        ; (Και το fdc.asm, μαζί του, στο βήμα 103.)
         include "newgame.asm"
 zz_page2_end:
 

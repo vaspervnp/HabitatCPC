@@ -300,12 +300,12 @@ def factory(sym, g):
     F.set_stocks(3, STOCK)
     F.slot(1)
     F.pick(3)                                # όπλα, 10 μέταλλο
-    # Το gh_pen κρατά το byte γεμίσματος, hud_solid[pen] (gh_setpen).
-    pen, red = F.peek("GH_PEN"), F.peek("HUD_SOLID", PEN_NO)
+    # Το gh_pen κρατά το byte γεμίσματος, hud_solid[pen - 8] (gh_setpen).
+    pen, red = F.peek("GH_PEN"), F.peek("HUD_SOLID", PEN_NO - 8)
     heard = F.sounds(F.fire)
     rec = F.rec(node)
     check(rec[9] == 2 and F.stocks()[0] == 3 and pen == red
-          and red != F.peek("HUD_SOLID", PEN_OK) and heard == [SFX_DENY],
+          and red != F.peek("HUD_SOLID", PEN_OK - 8) and heard == [SFX_DENY],
           f"με 3 μέταλλο τα όπλα δεν μπαίνουν: υποδοχή 1 = {rec[9]}, μέταλλο "
           f"{F.stocks()[0]}, πλαίσιο #{pen:02X} (κόκκινο #{red:02X}), ήχοι {heard}")
     F.set_stocks(STOCK, STOCK)

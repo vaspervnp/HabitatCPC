@@ -166,8 +166,28 @@ def main():
         sys.exit("το παιχνίδι δεν ξεκίνησε από τον δίσκο")
     m.run_frames(200)
 
+    # ΤΟ ΣΩΣΙΜΟ ΖΕΙ ΣΤΙΣ ΤΡΥΠΕΣ ΤΟΥ DIST από το βήμα 103 (src/demolish.asm): οι
+    # ετικέτες του δείχνουν στο SV_ORG του GH_BUF, όπου το φέρνει κάθε S και L.
+    # Ο,τι διαβάζει ή πειράζει η δοκιμή ΠΡΙΝ από ένα S ή L, το διαβάζει ή το
+    # πειράζει εκεί όπου μένει: στις τρύπες της τράπεζας 1, από τη γραμμή μετά
+    # την κατεδάφιση (build/ovl.bin).
+    import cpc
+    b1 = cpc._lib.cpcemu_ram_ptr(m._h, 1)
+    rows1 = (os.path.getsize(os.path.join(ROOT, "build", "ovl.bin")) + 31) // 32
+
+    def hole(a):
+        k = a - sym["ZZ_OV2"]
+        return 128 * (rows1 + (k >> 5)) + 96 + (k & 31)
+
+    def ov_read(a, n):
+        return bytes(b1[hole(a + i)] for i in range(n))
+
+    def ov_write(a, data):
+        for i, v in enumerate(data):
+            b1[hole(a + i)] = v
+
     # --- η μορφή ανά έκδοση ------------------------------------------------
-    ver = m.peek(sym["SV_MAGIC"] + 4)
+    ver = ov_read(sym["SV_MAGIC"] + 4, 1)[0]
     have = save_format()
     check(ver in FORMAT and have == FORMAT[ver],
           f"η μορφή της έκδοσης {ver} είναι αυτή που γράφει το FORMAT"
@@ -322,10 +342,15 @@ def main():
     m.run_frames(4)
     a_econ, a_plane, a_play = snap()
     a_img = image("a")
+    # Ο ΚΩΔΙΚΑΣ ΤΟΥ ΣΩΣΙΜΑΤΟΣ ΕΡΧΕΤΑΙ ΑΠΟ ΤΙΣ ΤΡΥΠΕΣ σε κάθε S (βήμα 103): ό,τι
+    # κι αν έχει μείνει στο SV_ORG — εδώ rst 0 ως το τέλος του GH_BUF — το
+    # σώσιμο πετυχαίνει.
+    sv_org = sym["ZZ_OV2"]
+    m.write_ram(sv_org, b"\xC7" * (sym["ZZ_OV2_END"] - sv_org))
     nsave = disc_op("S")
     check(m.peek(sym["SV_SLOT"]) == 0 and m.peek(sym["FD_TRK"]) >= 24,
           f"το σώσιμο έτρεξε (slot {m.peek(sym['SV_SLOT'])}, "
-          f"track #{m.peek(sym['FD_TRK'])})")
+          f"track #{m.peek(sym['FD_TRK'])}), με σκουπίδια στο SV_ORG πριν")
 
     # --- 2. ο κόσμος προχωρά ----------------------------------------------
     # ΕΝΑΜΙΣΙ SOL, ΟΧΙ ΕΝΑ. Οι άποικοι ξεκινούν με γεμάτες μπάρες και πέφτουν
@@ -472,10 +497,10 @@ def main():
     # Η εικόνα της προηγούμενης έκδοσης: το sv_magic με SV_VER - 1, σώσιμο
     # στη δεύτερη θέση (άδεια ως εδώ), το sv_magic πίσω, φόρτωμα.
     mg = sym["SV_MAGIC"]
-    mine = bytes(m.read_ram(mg, 5))
-    m.write_ram(mg, b"HBT" + bytes([ord("0") + ver - 1, ver - 1]))
+    mine = ov_read(mg, 5)
+    ov_write(mg, b"HBT" + bytes([ord("0") + ver - 1, ver - 1]))
     disc_op("S", 1)
-    m.write_ram(mg, mine)
+    ov_write(mg, mine)
     freeze(True)
     m.run_frames(4)
     j_econ, j_plane, _ = snap()
@@ -488,13 +513,25 @@ def main():
     # ΑΡΝΗΤΙΚΟ: το sv_hdr_ok χωρίς τη σύγκριση (jr nz,svo_bad -> nop nop)
     # δέχεται το ίδιο σώσιμο: αυτό που το απέρριψε ήταν η έκδοση.
     hk = next(sym["SV_HDR_OK"] + k for k in range(16)
-              if list(m.read_ram(sym["SV_HDR_OK"] + k, 2)) == [0xBE, 0x20])
-    m.write_ram(hk + 1, b"\x00\x00")
+              if list(ov_read(sym["SV_HDR_OK"] + k, 2)) == [0xBE, 0x20])
+    ov_write(hk + 1, b"\x00\x00")
     disc_op("L", 1)
     check("LOADED FROM SLOT 2" in LAST_MSG,
           f"ΑΡΝΗΤΙΚΟ: με το sv_hdr_ok να δέχεται τα πάντα, το ίδιο σώσιμο φορτώνεται: |{LAST_MSG}|")
 
+    # ΑΡΝΗΤΙΚΟ (βήμα 103): χωρίς το ov_copy του sv_ovl (call -> nop) και με
+    # σκουπίδια στο SV_ORG, το S δεν σώζει. Τελευταίο: ό,τι τρέξει από εκεί δεν
+    # γυρίζει.
+    so = sym["SV_OVL"]
+    oc = sym["OV_COPY"]
+    k = next(k for k in range(16)
+             if list(m.read_ram(so + k, 3)) == [0xCD, oc & 255, oc >> 8])
     m.screenshot(os.path.join(ROOT, "build", "save.png"), aspect=True)
+    m.write_ram(so + k, b"\0\0\0")
+    m.write_ram(sv_org, b"\xC7" * (sym["ZZ_OV2_END"] - sv_org))
+    disc_op("S", 0)
+    check("SAVED" not in LAST_MSG,
+          f"ΑΡΝΗΤΙΚΟ: χωρίς τον κώδικα από τις τρύπες το S δεν σώζει: |{LAST_MSG}|")
     if FAIL:
         print(f"\nΑΠΟΤΥΧΙΑ — {len(FAIL)}")
         return 1

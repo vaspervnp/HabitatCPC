@@ -262,6 +262,7 @@ t_deal    equ x_t_deal - TEXT_IMG + G_text
         ; γραμματοσειρά αμέσως μετά: αλλιώς τα κείμενα γράφουν πάνω της.
         assert  G_text + TEXT_MAX <= G_font_m1
         assert  x_t_f_slot - x_t_f_names == 19 * 8   ; fit_name, tr_panel: x8
+        assert  x_t_x1 - x_t_pause == 6 && x_t_x2 - x_t_pause == 12 && x_t_x4 - x_t_pause == 18  ; uip_spd: x6
         assert  x_t_i_ore - x_t_i_cls == 8 * 11      ; in_panel: x11
 
         ; ΚΑΙ ΣΤΟΝ ΔΙΣΚΟ: η BANK7.BIN φτιάχνεται από το tools/pack.py, που δεν

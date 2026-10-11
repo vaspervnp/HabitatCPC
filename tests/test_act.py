@@ -355,7 +355,7 @@ def main():
            ("τη σειρά 4 μετά το πλοίο", [(find("AC_SHIP", [0x06, 40]) + 1, 0)]),
            ("το μενού έξω από τον διαλογέα", [(find("UIT_STATE", [0xFE, UI_ACT - 5, 0xCA]) + 1, 99)]),
            ("τη θέση δίσκου που αλλάζει χωρίς να φανεί",
-            [(find("USL_LR", [0xC3, sym["UI_PANEL"] & 255, sym["UI_PANEL"] >> 8], 30), 0xC9)]),
+            [(find("USL_LR", [0xC3, sym["UIM_CP"] & 255, sym["UIM_CP"] >> 8], 30), 0xC9)]),
            ("το SPACE που ξεχνά την ομάδα", [(find("AC_OPEN", [0x7E, 0x21], 20), 0xAF)])]
     for label, patch in neg:
         why, _ = run(sym, a, patch, quick=True)

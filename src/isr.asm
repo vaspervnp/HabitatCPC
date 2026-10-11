@@ -239,45 +239,11 @@ isf_lp:
         ret
 
 ; Τα pens 1-3, σε τιμές του Gate Array (με το GA_INK): πάνω λωρίδα, κάδρο, κάτω
-; λωρίδα. Του κάδρου τα γράφει το is_init από το palette_fw των assets. Των
+; λωρίδα. Του κάδρου τα γράφει το start από το palette_fw των assets. Των
 ; λωρίδων: 1 κόκκινο, 2 πράσινο, 3 λευκό (hardware #0C, #12, #0B).
 is_pal:     db GA_INK + #0C, GA_INK + #12, GA_INK + #0B
             db 0, 0, 0
             db GA_INK + #0C, GA_INK + #12, GA_INK + #0B
 
-; ---------------------------------------------------------------------------
-; is_init — το διάνυσμα, IM 1, το R7, και τα pens του κάδρου. Οι διακοπές
-; μένουν κλειστές: τις ανοίγει ο βρόχος (main_loop).
-;
-; Το «jp isr» γράφεται στο #0038 εδώ και όχι από τη μεταγλώττιση: ο δίσκος
-; φορτώνει από το #0100, και κάτω από αυτό είναι ό,τι άφησε το firmware.
-; ---------------------------------------------------------------------------
-is_init:
-        ld      a,#C3                   ; jp
-        ld      (IS_VEC),a
-        ld      hl,is_vs
-        ld      (IS_VEC + 1),hl
-        im      1
-        ld      bc,CRTC_SEL + 7
-        out     (c),c
-        ld      bc,CRTC_VAL + IS_R7
-        out     (c),c
-        ld      hl,G_palette_fw + 1
-        ld      de,is_pal + 3
-        ld      b,3
-isi_lp: ld      a,(hl)
-        inc     hl
-        push    hl
-        ld      hl,fw_to_hw
-        add     a,l
-        ld      l,a
-        adc     a,h
-        sub     l
-        ld      h,a
-        ld      a,(hl)
-        or      GA_INK
-        ld      (de),a
-        inc     de
-        pop     hl
-        djnz    isi_lp
-        ret
+; (Το is_init — διάνυσμα, IM 1, R7, τα pens του κάδρου — ζει από το βήμα 103
+; μέσα στο start του src/main.asm, τον μόνο καλούντα του.)

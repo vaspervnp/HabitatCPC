@@ -75,17 +75,56 @@ dm_go:
 ; ---------------------------------------------------------------------------
 OV_HOLE     equ #4000 + RT_NODES        ; η τρύπα της γραμμής 0, στην τράπεζα 1
 OV_ROWS     equ (zz_ovl_end - GH_BUF + 31) >> 5
-        assert  OV_ROWS <= RT_NODES && RT_NODES + 32 == 128
-        assert  #4000 + OV_ROWS * 128 <= OV_LOAD   ; το ov_install δεν σβήνει ό,τι θα διαβάσει
+OV2_ROWS    equ (zz_ov2_end - SV_ORG + 31) >> 5     ; το σώσιμο, μετά (βήμα 103)
+OV2_HOLE    equ OV_HOLE + OV_ROWS * 128
+        assert  OV_ROWS + OV2_ROWS <= RT_NODES && RT_NODES + 32 == 128
+        assert  OV1_PAD == OV_ROWS * 32
+        ; το ov_install δεν σβήνει ό,τι θα διαβάσει
+        assert  #4000 + (OV_ROWS + OV2_ROWS) * 128 <= OV_LOAD
 
 ; ov_run — ο κώδικας από τις τρύπες στο GH_BUF, και κλήση του. Το φάντασμα
 ; κρυμμένο (ui_hide). Χαλάει τα πάντα· γυρίζει με ό,τι αφήσει ο κώδικας.
 ov_run:
-        ld      bc,GA_PORT + PAGE_B1
-        out     (c),c
         ld      hl,OV_HOLE
         ld      de,GH_BUF
         ld      a,OV_ROWS
+        call    ov_copy
+        jp      dm_do                   ; μετά τη σειρά 0 (src/dm_ovl.asm)
+
+; ---------------------------------------------------------------------------
+; sv_save / sv_load — A = slot. ΤΟ ΣΩΣΙΜΟ ΖΕΙ ΣΤΙΣ ΤΡΥΠΕΣ από το βήμα 103,
+; μετά την κατεδάφιση (src/main.asm): το src/save.asm και ο οδηγός του δίσκου,
+; 633 bytes που ως τότε ήταν στην τράπεζα 2. Τρέχει στο SV_ORG, μετά τα 512
+; της κεφαλίδας του (SV_HDR) — ο κέρσορας είναι σβηστός σε κάθε S και L
+; (ui_dosave, ui_doload), άρα το GH_BUF είναι άδειο. Οι δύο είσοδοι μένουν
+; εδώ, με τα ονόματα που καλεί το src/ui.asm, και φέρνουν τον κώδικα κάθε
+; φορά. Το φόρτωμα δείχνει τον κέρσορα ΕΔΩ, αφού γυρίσει: το αρχείο του
+; φαντάσματος γράφεται στο GH_BUF, κάτω από τον κώδικα που θα έτρεχε ακόμη.
+; ---------------------------------------------------------------------------
+sv_save:
+        call    sv_ovl
+        jp      svo_save
+sv_load:
+        call    sv_ovl
+        call    svo_load
+        ret     nz
+        call    ui_show
+        xor     a
+        ret
+sv_ovl:
+        push    af
+        ld      hl,OV2_HOLE
+        ld      de,SV_ORG
+        ld      a,OV2_ROWS
+        call    ov_copy
+        pop     af
+        ret
+
+; ov_copy — A γραμμές των 32 bytes από τις τρύπες (HL, τράπεζα 1) στο DE.
+; Γυρίζει με την 1.
+ov_copy:
+        ld      bc,GA_PORT + PAGE_B1
+        out     (c),c
 ovr_lp:
         ld      bc,32
         ldir
@@ -93,17 +132,18 @@ ovr_lp:
         add     hl,bc
         dec     a
         jr      nz,ovr_lp
-        jp      dm_do                   ; μετά τη σειρά 0 (src/dm_ovl.asm)
+        ret
 
-; ov_install — στην εκκίνηση: ό,τι έφερε ο φορτωτής στο OV_LOAD, στις τρύπες.
-; Και τα δύο στην τράπεζα 1, και δεν επικαλύπτονται: το OV_LOAD είναι στις
-; γραμμές 86-95 του DIST, οι τρύπες που γεμίζουν στις πρώτες (assert).
+; ov_install — στην εκκίνηση: ό,τι έφερε ο φορτωτής στο OV_LOAD, στις τρύπες,
+; και τα δύο κομμάτια. Και τα δύο στην τράπεζα 1, και δεν επικαλύπτονται: το
+; OV_LOAD είναι στις γραμμές 80-95 του DIST, οι τρύπες που γεμίζουν στις
+; πρώτες (assert).
 ov_install:
         ld      bc,GA_PORT + PAGE_B1
         out     (c),c
         ld      hl,OV_LOAD
         ld      de,OV_HOLE
-        ld      a,OV_ROWS
+        ld      a,OV_ROWS + OV2_ROWS
 ovi_lp:
         ld      bc,32
         ldir

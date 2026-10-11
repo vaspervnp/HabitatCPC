@@ -355,11 +355,11 @@ gs_next:
         jr      nz,gs_row
         jr      gs_lp
 
-; gh_setpen — A = pen -> το byte γεμίσματος στο gh_pen.
+; gh_setpen — A = pen 8-15 -> το byte γεμίσματος στο gh_pen (hud_solid[A - 8]).
 gh_setpen:
         ld      l,a
         ld      h,0
-        ld      de,hud_solid
+        ld      de,hud_solid - 8
         add     hl,de
         ld      a,(hl)
         ld      (gh_pen),a

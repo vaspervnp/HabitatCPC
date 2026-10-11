@@ -549,7 +549,13 @@ jn_zero:
         xor     a
         ret
 
-; jb_dome_ptr — A = θόλος -> HL = εγγραφή
+; jb_dome_ptr — A = θόλος -> HL = εγγραφή. Κρατά το A, χαλάει το DE.
+; ΣΤΟ ΠΑΙΧΝΙΔΙ ΕΙΝΑΙ ΤΟ ob_domeadr (src/object.asm, που έρχεται πιο πριν): οι
+; ίδιες εντολές, 15 bytes (βήμα 103). Δικό του αντίγραφο μόνο όπου εκείνο δεν
+; υπάρχει, στο tests/simtest.asm.
+        ifdef   ob_domeadr
+jb_dome_ptr equ ob_domeadr
+        else
 jb_dome_ptr:
         ld      h,0
         ld      l,a
@@ -563,6 +569,7 @@ jb_dome_ptr:
         ld      de,G_dome_tbl
         add     hl,de
         ret
+        endif
 
 ; op_ptr — A = κόμβος -> HL -> οι χειριστές του: το D_OPS ενός θόλου, ή το
 ; ST_OPS μιας δομής — όσοι σκάβουν σε ένα ορυχείο (βήμα 94, src/drill.asm).

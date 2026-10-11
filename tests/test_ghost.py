@@ -205,7 +205,7 @@ def run(sym, k, cam, ops, patch=()):
             g.mark(c & 0xFF, r & 0xFF)
         elif kind == "pen":
             call(m, [0x3E, op[1]] + fn("GH_SETPEN"))
-            g.pen = m.peek(sym["HUD_SOLID"] + op[1])            # ο πίνακας, όχι η ρουτίνα
+            g.pen = m.peek(sym["HUD_SOLID"] + op[1] - 8)        # ο πίνακας, όχι η ρουτίνα
         elif kind == "clip":
             for j, v in enumerate(op[1:]):
                 m.poke(sym["CLIP_X0"] + j, v)
@@ -254,7 +254,7 @@ def program(seed, n):
         elif r < 0.85:
             ops.append(("undo",))
         elif r < 0.90:
-            ops.append(("pen", rnd.choice([0, 3, 8, 9, 15])))
+            ops.append(("pen", rnd.choice([8, 9, 12, 15])))      # 8-15 (βήμα 103)
         elif r < 0.96:
             ops.append(("clip", rnd.choice([0, 0, 4, 20]), rnd.choice([80, 80, 60, 24]),
                         rnd.choice([0, 0, 16, 64]), rnd.choice([160, 160, 144, 80])))

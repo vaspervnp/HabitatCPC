@@ -38,6 +38,7 @@ PEN_CUR     equ 15                      ; ροζ — το λευκό χανότ�
                                     ; των διαδρόμων, που είναι κι αυτά λευκά
 PEN_OK      equ 9                       ; έντονο πράσινο — επιτρέπεται
 PEN_NO      equ 8                       ; έντονο κόκκινο — δεν επιτρέπεται
+        assert  PEN_NO >= 8 && PEN_OK >= 8 && PEN_CUR >= 8 && PEN_CUR < 16  ; hud_solid
 
 ; ---------------------------------------------------------------------------
 ; ui_init — κέρσορας στο κέντρο του κόσμου, κατάσταση LOOK.
@@ -91,6 +92,7 @@ ui_home:
         ld      hl,(256 - VIEW_TH/2) * 256 + 256 - VIEW_TW/2
         ld      (cam_tx),hl             ; cam_tx, cam_ty διπλανά
         call    view_draw
+uh_show:                                ; και το τέλος της βοήθειας (src/help.asm)
         call    ui_hudall
         jp      ui_show
 uit_state:
@@ -185,14 +187,14 @@ usl_rare:
         ; δισκέτας, και δεν έχουν πού να σώσουν.
         ifdef HAS_DISC
         ; Το A είναι ακόμη το act_hit + 1 με τη μάσκα: τα bits του, όχι in_hit.
-        bit     A_SAVE - 8,a
-        jr      z,usv_load
-        xor     a                       ; 0 = σώσιμο
-        jp      ui_askslot
-usv_load:
-        bit     A_LOAD - 8,a
-        ld      a,1                     ; 1 = φόρτωμα
-        jp      nz,ui_askslot
+        ; Δύο add τα βγάζουν στις σημαίες: S = A_SAVE, CY = A_LOAD (βήμα 103).
+        add     a,a
+        add     a,a
+        ld      a,0                     ; 0 = σώσιμο
+        jp      m,ui_askslot
+        inc     a                       ; 1 = φόρτωμα· το inc κρατά το CY
+        jp      c,ui_askslot
+        assert  A_SAVE - 8 == 5 && A_LOAD - 8 == 6
 usv_none:
         endif
         ifdef HAS_SIM
@@ -241,8 +243,8 @@ uis_next:
         ld      a,(hl)
         cp      c
         ret     z
-        call    ui_dirty                ; στην παύση ο τροχός δεν ξαναφτάνει
-        jp      ui_panel                ; στη θέση 0: δείξ' το τώρα ή ποτέ
+        jp      ui_dpan                 ; ui_dirty, ui_panel: στην παύση ο τροχός
+                                        ; δεν ξαναφτάνει στη θέση 0, άρα τώρα ή ποτέ
 
 ui_owed:    db 0                    ; το φάντασμα δεν ξαναμπήκε μετά την τοποθέτηση
 ui_spd_tab: db 0, 1, 2, 4
@@ -298,8 +300,7 @@ uds_err:
         ld      hl,t_dskerr
 ; ui_say — HL = μήνυμα: στη σειρά 3, ο πίνακας άκυρος, ο κέρσορας πίσω.
 ui_say:
-        call    ui_msg
-        call    ui_dirty
+        call    udl_ok                  ; ui_msg, ui_dirty
         jp      ui_show
 
 ; --- SLOT: ποιο από τα τρία -------------------------------------------------
@@ -316,8 +317,7 @@ usl_lr:
         ret     z
         ; ΚΑΙ ΤΩΡΑ, όχι στο επόμενο ρολόι του HUD: σε παύση δεν έρχεται ποτέ, και
         ; ως το βήμα 80 η θέση άλλαζε χωρίς να το λέει η σειρά 3.
-        call    ui_click
-        jp      ui_panel
+        jp      uim_cp                  ; ui_click, ui_panel
 uist_slot:
         ld      a,(act_hit)             ; ESC ή FIRE: πίσω στο LOOK
         and     1 << A_CANCEL | 1 << A_FIRE
@@ -340,7 +340,7 @@ ui_doload:
         ; Αδεια θέση ΔΕΝ είναι βλάβη δίσκου, και το μήνυμα το έλεγε λάθος: το
         ; sv_hdr_ok γυρίζει #FF όταν η υπογραφή δεν ταιριάζει, ο ελεγκτής
         ; οτιδήποτε άλλο. Αποτυχία: ui_say, ο κέρσορας ήταν κρυμμένος.
-        cp      #FF
+        inc     a                       ; #FF
         ld      hl,t_empty
         jr      z,ui_say
         jr      uds_err
@@ -374,8 +374,7 @@ uds_go:
         ld      (t_saved + 14),a
         ld      (t_loaded + 17),a
         ld      (t_empty + 16),a
-        ld      c,PAGE_B1               ; το B είναι ακόμη GA_PORT >> 8
-        out     (c),c
+        call    dho_out                 ; πίσω η 1 (src/dirty.asm)
         call    ui_hide
         pop     hl
         call    ui_msg
@@ -425,9 +424,9 @@ uim_fire:
         cp      BK_LINK
         ld      a,UI_PLACE
         jr      nz,uim_go
-        ld      a,255
-        ld      (ln_a),a                ; ακόμη δεν έχει διαλεγεί αφετηρία
-        ld      a,UI_LINK
+        ld      hl,ln_a
+        ld      (hl),255                ; ακόμη δεν έχει διαλεγεί αφετηρία
+        inc     a                       ; UI_LINK (assert στο fit.asm)
 uim_go:
         ld      (ui_state),a            ; «διάλεξες»: το FIRE στον κατάλογο δεν
         jr      uim_cs                  ; αλλάζει τίποτα ορατό εκτός φαντάσματος
@@ -439,14 +438,15 @@ uim_lr:
         jr      nz,uim_item
         bit     A_UP,l                  ; Z = ΔΕΝ πατήθηκε
         jr      z,uim_dn
-        ld      a,255                   ; πάνω = πίσω στη λίστα
+        dec     a                       ; 255: πάνω = πίσω στη λίστα (A = 0 εδώ)
         jr      uim_room
 uim_dn:
         bit     A_DOWN,l
         jr      z,uim_item
-        ld      a,1
+        inc     a                       ; 1 (A = 0 εδώ)
 uim_room:
         call    rm_step
+uim_cp:                                 ; και το usl_lr
         call    ui_click
         jp      ui_panel                ; το φάντασμα δεν αλλάζει σχήμα, ο
                                         ; πίνακας όμως λέει άλλο δωμάτιο
@@ -498,24 +498,26 @@ ui_goto_h:
 ; ui_ud — το ίδιο με κάτω / πάνω (ο εξοπλισμός, src/fit.asm).
 ; Out: Z = κανένα από τα δύο· αλλιώς NZ, και η τιμή άλλαξε.
 ; Ως το βήμα 44 γραμμένο δύο φορές, για τη θέση δίσκου και για τον κατάλογο.
+; Τα bits του act_hit κατευθείαν, όχι in_hit (βήμα 103): D = η μάσκα του
+; «μπρος», και το «πίσω» είναι το προηγούμενο bit (assert στο fit.asm).
+; Χαλάει B, D.
 ui_ud:
-        ld      d,A_DOWN
+        ld      d,1 << A_DOWN
         jr      uilr_k
 ui_lr:
-        ld      d,A_RIGHT               ; το «πίσω» είναι πάντα το προηγούμενο
-uilr_k:                                 ; πλήκτρο (assert στο fit.asm)
-        push    hl
-        ld      e,1                     ; το in_hit κρατά τα C, DE
-        ld      a,d
-        call    in_hit
+        ld      d,1 << A_RIGHT
+uilr_k:
+        ld      e,1
+        ld      a,(act_hit)
+        ld      b,a
+        and     d
         jr      nz,uilr_go
         ld      e,c
         dec     e                       ; -1 ≡ πόσες - 1
         ld      a,d
-        dec     a
-        call    in_hit
+        rrca                            ; αριστερά / πάνω
+        and     b
 uilr_go:
-        pop     hl
         ret     z
         ld      a,(hl)
         add     a,e
@@ -527,11 +529,6 @@ uilr_set:
         or      1                       ; NZ, ό,τι κι αν βγήκε
         ret
 
-; ui_click / uip_deny — οι δύο ήχοι που πληρώνονταν με δύο ld σε κάθε σημείο.
-ui_click:
-        ld      a,SFX_MENU
-        jp      snd_play
-
 ; --- PLACE -----------------------------------------------------------------
 uist_place:
         ; Ενα and για το ESC και το FIRE (βήμα 84): δύο in_hit ήταν ~105 us σε
@@ -541,6 +538,7 @@ uist_place:
         jp      z,ui_move
         and     1 << A_CANCEL
         jr      z,uip_fire
+uip_menu:                               ; και η ακύρωση του LINK χωρίς αφετηρία
         ld      a,UI_MENU
         jr      ui_goto
 uip_fire:
@@ -582,8 +580,12 @@ uip_after:
         ; ui_show τον ξαναγράφει μόνο αν άλλαξε.
         call    hud_draw
         jp      ui_show
+; uip_deny / ui_click — οι δύο ήχοι που πληρώνονταν με δύο ld σε κάθε σημείο.
 uip_deny:
         ld      a,SFX_DENY
+        db      #11                     ; ld de,nn: προσπερνά το ld a,SFX_MENU· το
+ui_click:                               ; snd_play γράφει το DE πριν το διαβάσει
+        ld      a,SFX_MENU
         jp      snd_play
 
 ; --- LINK ------------------------------------------------------------------
@@ -597,11 +599,9 @@ uist_link:
         jp      z,ui_move
         and     1 << A_CANCEL
         jr      z,uil_fire
-        call    ui_hide
         ld      a,(ln_a)
         inc     a
-        ld      a,UI_MENU
-        jp      z,ui_goto_h             ; χωρίς αφετηρία: έξω
+        jr      z,uip_menu              ; χωρίς αφετηρία: έξω (ui_goto)
         ld      a,255
         jr      uil_set
 uil_fire:
@@ -612,25 +612,21 @@ uil_fire:
         inc     a
         jr      nz,uil_second
         ld      a,e
-        push    af                      ; ΣΤΗ ΣΤΟΙΒΑ: το ui_hide ζωγραφίζει
-        call    ui_hide
-        pop     af
 uil_set:
-        ld      (ln_a),a
+        ld      (ln_a),a                ; το ui_hide (gh_undo) δεν το διαβάζει
+; ui_redo — το φάντασμα από την αρχή. Και για τον εξοπλισμό (src/fit.asm).
+ui_redo:
+        call    ui_hide
         jp      ui_show
 uil_second:
-        call    ln_plan
+        call    ln_plan                 ; A = 0 μόνο με διαδρομή (cr_n >= 1)
         or      a
         jr      nz,uip_deny             ; άκυρη διαδρομή — το FIRE δεν κάνει τίποτα
-        ld      a,(cr_n)
-        or      a
-        jr      z,uip_deny
         call    cr_afford
         jr      nz,uip_deny
         call    ui_hide
         call    cr_commit_ln            ; και η ακμή, αν είναι έτοιμοι (βήμα 87)
-        or      a
-        jr      nz,uip_nospace
+        jr      nz,uip_nospace          ; Z αν A = 0 (src/route.asm)
         ld      a,255
         ld      (ln_a),a                ; μια διαδρομή τη φορά
         ld      a,SFX_BUILD
@@ -644,8 +640,7 @@ uil_second:
 ui_dome:
         call    ui_curt
         ld      (uid_tx),hl             ; uid_tx, uid_ty διπλανά
-        ld      bc,GA_PORT + PAGE_B6
-        out     (c),c
+        call    ob_b6
         ld      c,0
 uid_lp:
         ld      a,c
@@ -661,9 +656,8 @@ uid_lp:
         dec     hl
         ld      d,(hl)                  ; cy σε μισά tiles
         dec     hl
-        ld      e,(hl)                  ; cx
+        ld      a,(hl)                  ; cx
         ld      hl,(uid_tx)             ; L = tx, H = ty
-        ld      a,e
         call    uid_in
         jr      nc,uid_no
         ld      a,d
@@ -672,7 +666,7 @@ uid_lp:
         jr      nc,uid_no
         pop     bc
         ld      a,c
-        jr      uid_cp
+        jr      uid_out                 ; NZ από το cp b του uid_in: βρέθηκε
 uid_no:
         pop     bc
 uid_next:
@@ -680,9 +674,7 @@ uid_next:
         ld      a,c
         cp      MAX_DOME
         jr      c,uid_lp
-        ld      a,255
-uid_cp:
-        cp      255                     ; Z = κανένας θόλος, για τους καλούντες
+        ld      a,255                   ; Z από το cp: κανένας θόλος (οι καλούντες)
 ; uid_out — πίσω η τράπεζα 1, με το AF όπως ήταν. Και για το ui_validate.
 uid_out:
         push    af
@@ -725,8 +717,7 @@ ln_plan:
         ld      (cr_b),a
         ld      a,(hl)                  ; HL = ln_a
         ld      (cr_a),a
-        call    cr_plan
-        or      a
+        call    cr_plan                 ; Z αν A = 0, σε κάθε έξοδο
         jr      z,lnp_none
         call    cr_check
         jr      lnp_bad
@@ -822,10 +813,8 @@ um_y:
         ld      a,d
         or      e
         ret     z                       ; μόνο προς τα έξω: σαν να μην πατήθηκε
-        push    hl
+        ld      (cur_hx),hl             ; το ui_hide (gh_undo) δεν το διαβάζει
         call    ui_hide
-        pop     hl
-        ld      (cur_hx),hl
         call    ui_follow
         call    ui_show
         ld      a,SFX_MOVE
@@ -920,13 +909,12 @@ uir_set:
 
 ; ---------------------------------------------------------------------------
 ; ui_validate — Out: A = 0 αν η θέση επιτρέπεται: το έδαφος (bd_check), και
-; από το βήμα 85 ένα κτίσμα σε απόσταση για να δεθεί (al_plan).
+; από το βήμα 85 ένα κτίσμα σε απόσταση για να δεθεί (al_plan). ΜΟΝΟ ΣΤΟ PLACE:
+; οι δύο καλούντες (uip_fire, uis_np) είναι ήδη εκεί (βήμα 103: ως τότε το
+; ξαναρωτούσε, και έξω από αυτό γύριζε 0).
 ; ---------------------------------------------------------------------------
 ui_validate:
-        ld      a,(ui_state)
-        cp      UI_PLACE
-        ld      a,0
-        ret     nz
+        xor     a
         ; ΤΟ bd_nres ΑΠΟ ΤΟ ΜΗΔΕΝ (βήμα 85). Το γράφουν μόνο το bd_res και το
         ; al_plan, όταν τα tiles είναι καλά· μετά από θέση με κακά tiles έμενε
         ; ό,τι είπε η προηγούμενη, και το ui_bad (al_plan) το διαβάζει.
@@ -936,35 +924,7 @@ ui_validate:
         call    bd_check
         jp      al_plan                 ; τελειώνει στο uid_out
 
-; uis_box — το πλαίσιο του (ui_tx, ui_ty, ui_w, ui_h) σε συντεταγμένες οθόνης.
-uis_box:
-        ld      a,(ui_tx)
-        ld      de,cam_tx
-        call    ui_rel
-        add     hl,hl                   ; x = 4*(tx - cam_tx)
-        ld      (gh_bx),hl
-        ld      a,(ui_ty)
-        ld      de,cam_ty
-        call    ui_rel
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl                   ; y = 16*(ty - cam_ty)
-        ld      (gh_by),hl
-        ld      hl,(ui_w)               ; L = w, H = h, σε tiles
-        ld      a,l
-        add     a,a
-        add     a,a
-        ld      l,a                     ; x4 bytes
-        ld      a,h
-        add     a,a
-        add     a,a
-        add     a,a
-        add     a,a
-        ld      h,a                     ; x16 γραμμές
-        ld      (gh_bw),hl              ; gh_bw, gh_bh διπλανά
-        jp      gh_box
-
-; ui_rel — tile -> οθόνη, προσημασμένα 16 bit (το uis_box):
+; ui_rel — tile -> οθόνη, προσημασμένα 16 bit (το πλαίσιο του ui_show):
 ;       x = 4*(tx - cam_tx) = 2*(2*tx - 2*cam_tx)
 ;       y = 16*(ty - cam_ty) = 8*(2*ty - 2*cam_ty)
 ; Το 2*tile - 2*κάμερα είναι το ob_rel με το A διπλασιασμένο σε 16 bit: ένα
@@ -1026,7 +986,30 @@ uis_okno:
         assert  PEN_NO == PEN_OK - 1
 uis_set:
         call    gh_setpen
-        call    uis_box
+        ; --- το πλαίσιο του (ui_tx, ui_ty, ui_w, ui_h) σε συντεταγμένες οθόνης
+        ; (ως το βήμα 102 το uis_box, με μόνο αυτόν τον καλούντα) ---
+        ld      a,(ui_tx)
+        ld      de,cam_tx
+        call    ui_rel
+        add     hl,hl                   ; x = 4*(tx - cam_tx)
+        ld      (gh_bx),hl
+        ld      a,(ui_ty)
+        ld      de,cam_ty
+        call    ui_rel
+        add     hl,hl
+        add     hl,hl
+        add     hl,hl                   ; y = 16*(ty - cam_ty)
+        ld      (gh_by),hl
+        ld      hl,(ui_w)               ; L = w, H = h, σε tiles: w <= GH_SIDE
+        add     hl,hl
+        add     hl,hl                   ; L = 4w χωρίς κρατούμενο, H = 4h
+        ld      a,h
+        add     a,a
+        add     a,a
+        ld      h,a                     ; x16 γραμμές
+        ld      (gh_bw),hl              ; gh_bw, gh_bh διπλανά
+        assert  GH_SIDE * 4 < 256
+        call    gh_box
         ld      a,(ui_state)
         cp      UI_LINK
         jr      z,uis_route
@@ -1217,8 +1200,8 @@ uipc_go:
         ld      hl,t_look
         call    hud_text7
         ld      b,35-33                 ; ως τον δείκτη ταχύτητας (uip_spd)
-        call    hud_blank
-        jp      uip_row4
+uip_bl4:                                ; B κενά, και η σειρά 4 (και το SLOT)
+        jp      uip_blr4
 uip_notlook:
         ifdef HAS_SIM
         cp      UI_INFO
@@ -1241,34 +1224,36 @@ uip_slt:
         add     a,'1'
         call    hud_char
         ld      b,40-16
-        call    hud_blank
-        jp      uip_row4
+        jr      uip_bl4
         endif
 uip_item:
         ; Το κόστος που δείχνεται είναι ΟΛΗΣ της διαδρομής όταν υπάρχει
         ; διαδρομή: ο κατάλογος γράφει την τιμή ενός πλακιδίου διαδρόμου, και
         ; το μήκος δεν το διαλέγει ο παίκτης αλλά η γεωμετρία (§9.4).
-        ld      hl,(bd_metal)           ; L = μέταλλο, H = βιοπλαστικό
-        ld      e,h
-        ld      h,0
-        ld      (uip_fe),hl
-        ld      l,e
-        ld      (uip_bi),hl
+        ; ΤΑ ΔΥΟ ΚΟΣΤΗ ΣΤΗ ΣΤΟΙΒΑ ως τη σειρά τους, πιο κάτω (βήμα 103: ως τότε
+        ; δύο μεταβλητές): πρώτα το βιοπλαστικό, από πάνω το μέταλλο.
         ld      a,(ui_state)
         cp      UI_PLACE
         jr      z,uipi_tot              ; το σύνολο του al_plan (βήμα 85)
         cp      UI_LINK
-        jr      nz,uipi_go
+        jr      nz,uipi_bd
         ld      a,(cr_n)
         or      a
-        jr      z,uipi_go
+        jr      z,uipi_bd
         call    cr_cost
 uipi_tot:
-        ld      hl,(cr_metal)
-        ld      (uip_fe),hl
         ld      hl,(cr_biop)
-        ld      (uip_bi),hl
+        push    hl
+        ld      hl,(cr_metal)
+        jr      uipi_go
+uipi_bd:
+        ld      hl,(bd_metal)           ; L = μέταλλο, H = βιοπλαστικό
+        ld      e,h
+        ld      d,0
+        push    de
+        ld      h,d
 uipi_go:
+        push    hl
         ld      a,'<'
         call    hud_char
         call    hud_space
@@ -1295,7 +1280,8 @@ uipi_nm:
         ld      hl,(bd_name)
         call    hud_text   ; τράπεζα 2, όχι 7
         ld      b,3                     ; τα ονόματα καταλόγου είναι 9· τα
-        call    hud_blank               ; δωμάτια 10 συν το γράμμα μεγέθους
+uipi_bl:                                ; δωμάτια 10 συν το γράμμα μεγέθους
+        call    hud_blank               ; (και το fit_name, με B = 5)
 uipi_arrow:
         call    hud_space
         ld      a,'>'
@@ -1304,17 +1290,18 @@ uipi_arrow:
         call    hud_blank
         ld      hl,t_fe
         call    hud_text7
-        ld      hl,(uip_fe)
+        pop     hl                      ; το μέταλλο (uipi_go)
         ld      b,3
         call    hud_num
         ld      b,2
         call    hud_blank
         ld      hl,t_bi
         call    hud_text7
-        ld      hl,(uip_bi)
+        pop     hl                      ; το βιοπλαστικό
         ld      b,3
         call    hud_num
         ld      b,40-34
+uip_blr4:                               ; B κενά, και η σειρά 4 (LOOK, SLOT)
         call    hud_blank
 uip_row4:
         ld      a,4
@@ -1363,11 +1350,7 @@ uip_blocked:
         ld      a,(bd_nres)
         add     a,a
         ld      hl,uip_nres
-        call    ob_addu
-        ld      a,(hl)
-        inc     hl
-        ld      h,(hl)
-        ld      l,a
+        call    rm_word                 ; src/rooms.asm
         jr      uip_say
 uip_ln:
         ld      a,(ln_a)
@@ -1407,17 +1390,17 @@ uip_spd:
         ld      a,3
         ld      c,35
         call    hud_goc
-        ld      a,(ui_spd)
+        ld      a,(ui_spd)              ; 0, 1, 2, 4 -> 0, 1, 2, 3: μόνο το 4
+        cp      4                       ; βγαίνει χωρίς CY, και το adc #FF του
+        adc     a,#FF                   ; αφαιρεί ένα
+        ld      c,a
         add     a,a
-        ld      hl,t_spd_ptr
+        add     a,c
+        add     a,a                     ; x6: τα τέσσερα κείμενα στη σειρά, έξι
+        ld      hl,t_pause              ; bytes το καθένα (src/uitext.asm)
         call    ob_addu
-        ld      a,(hl)
-        inc     hl
-        ld      h,(hl)
-        ld      l,a
         jp      hud_text7
 
-t_spd_ptr:  dw t_pause, t_x1, t_x2, t_x2, t_x4
 ; uip_blocked — ανά bd_nres: 0 τα tiles, 1 νερό, 2 φλέβα, 3 κανένα κτίσμα σε
 ; απόσταση (βήμα 85), 4 ο δρόμος κομμένος, 5 κανένα σχήμα διαδρόμου (βήμα 86).
 uip_nres:   dw t_block, t_nowat, t_noore, t_far, t_path, t_nofit
@@ -1440,6 +1423,7 @@ ui_dirty:
 ; ui_hudall — πλήρες HUD· σβήνει τις σειρές 3-4, άρα ακυρώνει την υπογραφή.
 ui_hudall:
         call    hud_draw
+ui_dpan:                                ; και το ui_speed
         call    ui_dirty                ; ο πίνακας δεν ξέρει τι έγινε από κάτω
         jp      ui_panel
 
@@ -1454,8 +1438,6 @@ ui_bad:     db 0
 ln_a:       db 255
 uid_tx:     db 0
 uid_ty:     db 0
-uip_fe:     dw 0
-uip_bi:     dw 0
 ; Το ui_hold ζει ΕΞΩ από το ifdef του δίσκου: το ui_panel το διαβάζει πάντα,
 ; και το tests/uitest.asm χτίζεται χωρίς μηνύματα δίσκου. (Το όνομα δεν είναι
 ; UI_HOLD γιατί ο rasm δεν ξεχωρίζει ετικέτα από alias.)
@@ -1536,19 +1518,18 @@ crx_bend:
 ; και (cr_cb) το ίδιο.
 crx_sel:
         ld      b,#C9                   ; ret
-        bit     0,a
-        jr      nz,crx_set              ; διαγώνιος
+        rra
+        jr      c,crx_set               ; διαγώνιος (bit 0)
         ld      hl,cr_tx                ; ο άξονας του b, όπως στο crr_half
         ld      de,-1                   ; αριστερά
-        and     2                       ; e, w = 2, 6: οριζόντιος· n, s κάθετος
+        and     1                       ; το bit 1: e, w = 2, 6 οριζόντιος· n, s κάθετος
         jr      z,crx_x                 ; κάθετος: το x
         inc     hl                      ; cr_ty
         ld      de,-128                 ; πάνω: μία σειρά του κόσμου
 crx_x:
         ld      a,(hl)
-        bit     0,a
-        jr      nz,crx_set              ; μονό: όλος μέσα στα tiles του
-        sra     a                       ; το tile του άξονα
+        sra     a                       ; το tile του άξονα, και το bit 0 στο CY
+        jr      c,crx_set               ; μονό: όλος μέσα στα tiles του
         cp      -64
         jr      z,crx_set               ; ο γείτονας θα ήταν έξω από τον κόσμο
         ld      b,#11                   ; ld de,nn

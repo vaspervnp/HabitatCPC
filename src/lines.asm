@@ -84,7 +84,7 @@ cw_panel:
         ld      hl,t_cw_names
         xor     a
 cwp_lp:
-        ld      (cw_i),a
+        push    af                      ; i, στη στοίβα ως το τέλος του γύρου
         push    hl
         ld      hl,cw_sel
         cp      (hl)
@@ -96,8 +96,9 @@ cwp_m:
         pop     hl
         call    hud_text                ; «WRK»
         inc     hl
+        pop     af
         push    hl
-        ld      a,(cw_i)
+        push    af
         add     a,EC_LAND & 255
         ld      l,a
         ld      h,EC_LAND >> 8
@@ -109,15 +110,14 @@ cwp_m:
         add     a,b                     ; % = 10 t
         ld      b,3
         call    hud_numa                ; «  0», « 20», «100»
+        pop     af
         pop     hl
-        ld      a,(cw_i)
         inc     a
         cp      CW_N
         jr      c,cwp_lp
         jp      acp_end                 ; src/act.asm
 
 cw_sel:     db 0
-cw_i:       db 0
 cw_ptr:     dw 0
 
 ; ln_row4 — κενά ως τη στήλη 35 της σειράς 3, και η σειρά 4 από τη στήλη 0.
@@ -207,11 +207,8 @@ tr_panel:
         ld      a,(tr_g)
         ld      hl,tr_name
         call    ob_addu
-        ld      l,(hl)
+        ld      l,(hl)                  ; ήδη x8 (t_f_names)
         ld      h,0
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl                   ; x8 (t_f_names)
         ld      de,t_f_names
         add     hl,de
         call    hud_text
@@ -313,9 +310,7 @@ trf_lp: ld      a,(de)
 tr_price:
         ld      hl,tr_value
         call    ob_addu
-        ld      a,(hl)
-        push    af
-        ld      c,a
+        ld      c,(hl)                  ; C = η αξία: το ob_mul την κρατά
         ld      a,(EC_MARKUP)
         call    ob_mul                  ; HL = αξία x κέρδος (ως 120 x 65)
         ld      de,50
@@ -325,12 +320,12 @@ tr_price:
 trp_d:  inc     a
         add     hl,de
         jr      c,trp_d
-        pop     bc                      ; B = η αξία
-        add     a,b
+        add     a,c                     ; + η αξία
         ret
 
 ; tr_load — το διαλεγμένο: tr_g, tr_cq (όσα φέρνει), tr_hv (όσα έχεις). Out:
-; HL -> net του, C = tr_g (το tr_ud). Χαλάει τους άλλους.
+; HL -> net του, A = net με τις σημαίες του, C = tr_g (το tr_ud). Χαλάει τους
+; άλλους.
 tr_load:
         ld      a,(tr_sel)
         add     a,TR_ORD & 255
@@ -348,12 +343,14 @@ tr_load:
         inc     hl
         ld      d,(hl)
         ld      (tr_hv),de
-tr_netc:                                ; C = απόθεμα -> HL -> net του, χαλάει AF
-        ld      a,c
-tr_neta:                                ; A = απόθεμα
+tr_netc:                                ; C = απόθεμα -> HL -> net του, και
+        ld      a,c                     ; A = net, με S και Z (βήμα 103: τέσσερις
+tr_neta:                                ; A = απόθεμα     καλούντες το ήθελαν)
         add     a,TR_NET & 255
         ld      l,a
         ld      h,TR_NET >> 8
+        ld      a,(hl)
+        or      a
         ret
 
 ; tr_ud — από το tr_tick: A = 1 πάνω, 2 κάτω (3: πάνω).
@@ -382,8 +379,7 @@ tru_tk: add     a,c
         push    hl
         ld      hl,EC_CAP               ; όσα χωράνε στην αποθήκη...
         ld      de,(tr_hv)
-        or      a
-        sbc     hl,de
+        sbc     hl,de                   ; CY = 0: net 0-127 + μονάδα 1-10
         ld      a,(tr_cq)               ; ...και όσα φέρνει: το μικρότερο
         inc     h
         dec     h
@@ -397,14 +393,14 @@ tru_rm: pop     hl
         ld      a,b
         jr      tru_st
         ; --- ΚΑΤΩ: λιγότερα από αυτόν, ή περισσότερα προς αυτόν ---
-tru_dn: or      a
-        jr      z,tru_gv
+tru_dn: dec     a                       ; net - 1: αρνητικό για net <= 0 (net από -99)
         jp      m,tru_gv
+        inc     a
         sub     c
         jr      nc,tru_st
         xor     a
         jr      tru_st
-tru_gv: neg                             ; όσα δίνεις, θετικά
+tru_gv: cpl                             ; -(net - 1) - 1 = -net: όσα δίνεις, θετικά
         add     a,c
         ld      b,a
         ld      a,(tr_hv + 1)
@@ -436,8 +432,7 @@ trs_c:  ld      a,c
         ld      h,EC_CARGO >> 8
         ld      a,(hl)                  ; το απόθεμα (0: κενή θέση, net 0)
         ld      b,a
-        call    tr_neta
-        ld      a,(hl)
+        call    tr_neta                 ; A = net
         dec     a
         jp      m,trs_cn                ; <= 0: δεν το παίρνεις
         inc     a
@@ -456,8 +451,6 @@ trs_cn: inc     c
         jr      c,trs_c
         ld      c,1                     ; C = απόθεμα
 trs_g:  call    tr_netc
-        ld      a,(hl)
-        or      a
         jp      p,trs_gn                ; >= 0: δεν το δίνεις
         neg
         push    af
@@ -482,15 +475,8 @@ trs_add:
         call    ob_mul                  ; HL = A x C
         ex      de,hl
         pop     hl
-        ld      a,(hl)
-        add     a,e
-        ld      (hl),a
-        inc     hl
-        ld      a,(hl)
-        adc     a,d
-        ld      (hl),a
         pop     bc
-        ret
+        jp      ec_add16                ; (HL) += DE (src/econ.asm)
 
 ; tr_ok — μετά το tr_sum. NC: γίνεται (παίρνεις κάτι, και δίνεις τουλάχιστον
 ; όσο παίρνεις). CY: όχι.
@@ -520,20 +506,17 @@ tr_deal:
         jp      c,uip_deny
         ld      c,1
 trd_ck: call    tr_netc
-        ld      a,(hl)
-        or      a
         jp      p,trd_kn
         neg
         ld      b,a                     ; B = όσα δίνεις
         ld      a,c
         call    ec_stock_ptr
-        ex      de,hl
-        ld      a,(hl)
-        inc     hl
-        ld      h,(hl)                  ; H: πάνω από 255 έχεις, φτάνουν
-        inc     h
-        dec     h
+        inc     de
+        ld      a,(de)                  ; πάνω από 255 έχεις, φτάνουν
+        or      a
         jr      nz,trd_kn
+        dec     de
+        ld      a,(de)
         cp      b
         ld      hl,t_poor               ; «NOT ENOUGH MATERIAL»
         jp      c,ui_say
@@ -550,8 +533,6 @@ trd_kn: inc     c
         ld      (EC_MARKUP),a           ; από εδώ: τα φορτία που του οφείλονται
         ld      c,1
 trd_lp: call    tr_netc
-        ld      a,(hl)
-        or      a
         jp      p,trd_n                 ; παίρνεις, ή τίποτα: πιο κάτω
         neg
         ld      b,a                     ; B = όσα δίνεις
@@ -618,8 +599,9 @@ trd_post:
         ld      (hl),d                  ; NZ ακόμη
         ret
 
-; Το όνομα κάθε αποθέματος στο t_f_names (x8): μεταλλεύματα 18, το δικό τους.
-tr_name:    db 0, 6, 18, 1, 2, 4, 7, 8, 3, 5, 12, 13, 14, 9
+; Το όνομα κάθε αποθέματος στο t_f_names, ήδη x8 (βήμα 103): μεταλλεύματα 18,
+; το δικό τους, άρα ως 144.
+tr_name:    db 0*8, 6*8, 18*8, 1*8, 2*8, 4*8, 7*8, 8*8, 3*8, 5*8, 12*8, 13*8, 14*8, 9*8
 tr_sel:     db 0
 tr_g:       db 0
 tr_cq:      db 0

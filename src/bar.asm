@@ -180,10 +180,10 @@ bk_hit:
         ld      a,(hl)
         scf
         ret
-bkh_up:
-        ld      hl,BT_NONE * 257
-        ld      (bk_held),hl
-        or      a
+bkh_up:                                 ; NC ήδη: από το and του τελευταίου
+        ld      h,c                     ; γράμματος, ή, χωρίς κανένα, από τον
+        ld      l,c                     ; μόνο καλούντα (uit_state: jr c πριν)·
+        ld      (bk_held),hl            ; C = BT_NONE (το inc a έδωσε 0)
         ret
 
         assert  bk_none - bk_code == 8 * BK_MAX
@@ -300,8 +300,9 @@ bww_c1: ld      (hl),BT_NONE
         inc     de
         djnz    bww_c1
         assert  BS_GREEN == 0
-        ld      a,BT_HELP
-        ld      (bw_id + BAR_HELP),a
+        dec     hl                      ; HL = bw_st = bw_id + BAR_N -> bw_id + BAR_HELP
+        ld      (hl),BT_HELP
+        assert  BAR_HELP == BAR_N - 1
         ld      a,(ui_state)
         cp      UI_ACT
         jr      z,bww_act
@@ -317,16 +318,16 @@ bww_c1: ld      (hl),BT_NONE
         ld      a,(hl)
         cp      G_CORR
         jr      z,bww_corr
+        push    af                      ; CY = G_DOMES, η μόνη ομάδα κάτω από το G_CORR
         ld      de,BLD_N                ; bld_btn = bld_grp + BLD_N (src/act.asm)
         add     hl,de
         ld      e,(hl)                  ; το κουμπί του, στο E: το bww_group
-        push    af                      ; δεν αγγίζει το DE
-        call    bww_group
+        call    bww_group               ; δεν αγγίζει το DE
         ld      a,e
         call    bww_lit
         pop     af
-        or      a                       ; G_DOMES
-        jp      z,bww_domes
+        jp      c,bww_domes
+        assert  G_DOMES == 0 && G_CORR == 1
         cp      G_TRANS
         ret     nz
 bww_trans:
@@ -374,10 +375,7 @@ bww_man:
 bww_agrp:
         call    bww_groups
 bww_asel:
-        ld      hl,(ac_lst)
-        ld      a,(ac_sel)
-        call    ob_addu
-        ld      a,(hl)
+        call    ac_cur                  ; A = το διαλεγμένο κουμπί (src/act.asm)
         jr      bww_lit
 bww_corr:
         call    bww_groups
@@ -413,7 +411,7 @@ bwg_lp:
 ; bww_st — με C = κατάσταση. Κρατούν το DE.
 bww_lit:
         ld      c,BS_WHITE
-        jr      bww_st
+        db      #21                     ; ld hl,nn: προσπερνά το ld c,BS_RED· το HL το γράφει το bww_st
 bww_red:
         ld      c,BS_RED
 bww_st:
@@ -462,9 +460,8 @@ bww_domes:
         cp      (hl)
         jr      z,bwd_have
         ld      (hl),a
-        ld      de,0
-        ld      c,RM_N - 1
-bwd_lp:
+        ld      c,RM_N - 1              ; (το DE μπαίνει από δεξιά: μετρούν μόνο τα
+bwd_lp:                                 ; κάτω RM_N bits του bw_fitm)
         ld      a,c
         call    rm_fits                 ; κρατά BC, DE
         add     a,a                     ; CY = δεν χωρά

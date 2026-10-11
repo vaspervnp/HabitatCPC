@@ -165,7 +165,12 @@ inr_lp:
 ; ---------------------------------------------------------------------------
 ; in_held / in_hit — A = αριθμός ενέργειας. Out: NZ αν ισχύει (A = #FF, αλλιώς
 ; 0). Κρατά τα C, DE.
+;
+; ΜΟΝΟ ΣΤΙΣ ΣΚΑΛΩΣΙΕΣ ΤΩΝ ΔΟΚΙΜΩΝ (βήμα 103): το παιχνίδι διαβάζει πια τα bits
+; του act_now / act_hit κατευθείαν (ui_move, ui_lr, uist_fit), και τα 23 bytes
+; δεν μπαίνουν στο main.asm (HAS_DISC). Το tests/inputtest.asm τα δοκιμάζει.
 ; ---------------------------------------------------------------------------
+        ifndef  HAS_DISC
 in_held:
         ld      hl,act_now
         jr      in_bit
@@ -184,6 +189,7 @@ ib_l:   rrca                            ; το bit n στο Cy στην (n+1)-ο
         djnz    ib_l
         sbc     a,a
         ret
+        endif
 
         assert  key_now == act_src + 2 * A_ACTIONS
         assert  (act_src >> 8) == ((key_now + KEY_LINES - 1) >> 8)

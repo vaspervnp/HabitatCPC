@@ -285,12 +285,19 @@ def main():
     # ov_install τον μοιράζει στις στήλες 96-127 στην εκκίνηση. Ως το βήμα 101
     # ερχόταν με την PAGE2.BIN στο GH_BUF· ένας δίσκος που τον ξεχνά αφήνει
     # μηδενικά εκεί όπου πηδά το πρώτο M, D, FIRE.
+    # Και από το βήμα 103 το σώσιμο με τον οδηγό του δίσκου, από τη γραμμή μετά
+    # (build/ovl2.bin): το ίδιο το παιχνίδι το χρειάζεται για να σώσει.
     ovl = open(os.path.join(ROOT, "build", "ovl.bin"), "rb").read()
+    ovl2 = open(os.path.join(ROOT, "build", "ovl2.bin"), "rb").read()
     b1 = cpc._lib.cpcemu_ram_ptr(m._h, 1)
     holes = bytes(b1[128 * (k >> 5) + 96 + (k & 31)] for k in range(len(ovl)))
-    check(len(ovl) > 512 and holes == ovl,
-          f"ο κώδικας της κατεδάφισης ήρθε από τον δίσκο στις τρύπες του DIST: "
-          f"{len(ovl)} bytes, {sum(x != y for x, y in zip(holes, ovl))} διαφορετικά")
+    r2 = (len(ovl) + 31) // 32
+    holes2 = bytes(b1[128 * (r2 + (k >> 5)) + 96 + (k & 31)] for k in range(len(ovl2)))
+    check(len(ovl) > 512 and holes == ovl and len(ovl2) > 512 and holes2 == ovl2,
+          f"ο κώδικας της κατεδάφισης και του σωσίματος ήρθε από τον δίσκο στις "
+          f"τρύπες του DIST: {len(ovl)} και {len(ovl2)} bytes, "
+          f"{sum(x != y for x, y in zip(holes, ovl))} και "
+          f"{sum(x != y for x, y in zip(holes2, ovl2))} διαφορετικά")
 
     # --- 4. ο κόσμος είναι παραγμένος ------------------------------------
     m.run_code(0x3EC0, open(os.path.join(ROOT, "build", "plane.bin"), "rb").read())

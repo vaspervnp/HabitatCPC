@@ -31,12 +31,13 @@ hp_show:
         ld      hl,HP_ROWS * 256
         ld      (hp_id),hl              ; hp_id = 0, hp_row = HP_ROWS
         ld      hl,t_help               ; τα κείμενα στη σειρά, όχι bt_text για
-        ld      (hp_txt),hl             ; το καθένα: ~90 ms λιγότερα
+        push    hl                      ; το καθένα: ~90 ms λιγότερα. ΣΤΗ ΣΤΟΙΒΑ
         ld      hl,-HUD_TOPB            ; σειρά οθόνης 0, στήλη 0
         ld      (hp_at),hl
 hp_lp:
         ; --- το κουμπί: λευκό αν είναι ομάδα, όπως στη μπάρα ---
         ld      a,(hp_id)
+        ld      b,a                     ; το ob_addu κρατά το BC
         add     a,a
         add     a,a
         ld      hl,bt_tab + 3
@@ -48,12 +49,12 @@ hp_lp:
         ld      c,BS_GREEN
 hp_grp:
         ld      hl,(hp_at)
-        ld      a,(hp_id)
+        ld      a,b
         call    sl_draw
         ; --- το όνομα λευκό, η γραμμή του πράσινη από κάτω ---
         ld      a,HP_TEXT
         call    hp_goa
-        ld      hl,(hp_txt)
+        pop     hl                      ; το κείμενο (το push πιο πάνω)
         call    hud_text
         inc     hl
         push    hl
@@ -62,7 +63,7 @@ hp_grp:
         pop     hl
         call    hp_green
         inc     hl
-        ld      (hp_txt),hl
+        push    hl                      ; το επόμενο κείμενο
         ; --- το επόμενο: δύο σειρές πιο κάτω, ή η επόμενη στήλη ---
         ld      de,160
         ld      hl,hp_row
@@ -79,6 +80,7 @@ hp_same:
         ld      (hp_at),hl
         cp      BT_N
         jr      c,hp_lp
+        pop     hl                      ; το push του τελευταίου
         ; --- η σειρά 24 ---
         ld      hl,-HUD_TOPB + 24 * 80
         call    hp_go
@@ -88,7 +90,6 @@ hp_same:
         ; αφεθεί κι αυτό — αλλιώς το ίδιο πάτημα θα έκανε κάτι στο παιχνίδι ---
         call    hp_up
 hp_wait:
-        call    in_scan
         call    hp_any
         jr      z,hp_wait
         call    hp_up
@@ -97,17 +98,17 @@ hp_wait:
         call    is_on
         call    view_draw
         call    hud_inval
-        call    ui_hudall
-        jp      ui_show
+        jp      uh_show                 ; ui_hudall, ui_show (src/ui.asm)
 
 hp_up:
-        call    in_scan
         call    hp_any
         jr      nz,hp_up
         ret
 
-; hp_any — NZ αν είναι πατημένο οτιδήποτε, και το χειριστήριο.
+; hp_any — μια σάρωση (in_scan), και NZ αν είναι πατημένο οτιδήποτε, και το
+; χειριστήριο.
 hp_any:
+        call    in_scan
         ld      hl,key_now
         ld      b,KEY_LINES
         ld      a,#FF
@@ -159,7 +160,6 @@ hpg_ln:
         jr      hp_green
 
 hp_at:      dw 0
-hp_txt:     dw 0
 hp_id:      db 0
 hp_row:     db 0
         assert  hp_row == hp_id + 1
