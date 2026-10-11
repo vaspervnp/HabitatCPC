@@ -37,13 +37,24 @@
             σβήνει, μόνο ζωγραφίζει, τίποτα, αλλάζει έξω από το κάδρο — και η
             καθεμία ξανά με τη λίστα σχεδόν γεμάτη: ο περιπατητής τελευταίος
             στο cpir, 60 εγγραφές στη στήλη του, δύο φιγούρες πάνω στο κελί του.
+            Από το βήμα 105 το σβήσιμο χρεώνεται 1.200 σε ελεύθερο έδαφος και
+            1.600 δίπλα σε κτίσμα (2.200 και 2.600 ως τότε): το tile του κελιού
+            γράφεται κατευθείαν (fg_tile), όχι με το ob_put.
+  ΚΕΛΙ      (βήμα 105) σε οκτώ κάμερες — πάνω στο ηλιακό, σε φλέβες, σε
+            έδαφος κάθε κλάσης — σκουπίδια σε ένα κελί και το fg_erase του: η
+            οθόνη είναι ξανά η πλήρης σχεδίαση, σε ελεύθερο έδαφος, δίπλα σε
+            κτίσμα, πάνω σε κτίσμα και σε φλέβα. Και σε κάθε κάμερα, μετά, ένα
+            άδειασμα θέσης (dhs_vacate) σε 2x8 που δεν αρχίζει σε σειρά
+            χαρακτήρων: το call του dhv_rect_us ξαναγράφτηκε.
 
 Αρνητικά, με το snapshot πειραγμένο: χωρίς το fg_draw στο ob_draw_all (η ΑΡΧΗ
 δεν έχει φιγούρες στην οθόνη), χωρίς το σημάδι του em_trans (η λίστα μένει
 πίσω από το μοντέλο), χωρίς το σβήσιμο του παλιού κελιού (ίχνη), χωρίς το
 fg_paint (το νέο κελί άδειο), χωρίς το fg_build στο view_draw (η ΑΡΧΗ χωρίς
 λίστα), με το dh_tile χωρίς φιγούρες (ο ΜΕΤΕΩΡΙΤΗΣ), και χωρίς τη χρέωση της
-σάρωσης στο fg_draw (το ΚΟΣΤΟΣ με γεμάτη λίστα).
+σάρωσης στο fg_draw (το ΚΟΣΤΟΣ με γεμάτη λίστα). Από το βήμα 105: πάντα το πάνω
+αριστερό τέταρτο του tile και χωρίς τη φλέβα (το ΚΕΛΙ), το call που δεν
+ξαναγράφεται (το άδειασμα θέσης του ΚΕΛΙΟΥ), και χωρίς το fg_tile (το ΚΟΣΤΟΣ).
 """
 import ctypes, os, sys
 
@@ -405,6 +416,77 @@ def meteor(sym, g, patch=(), quiet=False):
     return None
 
 
+def cells(sym, g, patch=(), quiet=False):
+    """ΚΕΛΙ (βήμα 105). Η πρώτη διαφορά από την πλήρη σχεδίαση, ή None."""
+    say = (lambda s: None) if quiet else (lambda s: print("    " + s))
+    w = G(sym, g, patch)
+    B.build(w.m, sym, 4, g + 6, at=SOLAR_FAR, fit=False)
+    look(w.m)
+    w.drain()
+    pl = bytes(w.bank(4))
+    at = lambda tx, ty: pl[((ty + 64) << 7) | (tx + 64)]
+    s_ = w.sym
+    # Οι κάμερες: πάνω στο ηλιακό (κελιά δίπλα και πάνω του), πάνω σε φλέβες,
+    # και σε έδαφος κάθε κλάσης· το tx αλλάζει και το cam_p.
+    veins = [(tx, ty) for ty in range(-60, 60) for tx in range(-60, 60)
+             if at(tx, ty) & 15 == 11 and not at(tx, ty) & 0x10]
+    cams = [((SOLAR_FAR[0] >> 1) - 10, (SOLAR_FAR[1] >> 1) - 5)]
+    cams += [(tx - 10, ty - 5) for tx, ty in veins[::max(1, len(veins) // 3)][:3]]
+    cams += [(-30 + 7 * k, -25 + 9 * k) for k in range(4)]
+    seen = {"ελεύθερο": 0, "δίπλα σε κτίσμα": 0, "πάνω σε κτίσμα": 0, "φλέβα": 0}
+    for j, (cx, cy) in enumerate(cams):
+        cx, cy = min(max(cx, -64), 44), min(max(cy, -64), 54)
+        c = w.clone()
+        c.m.poke(s_["CAM_TX"], cx & 255)
+        c.m.poke(s_["CAM_TY"], cy & 255)
+        ref = c.full()
+        cam, scr = c.cam(), c.bank(3)
+        gx0, gx1, gy0, gy1 = (c.m.peek(s_["GH_BBX"]), c.m.peek(s_["GH_BBX"] + 1),
+                              c.m.peek(s_["GH_BBY"]), c.m.peek(s_["GH_BBY"] + 1))
+        at_ = [(2 * ((k * 7) % 40), 8 * ((k * 11) % 20)) for k in range(48)]
+        if j == 0:                          # γύρω από το ηλιακό, στο κέντρο του κάδρου
+            at_ += [(bx, ly) for bx in range(30, 52, 2) for ly in range(56, 112, 8)]
+        for bx, ly in at_:
+            if bx < gx1 and gx0 < bx + 2 and ly < gy1 and gy0 < ly + 8:
+                continue                    # κάτω από τον κέρσορα
+            x, y = 2 * cx + bx // 2, 2 * cy + ly // 8      # μισά tiles
+            for r in range(8):
+                for b in range(2):
+                    yy, xx = ly + r, bx + b
+                    scr[(yy & 7) * 0x800 + (((yy >> 3) * 80 + xx + cam) & 0x7FF)] = 0x55
+            c.m.poke(s_["FG_OX"], (x + 128) & 255)
+            c.m.poke(s_["FG_OY"], (y + 128) & 255)
+            c.probe(c.call("FG_ERASE"))
+            got = c.play()
+            kind = ("φλέβα" if at(x >> 1, y >> 1) & 15 == 11 else
+                    ("ελεύθερο", "δίπλα σε κτίσμα", "πάνω σε κτίσμα")[ground(c, x, y)])
+            if got != ref:
+                n = sum(1 for a, b in zip(got, ref) if a != b)
+                return (f"ΚΕΛΙ ({x}, {y}), {kind}, κάμερα ({cx}, {cy}): {n} bytes "
+                        f"διαφέρουν από την πλήρη σχεδίαση")
+            seen[kind] += 1
+        # ΤΟ call ΞΑΝΑΓΡΑΦΤΗΚΕ: ένα άδειασμα θέσης (dhs_vacate) σε 2x8 που ΔΕΝ
+        # αρχίζει σε σειρά χαρακτήρων, μετά από τα σβησίματα — με το fg_tile
+        # θα έγραφε σε λάθος γραμμές.
+        ox, oy = 2 * ((cx * 3) % 30) + 7, 8 * ((cy * 5) % 15) + 4
+        for r in range(8):
+            for b in range(2):
+                yy, xx = oy + r, ox + b
+                scr[(yy & 7) * 0x800 + (((yy >> 3) * 80 + xx + cam) & 0x7FF)] = 0x55
+        for name, v in (("OB_X", ox), ("OB_Y", oy)):
+            c.m.poke(s_[name], v)
+            c.m.poke(s_[name] + 1, 0)
+        c.probe(c.call("DHS_VACATE"))
+        if c.play() != ref:
+            return (f"ΚΕΛΙ: ένα άδειασμα θέσης στο ({ox}, {oy}) μετά από τα σβησίματα δεν "
+                    f"είναι η πλήρης σχεδίαση")
+    if any(v < 6 for v in seen.values()):
+        return f"ΚΕΛΙ: οι σκηνές δεν έχουν όλα τα είδη κελιού: {seen}"
+    say(f"ΚΕΛΙ: σβησμένα με σκουπίδια πριν και = η πλήρης σχεδίαση: {seen}, σε "
+        f"{len(cams)} κάμερες, και ένα άδειασμα θέσης μετά σε καθεμία")
+    return None
+
+
 FG_PAD = 62
 RAW = []                                  # (είδος, γεμάτη, έδαφος, us, χρέωση)
 
@@ -526,6 +608,8 @@ def main():
     check(why is None, why or "ΘΟΛΟΣ: όπως λέει η πρόζα")
     why = meteor(sym, g)
     check(why is None, why or "ΜΕΤΕΩΡΙΤΗΣ: όπως λέει η πρόζα")
+    why = cells(sym, g)
+    check(why is None, why or "ΚΕΛΙ: το σβήσιμο = η πλήρης σχεδίαση, και η φλέβα μένει")
     cost(sym, g)
 
     # --- αρνητικά ---
@@ -561,6 +645,28 @@ def main():
         cost(sym, g, [(sc + k, 0) for k in range(3)], out=lambda ok, msg: bad.append(not ok))
     check(sc and any(bad), "ΑΡΝΗΤΙΚΟ: χωρίς τη χρέωση της σάρωσης στο fg_draw, το ΚΟΣΤΟΣ "
                            f"αποτυγχάνει ({sum(bad)} από {len(bad)} έλεγχοι)")
+    # βήμα 105: το fg_tile
+    ft = sym["FG_TILE"]
+    q8, q2 = find(ft, [0xE6, 8], 40), find(ft, [0xE6, 2], 40)
+    vn = find(ft, [0xE6, 15, 0xFE, 11], 80)
+    gl = find(sym["FGE_GO"], [0x21] + w(ft), 4)                   # ld hl,fg_tile
+    gr = find(sym["FGE_GO"], [0x21] + w(sym["OB_PUT"]), 24)       # ld hl,ob_put
+    for label, patch in (
+            ("πάντα το πάνω αριστερό τέταρτο του tile",
+             q8 and q2 and [(q8 + 1, 0), (q2 + 1, 0)]),
+            ("χωρίς τη φλέβα", vn and [(vn + 3, 255)]),
+            ("το call δεν ξαναγράφεται", gr and [(gr + 1, ft & 255), (gr + 2, ft >> 8)])):
+        if not patch:
+            check(False, f"δεν βρέθηκε πού να πειραχτεί για «{label}»")
+            continue
+        why = cells(sym, g, patch, quiet=True)
+        check(why is not None, f"ΑΡΝΗΤΙΚΟ: με «{label}» το ΚΕΛΙ αποτυγχάνει ({(why or '')[:100]})")
+    bad = []
+    if gl:
+        op = sym["OB_PUT"]
+        cost(sym, g, [(gl + 1, op & 255), (gl + 2, op >> 8)], out=lambda ok, msg: bad.append(not ok))
+    check(gl and any(bad), "ΑΡΝΗΤΙΚΟ: χωρίς το fg_tile (το ob_put όπως ως το βήμα 104) το "
+                           f"ΚΟΣΤΟΣ αποτυγχάνει ({sum(bad)} από {len(bad)} έλεγχοι)")
     why = meteor(sym, g, [(sym["FG_DRAW1"], 0xC9)], quiet=True)    # ret
     check(why is not None, f"ΑΡΝΗΤΙΚΟ: με το dh_tile χωρίς φιγούρες σε ελεύθερο έδαφος, ο "
                            f"ΜΕΤΕΩΡΙΤΗΣ αποτυγχάνει ({(why or '')[:100]})")

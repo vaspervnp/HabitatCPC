@@ -41,8 +41,8 @@ FG_AGENT    equ 192
 ; ο υπολογισμός και το cpir σε γεμάτη λίστα), το παλιό κελί σε έδαφος ή δίπλα
 ; σε κτίσμα (με κτίσμα από κάτω: DHS_VAC_US), το νέο, και ό,τι κοστίζει το
 ; fg_draw όπου κι αν κληθεί: η σάρωση και κάθε φιγούρα.
-FG_ERASE_US equ 2200                    ; μετρημένο ως 1.946
-FG_ERASE_NEAR equ 2600                  ; ως 2.320
+FG_ERASE_US equ 1200                    ; βήμα 105, fg_tile: ~920 (2.200 για 1.946 ως το 104)
+FG_ERASE_NEAR equ 1600                  ; ~1.290 (2.600 για 2.320)
 FG_PAINT_US equ 800                     ; ως 284· με το σβήσιμο μαζί ως 2.812 / 3.220
 FG_SCAN_US  equ 24                      ; ανά εγγραφή που κοιτά το fg_draw
 FG_ONE_US   equ 800                     ; ανά φιγούρα που ζωγραφίζει: 785
@@ -210,8 +210,16 @@ fge_obj:
         jr      z,fge_go
         ld      de,DHS_VAC_US
 fge_go:
+        ; ΤΟ TILE ΤΟΥ ΚΕΛΙΟΥ ΑΠΟ ΤΟ fg_tile (βήμα 105): το call του ob_put στο
+        ; dhv_rect_us γράφεται για όσο σβήνει το κελί, και ξαναγράφεται μετά.
+        ; Το άδειασμα θέσης και η μηχανή που βγαίνει δεν πληρώνουν τίποτα.
+        ld      hl,fg_tile
+        ld      (dhv_put + 1),hl
         ld      hl,SLOT_H * 256 + SLOT_W
-        jp      dhv_rect_us
+        call    dhv_rect_us
+        ld      hl,ob_put
+        ld      (dhv_put + 1),hl
+        ret
 
 fg_paint:
         ld      a,(fg_q)
@@ -758,7 +766,8 @@ dhv_col:
         ld      (ob_y),hl
         ld      hl,TILE_H*256 + TILE_W
         ld      a,4                     ; αδιαφανές
-        call    ob_put
+dhv_put:
+        call    ob_put                  ; ΓΡΑΜΜΕΝΟ: fg_tile όσο σβήνει κελί φιγούρας
         pop     de
         ld      a,e
         add     a,TILE_W
@@ -797,6 +806,73 @@ fg_draw1:
         ld      bc,GA_PORT + PAGE_B1
         out     (c),c
         ret
+
+; fg_tile — το tile κάτω από το κελί μιας φιγούρας έξω (το clip), αντί για το
+; ob_put του dhv_rect_us (fge_go, βήμα 105). Το (ob_src) είναι το tile.
+;
+; ΚΑΤΕΥΘΕΙΑΝ. Ως το βήμα 104 περνούσε από το ob_put: όλο το tile κομμένο στο
+; 2x8 — κόψιμο σε κάθε πλευρά, δείκτες γραμμής — ~1 ms για 16 bytes, το ένα
+; πέμπτο ενός βήματος αποίκου έξω. Εδώ τα 16 bytes, γραμμή γραμμή:
+;
+; - Το κελί είναι ΟΛΟ μέσα στο κάδρο (fg_in), άρα το clip είναι το κελί: x
+;   ζυγό ως 78, y σε σειρά χαρακτήρων ως 152.
+; - Κάθε γραμμή του είναι η προηγούμενη + #800, όπως στο ob_fig.
+; - Τα δύο bytes μιας γραμμής είναι στην ίδια σελίδα της οθόνης: η διεύθυνση
+;   είναι ζυγή (x ζυγό, cam_p πολλαπλάσιο του 4: view_cam), οπότε το πρώτο
+;   δεν είναι ποτέ #xxFF.
+; - Μέσα στο tile, 4 bytes τη γραμμή, το κελί είναι το μισό του: + 32 το
+;   κάτω, + 2 το δεξί.
+;
+; ΚΑΙ Η ΦΛΕΒΑ από πάνω, με μάσκα, όπως στο tile_one. Ως το βήμα 104 ένα κελί
+; που σβηνόταν πάνω σε φλέβα (βουνό με το bit πόρου) την έχανε ως την
+; επόμενη πλήρη σχεδίαση.
+fg_tile:
+        ld      a,(clip_x0)
+        ld      c,a
+        ld      a,(clip_y0)
+        call    scr_addr                ; DE = η οθόνη· κρατά το BC
+        ld      a,(clip_y0)
+        and     8
+        add     a,a
+        add     a,a                     ; 0 ή 32
+        ld      b,a
+        ld      a,c
+        and     2                       ; 0 ή 2
+        add     a,b
+        ld      c,a
+        ld      b,0
+        ld      hl,(ob_src)
+        add     hl,bc
+        ld      b,SLOT_H
+fgt_lp:
+        ld      a,(hl)
+        ld      (de),a
+        inc     hl
+        inc     e
+        ld      a,(hl)
+        ld      (de),a
+        dec     e
+        inc     hl
+        inc     hl
+        inc     hl                      ; η επόμενη γραμμή του tile
+        ld      a,d
+        add     a,8
+        ld      d,a
+        djnz    fgt_lp
+        ld      a,(t_cur)
+        ld      c,a
+        and     15
+        cp      11                      ; βουνό με το bit πόρου
+        ret     nz
+        ld      a,c
+        add     a,a                     ; decor & 1 (bit 6) -> bit 7
+        and     #80                     ; 2 παραλλαγές, x ORE_OVL_SZ
+        ld      l,a
+        ld      h,G_ore_overlay >> 8
+        ld      (ob_src),hl
+        ld      hl,TILE_H*256 + TILE_W
+        xor     a                       ; με μάσκα
+        jp      ob_put
 
 ; dhv_clip — το clip: το ορθογώνιο L x H στο ob_x, ob_y, κομμένο στο κάδρο.
 ; Z αν δεν φαίνεται, και τότε το clip είναι ολόκληρο το κάδρο.
