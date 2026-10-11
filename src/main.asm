@@ -254,6 +254,7 @@ mla_pok:
         include "blit.asm"
         include "tiles.asm"
         include "object.asm"
+        include "span.asm"              ; βήμα 108: τα διαστήματα των θόλων
         include "dirty.asm"
         include "hud.asm"
         include "view.asm"
@@ -269,7 +270,6 @@ mla_pok:
         include "jobs.asm"
         include "haul.asm"              ; βήμα 95: η μεταφορά
         include "carry.asm"             ; βήμα 98: τα αγαθά του εμπόρου
-        include "install.asm"           ; βήμα 99: οι μηχανές κουβαλιούνται και στήνονται
         include "stock.asm"              ; κοινό με το fit.asm (βήμα 46)
         include "needs.asm"
         include "lines.asm"             ; βήμα 91: η γραμμή του πλοίου (93: και το εμπόριο)
@@ -330,6 +330,17 @@ zz_ov2_end:
         assert  zz_ov2_end <= GH_BUF + GH_LOG
         assert  OV1_PAD + zz_ov2_end - SV_ORG <= OV_MAX
         save    "../build/ovl2.bin", OV_LOAD + OV1_PAD, zz_ov2_end - SV_ORG
+; --- ΚΑΙ Η ΟΘΟΝΗ ΒΟΗΘΕΙΑΣ (βήμα 108): ένα τρίτο κομμάτι, πάλι στο GH_BUF, από
+; τη γραμμή μετά το σώσιμο. Τη φέρνει το hp_show (src/help.asm) με τον κέρσορα
+; σβηστό. Τα 232 bytes της στην τράπεζα 0 τα πήραν τα διαστήματα των θόλων. ---
+OV2_PAD     equ ((zz_ov2_end - SV_ORG + 31) >> 5) << 5
+        org     GH_BUF, OV_LOAD + OV1_PAD + OV2_PAD
+zz_ov3:
+        include "help_ov.asm"
+zz_ov3_end:
+        assert  zz_ov3_end <= GH_BUF + GH_LOG
+        assert  OV1_PAD + OV2_PAD + zz_ov3_end - GH_BUF <= OV_MAX
+        save    "../build/ovl3.bin", OV_LOAD + OV1_PAD + OV2_PAD, zz_ov3_end - GH_BUF
 
         org     PAGE2_CODE - 256
 zz_colony:
@@ -350,6 +361,7 @@ zz_page2_code:                          ; για το tools/mkdsk.py: πού φ�
         include "door.asm"              ; βήμα 87: ένα κτίσμα τελειώνει
         include "edges.asm"             ; βήμα 87: οι ακμές, για όλες τις εκδόσεις
         include "supply.asm"            ; βήμα 88: πρώτα τα υλικά, μετά ο μηχανικός
+        include "install.asm"           ; βήμα 99: οι μηχανές κουβαλιούνται και στήνονται (στην 2 από το 108)
         include "figure.asm"            ; βήμα 89: οι άποικοι έξω
         include "suit.asm"              ; βήμα 90: οι στολές
         include "sound.asm"
@@ -385,6 +397,7 @@ zz_page2_code:                          ; για το tools/mkdsk.py: πού φ�
         ; (Και το fdc.asm, μαζί του, στο βήμα 103.)
         include "newgame.asm"
 zz_page2_end:
+        assert  zz_page2_end <= #C000   ; πάνω από εκεί είναι η οθόνη
 
 ; --- τα δύο κομμάτια του παιχνιδιού, για τον δίσκο ------------------------
 ; Το AMSDOS δίνει ΜΙΑ διεύθυνση φόρτωσης ανά αρχείο, και το παιχνίδι ζει σε δύο

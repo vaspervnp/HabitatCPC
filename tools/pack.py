@@ -731,6 +731,50 @@ def build_runs(smap, blob):
     return arena, bank1, bank5, bank6, bank7, ptr
 
 
+# ---------------------------------------------------------------------------
+# build/span_tables.asm — ΠΟΥ ΕΧΕΙ ΚΑΤΙ ΚΑΘΕ ΤΕΤΑΡΤΗΜΟΡΙΟ θόλου και δακτυλίου,
+# ανά οκτώ γραμμές (βήμα 108, src/span.asm, DESIGN §8.4). Εδώ και όχι στο
+# tools/mkgentables.py: κάθε build του παιχνιδιού και των δοκιμών τρέχει το
+# pack.py, και το src/object.asm θέλει τον πίνακα.
+#
+# Ενα ζεύγος (μάσκα #FF, χρώμα 0) αφήνει την οθόνη όπως ήταν: το blit του
+# πληρώνει 18 us (32 καθρεφτισμένο) για τίποτα. Στους θόλους είναι το 40% των
+# ζευγών, στους δακτυλίους το 75% — το εσωτερικό τους, που ο θόλος καλύπτει.
+# Κάθε γραμμή κάθε τεταρτημορίου έχει ΕΝΑ διάστημα με κάτι, και ό,τι είναι έξω
+# του είναι τέτοιο ζεύγος· ανά οκτώ γραμμές: το byte (a << 4) | n, με a το
+# πρώτο ζεύγος της ομάδας που δεν είναι διάφανο και n πόσα ως το τελευταίο.
+# Μια ομάδα χωρίς τίποτα είναι 0 (οι οκτώ πρώτες γραμμές κάθε θόλου).
+# Συντηρητικό: ένα διάφανο ζεύγος μέσα στο διάστημα κοστίζει όσο πριν, ένα
+# αδιάφανο έξω θα έλειπε από την οθόνη — αυτό το αρνείται το assert εδώ.
+# ---------------------------------------------------------------------------
+SPAN_G = 8
+
+
+def spans(out):
+    smap, sblob = load_map(), load_bin()
+    with open(os.path.join(out, "span_tables.asm"), "w", encoding="utf-8") as f:
+        f.write("; ΠΑΡΑΓΕΤΑΙ από tools/pack.py — μην το επεξεργάζεσαι.\n")
+        f.write(f"SPAN_G      equ {SPAN_G}\n")
+        f.write("; ανά μέγεθος, ο δακτύλιος και ΑΜΕΣΩΣ ΜΕΤΑ ο θόλος (+QH/8)\n")
+        for size in "sml":
+            f.write(f"spt_{size}:\n")
+            for kind in ("ring", "dome"):
+                s = smap[f"{kind}_{size}_nw"]
+                assert s.masked and s.h % SPAN_G == 0, s
+                row = []
+                for g0 in range(0, s.h, SPAN_G):
+                    cols = [x for y in range(g0, g0 + SPAN_G) for x in range(s.w)
+                            if sblob[s.off + y * s.stride + 2 * x] != 0xFF
+                            or sblob[s.off + y * s.stride + 2 * x + 1] != 0]
+                    if not cols:
+                        row.append(0)
+                        continue
+                    a, n = min(cols), max(cols) + 1 - min(cols)
+                    assert a < 16 and 0 < n < 16, (s, g0, a, n)
+                    row.append(a << 4 | n)
+                f.write(f"        db {','.join(f'#{v:02X}' for v in row)}   ; {kind}\n")
+
+
 def pack():
     """Στρώνει τα πάντα. Επιστρέφει (arena, bank1, bank5, bank6, bank7, ptr,
     images, free, report). Σκάει με Fail αν κάτι δεν χωράει."""
@@ -833,6 +877,7 @@ def pack():
     report = "\n".join(lines)
     with open(os.path.join(out, "layout.txt"), "w", encoding="utf-8") as f:
         f.write(report)
+    spans(out)
     return arena, bank1, bank5, bank6, bank7, ptr, images, [BANK_SIZE - u2], report
 
 

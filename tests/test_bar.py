@@ -147,9 +147,14 @@ class Game(TI.Game):
 
 
 def run(sym, patch=(), quick=False):
-    """-> (το πρώτο λάθος ή None, πόσα ελέγχθηκαν)."""
-    G = Game(sym, patch)
+    """-> (το πρώτο λάθος ή None, πόσα ελέγχθηκαν). Ενα patch ("b1", θέση) πάει
+    στη βασική τράπεζα 1: εκεί, στις τρύπες του DIST, ζει η βοήθεια από το
+    βήμα 108, και το hp_show την αντιγράφει στο GH_BUF σε κάθε ?."""
+    G = Game(sym, [p for p in patch if not isinstance(p[0], tuple)])
     m = G.m
+    b1 = cpc._lib.cpcemu_ram_ptr(m._h, 1)
+    for (_, at), v in [p for p in patch if isinstance(p[0], tuple)]:
+        b1[at] = v
     FIT = fits_table()
     n = 0
 
@@ -555,13 +560,20 @@ def main():
     gen = find("BSC_GO", [0x21] + w(sym["BS_GEN"]) + [0xBE, 0x28], 120) + 4
     fits = find("BWD_LP", [0xCD] + w(sym["RM_FITS"]), 10)
     letter = find("SLD_PL", [0xFE, 10], 10)
-    up = find("HP_WAIT", [0xCD] + w(sym["HP_UP"]), 20)
+    # Η βοήθεια στις τρύπες (βήμα 108): μετά την κατεδάφιση και το σώσιμο,
+    # 32 bytes ανά γραμμή του DIST, στις στήλες 96-127.
+    ovl = [open(os.path.join(ROOT, "build", f), "rb").read() for f in ("ovl.bin", "ovl2.bin", "ovl3.bin")]
+    r3 = (len(ovl[0]) + 31) // 32 + (len(ovl[1]) + 31) // 32
+    # Το hp_up είναι το τέλος της: το δεύτερο call του έγινε fall through.
+    o = sym["HP_UP"] - sym["ZZ_OV3"]
+    assert ovl[2][o:o + 3] == bytes([0xCD] + w(sym["HP_ANY"])), "το hp_up δεν αρχίζει με call hp_any"
+    hole = lambda k: ("b1", 128 * (r3 + (k >> 5)) + 96 + (k & 31))
     neg = [("χωρίς σάρωση γραμμάτων", [(scan, 0xB7), (scan + 1, 0), (scan + 2, 0)]),
            ("ακμή χωρίς μνήμη του κρατημένου", [(held + i, 0) for i in range(4)]),
            ("μπάρα που αγνοεί το σβήσιμο των λωρίδων", [(gen, 0x18)]),
            ("δωμάτια που δεν κοκκινίζουν", [(fits, 0xAF), (fits + 1, 0), (fits + 2, 0)]),
            ("κουμπιά χωρίς γράμμα", [(letter + 1, 15)]),
-           ("βοήθεια που δεν περιμένει να αφεθεί το πλήκτρο", [(up + i, 0) for i in range(3)]),
+           ("βοήθεια που δεν περιμένει να αφεθεί το πλήκτρο", [(hole(o), 0xC9)]),
            ("τα 1-4 με λάθος μάσκα", [(find("UI_SPEED", [0xE6, 0x1E], 10) + 1, 0x0E)]),
            ("το FIRE του LOOK χαμένο", [(find("USL_GO", [0xE6, 0x50], 30) + 1, 0x40)]),
            ("το H χαμένο", [(find("UI_TICK", [0x1F, 0x30], 30), 0xB7)])]

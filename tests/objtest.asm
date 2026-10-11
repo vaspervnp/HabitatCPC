@@ -255,6 +255,7 @@ done_flag:  db 0
         include "../src/joint.asm"          ; βήμα 96: στο παιχνίδι στο b6code
         include "../src/bend.asm"           ; βήμα 97: στο παιχνίδι στο b5code
         include "../src/objindex.asm"
+        include "../src/span.asm"           ; βήμα 108: στην τράπεζα 0, όπως στο παιχνίδι
 ; τα DK_RSIZE και DK_RECT της κατεδάφισης (βήμα 101) ζουν στις τρύπες του
 ; DIST (src/dm_ovl.asm), που εδώ δεν υπάρχουν· κανείς δεν τα σπρώχνει.
 DH_RSIZE    equ 0

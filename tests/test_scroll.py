@@ -9,6 +9,11 @@
 Αν κάτι λείπει από τη λωρίδα — ένα τεταρτημόριο, μια πόρτα, ένα φυτό — η
 σύγκριση το δείχνει· το μάτι δεν το δείχνει, γιατί η προηγούμενη εικόνα είναι
 σχεδόν σωστή.
+
+Ο ΧΡΟΝΟΣ ΣΕ us (βήμα 108): η πλήρης σχεδίαση στο BASE και ένα βήμα προς κάθε
+κατεύθυνση ως εκεί, με ταβάνια. Οι θόλοι και οι δακτύλιοι ζωγραφίζουν από το
+108 μόνο τα διαστήματα που έχουν κάτι (src/span.asm). Αρνητικό: το ob_shell
+χωρίς τον πίνακα ξεπερνά τα ταβάνια.
 """
 import os, sys
 
@@ -31,6 +36,15 @@ STEPS = 5
 # το έδαφος· ένα βήμα μέσα στη βάση ξαναζωγραφίζει και ό,τι πατάει τη λωρίδα.
 LIMIT_OPEN = 4.0
 LIMIT_BASE = 10.0
+
+# ΤΟ ΒΗΜΑ 108 ΣΕ us, όχι σε frames: η πλήρης σχεδίαση στο BASE και ένα βήμα
+# προς κάθε κατεύθυνση ως εκεί. Τα θόλοι και οι δακτύλιοι ζωγραφίζουν μόνο τα
+# διαστήματά τους (src/span.asm), και ο βρόχος του ob_blit έχει ό,τι δεν
+# αλλάζει μέσα στις εντολές του.
+EXACT_CEIL = {"πλήρης": 520_000, "βορράς": 76_000, "ανατολή": 14_500,
+              "νότος": 24_500, "δύση": 76_000}
+EXACT_WAS = {"πλήρης": 642_284, "βορράς": 93_328, "ανατολή": 14_412,
+             "νότος": 24_448, "δύση": 90_604}
 
 
 def main():
@@ -123,6 +137,56 @@ def main():
         fails += 1
     if fails == 0:
         print("  (το DESIGN §8.2 καταγράφει αυτά τα δύο νούμερα — συμφωνούν)")
+
+    # --- και σε us (βήμα 108) ---
+    def exact(patch=()):
+        out = {}
+        for name, d in (("πλήρης", None),) + tuple((n, k) for k, (_, _, n) in DIRS.items()):
+            m = CPC()
+            m.run_frames(60)
+            assert m.quickload(SNA, start=False)
+            dx, dy = (0, 0) if d is None else DIRS[d][:2]
+            m.poke(sym["CAM_TX"], (BASE[0] - dx) & 0xFF)
+            m.poke(sym["CAM_TY"], (BASE[1] - dy) & 0xFF)
+            m.poke(sym["HUD_ON"], 0)
+            m.poke(sym["HUD_MOVE"], 0xC9)
+            m.poke(sym["HUD_INVAL"], 0xC9)
+            for at, v in patch:
+                m.poke(at, v)
+            m.set_pc(sym["START"])
+            if d is not None:
+                while m.peek(sym["DONE_FLAG"]) != 0x5A:
+                    m.run_frames(1)
+                m.poke(sym["DONE_FLAG"], 0)
+                m.poke(sym["SC_DIR"], d)
+                m.poke(sym["SC_N"], 1)
+                m.set_pc(sym["DO_SCROLL"])
+            t = 0
+            while m.peek(sym["DONE_FLAG"]) != 0x5A:
+                m.run_us(20)
+                t += 20
+            out[name] = t
+        return out
+
+    got = exact()
+    for k, v in got.items():
+        ok = v <= EXACT_CEIL[k]
+        print(f"{'OK' if ok else 'ΑΠΟΤΥΧΙΑ'} {k}: {v} us (ταβάνι {EXACT_CEIL[k]}, "
+              f"{EXACT_WAS[k]} στο βήμα 107)")
+        fails += not ok
+    # ΑΡΝΗΤΙΚΟ: το ob_shell χωρίς τον πίνακα — κάθε τεταρτημόριο ολόκληρο.
+    at = sym["OB_SHELL"]
+    m = CPC()
+    m.run_frames(60)
+    assert m.quickload(SNA, start=False)
+    body = m.read_ram(at, 80)
+    i = body.find(bytes([0x22, sym["OB_SPT"] & 255, sym["OB_SPT"] >> 8]))
+    assert i >= 0, "δεν βρέθηκε το ld (ob_spt),hl στο ob_shell"
+    bad = exact([(at + i + k, 0) for k in range(3)])
+    over = [k for k, v in bad.items() if v > EXACT_CEIL[k]]
+    print(f"{'OK' if over else 'ΑΠΟΤΥΧΙΑ'} ΑΡΝΗΤΙΚΟ: χωρίς τα διαστήματα ξεπερνούν το ταβάνι "
+          f"{', '.join(f'{k} {bad[k]}' for k in over) or 'κανένα'}")
+    fails += not over
     return 1 if fails else 0
 
 

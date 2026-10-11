@@ -77,10 +77,12 @@ OV_HOLE     equ #4000 + RT_NODES        ; η τρύπα της γραμμής 0,
 OV_ROWS     equ (zz_ovl_end - GH_BUF + 31) >> 5
 OV2_ROWS    equ (zz_ov2_end - SV_ORG + 31) >> 5     ; το σώσιμο, μετά (βήμα 103)
 OV2_HOLE    equ OV_HOLE + OV_ROWS * 128
-        assert  OV_ROWS + OV2_ROWS <= RT_NODES && RT_NODES + 32 == 128
-        assert  OV1_PAD == OV_ROWS * 32
+OV3_ROWS    equ (zz_ov3_end - GH_BUF + 31) >> 5     ; η βοήθεια (βήμα 108)
+OV3_HOLE    equ OV2_HOLE + OV2_ROWS * 128
+        assert  OV_ROWS + OV2_ROWS + OV3_ROWS <= RT_NODES && RT_NODES + 32 == 128
+        assert  OV1_PAD == OV_ROWS * 32 && OV2_PAD == OV2_ROWS * 32
         ; το ov_install δεν σβήνει ό,τι θα διαβάσει
-        assert  #4000 + (OV_ROWS + OV2_ROWS) * 128 <= OV_LOAD
+        assert  #4000 + (OV_ROWS + OV2_ROWS + OV3_ROWS) * 128 <= OV_LOAD
 
 ; ov_run — ο κώδικας από τις τρύπες στο GH_BUF, και κλήση του. Το φάντασμα
 ; κρυμμένο (ui_hide). Χαλάει τα πάντα· γυρίζει με ό,τι αφήσει ο κώδικας.
@@ -135,15 +137,15 @@ ovr_lp:
         ret
 
 ; ov_install — στην εκκίνηση: ό,τι έφερε ο φορτωτής στο OV_LOAD, στις τρύπες,
-; και τα δύο κομμάτια. Και τα δύο στην τράπεζα 1, και δεν επικαλύπτονται: το
-; OV_LOAD είναι στις γραμμές 80-95 του DIST, οι τρύπες που γεμίζουν στις
-; πρώτες (assert).
+; και τα τρία κομμάτια (η βοήθεια από το βήμα 108). Και τα δύο, εικόνα και
+; τρύπες, στην τράπεζα 1, και δεν επικαλύπτονται: το OV_LOAD είναι στις
+; γραμμές 80-95 του DIST, οι τρύπες που γεμίζουν στις πρώτες (assert).
 ov_install:
         ld      bc,GA_PORT + PAGE_B1
         out     (c),c
         ld      hl,OV_LOAD
         ld      de,OV_HOLE
-        ld      a,OV_ROWS + OV2_ROWS
+        ld      a,OV_ROWS + OV2_ROWS + OV3_ROWS
 ovi_lp:
         ld      bc,32
         ldir

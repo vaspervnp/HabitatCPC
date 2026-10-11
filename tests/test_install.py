@@ -516,9 +516,11 @@ def run_negative(sym, g, patch, test):
 def main():
     sym, g = TG.build()
     shots = [a for a in sys.argv[1:] if a.endswith(".png")]
-    check(sym["MC_ARRIVE"] < 0x4000 and sym["MC_ORDER"] >= 0x9C00,
-          f"το mc_arrive στην τράπεζα 0 (#{sym['MC_ARRIVE']:04X}), το mc_order στο page2 "
-          f"(#{sym['MC_ORDER']:04X})")
+    # Από το βήμα 108 και το install.asm στην τράπεζα 2: τα 68 bytes του στην
+    # τράπεζα 0 τα πήραν τα διαστήματα των θόλων (src/span.asm).
+    check(sym["MC_ARRIVE"] >= 0x9C00 and sym["MC_ORDER"] >= 0x9C00,
+          f"το mc_arrive (#{sym['MC_ARRIVE']:04X}) και το mc_order (#{sym['MC_ORDER']:04X}) "
+          f"στο page2")
     for fn, what in ((deliver, "ΦΟΡΤΙΟ: οκτώ σκηνές, σε θόλο σε λειτουργία και σε εργοτάξιο"),
                      (install, "ΣΤΗΣΙΜΟ: επίσκεψη προς επίσκεψη, και το κτίριο που τελειώνει"),
                      (stopped, "ΣΤΑΜΑΤΗΜΕΝΗ: παραγωγή, χειριστής, επισκευή, βλάβη")):

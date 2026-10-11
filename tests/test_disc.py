@@ -287,17 +287,23 @@ def main():
     # μηδενικά εκεί όπου πηδά το πρώτο M, D, FIRE.
     # Και από το βήμα 103 το σώσιμο με τον οδηγό του δίσκου, από τη γραμμή μετά
     # (build/ovl2.bin): το ίδιο το παιχνίδι το χρειάζεται για να σώσει.
+    # Και από το βήμα 108 η οθόνη βοήθειας (build/ovl3.bin), μετά το σώσιμο.
     ovl = open(os.path.join(ROOT, "build", "ovl.bin"), "rb").read()
     ovl2 = open(os.path.join(ROOT, "build", "ovl2.bin"), "rb").read()
+    ovl3 = open(os.path.join(ROOT, "build", "ovl3.bin"), "rb").read()
     b1 = cpc._lib.cpcemu_ram_ptr(m._h, 1)
     holes = bytes(b1[128 * (k >> 5) + 96 + (k & 31)] for k in range(len(ovl)))
     r2 = (len(ovl) + 31) // 32
     holes2 = bytes(b1[128 * (r2 + (k >> 5)) + 96 + (k & 31)] for k in range(len(ovl2)))
-    check(len(ovl) > 512 and holes == ovl and len(ovl2) > 512 and holes2 == ovl2,
-          f"ο κώδικας της κατεδάφισης και του σωσίματος ήρθε από τον δίσκο στις "
-          f"τρύπες του DIST: {len(ovl)} και {len(ovl2)} bytes, "
-          f"{sum(x != y for x, y in zip(holes, ovl))} και "
-          f"{sum(x != y for x, y in zip(holes2, ovl2))} διαφορετικά")
+    r3 = r2 + (len(ovl2) + 31) // 32
+    holes3 = bytes(b1[128 * (r3 + (k >> 5)) + 96 + (k & 31)] for k in range(len(ovl3)))
+    check(len(ovl) > 512 and holes == ovl and len(ovl2) > 512 and holes2 == ovl2
+          and len(ovl3) > 128 and holes3 == ovl3,
+          f"ο κώδικας της κατεδάφισης, του σωσίματος και της βοήθειας ήρθε από τον "
+          f"δίσκο στις τρύπες του DIST: {len(ovl)}, {len(ovl2)} και {len(ovl3)} bytes, "
+          f"{sum(x != y for x, y in zip(holes, ovl))}, "
+          f"{sum(x != y for x, y in zip(holes2, ovl2))} και "
+          f"{sum(x != y for x, y in zip(holes3, ovl3))} διαφορετικά")
 
     # --- 4. ο κόσμος είναι παραγμένος ------------------------------------
     m.run_code(0x3EC0, open(os.path.join(ROOT, "build", "plane.bin"), "rb").read())

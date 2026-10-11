@@ -42,6 +42,11 @@ ob_put:
         ld      (ob_w),hl               ; ob_w, ob_h διπλανά
         ld      (ob_fl),a
 ob_blit:
+        ; ΧΩΡΙΣ ΔΙΑΣΤΗΜΑΤΑ. Μόνο το ob_quads μπαίνει πιο κάτω, στο ob_bspan, με
+        ; το ob_spt στον πίνακα του τεταρτημορίου (src/span.asm, βήμα 108).
+        xor     a
+        ld      (ob_spt+1),a
+ob_bspan:
         ; --- κάθετο clip ---
         ld      hl,(ob_y)
         ld      a,(ob_h)
@@ -67,7 +72,6 @@ ob_blit:
         jr      nz,ob_stride
         add     a,a
 ob_stride:
-        ld      (ob_str),a
         ld      c,a
 
         ; --- πρώτη γραμμή πηγής: από πάνω, ή από κάτω αν καθρεφτίζεται ---
@@ -107,50 +111,77 @@ ob_noflip:
         add     a,a
 ob_skdone:
         call    ob_addu
-        ld      (ob_ln),hl
+        ld      (obl_p+1),hl
 
+        ; --- ΟΣΑ ΜΕΝΟΥΝ ΙΔΙΑ ΑΠΟ ΓΡΑΜΜΗ ΣΕ ΓΡΑΜΜΗ γράφονται μέσα στον βρόχο
+        ; (βήμα 108): η πηγή, ο πυρήνας, πόσα bytes, το βήμα με το πρόσημό
+        ; του. Ως τότε ο βρόχος ξαναδιάβαζε σε κάθε γραμμή το ob_fl δύο
+        ; φορές, το cl_n, το ob_str και το ob_ln, και καλούσε το scr_nextline:
+        ; 83 us η γραμμή έξω από τον πυρήνα, όταν μια στήλη 4 bytes ενός
+        ; θόλου είναι 128. Τώρα 51. Το C είναι ακόμη το βήμα (ob_mul,
+        ; ob_addu). ---
+        ld      a,(ob_fl)
+        ld      hl,blt_mask_flip        ; μόνο τα ζεύγη που γράφονται, κατευθείαν
+        rra
+        jr      c,ob_kern
+        ld      hl,blt_op_line
+        bit     1,a                     ; το «αδιαφανές», μετά το rra
+        jr      nz,ob_kern
+        ld      hl,blt_mask_line
+ob_kern:
+        ld      (obl_k+1),hl
+        ld      b,0
+        rra                             ; CY: ανάποδα, από κάτω προς τα πάνω
+        jr      nc,ob_sdn
+        xor     a
+        sub     c
+        ld      c,a
+        sbc     a,a
+        ld      b,a                     ; BC = -βήμα
+ob_sdn:
+        ld      (obl_s+1),bc
+        ld      a,(cl_n)
+        ld      (obl_n+1),a
         ld      a,(cl_start)
         ld      c,a
         ld      a,(ob_y0)
         call    scr_addr
+        ; ΤΑ ΚΟΜΜΑΤΙΑ. Ο βρόχος μετρά γραμμές ως το τέλος του κομματιού
+        ; (obl_c), και το ob_nl όσες μένουν μετά από αυτό. Χωρίς διαστήματα
+        ; ένα κομμάτι, όλες οι γραμμές· με διαστήματα ένα ανά οκτώ γραμμές
+        ; πηγής (src/span.asm).
+        ld      hl,(ob_spt)
+        inc     h
+        dec     h
+        jp      nz,sp_first             ; γυρίζει στο ob_line
+        ld      hl,ob_nl
+        ld      a,(hl)
+        ld      (hl),0
+        ld      (obl_c),a
 
 ob_line:
         push    de
-        ld      hl,(ob_ln)
-        ld      a,(cl_n)
-        ld      b,a
-        ld      a,(ob_fl)
-        rra
-        jr      nc,ob_direct
-        call    blt_mask_flip           ; μόνο τα ζεύγη που γράφονται, κατευθείαν
-        jr      ob_next
-ob_direct:
-        and     2                       ; το «αδιαφανές», μετά το rra
-        jr      nz,ob_opaque
-        call    blt_mask_line
-        jr      ob_next
-ob_opaque:
-        call    blt_op_line
-ob_next:
-        pop     de
-        call    scr_nextline
-        ld      hl,(ob_ln)
-        ld      a,(ob_str)
-        ld      c,a
-        ld      b,0
-        ld      a,(ob_fl)
-        and     2
-        jr      z,ob_down
-        sbc     hl,bc                   ; το and μηδένισε το carry
-        jr      ob_store
-ob_down:
+obl_p:  ld      hl,0                    ; η πηγή αυτής της γραμμής
+        push    hl
+obl_n:  ld      b,0                     ; πόσα bytes
+obl_k:  call    0                       ; blt_mask_flip, blt_mask_line, blt_op_line
+        pop     hl
+obl_s:  ld      bc,0                    ; ±βήμα
         add     hl,bc
-ob_store:
-        ld      (ob_ln),hl
-        ld      hl,ob_nl
+        ld      (obl_p+1),hl
+        pop     de
+        ld      a,d
+        add     a,8
+        ld      d,a
+        call    c,scr_nlw               ; μόνο όταν τελειώνει σειρά χαρακτήρων
+        ld      hl,obl_c
         dec     (hl)
         jr      nz,ob_line
-        ret
+        ld      a,(ob_nl)
+        or      a
+        ret     z
+        call    sp_next                 ; το επόμενο κομμάτι
+        jr      ob_line
 
 ; ---------------------------------------------------------------------------
 ; ob_clip — ένας άξονας. Δίνει πόσο κόβεται από την αρχή, πόσο μένει, και πού
@@ -544,6 +575,14 @@ ob_shell:
         call    ob_getdome
         call    ob_vis
         ret     z
+        ; ΠΟΥ ΕΧΕΙ ΚΑΤΙ ΚΑΘΕ ΟΚΤΩ ΓΡΑΜΜΕΣ (βήμα 108, src/span.asm): ο πίνακας
+        ; του δακτυλίου, και ο θόλος ακολουθεί.
+        ld      a,(d_rec+D_SIZE)
+        add     a,sp_ring & 255
+        ld      l,a
+        ld      h,sp_ring >> 8
+        ld      l,(hl)
+        ld      (ob_spt),hl
         ld      hl,(d_geo)
         inc     hl
         inc     hl                      ; -> dome_nw
@@ -556,6 +595,13 @@ ob_shell:
         inc     hl
         ld      d,(hl)
         call    ob_quads                ; πρώτα ο δακτύλιος
+        ld      a,(d_qh)
+        rrca
+        rrca
+        rrca                            ; QH / 8: οι ομάδες του δακτυλίου
+        ld      hl,ob_spt
+        add     a,(hl)
+        ld      (hl),a
         pop     de
         ; fall through — μετά ο θόλος, στο ίδιο πλαίσιο
 
@@ -583,7 +629,7 @@ oq_nox:
         call    ob_addu
 oq_noy:
         ld      (ob_y),hl
-        call    ob_blit
+        call    ob_bspan                ; με τα διαστήματα του ob_spt
         ld      a,(oq_cur)
         inc     a
         cp      4
@@ -1677,8 +1723,8 @@ ob_fl:      db 0
 ob_st:      db 0                ; πόσες γραμμές κόπηκαν από πάνω
 ob_nl:      db 0                ; πόσες μένουν
 ob_y0:      db 0
-ob_str:     db 0                ; bytes ανά γραμμή πηγής
-ob_ln:      dw 0
+ob_spt:     dw 0                ; ο πίνακας διαστημάτων (src/span.asm)· H = 0: κανένας
+obl_c:      db 0                ; γραμμές ως το τέλος του κομματιού
 
 ; Ο οριζόντιος άξονας του ob_blit ΔΕΝ αντιγράφεται: διαβάζει κατευθείαν τα
 ; cl_skip, cl_n, cl_start του δεύτερου ob_clip.
