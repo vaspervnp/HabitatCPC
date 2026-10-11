@@ -79,7 +79,7 @@ gh_mark:
         ld      h,a                     ; y = 16 * σειρά + 6
         ld      l,4
         ld      (gh_hs),hl              ; gh_hs, gh_ys
-        jr      ghr_put
+        jp      ghr_put                 ; jp: το gh_rect μεγάλωσε (βήμα 107)
 
 ; ---------------------------------------------------------------------------
 ; gh_box — πλαίσιο γύρω από ορθογώνιο: τέσσερα ορθογώνια, όχι 2 x h λωρίδες.
@@ -144,6 +144,47 @@ gh_box:
 ; και οι γραμμές ακολουθούν με scr_nextline.
 ; ---------------------------------------------------------------------------
 gh_rect:
+        ; ΟΛΟ ΜΕΣΑ ΣΤΟ CLIP, ΧΩΡΙΣ ob_clip (βήμα 107): x, y από το clip_x0 /
+        ; clip_y0 ως το clip_x1 / clip_y1, πλάτος και ύψος όχι μηδέν. Είναι
+        ; σχεδόν πάντα έτσι, και τα δύο ob_clip ήταν ~110 us ανά πλευρά,
+        ; τέσσερις ανά βήμα κέρσορα. Ο,τι κόβεται, όπως πριν (ghr_clip).
+        ld      hl,(gh_y)
+        ld      de,(gh_n)               ; E = πλάτος, D = ύψος
+        ld      bc,(clip_y0)            ; C = y0, B = y1
+        call    ghr_in
+        jr      c,ghr_clip
+        ld      h,l
+        ld      l,d
+        ld      (gh_hs),hl              ; gh_hs = ύψος, gh_ys = y
+        ld      hl,(gh_x)
+        ld      d,e
+        ld      bc,(clip_x0)
+        call    ghr_in
+        jr      c,ghr_clip
+        ld      h,l
+        ld      l,e
+        ld      (cl_n),hl               ; cl_n = πλάτος, cl_start = x
+        jp      ghr_put
+; ghr_in — HL = θέση (16 bit), D = μήκος, C..B = το clip: NC αν [L, L+D) είναι
+; μέσα και D > 0. Κρατά DE, HL.
+ghr_in:
+        ld      a,h
+        or      a
+        scf
+        ret     nz                      ; αρνητικό ή πέρα από το 255
+        ld      a,d
+        cp      1
+        ret     c                       ; μήκος 0
+        ld      a,l
+        cp      c
+        ret     c                       ; πριν από την αρχή του clip
+        add     a,d
+        ret     c
+        ld      c,a
+        ld      a,b
+        cp      c                       ; CY αν το τέλος περνά το clip
+        ret
+ghr_clip:
         ld      hl,(gh_y)
         ld      a,(gh_nv)
         ld      de,(clip_y0)
@@ -211,17 +252,24 @@ ghr_mul:
 ; γραμμή που δεν φτάνει στο #FF δεν ελέγχει το τύλιγμα σε κάθε byte: κοιτά μία
 ; φορά αν το τελευταίο της byte το περνά, και μόνο τότε πάει στον αργό δρόμο.
 ; Το gh_swap έχει τους ίδιους δύο δρόμους.
+;
+; ΚΑΙ Η ΣΤΗΛΗ ΧΩΡΙΣ call (βήμα 107): το d += 8 μέσα στον βρόχο, και το
+; scr_nlw μόνο όταν περάσει σειρά χαρακτήρων· μετρητής το B (djnz) αντί για
+; το IXL. 94 -> 69 T-states τη γραμμή εδώ, 101 -> 76 στο gh_swap: οι δύο
+; πλευρές του πλαισίου είναι σχεδόν όλο το φάντασμα σε γραμμές.
         dec     a                       ; A = πλάτος: το 1 είναι η στήλη
         jr      nz,ghw_row
-ghw_col:                                ; πλάτος 1: η στήλη
+ghw_col:                                ; πλάτος 1: η στήλη· B = γραμμές
         ld      a,(de)
         ld      (hl),a
         inc     hl
         ld      a,c
         ld      (de),a
-        call    scr_nextline
-        dec     ixl
-        jr      nz,ghw_col
+        ld      a,d
+        add     a,8
+        ld      d,a
+        call    c,scr_nlw
+        djnz    ghw_col
         jr      ghw_done
 ghw_row:
         push    de
@@ -250,7 +298,10 @@ ghw_slow:
         djnz    ghw_slow
 ghw_next:
         pop     de
-        call    scr_nextline
+        ld      a,d
+        add     a,8
+        ld      d,a
+        call    c,scr_nlw
         dec     ixl
         jr      nz,ghw_row
 ghw_done:
@@ -310,6 +361,7 @@ gs_go:
         ; οι ίδιοι δύο γρήγοροι δρόμοι με το ghr_put
         dec     a
         jr      nz,gs_row
+        ld      b,c                     ; η στήλη: B = γραμμές, όπως στο ghw_col
 gs_col:
         ld      a,(de)
         ld      c,a
@@ -317,9 +369,11 @@ gs_col:
         ld      (de),a
         ld      (hl),c
         inc     hl
-        call    scr_nextline
-        dec     ixl
-        jr      nz,gs_col
+        ld      a,d
+        add     a,8
+        ld      d,a
+        call    c,scr_nlw
+        djnz    gs_col
         jr      gs_lp
 gs_row:
         push    de
@@ -350,7 +404,10 @@ gs_slow:
         djnz    gs_slow
 gs_next:
         pop     de
-        call    scr_nextline
+        ld      a,d
+        add     a,8
+        ld      d,a
+        call    c,scr_nlw
         dec     ixl
         jr      nz,gs_row
         jr      gs_lp

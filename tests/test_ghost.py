@@ -22,6 +22,12 @@
      περίγραμμα, ούτε το byte μετά το αρχείο, όπου αρχίζει κώδικας.
   3. Δύο αρνητικά: το `inc d` του gh_wrap γίνεται nop (μια γραμμή που περνά
      το #FF πέφτει 256 bytes πίσω), και το όριο ανεβαίνει ένα byte.
+
+Από το βήμα 107 το gh_rect παρακάμπτει τα δύο ob_clip όταν το ορθογώνιο είναι
+όλο μέσα στο clip (ghr_in), και οι στήλες του φαντάσματος κάνουν μόνες τους το
+d += 8, με `call c,scr_nlw` μόνο στην αλλαγή σειράς χαρακτήρων. Τέσσερα ακόμη
+αρνητικά: το τέλος του clip που δεν κόβει, η αρχή που δεν κόβει, η στήλη χωρίς
+το scr_nlw, και το gs_col χωρίς τον μετρητή του (ld b,c).
 """
 import os, random, re, sys
 
@@ -316,6 +322,32 @@ def main():
         check(up[0] and not up[4],
               f"ΑΡΝΗΤΙΚΟ: με το όριο ένα byte πιο πάνω το σημάδι μπαίνει σε 11 bytes "
               f"και γράφει το πρώτο byte μετά το αρχείο — {up}")
+
+    # --- βήμα 107: το gh_rect χωρίς ob_clip όταν όλα είναι μέσα, οι στήλες
+    # χωρίς call scr_nextline ---------------------------------------------
+    def find(at, pat, n=64):
+        m = boot(sym, 0)
+        return next((at + j for j in range(n) if list(m.read_ram(at + j, len(pat))) == pat), None)
+    gi, nl = sym["GHR_IN"], sym["SCR_NLW"]
+    ce = find(gi, [0x78, 0xB9, 0xC9], 30)                  # ld a,b / cp c / ret: το τέλος
+    cs = find(gi, [0x7D, 0xB9, 0xD8], 30)                  # ld a,l / cp c / ret c: η αρχή
+    gc = find(sym["GHW_COL"], [0xDC, nl & 255, nl >> 8], 20)
+    sc = find(sym["GS_COL"] - 1, [0x41], 1)                 # ld b,c: οι γραμμές της στήλης
+    for label, patch in (("το τέλος του clip δεν κόβει", ce and [(ce + 1, 0xB7)]),   # cp c -> or a
+                         ("η αρχή του clip δεν κόβει", cs and [(cs + 2, 0)]),        # ret c -> nop
+                         ("η στήλη χωρίς το scr_nlw", gc and [(gc + j, 0) for j in range(3)]),
+                         ("το gs_col χωρίς μετρητή", sc and [(sc, 0)])):
+        bad = None
+        if patch:
+            for i, cam in enumerate(CAMS):
+                try:
+                    _, bad = run(sym, k, cam, program(58 + i, 300), patch=patch)
+                except AssertionError as e:            # ένα πείραγμα μπορεί και να κολλήσει
+                    bad = f"κόλλησε: {e}"
+                if bad:
+                    break
+        check(bool(patch) and bad is not None,
+              f"ΑΡΝΗΤΙΚΟ (βήμα 107): με «{label}» το μοντέλο διαφωνεί — {bad}")
 
     print(f"\n{total} πράξεις σε {len(CAMS)} κάμερες")
     if FAIL:

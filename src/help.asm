@@ -144,7 +144,7 @@ hp_green:
         ld      de,G_font_m1 - 32 * 8
         add     hl,de
         ex      de,hl
-        ld      hl,(hud_de)
+        call    hud_scr                 ; src/hud.asm
         ld      b,8
 hpg_ln:
         ld      a,(de)

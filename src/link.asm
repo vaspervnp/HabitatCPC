@@ -571,10 +571,28 @@ alg_one:
 
 ; al_cbk — ένα tile του μονοπατιού στον έλεγχο: μετράει, και θυμάται αν δεν
 ; πατιέται. CY όταν περάσει τα AL_RANGE. Κρατά BC, DE.
+;
+; ΤΟ tile_addr ΚΑΙ ΤΟ bd_ok ΜΕΣΑ (βήμα 107): το al_cbk είναι ο έλεγχος κάθε
+; βήματος κέρσορα, ~40 tiles δίπλα στην αποικία, και οι δύο κλήσεις ήταν το
+; ένα τρίτο του.
 al_cbk:
-        call    tile_addr
+        ld      a,b
+        add     a,64
+        ld      l,a                     ; tx + 64
+        ld      a,c
+        add     a,64
+        srl     a                       ; το κρατούμενο είναι το ty & 1
+        jr      nc,alk_ev
+        set     7,l
+alk_ev:
+        add     a,WORLD_BASE >> 8
+        ld      h,a
         ld      a,(hl)
-        call    bd_ok
+        and     W_OCC_MASK + 7          ; το bd_ok: έδαφος, σκόνη, θεμέλιο
+        jr      z,alk_ok
+        dec     a
+        jr      z,alk_ok
+        cp      W_FOUNDATION - 1
         jr      z,alk_ok
         ld      a,1
         ld      (al_bad),a
@@ -723,6 +741,7 @@ aln_out:
 ; al_s4 — το al_seg από το (B, C) ως το (H, L) με την τράπεζα 4 μέσα: ένα
 ; σκέλος του Γ για το al_leg (src/commit.asm, βήμα 94), που ζει στην 1.
 al_s4:
+        call    al_rsync                ; κρατά BC, HL
         push    bc
         ld      bc,GA_PORT + PAGE_B4
         out     (c),c
@@ -730,6 +749,7 @@ al_s4:
         call    al_seg
         jr      alw_b1
 al_w4:
+        call    al_rsync
         ld      bc,GA_PORT + PAGE_B4
         out     (c),c
         call    al_walk
@@ -794,33 +814,63 @@ alk_v:
         ld      h,b                     ; πρώτα κατά y: K = (px, qy)
         ret
 
-; al_emit — ένα tile: μέσα σε κάποιο από τα δύο αποτυπώματα δεν μετρά.
+; al_emit — ένα tile: μέσα σε κάποιο από τα δύο αποτυπώματα δεν μετρά (NC),
+; αλλιώς η (al_cb).
+;
+; ΤΑ ΔΥΟ ΑΠΟΤΥΠΩΜΑΤΑ ΜΕΣΑ ΣΤΙΣ ΕΝΤΟΛΕΣ (βήμα 107). Ως τότε δύο κλήσεις al_in
+; ανά tile, με τον δείκτη στο al_nx και στο al_rx: ~54 us για ένα tile έξω
+; και από τα δύο, που είναι σχεδόν όλα. Τώρα το al_rsync γράφει τα x0, y0,
+; w, h των δύο στα sub / cp από κάτω στην αρχή κάθε Γ (al_w4, al_s4), και
+; ένα tile έξω είναι ~22 us. Οποιος αλλάζει το al_nx.. ή το al_rx.. ανάμεσα
+; στα al_w4 / al_s4 δεν φαίνεται εδώ — και κανείς δεν το κάνει: το al_node,
+; το al_find και το dmp_set του src/dm_ovl.asm τα γράφουν πριν.
 al_emit:
-        ld      hl,al_nx
-        call    al_in
-        ccf
-        ret     nc
-        ld      hl,al_rx
-        call    al_in
-        ccf
-        ret     nc
+        ld      a,b
+ale_nx: sub     0                       ; x - x0 < w: μέσα στον άξονα x
+ale_nw: cp      0
+        jr      nc,ale_r
+        ld      a,c
+ale_ny: sub     0
+ale_nh: cp      0
+        jr      c,ale_in
+ale_r:
+        ld      a,b
+ale_rx: sub     0
+ale_rw: cp      0
+        jr      nc,ale_cb
+        ld      a,c
+ale_ry: sub     0
+ale_rh: cp      0
+        jr      nc,ale_cb
+ale_in:
+        or      a                       ; NC: δεν μετρά, συνέχισε
+        ret
+ale_cb:
         ld      hl,(al_cb)
         jp      (hl)
 
-; al_in — HL -> x0, y0, w, h: CY αν το (B, C) είναι μέσα.
-al_in:
-        ld      a,b
-        sub     (hl)
-        inc     hl
-        inc     hl
-        cp      (hl)
-        ret     nc
-        dec     hl
-        ld      a,c
-        sub     (hl)
-        inc     hl
-        inc     hl
-        cp      (hl)
+; al_rsync — τα al_nx.. και al_rx.. μέσα στο al_emit. Κρατά BC, HL.
+al_rsync:
+        ld      de,(al_nx)              ; E = x0, D = y0
+        ld      a,e
+        ld      (ale_nx + 1),a
+        ld      a,d
+        ld      (ale_ny + 1),a
+        ld      de,(al_nw)              ; E = w, D = h
+        ld      a,e
+        ld      (ale_nw + 1),a
+        ld      a,d
+        ld      (ale_nh + 1),a
+        ld      de,(al_rx)
+        ld      a,e
+        ld      (ale_rx + 1),a
+        ld      a,d
+        ld      (ale_ry + 1),a
+        ld      de,(al_rw)
+        ld      a,e
+        ld      (ale_rw + 1),a
+        ld      a,d
+        ld      (ale_rh + 1),a
         ret
 
 ; ---------------------------------------------------------------------------
@@ -1061,6 +1111,8 @@ al_lb:      db 0
         ; tests/uitest.asm θα ήταν εδώ μπροστινές ετικέτες)
         assert  al_len == al_n + 1 && al_pt == al_n + 2
         assert  al_bad == al_cnt + 1 && al_nh == al_nw + 1 && al_rh == al_rw + 1
+        assert  al_ny == al_nx + 1 && al_ry == al_rx + 1      ; al_rsync
+        assert  W_DUST == 1                     ; το bd_ok μέσα στο al_cbk
         assert  D_STATE == 4 && ST_STATE == 4 && ST_KIND == 2 && ST_SIZE == 3
         assert  D_SIZE == 2 && D_CX == 0 && D_CY == 1
         assert  (G_struct_tbl & 255) == 0 && MAX_STRUCT * STRUCT_REC == 256 && MAX_DOME == 64

@@ -41,7 +41,8 @@
             του FIRE κάτω από 200 ms, όπως η τοποθέτηση του L στο test_reveal·
             με μονοπάτι κάτω από 140, γιατί ξαναζωγραφίζονται μόνο τα tiles του
             (171 ms με το ορθογώνιο κέντρο-γωνία-κέντρο, που έπιανε και τον
-            θόλο απέναντι).
+            θόλο απέναντι)· το airlock νότια του κυλικείου κάτω από 170 από το
+            βήμα 107, γιατί με όλο το σκέλος της σύνδεσης εδάφους βγαίνει 199.
   ΠΡΩΤΟ     Σε κόσμο χωρίς θόλο ένα airlock μπαίνει μόνο του (EC_FREELK = 1), με
   AIRLOCK   σύνδεση εδάφους στο κοντινότερο airlock, και ο θόλος που έρχεται μετά
             του δίνει τον διάδρομό του (EC_FREELK = 0, ST_JOINED = 1) και δένεται
@@ -49,7 +50,18 @@
   ΠΙΝΑΚΑΣ   Στο παιχνίδι: το σύνολο του κόστους στη σειρά 3, ο λόγος στη 4 —
             και ο λόγος αλλάζει ακόμη κι όταν το ui_bad έμενε ίδιο ως το βήμα 84.
   ΧΡΟΝΟΣ    Ένα βήμα κέρσορα (ui_validate) δίπλα στην αποικία, όχι πιο αργό από
-            όσο μετρήθηκε στο βήμα 86.
+            όσο μετρήθηκε στο βήμα 86· ο ηλιακός με μονοπάτι από το βήμα 107
+            ως 6.400 us (7.525 ως τότε).
+  ΣΚΙΑ      (βήμα 107) Οι σειρές 3-4 έχουν δική τους κρυφή μνήμη (hud_s34). Στο
+            παιχνίδι, με θόλο S και μετά ηλιακό στο PLACE δίπλα στην αποικία:
+            βήματα κέρσορα και στις τέσσερις κατευθύνσεις, ως να σκρολάρει η
+            κάμερα, ένα άλμα κάμερας, αλλαγή αντικειμένου, ESC. Μετά από το
+            καθένα οι σειρές 0-4 στην οθόνη είναι ίδιες με τη σχεδίασή τους από
+            το μηδέν — λωρίδες μαύρες, κρυφές μνήμες κενές και υπογραφή άκυρη
+            από εδώ, όχι από το hud_inval που ελέγχεται.
+  ΒΗΜΑ      (βήμα 107) Η δουλειά του γύρου που κάνει ένα βήμα κέρσορα στο
+            παιχνίδι, χωρίς την αναμονή του vsync: θόλος S ως 33.000 us (43.798
+            στο βήμα 106), ηλιακός ως 20.800 (22.992).
 
 Αρνητικά, με το snapshot πειραγμένο: εμβέλεια 13, χωρίς την προσωρινή
 σφραγίδα, χωρίς το ξεσφράγισμα, μόνο το πρώτο Γ, το γρήγορο «όχι» ένα tile πιο
@@ -60,7 +72,10 @@
 πριν από τις σειρές του εργοταξίου, το bd_nres που μένει από την προηγούμενη
 θέση, το ui_bad χωρίς τον λόγο, ο πίνακας χωρίς το κόστος στην υπογραφή του· και
 από το βήμα 87 το σκάφος που μετράει ως δομή, η άγκυρα που δεν διαλέγει τη
-μικρότερη απόσταση, και το airlock που δεν σημειώνεται ST_JOINED.
+μικρότερη απόσταση, και το airlock που δεν σημειώνεται ST_JOINED· από το βήμα
+107 το hud_inval που δεν σβήνει το hud_s34, το hud_to χωρίς το hud_tb, το
+hud_char που δεν γράφει την κρυφή μνήμη (η ΣΚΙΑ), το al_emit χωρίς το νέο
+αποτύπωμα και το al_w4 χωρίς al_rsync (ο κανόνας του reach.py).
 """
 import ctypes, os, random, sys
 
@@ -536,8 +551,10 @@ def panel(sym, patch=()):
 # 6.790 (14.684: δεν ψάχνει πια μονοπάτι)· ηλιακός με μονοπάτι 7.525 (6.956, αλλά
 # προς το airlock, όχι προς τον θόλο)· ηλιακός μακριά 2.249 (3.558: μόνο οι
 # δομές)· airlock 6.441. Ως το βήμα 84 μόνο το bd_check, 610-820.
+# Βήμα 107: ο ηλιακός με μονοπάτι 6.045 — τα δύο αποτυπώματα μέσα στις εντολές του
+# al_emit, και το tile_addr με το bd_ok μέσα στο al_cbk.
 CEIL = {"θόλος, διάδρομος": 9700, "θόλος χωρίς διάδρομο": 7300,
-        "ηλιακός, μονοπάτι": 7900, "ηλιακός μακριά": 2400, "airlock, διάδρομος": 6700}
+        "ηλιακός, μονοπάτι": 6400, "ηλιακός μακριά": 2400, "airlock, διάδρομος": 6700}
 TIME_AT = [("θόλος, διάδρομος", 0, 16, -12), ("θόλος χωρίς διάδρομο", 0, 8, -10),
            ("ηλιακός, μονοπάτι", 4, -9, -11), ("ηλιακός μακριά", 4, -37, -23),
            ("airlock, διάδρομος", 9, 16, -10)]
@@ -560,6 +577,146 @@ def costs(sym, patch=()):
     return out
 
 
+# --- βήμα 107: η κρυφή μνήμη των σειρών 3-4, και ένα βήμα κέρσορα στο παιχνίδι --
+HUD_BOT, HUD_TOPB, HUD_CELL0 = 1600, 160, 0x7B
+
+
+def strips(G):
+    """Τα bytes των σειρών 0-2 (T0, T1) και 3-4 (B2) στην οθόνη, οι γραμμές 0-7."""
+    m, s = G.m, G.sym
+    p = 2 * (m.peek(s["CAM_OFF"]) | m.peek(s["CAM_OFF"] + 1) << 8)
+    scr = G.bank(3)
+    at = lambda off: [(ln * 0x800 + ((p + off + x) & 0x7FF)) for ln in range(8) for x in range(80)]
+    top = at(-HUD_TOPB) + at(-HUD_TOPB + 80)
+    b2 = at(HUD_BOT + 160)
+    return top, b2, (lambda idx: bytes(scr[a] for a in idx)), scr
+
+
+def hud_truth(G):
+    """(εικόνα, πλήρης σχεδίαση) των σειρών 0-4, με σταματημένη προσομοίωση.
+    Πρώτα ένα hud_draw όπως στο ρολόι του HUD (οι 0-2 με την κρυφή μνήμη τους)·
+    μετά, ΑΝΕΞΑΡΤΗΤΑ από το hud_inval, οι λωρίδες μαύρες, οι κρυφές μνήμες
+    κενές, η υπογραφή του πίνακα άκυρη, και hud_draw + ui_panel από την αρχή."""
+    m, s = G.m, G.sym
+    on = G.still()
+    assert m.peek(s["UI_HOLD"]) == 0, "μήνυμα στις σειρές 3-4: η σύγκριση δεν ισχύει"
+    G.probe(["HUD_DRAW"])
+    top, b2, read, scr = strips(G)
+    pic = read(top) + read(b2)
+    for a in top + b2:
+        scr[a] = 0
+    for k in range(120):
+        m.poke(layout("G_hud_shadow") + k, HUD_CELL0)
+    for k in range(80):
+        m.poke(s["HUD_S34"] + k, HUD_CELL0)
+    for k in range(11):                                   # UIP_NSIG
+        m.poke(s["UIP_SIG"] + k, 255)
+    G.probe(["HUD_DRAW", "UI_PANEL"])
+    ref = read(top) + read(b2)
+    G.go(on)
+    return pic, ref
+
+
+def shadow(sym, g, patch=()):
+    """ΣΚΙΑ (βήμα 107). Η πρώτη διαφορά, ή None."""
+    import test_reveal as R
+    import balance as B
+    G = R.Game(sym, g)
+    m = G.m
+    for a, v in patch:
+        m.poke(a, v)
+    G.camera(4, -9)
+    B.build(m, sym, 0, g + 6, at=(16, -12), place=False)             # θόλος S
+    G.settle()
+    G.run(40_000)
+    acts = ([("δεξιά", cpc.JOY_RIGHT), ("αριστερά", cpc.JOY_LEFT)] * 3
+            + [("κάτω", cpc.JOY_DOWN), ("πάνω", cpc.JOY_UP)] * 2
+            + [("δεξιά", cpc.JOY_RIGHT)] * 8                         # ως να σκρολάρει η κάμερα
+            + [("άλμα κάμερας", None), ("αριστερά", cpc.JOY_LEFT), ("ηλιακός", 4),
+               ("δεξιά", cpc.JOY_RIGHT), ("αριστερά", cpc.JOY_LEFT), ("ESC", "esc")])
+    seen = set()
+    cam0 = (m.peek(sym["CAM_TX"]), m.peek(sym["CAM_TY"]))
+    for k, (what, act) in enumerate(acts):
+        if act is None:
+            G.camera(-12, -9)
+        elif act == "esc":
+            m.key_down(cpc.KEY_ESC)
+            G.run(100_000)
+            m.key_up(cpc.KEY_ESC)
+            G.run(200_000)
+        elif act == 4:
+            B.build(m, sym, 4, g + 6, at=(-9, -11), place=False)
+            G.settle()
+        else:
+            G.stick(act)
+        if (m.peek(sym["CAM_TX"]), m.peek(sym["CAM_TY"])) != cam0:
+            seen.add("κάμερα")
+        pic, ref = hud_truth(G)
+        if pic != ref:
+            n = sum(a != b for a, b in zip(pic, ref))
+            row = "0-2" if any(a != b for a, b in zip(pic[:1280], ref[:1280])) else "3-4"
+            return f"ΣΚΙΑ, βήμα {k} ({what}): {n} bytes των σειρών {row} διαφέρουν από την πλήρη σχεδίαση"
+        seen.add(what)
+    if "κάμερα" not in seen:
+        return "ΣΚΙΑ: η κάμερα δεν σκρόλαρε ποτέ"
+    return None
+
+
+def step_work(sym, g, patch=(), steps=6):
+    """ΒΗΜΑ (βήμα 107): µs δουλειάς του γύρου που κάνει ένα βήμα κέρσορα, χωρίς
+    την αναμονή του vsync (ML_LOW / ML_HIGH), με το PC ανά 20 µs. -> {σκηνή: μέση}."""
+    import bisect
+    import test_reveal as R
+    import balance as B
+    labs = sorted((v, k) for k, v in sym.items() if isinstance(v, int))
+    addrs = [a for a, _ in labs]
+    waits = {sym["ML_LOW"], sym["ML_HIGH"]}
+    out = {}
+    for label, item, at, cam in STEP_AT:
+        G = R.Game(sym, g)
+        m = G.m
+        for a, v in patch:
+            m.poke(a, v)
+        G.camera(*cam)
+        B.build(m, sym, item, g + 6, at=at, place=False)
+        G.settle()
+        G.run(40_000)
+        works = []
+        for k in range(steps):
+            hx = m.peek(sym["CUR_HX"])
+            c0 = G.count()
+            while G.count() == c0:
+                m.run_us(20)
+                G.t += 20
+            m.joystick(cpc.JOY_RIGHT if k % 2 == 0 else cpc.JOY_LEFT)
+            c, work, moved = G.count(), 0, False
+            while True:
+                m.run_us(20)
+                G.t += 20
+                if labs[bisect.bisect_right(addrs, m.pc) - 1][0] not in waits:
+                    work += 20
+                if not moved and m.peek(sym["CUR_HX"]) != hx:
+                    moved = True
+                    m.joystick(0)
+                if G.count() != c:
+                    if moved:
+                        break
+                    c, work = G.count(), 0
+            m.joystick(0)
+            works.append(work)
+            G.run(300_000)
+        out[label] = sum(works) // len(works)
+    return out
+
+
+# (σκηνή, αντικείμενο, κέρσορας, κάμερα), και το ταβάνι της μέσης δουλειάς ανά
+# βήμα. Μετρημένα στο βήμα 107: θόλος S 31.560 (43.798 στο 106: ο πίνακας
+# ξαναγραφόταν όλος σε κάθε αλλαγή κόστους)· ηλιακός 19.708 (22.992).
+STEP_AT = [("θόλος S", 0, (16, -12), (4, -9)), ("ηλιακός", 4, (-9, -11), (-12, -9))]
+STEP_CEIL = {"θόλος S": 33000, "ηλιακός": 20800}
+STEP_WAS = {"θόλος S": 43798, "ηλιακός": 22992}
+
+
 # --- FIRE, στο παιχνίδι ------------------------------------------------------
 # Θέσεις δίπλα στην αποικία του §10.1, στο έδαφος του seed (βρέθηκαν κοιτάζοντας
 # το επίπεδο: tools/balance.py, plane, και tools/reach.py): ένας μικρός θόλος
@@ -576,6 +733,12 @@ diag = lambda cx, cy, p: lambda res: any(c[3][0][0] & 1 and c[1] == (cx, cy, p)
 FIRE_MS = 200                            # όπως η τοποθέτηση θόλου L (test_reveal)
 FIRE_PATH_MS = 140                       # μετρημένο 127: μόνο τα tiles του μονοπατιού·
                                          # 171 με τα ορθογώνια κέντρο-γωνία-κέντρο
+# Το airlock δένεται στο έδαφος με ένα Γ που περνά μέσα από την αποικία, και το
+# ξαναζωγραφίζει σκέλος-σκέλος, μόνο από το πρώτο ως το τελευταίο tile που έγινε
+# θεμέλιο (lk_draw). Μετρημένο 144 ms στο βήμα 106 και 135 στο 107 (ο πίνακας με
+# κρυφή μνήμη)· με όλο το σκέλος 223 στο βήμα 94 και 199 στο 107 — κάτω από το
+# κοινό όριο των 200, άρα δικό του ταβάνι.
+FIRE_CAP = {"airlock νότια του κυλικείου": 170}
 FIRE_AT = [("θόλος S", 0, (16, -12), (4, -9), None),
            ("ηλιακός", 4, (-9, -11), (-12, -9), None),
            ("θόλος M, διαγώνιος", 1, (-18, 30), (-18, 10), diag(-18, 30, 1)),
@@ -623,7 +786,7 @@ def fire(sym, g, patch=()):
         # φάντασμα περιμένει (ui_owed) — η πλήρης σχεδίαση το έχει ήδη.
         G.run(5_000_000, until=lambda: not (m.peek(sym["RV_PEND"]) or m.peek(sym["UI_OWED"])
                                             or m.peek(sym["DIRTY_NUM"])))
-        laid, cap = G.worst(), FIRE_PATH_MS if res["path"] else FIRE_MS
+        laid, cap = G.worst(), FIRE_CAP.get(name, FIRE_PATH_MS if res["path"] else FIRE_MS)
         if laid >= cap:
             return f"{name}: ο χειρότερος γύρος του FIRE {laid:.0f} ms (όριο {cap})"
         # --- ο κόσμος: το αποτύπωμα πιασμένο (bd_commit) — θεμέλιο μιας δομής,
@@ -863,12 +1026,30 @@ def negatives(sym, g):
          [(find(m, sym["UI_VALIDATE"], [0x32] + w(sym["BD_NRES"]), 20) + k, 0) for k in range(3)]),
         ("το ui_bad χωρίς τον λόγο", panel,
          [(find(m, sym["AL_PLAN"], [0xCA] + w(sym["UID_OUT"]), 120), 0xC3)]),
+        # --- βήμα 107 ---
+        # ldir του hud_inval για το hud_s34 γίνεται nop nop: μετά από άλμα κάμερας
+        # οι σειρές 3-4 είναι μαύρες και η κρυφή μνήμη λέει ότι είναι γραμμένες
+        ("το hud_inval δεν σβήνει το hud_s34", shadow,
+         [(find(m, sym["HUD_INVAL"], [0x21] + w(sym["HUD_S34"]), 40) + 11 + k, 0) for k in range(2)]),
+        # sub c του hud_to γίνεται nop: η στήλη μετρά από την αρχή της κρυφής μνήμης
+        ("το hud_to χωρίς το hud_tb", shadow, [(find(m, sym["HUD_TO"], [0x91, 0x2F], 12), 0)]),
+        # ld (hl),a του hud_char γίνεται nop: η κρυφή μνήμη δεν μαθαίνει ό,τι γράφτηκε
+        ("το hud_char που δεν γράφει την κρυφή μνήμη", shadow,
+         [(find(m, sym["HUD_CHAR"], [0xBE, 0x28], 12) + 3, 0)]),
+        # jr c,ale_in του al_emit γίνεται nop nop: τα tiles του νέου αποτυπώματος μετράνε
+        ("το al_emit χωρίς το νέο αποτύπωμα", rules,
+         [(sym["ALE_NH"] + 2 + k, 0) for k in range(2)] if m.peek(sym["ALE_NH"] + 2) == 0x38 else None),
+        # call al_rsync του al_w4 γίνεται nop: τα αποτυπώματα της προηγούμενης δοκιμής
+        ("το al_w4 χωρίς al_rsync", rules, [(sym["AL_W4"] + k, 0) for k in range(3)]),
         ("ο πίνακας χωρίς το κόστος στην υπογραφή", panel,
          [(a, v) for a, v in zip(range(find(m, sym["UIP_START"], [0x3A] + w(sym["CR_METAL"]), 200), 10**6),
                                  [0x7E, 0, 0])]),
     ]
     for name, fn, patch in neg:
-        err = (fire(sym, g, patch) if fn == "fire" else fn(sym, g, patch) if fn is first_lock
+        if not patch:
+            check(False, f"αρνητικό «{name}»: δεν βρέθηκε πού να πειραχτεί")
+            continue
+        err = (fire(sym, g, patch) if fn == "fire" else fn(sym, g, patch) if fn in (first_lock, shadow)
                else fn(sym, patch))
         check(err is not None, f"αρνητικό «{name}»: " + (err or "ΔΕΝ το έπιασε τίποτα"))
 
@@ -888,6 +1069,12 @@ def main():
     t = costs(sym)
     for k, v in t.items():
         check(v <= CEIL[k], f"ui_validate, {k}: {v} us (ταβάνι {CEIL[k]})")
+    err = shadow(sym, g)
+    check(err is None, err or "ΣΚΙΑ: οι σειρές 0-4 του HUD = η πλήρης σχεδίασή τους μετά από "
+                              "κάθε βήμα κέρσορα, σκρολάρισμα, άλμα κάμερας, αλλαγή αντικειμένου και ESC")
+    for k, v in step_work(sym, g).items():
+        check(v <= STEP_CEIL[k], f"ΒΗΜΑ, {k}: {v} us δουλειάς ανά βήμα κέρσορα, χωρίς την αναμονή "
+                                 f"του vsync (ταβάνι {STEP_CEIL[k]}, {STEP_WAS[k]} στο βήμα 106)")
     negatives(sym, g)
     return 1 if FAIL else 0
 
