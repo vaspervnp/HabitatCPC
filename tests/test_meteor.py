@@ -15,6 +15,9 @@ byte προς byte για το ΤΙ χτυπά. Εδώ, στο binary που φ�
              σφραγίδα του (cr_stampx) ο κρατήρας εκεί σβήνει τη λωρίδα του.
   ΑΠΟΙΚΙΑ    Η πίστα γίνεται εργοτάξιο και ξαναχτίζεται· η μηχανή οξυγόνου
              σταματά και την επισκευάζουν.
+  ΣΗΜΑ       (βήμα 109) Η πίστα που χτύπησε έχει στην οθόνη το σήμα του
+             εργοταξίου, χωρίς πλήρη σχεδίαση: το DK_TILE του st_redraw.
+             ΑΡΝΗΤΙΚΟ: χωρίς αυτό η πίστα μένει όπως ήταν ως να ξαναχτιστεί.
   ΠΑΙΚΤΗΣ    Ο πίνακας γράφει METEOR SHOWER, ο ήχος της κρούσης παίζει.
   ΣΥΧΝΟΤΗΤΑ  Μία βροχή ανά ~5 sol, και ΠΟΤΕ στον ίδιο γύρο με θύελλα,
              βλάβη, έκλαμψη ή επισκέπτη (η γεννήτρια των συμβάντων, στην
@@ -86,7 +89,7 @@ def seen(t):
     return 0 <= t[0] - CAM[0] < 20 and 0 <= t[1] - CAM[1] < 10
 
 
-def shower(sym, g, cut_push=False, no_half=False):
+def shower(sym, g, cut_push=False, no_half=False, cut_mark=False):
     if no_half:
         # cr_stampx -> JP cr_stamp ΠΡΙΝ χτιστεί η αποικία (src/colony.asm,
         # στα καρέ του balance.boot): τα tiles του μισού πλάτους μένουν άδεια.
@@ -133,6 +136,16 @@ def shower(sym, g, cut_push=False, no_half=False):
                 break
         else:
             sys.exit("δεν βρέθηκε το JP wh_push στο mt_ground")
+    if cut_mark:
+        # CALL st_redraw -> τρία NOP, στο mth_struct
+        at, sr = sym["MTH_STRUCT"], sym["ST_REDRAW"]
+        for k in range(48):
+            if (G.m.peek(at + k) == 0xCD and G.m.peek(at + k + 1) == sr & 0xFF
+                    and G.m.peek(at + k + 2) == sr >> 8):
+                G.m.write_ram(at + k, bytes(3))
+                break
+        else:
+            sys.exit("δεν βρέθηκε το CALL st_redraw στο mth_struct")
     world0 = bytes(G.bank(4)[:W.SIZE])
     pic0 = G.play()
     # Το κανάρινι μακριά από κάθε κρατήρα και τον 3x3 γύρω του.
@@ -171,8 +184,13 @@ def shower(sym, g, cut_push=False, no_half=False):
     alive = G.alive(c)                   # ΠΡΙΝ: το truth() ξανασχεδιάζει
     pic, ref = G.truth()
     world1 = bytes(G.bank(4)[:W.SIZE])
+    b6 = G.bank(6)
+    sx = lambda v: v - 256 if v > 127 else v
+    pc = (sx(b6[STRUCT_TBL + (PAD_NODE - 64) * 8]),
+          sx(b6[STRUCT_TBL + (PAD_NODE - 64) * 8 + 1]))
     return dict(G=G, seed=seed, hits=hits, craters=craters, world0=world0,
                 world1=world1, pic0=pic0, pic=pic, ref=ref, alive=alive,
+                mark=R.site_mark(pic, *pc, CAM), mark_ref=R.site_mark(ref, *pc, CAM),
                 spot=(cy * 16 + 4) * 80 + cx * 4 + 1,
                 texts=texts, booms=booms, hp_min=hp_min, worst=worst, pad=pad,
                 job=built)
@@ -208,6 +226,9 @@ def main():
           f"η πίστα χτυπήθηκε: κατάσταση {s['pad'][0]} (εργοτάξιο), "
           f"ακεραιότητα {s['pad'][1]}, εργασία Build "
           f"{'δημοσιευμένη' if s['job'] else 'ΚΑΜΙΑ'}")
+    check(s["mark"] and s["mark_ref"],
+          "και έχει το σήμα του εργοταξίου στο κέντρο της, όπως και στην πλήρη "
+          "σχεδίαση (βήμα 109)")
     check(s["hp_min"] == 0, f"η μηχανή οξυγόνου σταμάτησε (υγεία ως {s['hp_min']})")
     check("METEOR SHOWER" in s["texts"],
           f"ο πίνακας έγραψε {sorted(s['texts'])}")
@@ -234,6 +255,15 @@ def main():
     check(bad > 0 and n["world1"] == s["world1"],
           f"ΑΡΝΗΤΙΚΟ: χωρίς το wh_push οι ίδιοι κρατήρες είναι στον χάρτη αλλά "
           f"όχι στην οθόνη — {bad} λάθος bytes")
+
+    # --- ΑΡΝΗΤΙΚΟ: η πίστα χωρίς το σήμα της (βήμα 109) --------------------
+    # Ως το 109 έτσι ήταν: μια δομή που χτύπησε φαινόταν ίδια ως να ξαναχτιστεί.
+    k = shower(sym, g, cut_mark=True)
+    bad = sum(1 for i, (a, b) in enumerate(zip(k["pic"], k["ref"]))
+              if a != b and i != k["spot"])
+    check(not k["mark"] and k["mark_ref"] and bad > 0,
+          f"ΑΡΝΗΤΙΚΟ: χωρίς το st_redraw του mth_struct η πίστα δεν έχει σήμα "
+          f"στην οθόνη, ενώ στην πλήρη σχεδίαση έχει — {bad} λάθος bytes")
 
     # --- ΑΡΝΗΤΙΚΟ: χωρίς τα tiles του μισού πλάτους (βήμα 96) ---------------
     # Ετσι ήταν η πρώτη εκδοχή του 96, και η δοκιμή βρήκε 32 bytes.

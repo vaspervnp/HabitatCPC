@@ -796,12 +796,18 @@ ob_mach_one:
         jr      z,omk_put
         ld      l,(G_marks + MARK_W * MARK_H) & 255     ; περιμένει
 omk_put:
+        call    ob_mark
+        jp      om_prep
+
+; ob_mark — HL = ένα σήμα (τράπεζα 5), αδιαφανές στο (ob_x, ob_y): για τις
+; μηχανές, και από το βήμα 109 για τα εργοτάξια των δομών (st_mark).
+; Γυρίζει με την 6.
+ob_mark:
         ld      (ob_src),hl
         ld      hl,MARK_H*256 + MARK_W
         ld      a,4
         ld      c,PAGE_B5
-        call    ob_put_in
-        jp      om_prep
+        jp      ob_put_in
 
 MARK_W      equ 2                       ; = MARK_W, MARK_H του tools/pack.py
 MARK_H      equ 6
@@ -1266,7 +1272,8 @@ os_opaque:
         ld      hl,(ob_w)
         ld      a,e                     ; (ob_fl)
         ld      c,PAGE_B7
-        jp      ob_put_in
+        call    ob_put_in
+        jp      st_mark                 ; src/figure.asm: το εργοτάξιο (βήμα 109)
 
 ; ---------------------------------------------------------------------------
 ; ob_fig_scan — DOME_FIG[64][8]: ποια φιγούρα σε ποια θέση ποιου θόλου.

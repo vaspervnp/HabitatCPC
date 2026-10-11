@@ -6,8 +6,15 @@ uip_fire και uil_second) και η ολοκλήρωση (main.asm, ml_built).
 «0,8 s, μία φορά ανά κτίριο». Μετρημένο με συνεχές ρολόι, ήταν 360-920 ms στην
 ολοκλήρωση και 440-1.000 ms στην τοποθέτηση, ανάλογα με το τι φαινόταν — για
 να αλλάξουν, στην ολοκλήρωση, το πολύ 1.200 bytes: το εικονίδιο του δωματίου
-και οι μηχανές. Μια δομή δεν αλλάζει ΚΑΝΕΝΑ, γιατί ζωγραφίζεται ίδια χτισμένη
-ή όχι.
+και οι μηχανές. Μια δομή ως το βήμα 109 δεν άλλαζε ΚΑΝΕΝΑ, γιατί
+ζωγραφιζόταν ίδια χτισμένη ή όχι· από το 109 το εργοτάξιο έχει στο κέντρο του
+το σήμα της αναμονής (st_mark), και η ολοκλήρωση ξαναζωγραφίζει τα 3x3 tiles
+γύρω του (st_built). Ο κέρσορας μένει πάνω στη δομή, οπότε εκεί ο έλεγχος
+ΑΛΗΘΕΙΑ γίνεται και ΚΑΤΩ από το φάντασμα (under). Τρία αρνητικά γι' αυτό:
+χωρίς το st_mark το εργοτάξιο δεν έχει σήμα· χωρίς το DK_TILE του st_built το
+σήμα μένει στη χτισμένη δομή· και χωρίς το dt_ghost_rect του dh_tile το αρχείο
+του φαντάσματος κρατά το εργοτάξιο. Το ίδιο και για έναν κρατήρα κάτω από το
+πλαίσιο του κέρσορα, που ως το βήμα 108 το ui_hide τον έσβηνε.
 
 Τρία πράγματα ελέγχονται για κάθε περίπτωση, και κανένα δεν είναι «φαίνεται
 σωστό»:
@@ -68,6 +75,19 @@ def check(ok, msg):
     print(("OK " if ok else "ΛΑΘΟΣ ") + msg)
     if not ok:
         FAIL.append(msg)
+
+
+def site_mark(pic, hx, hy, cam):
+    """Είναι στην εικόνα το σήμα «περιμένει» στο κέντρο (hx, hy) μιας δομής,
+    σε μισά tiles; Οπως το γράφει το st_mark (src/figure.asm): ένα byte αριστερά
+    και τρεις γραμμές πάνω από το κέντρο, με τα bytes του tools/pack.py."""
+    import pack
+    n = pack.MARK_W * pack.MARK_H
+    want = pack.marks()[n:2 * n]
+    x0 = 2 * hx - 4 * cam[0] - pack.MARK_W // 2
+    y0 = 8 * hy - 16 * cam[1] - pack.MARK_H // 2
+    return bytes(pic[(y0 + j) * 80 + x0 + i]
+                 for j in range(pack.MARK_H) for i in range(pack.MARK_W)) == want
 
 
 class Game:
@@ -238,6 +258,23 @@ class Game:
         ref = self.play()
         self.go(on)
         return pic, ref
+
+    def under(self):
+        """(με το φάντασμα, κάτω από αυτό, πλήρης σχεδίαση χωρίς αυτό, ξανά με
+        αυτό), με σταματημένη προσομοίωση. Το «κάτω» είναι ό,τι γράφει πίσω το
+        ui_hide από το αρχείο: ένα αρχείο που δεν ξέρει μια αλλαγή κάτω από το
+        φάντασμα το δείχνει εδώ (βήμα 109). Και ό,τι η πλήρης σχεδίαση του
+        truth() θα έσβηνε."""
+        on = self.still()
+        pic = self.play()
+        self.probe(["UI_HIDE"])
+        bare = self.play()
+        self.probe(["OB_CLIP_FULL", "VIEW_DRAW"])
+        ref = self.play()
+        self.probe(["UI_SHOW"])
+        again = self.play()
+        self.go(on)
+        return pic, bare, ref, again
 
     def state(self, node):
         b6 = self.bank(6)
@@ -446,12 +483,29 @@ def ghost_moves(G, sym):
     return bad, ok, how
 
 
-def solar(sym, g):
-    """Μια δομή: η τοποθέτηση αλλάζει 3x3 tiles, η ολοκλήρωση τίποτα."""
+def solar(sym, g, cut=None):
+    """Μια δομή: η τοποθέτηση αλλάζει 3x3 tiles, και από το βήμα 109 η
+    ολοκλήρωση άλλα 3x3, γύρω από το κέντρο: σβήνει το σήμα του εργοταξίου.
+
+    Ο κέρσορας μένει πάνω στη δομή (uip_after), και το σήμα είναι κάτω από
+    το κόκκινο φάντασμά του: οι έλεγχοι κοιτάζουν κάτω από αυτό (Game.under).
+
+    Με `cut` = "mark" το st_mark γίνεται `ret`, με "built" το st_redraw (το
+    DK_TILE του st_built), και με "ghost" το dt_ghost_rect του dh_tile τρία
+    NOP. Τότε επιστρέφει μόνο (σήμα μετά την τοποθέτηση, σήμα μετά την
+    ολοκλήρωση, η οθόνη είναι η αλήθεια μετά την ολοκλήρωση, η διαφορά)."""
     G = Game(sym, g)
     tx, ty = B.clear_spots(3, 1)[0]
-    G.camera(tx - 8, ty - 3)
-    B.build(G.m, sym, I_SOLAR, g + 6, at=(2 * tx + 3, 2 * ty + 3), place=False)
+    cam, hx, hy = (tx - 8, ty - 3), 2 * tx + 3, 2 * ty + 3
+    G.camera(*cam)
+    B.build(G.m, sym, I_SOLAR, g + 6, at=(hx, hy), place=False)
+    if cut == "ghost":
+        at, gr = sym["DH_TILE"], sym["DT_GHOST_RECT"]
+        k = next(k for k in range(40) if list(G.m.read_ram(at + k, 3)) ==
+                 [0xCD, gr & 255, gr >> 8])
+        G.m.write_ram(at + k, bytes(3))
+    elif cut:
+        G.m.poke(sym["ST_MARK" if cut == "mark" else "ST_REDRAW"], 0xC9)
     c = G.canary()
     G.run(40_000)
     G.iters = []
@@ -461,25 +515,41 @@ def solar(sym, g):
     G.settle()
     node = G.m.peek(sym["BD_NODE"])
     placed = G.worst()
-    check(node >= 64 and G.alive(c),
-          f"ο ηλιακός μπήκε (κόμβος {node}) και το κανάρινι ζει "
-          f"({placed:.0f} ms ο χειρότερος γύρος)")
-    pic, ref = G.truth()
-    ok, how = shape(pic, ref, skip={0})
-    check(ok, f"και η οθόνη είναι η αλήθεια: {how}")
+    alive = G.alive(c)
+    pic, bare, ref, again = G.under()
+    marked = site_mark(bare, hx, hy, cam)
+    if not cut:
+        check(node >= 64 and alive,
+              f"ο ηλιακός μπήκε (κόμβος {node}) και το κανάρινι ζει "
+              f"({placed:.0f} ms ο χειρότερος γύρος)")
+        check(marked and G.state(node)[0] == 1 and pic != bare,
+              "και είναι εργοτάξιο με το σήμα της αναμονής στο κέντρο του, κάτω "
+              "από το κόκκινο φάντασμα του κέρσορα (βήμα 109)")
+        ok, how = shape(bare, ref, skip={0})
+        ok2, how2 = shape(pic, again, skip={0})
+        check(ok and ok2, f"και η οθόνη είναι η αλήθεια: κάτω από το φάντασμα "
+                          f"{how}, με αυτό {how2}")
 
     c = G.canary()
     done = finish(G, node)
     built = G.worst()
-    # ΜΕΤΡΗΜΕΝΟ: 40 ms, και είναι το HUD — η ολοκλήρωση μιας δομής δεν
-    # ζωγραφίζει τίποτα. Ηταν 360.
-    check(done and G.alive(c) and built < 100,
-          f"η ολοκλήρωση του ηλιακού δεν ζωγράφισε τίποτα: κανάρινι "
-          f"{'ζει' if G.alive(c) else 'ΝΕΚΡΟ'}, χειρότερος γύρος {built:.0f} ms "
-          f"(όριο 100· ήταν 360)")
-    pic, ref = G.truth()
-    ok, how = shape(pic, ref, skip={0})
-    check(ok, f"και δεν χρειαζόταν: η οθόνη είναι ήδη η αλήθεια — {how}")
+    alive = G.alive(c)
+    pic, bare, ref, again = G.under()
+    gone = not site_mark(bare, hx, hy, cam)
+    ok, how = shape(bare, ref, skip={0})
+    ok2, how2 = shape(pic, again, skip={0})
+    if cut:
+        return marked, not gone, ok and ok2, how
+    # ΜΕΤΡΗΜΕΝΟ: ως το βήμα 108 40 ms, το HUD — η ολοκλήρωση μιας δομής δεν
+    # ζωγράφιζε τίποτα. Ηταν 360 με την πλήρη σχεδίαση. Από το 109 τα 3x3 tiles
+    # γύρω από το κέντρο, με τον ηλιακό από πάνω.
+    check(done and alive and built < 100,
+          f"η ολοκλήρωση του ηλιακού ζωγράφισε μόνο γύρω από το κέντρο του: "
+          f"κανάρινι {'ζει' if alive else 'ΝΕΚΡΟ'}, χειρότερος γύρος "
+          f"{built:.0f} ms (όριο 100· ήταν 360)")
+    check(gone, "και το σήμα του εργοταξίου έσβησε")
+    check(ok and ok2, f"και η οθόνη είναι η αλήθεια: κάτω από το φάντασμα "
+                      f"{how}, με αυτό {how2}")
 
     # --- η λίστα ξεχειλίζει: η υπόσχεση του dirty_push -------------------
     # «Μια χαμένη αλλαγή αφήνει ψέμα στην οθόνη για πάντα· μια πλήρης
@@ -492,6 +562,38 @@ def solar(sym, g):
           f"το ξεχείλισμα φέρνει πλήρη σχεδίαση: σημαία "
           f"{G.m.peek(sym['DIRTY_OVER'])}, κανάρινι "
           f"{'ζει' if G.alive(c) else 'σβήστηκε'}")
+
+
+def crater(sym, g, cut=False):
+    """ΚΡΑΤΗΡΑΣ ΚΑΤΩ ΑΠΟ ΤΟ ΠΛΑΙΣΙΟ ΤΟΥ ΚΕΡΣΟΡΑ (βήμα 109). Το dh_tile
+    ζωγράφιζε χωρίς να σηκώσει το φάντασμα, από το βήμα 38: το αρχείο κρατούσε
+    το έδαφος που ήταν πριν, και το ui_hide το έγραφε πίσω πάνω στον κρατήρα. Ο
+    κέρσορας ενός ηλιακού σε ελεύθερο έδαφος, και ο κρατήρας στο tile της γωνίας
+    του, κάτω από το πλαίσιο. Με `cut` το dt_ghost_rect του dh_tile τρία NOP.
+    Επιστρέφει (ίδια;, περιγραφή) κάτω από το φάντασμα."""
+    G = Game(sym, g)
+    tx, ty = B.clear_spots(3, 1)[0]
+    G.camera(tx - 8, ty - 3)
+    B.build(G.m, sym, I_SOLAR, g + 6, at=(2 * tx + 3, 2 * ty + 3), place=False)
+    if cut:
+        at, gr = sym["DH_TILE"], sym["DT_GHOST_RECT"]
+        k = next(k for k in range(40) if list(G.m.read_ram(at + k, 3)) ==
+                 [0xCD, gr & 255, gr >> 8])
+        G.m.write_ram(at + k, bytes(3))
+    G.run(400_000)
+    on = G.still()
+    b4 = G.bank(4)
+    v = b4[W.index(tx, ty)]
+    b4[W.index(tx, ty)] = (v & 0xC0) | W.CRATER   # όπως το mt_ground
+    dp = sym["DIRTY_PUSH"]
+    G.m.run_code(PROBE, bytes([0xF3, 0x3E, 4, 0x06, tx & 255, 0x0E, ty & 255,
+                               0xCD, dp & 255, dp >> 8, 0x18, 0xFE]), frames=1)
+    G.m.set_pc(G.top)
+    G.last, G.inw = None, False
+    G.go(on)
+    G.run(200_000)
+    pic, bare, ref, again = G.under()
+    return shape(bare, ref)
 
 
 def corridor(sym, g, dx=8, dy=0):
@@ -587,6 +689,28 @@ def main():
                    f"γράφει το εργοτάξιο πάνω στις μηχανές — {bad} λάθος bytes "
                    f"στο εσωτερικό")
     solar(sym, g)
+    marked, stays, ok, _ = solar(sym, g, cut="mark")
+    check(not marked and ok,
+          "ΑΡΝΗΤΙΚΟ: με το st_mark κομμένο το εργοτάξιο του ηλιακού δεν έχει "
+          "σήμα — και η πλήρης σχεδίαση δεν το λέει, γιατί δεν το έχει ούτε αυτή")
+    marked, stays, ok, _ = solar(sym, g, cut="built")
+    check(marked and stays and not ok,
+          f"ΑΡΝΗΤΙΚΟ: χωρίς το DK_TILE του st_built το σήμα μένει στον "
+          f"τελειωμένο ηλιακό ({'μένει' if stays else 'έσβησε'}), και ο έλεγχος "
+          f"ΑΛΗΘΕΙΑ το πιάνει")
+    # Το κόκκινο σημάδι του κέρσορα στο tile του κέντρου πέφτει πάνω σε μέρος
+    # του σήματος: αυτό το μέρος γράφει πίσω το ui_hide.
+    marked, stays, ok, how = solar(sym, g, cut="ghost")
+    check(marked and not ok,
+          f"ΑΡΝΗΤΙΚΟ: χωρίς το dt_ghost_rect του dh_tile το αρχείο του "
+          f"φαντάσματος κρατά το εργοτάξιο, και το ui_hide το γράφει πίσω — "
+          f"κάτω από το φάντασμα {how}")
+    ok, how = crater(sym, g)
+    check(ok, f"κρατήρας κάτω από το πλαίσιο του κέρσορα: κάτω από το φάντασμα "
+              f"η οθόνη είναι η πλήρης σχεδίαση — {how}")
+    ok, how = crater(sym, g, cut=True)
+    check(not ok, f"ΑΡΝΗΤΙΚΟ: χωρίς το dt_ghost_rect του dh_tile το ui_hide γράφει "
+                  f"πίσω το έδαφος πάνω στον κρατήρα (ως το βήμα 108) — {how}")
     # Ο ΕΥΘΥΣ ΕΔΩ. Οι διάδρομοι με διαγώνιο και με στροφή, ανάμεσα σε θόλους
     # που έβαλε ο παίκτης, έχουν δική τους δοκιμή από το βήμα 36
     # (tests/test_link.py): ως τότε δεν χτίζονταν καθόλου.
