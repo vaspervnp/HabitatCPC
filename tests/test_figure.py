@@ -39,13 +39,32 @@
             στο cpir, 60 εγγραφές στη στήλη του, δύο φιγούρες πάνω στο κελί του.
             Από το βήμα 105 το σβήσιμο χρεώνεται 1.200 σε ελεύθερο έδαφος και
             1.600 δίπλα σε κτίσμα (2.200 και 2.600 ως τότε): το tile του κελιού
-            γράφεται κατευθείαν (fg_tile), όχι με το ob_put.
+            γράφεται κατευθείαν (fg_tile), όχι με το ob_put. Από το 106 το
+            σβήσιμο σε ελεύθερο έδαφος είναι 1.100 και το ζωγράφισμα 500, και
+            το fg_cell χρεώνει 8 ανά εγγραφή, 24 ανά εγγραφή με το ίδιο ux και
+            300 ανά φιγούρα. ΤΑΒΑΝΙΑ: η μέση τιμή με κανονική λίστα — ένα βήμα
+            ως 2.400 us σε ελεύθερο έδαφος (3.810 ως το 105) και ως 3.150 δίπλα
+            σε κτίσμα (4.174), «τίποτα» ως 620 (682), «αλλάζει έξω από το
+            κάδρο» ως 780 (840).
   ΚΕΛΙ      (βήμα 105) σε οκτώ κάμερες — πάνω στο ηλιακό, σε φλέβες, σε
             έδαφος κάθε κλάσης — σκουπίδια σε ένα κελί και το fg_erase του: η
             οθόνη είναι ξανά η πλήρης σχεδίαση, σε ελεύθερο έδαφος, δίπλα σε
             κτίσμα, πάνω σε κτίσμα και σε φλέβα. Και σε κάθε κάμερα, μετά, ένα
             άδειασμα θέσης (dhs_vacate) σε 2x8 που δεν αρχίζει σε σειρά
             χαρακτήρων: το call του dhv_rect_us ξαναγράφτηκε.
+  ΣΤΟΙΒΕΣ   (βήμα 106) μια λίστα της δοκιμής (το fg_build γίνεται jp ob_touch,
+            ώστε η πλήρης σχεδίαση να ζωγραφίσει αυτήν): κελιά σε οκτώ στήλες
+            και τρεις σειρές, το ένα στα τρία με δύο φιγούρες, και κελιά γύρω
+            από το ηλιακό. Σε καθένα, σκουπίδια και fg_erase, και μετά το
+            κελί χωρίς φιγούρες και fg_paint: κάθε φορά η πλήρης σχεδίαση, με
+            τις φιγούρες στη σειρά της λίστας — σε ελεύθερο έδαφος, δίπλα και
+            πάνω σε κτίσμα, σε φλέβα.
+  ΜΕΡΗ      (βήμα 106) το fg_erase και το fg_paint μόνα τους σε ΚΑΘΕ κελί δύο
+            καμερών (πάνω στο ηλιακό, πάνω σε φλέβα), εκτός από το φάντασμα:
+            χρεώνουν όσο κοστίζουν ή περισσότερο, ανά έδαφος. Ως το βήμα 105
+            το σβήσιμο κόστιζε 1.564-1.900 us σε ελεύθερο έδαφος για χρέωση
+            1.296, ως 3.360 σε φλέβα, και δίπλα σε κτίσμα ως 2.208 για 1.696:
+            το κάλυπτε μόνο το περιθώριο του DK_AGENT.
 
 Αρνητικά, με το snapshot πειραγμένο: χωρίς το fg_draw στο ob_draw_all (η ΑΡΧΗ
 δεν έχει φιγούρες στην οθόνη), χωρίς το σημάδι του em_trans (η λίστα μένει
@@ -55,6 +74,12 @@ fg_paint (το νέο κελί άδειο), χωρίς το fg_build στο view
 σάρωσης στο fg_draw (το ΚΟΣΤΟΣ με γεμάτη λίστα). Από το βήμα 105: πάντα το πάνω
 αριστερό τέταρτο του tile και χωρίς τη φλέβα (το ΚΕΛΙ), το call που δεν
 ξαναγράφεται (το άδειασμα θέσης του ΚΕΛΙΟΥ), και χωρίς το fg_tile (το ΚΟΣΤΟΣ).
+Από το βήμα 106: χωρίς τον έλεγχο του uy στο fg_cell, μόνο η πρώτη εγγραφή με το
+ίδιο ux, χωρίς το fg_scr στο fg_paint (οι ΣΤΟΙΒΕΣ)· μία σειρά από τα 3x3 και η
+φλέβα σε λάθος τέταρτο (το ΚΕΛΙ)· το τελευταίο βήμα του πολλαπλασιασμού του fg_want
+χωρίς rra (ο ΔΡΟΜΟΣ)· η φλέβα που δεν χρεώνεται (τα ΜΕΡΗ)· χωρίς τη χρέωση όσων
+έχουν το ίδιο ux, και πάντα το γενικό πέρασμα σε ελεύθερο έδαφος (το ΚΟΣΤΟΣ και
+τα ταβάνια του).
 """
 import ctypes, os, sys
 
@@ -487,6 +512,140 @@ def cells(sym, g, patch=(), quiet=False):
     return None
 
 
+def stacks(sym, g, patch=(), quiet=False):
+    """ΣΤΟΙΒΕΣ (βήμα 106). Η πρώτη διαφορά από την πλήρη σχεδίαση, ή None."""
+    say = (lambda s: None) if quiet else (lambda s: print("    " + s))
+    w = G(sym, g, patch)
+    B.build(w.m, sym, 4, g + 6, at=SOLAR_FAR, fit=False)
+    look(w.m)
+    w.drain()
+    pl = bytes(w.bank(4))
+    at = lambda tx, ty: pl[((ty + 64) << 7) | (tx + 64)]
+    s_, fl = w.sym, w.L["G_fig_list"] - 0x4000
+    veins = [(tx, ty) for ty in range(-60, 60) for tx in range(-60, 60)
+             if at(tx, ty) & 15 == 11 and not at(tx, ty) & 0x10]
+    cams = [((SOLAR_FAR[0] >> 1) - 10, (SOLAR_FAR[1] >> 1) - 5)]
+    cams += [(tx - 10, ty - 5) for tx, ty in veins[:1]]
+    seen = {"ελεύθερο": 0, "δίπλα σε κτίσμα": 0, "πάνω σε κτίσμα": 0, "φλέβα": 0}
+    stacked = 0
+    for j, (cx, cy) in enumerate(cams):
+        cx, cy = min(max(cx, -64), 44), min(max(cy, -64), 54)
+        c = w.clone()
+        c.m.poke(s_["CAM_TX"], cx & 255)
+        c.m.poke(s_["CAM_TY"], cy & 255)
+        # Η ΛΙΣΤΑ ΤΗΣ ΔΟΚΙΜΗΣ: το fg_build γίνεται jp ob_touch, ώστε η πλήρης
+        # σχεδίαση να ζωγραφίσει αυτήν, με τη σειρά της, και όχι τους πράκτορες.
+        fb, ot = s_["FG_BUILD"], s_["OB_TOUCH"]
+        for k, v in enumerate((0xC3, ot & 255, ot >> 8)):
+            c.m.poke(fb + k, v)
+        c.full()                            # το φάντασμα, στη νέα κάμερα
+        gx0, gx1, gy0, gy1 = (c.m.peek(s_["GH_BBX"]), c.m.peek(s_["GH_BBX"] + 1),
+                              c.m.peek(s_["GH_BBY"]), c.m.peek(s_["GH_BBY"] + 1))
+        # οκτώ στήλες x τρεις σειρές: κάθε στήλη έχει τρία κελιά, άρα το cpir
+        # βρίσκει και εγγραφές με το ίδιο ux σε άλλη σειρά· στην πρώτη κάμερα
+        # και κελιά γύρω από το ηλιακό, σε κάθε είδος εδάφους
+        at_ = [(bx, ly) for bx in range(2, 80, 10) for ly in range(8, 160, 56)]
+        if j == 0:
+            at_ += [(bx, ly) for bx in range(32, 52, 4) for ly in range(64, 112, 16)]
+        at_ = [(bx, ly) for bx, ly in at_
+               if not (bx < gx1 and gx0 < bx + 2 and ly < gy1 and gy0 < ly + 8)]
+        b6, ents = c.bank(6), []
+        for i, (bx, ly) in enumerate(at_):
+            x, y = 2 * cx + bx // 2, 2 * cy + ly // 8
+            for f in ((1 + 3 * i % 8, 1 + (3 * i + 5) % 8) if i % 3 == 0 else (1 + 3 * i % 8,)):
+                ents.append(((x + 128) & 255, (y + 128) & 255, f))
+        ents = ents[:64]                    # FG_CAP
+        for k, e in enumerate(ents):
+            for col, v in zip(range(0, 256, 64), e + (127 - k,)):
+                b6[fl + col + k] = v
+        n = len(ents)
+        c.m.poke(s_["FG_N"], n)
+        ref = c.full()
+        cam, scr = c.cam(), c.bank(3)
+        for bx, ly in at_:
+            x, y = 2 * cx + bx // 2, 2 * cy + ly // 8
+            kind = ("φλέβα" if at(x >> 1, y >> 1) & 15 == 11 else
+                    ("ελεύθερο", "δίπλα σε κτίσμα", "πάνω σε κτίσμα")[ground(c, x, y)])
+            here = [e for e in ents if e[:2] == ((x + 128) & 255, (y + 128) & 255)]
+            # σκουπίδια και σβήσιμο: το έδαφος ΚΑΙ οι φιγούρες του κελιού
+            for r in range(8):
+                for b in range(2):
+                    yy, xx = ly + r, bx + b
+                    scr[(yy & 7) * 0x800 + (((yy >> 3) * 80 + xx + cam) & 0x7FF)] = 0x55
+            c.m.poke(s_["FG_OX"], (x + 128) & 255)
+            c.m.poke(s_["FG_OY"], (y + 128) & 255)
+            c.probe(c.call("FG_ERASE"))
+            got = c.play()
+            if got != ref:
+                return (f"ΣΤΟΙΒΕΣ: σβήσιμο του ({x}, {y}), {kind}, {len(here)} φιγούρες: "
+                        f"{sum(a != b for a, b in zip(got, ref))} bytes διαφέρουν")
+            # το κελί χωρίς φιγούρες (λίστα άδεια για το σβήσιμο), και μετά το
+            # ζωγράφισμα: οι φιγούρες του, με τη σειρά της λίστας
+            c.m.poke(s_["FG_N"], 0)
+            c.probe(c.call("FG_ERASE"))
+            c.m.poke(s_["FG_N"], n)
+            c.m.poke(s_["FG_NX"], (x + 128) & 255)
+            c.m.poke(s_["FG_NY"], (y + 128) & 255)
+            c.probe(c.call("FG_PAINT"))
+            got = c.play()
+            if got != ref:
+                return (f"ΣΤΟΙΒΕΣ: ζωγράφισμα του ({x}, {y}), {kind}, {len(here)} φιγούρες: "
+                        f"{sum(a != b for a, b in zip(got, ref))} bytes διαφέρουν")
+            seen[kind] += 1
+            stacked += len(here) > 1
+    if min(seen.values()) < 2 or stacked < 6:
+        return f"ΣΤΟΙΒΕΣ: οι σκηνές δεν έχουν όλα τα είδη κελιού: {seen}, {stacked} με δύο φιγούρες"
+    say(f"ΣΤΟΙΒΕΣ: σβήσιμο και ζωγράφισμα = η πλήρης σχεδίαση με τη λίστα της δοκιμής: "
+        f"{seen}, {stacked} κελιά με δύο φιγούρες")
+    return None
+
+
+def parts(sym, g, patch=(), out=None):
+    """ΜΕΡΗ (βήμα 106): το fg_erase και το fg_paint μόνα τους, σε κάθε κελί
+    δύο καμερών, χρεώνουν όσο κοστίζουν ή περισσότερο."""
+    check_ = out or check
+    w = G(sym, g, patch)
+    B.build(w.m, sym, 4, g + 6, at=SOLAR_FAR, fit=False)
+    look(w.m)
+    w.drain()
+    pl = bytes(w.bank(4))
+    at = lambda tx, ty: pl[((ty + 64) << 7) | (tx + 64)]
+    s_, spent = w.sym, sym["DT_SPENT"]
+    veins = [(tx, ty) for ty in range(-60, 60) for tx in range(-60, 60)
+             if at(tx, ty) & 15 == 11 and not at(tx, ty) & 0x10]
+    cams = [((SOLAR_FAR[0] >> 1) - 10, (SOLAR_FAR[1] >> 1) - 5)]
+    cams += [(tx - 10, ty - 5) for tx, ty in veins[:1]]
+    meas = {}
+    for cx, cy in cams:
+        cx, cy = min(max(cx, -64), 44), min(max(cy, -64), 54)
+        c = w.clone()
+        c.m.poke(s_["CAM_TX"], cx & 255)
+        c.m.poke(s_["CAM_TY"], cy & 255)
+        c.full()
+        gx0, gx1, gy0, gy1 = (c.m.peek(s_["GH_BBX"]), c.m.peek(s_["GH_BBX"] + 1),
+                              c.m.peek(s_["GH_BBY"]), c.m.peek(s_["GH_BBY"] + 1))
+        for bx in range(0, 80, 2):
+            for ly in range(0, 160, 8):
+                if bx < gx1 and gx0 < bx + 2 and ly < gy1 and gy0 < ly + 8:
+                    continue                # το φάντασμα σηκώνεται μία φορά ανά τικ
+                x, y = 2 * cx + bx // 2, 2 * cy + ly // 8
+                kind = ("φλέβα" if at(x >> 1, y >> 1) & 15 == 11 else
+                        ("ελεύθερο", "δίπλα σε κτίσμα", "πάνω σε κτίσμα")[ground(c, x, y)])
+                for name, lx, ly_ in (("FG_ERASE", "FG_OX", "FG_OY"), ("FG_PAINT", "FG_NX", "FG_NY")):
+                    c.m.poke(s_[lx], (x + 128) & 255)
+                    c.m.poke(s_[ly_], (y + 128) & 255)
+                    us = c.probe([0x21, 0, 0, 0x22, spent & 255, spent >> 8]
+                                 + c.call(name)) - 34
+                    ch = c.m.peek(spent) | c.m.peek(spent + 1) << 8
+                    meas.setdefault((name, kind if name == "FG_ERASE" else "όπου κι αν"), []).append((us, ch))
+    for (name, kind), v in sorted(meas.items()):
+        worst = max(v, key=lambda x: x[0] - x[1])
+        check_(len(v) >= 8 and all(u <= ch for u, ch in v),
+               f"ΜΕΡΗ, {name.lower()} {kind}: {len(v)} κελιά, {min(u for u, _ in v)}-"
+               f"{max(u for u, _ in v)} us, χειρότερο {worst[0]} για χρέωση {worst[1]}")
+    return meas
+
+
 FG_PAD = 62
 RAW = []                                  # (είδος, γεμάτη, έδαφος, us, χρέωση)
 
@@ -531,6 +690,7 @@ def cost(sym, g, patch=(), out=None):
     meas = {k: [] for k in kinds}
     padded = {k: [] for k in kinds}         # τα ίδια, με τη λίστα σχεδόν γεμάτη
     L, spent, fl = w.L, sym["DT_SPENT"], w.L["G_fig_list"] - 0x4000
+    raw = []
     for _ in range(160):
         w.m.run_frames(7)
         w.drain()
@@ -574,6 +734,7 @@ def cost(sym, g, patch=(), out=None):
                 charged = DK_US + (c.m.peek(spent) | c.m.peek(spent + 1) << 8)
                 meas[kind].append((us, charged))
                 RAW.append((kind, full, ground(w, x, y), us, charged))
+                raw.append((kind, full, ground(w, x, y), us))
                 if full:
                     padded[kind].append((us, charged))
                 if kind == "μόνο σβήνει":
@@ -597,6 +758,17 @@ def cost(sym, g, patch=(), out=None):
               f"ΚΟΣΤΟΣ, σβήσιμο {name}: {len(v)} μετρήσεις, ως "
               f"{max((x[0] for x in v), default='-')} us για χρέωση "
               f"{sorted(set(x[1] for x in v))}")
+    # ΤΑΒΑΝΙΑ (βήμα 106): η μέση τιμή με κανονική λίστα, ανά έδαφος — όχι
+    # μόνο «όσο χρεώνει», γιατί η χρέωση μπορεί να ανέβει μαζί με το κόστος.
+    for kind, gr, cap, was in (("σβήνει και ζωγραφίζει", 0, 2400, 3810),
+                               ("σβήνει και ζωγραφίζει", 1, 3150, 4174),
+                               ("τίποτα", 0, 620, 682),
+                               ("αλλάζει έξω από το κάδρο", 0, 780, 840)):
+        v = [us for k, full, g_, us in raw if k == kind and not full and g_ == gr]
+        avg = sum(v) // max(1, len(v))
+        check_(v and avg <= cap,
+               f"ΚΟΣΤΟΣ, ΤΑΒΑΝΙ: {kind}, {('σε ελεύθερο έδαφος', 'δίπλα σε κτίσμα')[gr]}: "
+               f"μέση {avg} us σε {len(v)} μετρήσεις, ως {cap} ({was} ως το βήμα 105)")
     return meas, under, padded
 
 
@@ -610,6 +782,9 @@ def main():
     check(why is None, why or "ΜΕΤΕΩΡΙΤΗΣ: όπως λέει η πρόζα")
     why = cells(sym, g)
     check(why is None, why or "ΚΕΛΙ: το σβήσιμο = η πλήρης σχεδίαση, και η φλέβα μένει")
+    why = stacks(sym, g)
+    check(why is None, why or "ΣΤΟΙΒΕΣ: σβήσιμο και ζωγράφισμα = η πλήρης σχεδίαση")
+    parts(sym, g)
     cost(sym, g)
 
     # --- αρνητικά ---
@@ -670,6 +845,40 @@ def main():
     why = meteor(sym, g, [(sym["FG_DRAW1"], 0xC9)], quiet=True)    # ret
     check(why is not None, f"ΑΡΝΗΤΙΚΟ: με το dh_tile χωρίς φιγούρες σε ελεύθερο έδαφος, ο "
                            f"ΜΕΤΕΩΡΙΤΗΣ αποτυγχάνει ({(why or '')[:100]})")
+    # βήμα 106: ο δρόμος του κελιού
+    fc, fe, fp = sym["FG_CELL"], sym["FG_ERASE"], sym["FG_PAINT"]
+    yc = find(sym["FGC_Y"], [0xFE, 0, 0x20], 4)                   # cp 0 / jr nz,fgc_nx
+    lp = find(sym["FGC_NX"], [0x2C, 0x78, 0xB1, 0x20], 4)         # inc l / ... / jr nz,fgc_x
+    ie = find(fc, [0x1C, 0x2D, 0xCB], 40)                         # inc e / dec l / set
+    rw = find(fe, [0x06, 3], 60)                                  # ld b,3 των 3x3
+    sp = find(fp, [0xCD] + w(sym["FG_SCR"]), 40)
+    fq = find(sym["FGV_Q"], [0x3E, 0, 0x87], 4)                   # ld a,0 / add a,a
+    fv = find(sym["FGV_LP"], [0x11] + w(300), 40)                 # ld de,FG_VEIN_US
+    jf = find(sym["FGE_ROW"], [0xE6, 0x10, 0x20], 12)              # and W_OCC_STRUCT / jr nz
+    wa = find(sym["FWA_POS"], [0xCB, 0x3D, 0x30, 1, 0x84, 0x1F], 8)  # το πρώτο βήμα
+    for label, patch, fn in (
+            ("χωρίς τον έλεγχο του uy στο fg_cell", yc and [(yc + 2, 0), (yc + 3, 0)], stacks),
+            ("μόνο η πρώτη εγγραφή με το ίδιο ux", lp and [(lp + 3, 0), (lp + 4, 0)], stacks),
+            ("χωρίς το fg_scr στο fg_paint", sp and [(sp + k, 0) for k in range(3)], stacks),
+            ("μία σειρά από τα 3x3", rw and [(rw + 1, 1)], cells),
+            ("η φλέβα σε λάθος τέταρτο", fq and [(fq + 2, 0)], cells),
+            ("το τελευταίο βήμα του πολλαπλασιασμού χωρίς rra", wa and [(wa + 5 + 7 * 6, 0)], scenario)):
+        if not patch:
+            check(False, f"δεν βρέθηκε πού να πειραχτεί για «{label}»")
+            continue
+        why = fn(sym, g, patch, quiet=True)
+        check(why is not None, f"ΑΡΝΗΤΙΚΟ: με «{label}» το {fn.__name__} αποτυγχάνει "
+                               f"({(why or '')[:100]})")
+    for label, patch, fn in (
+            ("η φλέβα δεν χρεώνεται", fv and [(fv + 1, 0), (fv + 2, 0)], parts),
+            ("χωρίς τη χρέωση όσων έχουν το ίδιο ux", ie and [(ie, 0)], cost),
+            ("πάντα το γενικό πέρασμα, και σε ελεύθερο έδαφος",
+             jf and [(jf + 2, 0x18)], cost)):                        # jr nz -> jr
+        bad = []
+        if patch:
+            fn(sym, g, patch, out=lambda ok, msg: bad.append(not ok))
+        check(patch and any(bad), f"ΑΡΝΗΤΙΚΟ: με «{label}» το {'ΜΕΡΗ' if fn is parts else 'ΚΟΣΤΟΣ'} "
+                                  f"αποτυγχάνει ({sum(bad)} από {len(bad)} έλεγχοι)")
 
     if FAIL:
         print(f"\nΑΠΟΤΥΧΙΑ — {len(FAIL)}")

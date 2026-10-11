@@ -37,15 +37,21 @@ FG_CAP      equ 64                      ; φιγούρες έξω που ζωγ�
 FG_UY       equ 64                      ; οι στήλες της λίστας, στο L
 FG_FIG      equ 128
 FG_AGENT    equ 192
-; Οι χρεώσεις, ΜΕΤΡΗΜΕΝΕΣ (test_figure, ΚΟΣΤΟΣ): πέρα από το DK_AGENT (1.300,
+; Οι χρεώσεις, ΜΕΤΡΗΜΕΝΕΣ (test_figure, ΚΟΣΤΟΣ): πέρα από το DK_AGENT (1.200,
 ; ο υπολογισμός και το cpir σε γεμάτη λίστα), το παλιό κελί σε έδαφος ή δίπλα
 ; σε κτίσμα (με κτίσμα από κάτω: DHS_VAC_US), το νέο, και ό,τι κοστίζει το
-; fg_draw όπου κι αν κληθεί: η σάρωση και κάθε φιγούρα.
-FG_ERASE_US equ 1200                    ; βήμα 105, fg_tile: ~920 (2.200 για 1.946 ως το 104)
-FG_ERASE_NEAR equ 1600                  ; ~1.290 (2.600 για 2.320)
-FG_PAINT_US equ 800                     ; ως 284· με το σβήσιμο μαζί ως 2.812 / 3.220
+; fg_cell ή το fg_draw: η σάρωση και κάθε φιγούρα. Μόνο του, το σβήσιμο σε
+; έδαφος είναι 840-1.000 us (το autotile του βουνού και του νερού είναι το
+; πάνω άκρο), δίπλα σε κτίσμα 1.500-1.640, το ζωγράφισμα ~400 χωρίς φιγούρες.
+FG_ERASE_US equ 1100                    ; βήμα 106, fge_free (1.200 ως το 105)
+FG_ERASE_NEAR equ 1600                  ; με το fg_draw του ob_draw_all
+FG_PAINT_US equ 500                     ; βήμα 106, fg_cell (800 ως το 105)
 FG_SCAN_US  equ 24                      ; ανά εγγραφή που κοιτά το fg_draw
-FG_ONE_US   equ 800                     ; ανά φιγούρα που ζωγραφίζει: 785
+FG_ONE_US   equ 800                     ; ανά φιγούρα που ζωγραφίζει: ~770
+FG_VEIN_US  equ 300                     ; η φλέβα στο fg_tile (βήμα 106): ~280
+FGC_SCAN_US equ 8                       ; το fg_cell (βήμα 106): ανά εγγραφή, 5,25
+FGC_XM_US   equ 24                      ; ανά εγγραφή με το ίδιο ux: ~25 μαζί
+FGC_ONE_US  equ 300                     ; ανά φιγούρα: ~265
 
 ; ---------------------------------------------------------------------------
 ; dh_agent — DK_AGENT, a = πράκτορας: η φιγούρα του έξω, όπως είναι τώρα.
@@ -178,34 +184,50 @@ fg_erase:
         ret     nc                      ; εκτός κάδρου: τίποτα να σβηστεί
         ld      a,h
         call    fge_t
-        ld      e,a
+        ld      b,a
         ld      a,l
         call    fge_t
-        ld      d,a
-        ld      (vr_tx),de              ; vr_tx, vr_ty: το tile βορειοδυτικά
-        ld      hl,3 * 256 + 3
-        ld      (vr_w),hl               ; vr_w, vr_h
-        call    vr_clip                 ; td_*: τα 3x3 όσο φαίνονται
-        ld      a,W_OCC_STRUCT          ; τα μονοπάτια (κατοχή 2) είναι έδαφος
-        call    nz,dh_occ_a
+        ld      c,a                     ; B, C: το tile βορειοδυτικά
+        push    bc
+        call    fg_cclip                ; το clip: το κελί
+        ld      bc,GA_PORT + PAGE_B4
+        out     (c),c
+        pop     bc
+        push    bc
+        ; ΤΑ 3x3 ΚΑΤΕΥΘΕΙΑΝ ΣΤΟΝ ΚΟΣΜΟ (βήμα 106): μία διεύθυνση, τρία bytes ανά
+        ; σειρά, +128 η επόμενη σειρά (tile_addr). Ως το 105 το vr_clip τα
+        ; έκοβε στο κάδρο και το dh_occ_a έψαχνε τη διεύθυνση κάθε σειράς:
+        ; ~370 us. Ενα tile έξω από το κάδρο μετρά τώρα κι αυτό — το
+        ; αντικείμενό του μπορεί να φτάνει ως το κελί — και έξω από τον κόσμο
+        ; (στήλη ή σειρά -65 / 64) διαβάζεται ένα άλλο byte: το πολύ ένα
+        ; ακριβότερο σβήσιμο, ποτέ λάθος.
+        call    tile_addr
+        ld      de,128 - 2
+        ld      b,3
+fge_row:
+        ld      a,(hl)
+        inc     l
+        or      (hl)
+        inc     l
+        or      (hl)
+        and     W_OCC_STRUCT            ; τα μονοπάτια (κατοχή 2) είναι έδαφος
         jr      nz,fge_obj
-        ld      a,1
-        ld      (dhv_fo),a              ; μόνο οι φιγούρες
-        ld      de,FG_ERASE_US
-        jr      fge_go
+        add     hl,de
+        djnz    fge_row
+        pop     bc
+        inc     b
+        inc     c                       ; B = tx, C = ty: το tile του κελιού
+        jr      fge_free
 fge_obj:
+        pop     bc
+        inc     b
+        inc     c
         ; ΤΙ ΚΟΣΤΙΖΕΙ ΤΟ ΠΕΡΑΣΜΑ: σχεδόν τίποτα, αν το ίδιο το tile του κελιού
         ; είναι ελεύθερο — ένας γείτονας κατέχει, αλλά το ευρετήριο κόβει το
         ; αντικείμενό του στο tile του κελιού. Αν το κατέχει, μπορεί να είναι
         ; θόλος: όσο ένα άδειασμα θέσης.
-        ld      bc,(vr_tx)
-        inc     c
-        inc     b
-        ld      a,b
-        ld      b,c
-        ld      c,a                     ; B = tx, C = ty
         ld      a,W_OCC_STRUCT
-        call    tl_occ                  ; src/tiles.asm
+        call    tl_occ                  ; src/tiles.asm· γυρίζει την 1
         ld      de,FG_ERASE_NEAR
         jr      z,fge_go
         ld      de,DHS_VAC_US
@@ -215,11 +237,30 @@ fge_go:
         ; Το άδειασμα θέσης και η μηχανή που βγαίνει δεν πληρώνουν τίποτα.
         ld      hl,fg_tile
         ld      (dhv_put + 1),hl
-        ld      hl,SLOT_H * 256 + SLOT_W
-        call    dhv_rect_us
+        call    dhv_rect_c              ; το clip είναι ήδη το κελί
         ld      hl,ob_put
         ld      (dhv_put + 1),hl
         ret
+
+; fge_free — ΕΛΕΥΘΕΡΟ ΕΔΑΦΟΣ (βήμα 106): ό,τι έκανε το dhv_rect_us για ένα
+; κελί, χωρίς ό,τι δεν χρειάζεται εδώ — το κελί είναι μέσα σε ένα tile, και
+; πάνω του μόνο φιγούρες (fg_cell). B = tx, C = ty, η 4 μέσα, το clip = το
+; κελί. Η διεύθυνση οθόνης βρίσκεται μία φορά, για το tile και τις φιγούρες.
+fge_free:
+        push    bc
+        call    dt_ghost_rect           ; δεν σελιδοποιεί
+        pop     bc
+        call    tile_addr
+        ld      (t_wptr),hl
+        call    tile_src
+        ld      (ob_src),hl
+        call    fg_scr                  ; κρατά το C = clip_x0
+        call    fgt_de
+        call    ob_b6
+        ld      hl,(fg_oy)
+        ld      de,FG_ERASE_US
+        call    fg_cell
+        jp      ob_clip_full
 
 fg_paint:
         ld      a,(fg_q)
@@ -228,15 +269,132 @@ fg_paint:
         ld      hl,(fg_ny)              ; L = uy, H = ux
         call    fg_in                   ; και ob_x, ob_y
         ret     nc
-        ld      hl,SLOT_H * 256 + SLOT_W
-        call    dhv_clip
-        ret     z
-        ld      de,FG_PAINT_US
-        call    dhv_charge
+        call    fg_cclip
         call    dt_ghost_rect
         call    ob_b6
-        call    fg_draw
+        call    fg_scr
+        ld      hl,(fg_ny)
+        ld      de,FG_PAINT_US
+        call    fg_cell
         jp      ob_clip_full
+
+; fg_scr — η διεύθυνση οθόνης του clip, στο DE και στο fgc_de. C = clip_x0.
+fg_scr:
+        ld      a,(clip_x0)
+        ld      c,a
+        ld      a,(clip_y0)
+        call    scr_addr
+        ld      (fgc_de + 1),de
+        ret
+
+; fg_cclip — το clip = το κελί στο ob_x, ob_y, που το fg_in βρήκε ΟΛΟ μέσα στο
+; κάδρο: χωρίς το ob_clip του dhv_clip, δύο φορές ανά άξονα (~230 us).
+fg_cclip:
+        ld      a,(ob_x)
+        ld      l,a
+        add     a,SLOT_W
+        ld      h,a
+        ld      (clip_x0),hl            ; clip_x0, clip_x1
+        ld      a,(ob_y)
+        ld      l,a
+        add     a,SLOT_H
+        ld      h,a
+        ld      (clip_y0),hl            ; clip_y0, clip_y1
+        ret
+
+; ---------------------------------------------------------------------------
+; fg_cell — οι φιγούρες της λίστας ΣΤΟ κελί H = ux, L = uy, που είναι το clip
+; και όλο μέσα στο κάδρο (βήμα 106), με τη διεύθυνσή του στο fgc_de (fg_scr).
+; Τράπεζα 6.
+;
+; ΤΟ fg_draw ΓΙΑ ΕΝΑ ΚΕΛΙ. Οι φιγούρες έξω πατούν σε κελιά, άρα όποια τέμνει
+; ένα κελί είναι ΣΤΟ κελί: ίδιο ux, ίδιο uy, όλη μέσα του. Δεν χρειάζεται
+; ούτε το παράθυρο του fg_draw ούτε το κόψιμο του ob_fig, και η διεύθυνση
+; οθόνης είναι μία για όλες: cpir στη στήλη των ux (~5 us η εγγραφή αντί για
+; 11), και η φιγούρα κατευθείαν στο obfs_lp. Με τη σειρά της λίστας, όπως
+; στην πλήρη σχεδίαση.
+;
+; ΧΡΕΩΝΕΙ ΟΣΑ ΚΑΝΕΙ, ΜΙΑ ΦΟΡΑ: DE = ό,τι χρεώνει ο καλών, και FGC_SCAN_US ανά
+; εγγραφή, FGC_XM_US ανά εγγραφή με το ίδιο ux (ο έλεγχος του uy και η
+; επανεκκίνηση του cpir), FGC_ONE_US ανά φιγούρα.
+; ---------------------------------------------------------------------------
+fg_cell:
+        ld      a,h
+        ld      (fgc_x + 1),a
+        ld      a,l
+        ld      (fgc_y + 1),a
+        ld      a,(fg_n)
+        ld      l,a
+        ld      h,0
+        add     hl,hl
+        add     hl,hl
+        add     hl,hl                   ; FGC_SCAN_US x εγγραφές
+        add     hl,de                   ; + ό,τι χρεώνει ο καλών
+        ld      (fgc_us + 1),hl
+        or      a
+        ld      de,0                    ; D = φιγούρες, E = εγγραφές με το ίδιο ux
+        jr      z,fgc_end
+        ld      c,a
+        ld      b,d                     ; BC = εγγραφές
+        ld      hl,G_fig_list
+fgc_x:  ld      a,0
+        cpir
+        jr      nz,fgc_end
+        inc     e
+        dec     l
+        set     6,l
+        ld      a,(hl)                  ; uy
+        res     6,l
+fgc_y:  cp      0
+        jr      nz,fgc_nx
+        inc     d
+        set     7,l
+        ld      a,(hl)                  ; φιγούρα 1-8
+        res     7,l
+        push    bc
+        push    de
+        push    hl
+        dec     a
+        rrca
+        rrca
+        rrca                            ; * 32: μία σελίδα, 8 x 32
+        ld      l,a
+        ld      h,G_fig_gfx >> 8
+fgc_de: ld      de,0
+        ld      b,SLOT_H
+        call    obfs_lp                 ; πάνω σε ό,τι είναι ήδη εκεί
+        pop     hl
+        pop     de
+        pop     bc
+fgc_nx:
+        inc     l
+        ld      a,b
+        or      c
+        jr      nz,fgc_x
+        ; ΜΙΑ ΧΡΕΩΣΗ ΓΙΑ ΟΛΑ: του καλούντος, η σάρωση, όσες με το ίδιο ux, οι
+        ; φιγούρες — ένα dhv_charge αντί για τέσσερα ή πέντε (~20 us το καθένα)
+fgc_end:
+        ld      l,e
+        ld      h,0
+        add     hl,hl
+        add     hl,hl
+        add     hl,hl
+        ld      b,h
+        ld      c,l
+        add     hl,hl
+        add     hl,bc                   ; FGC_XM_US x όσες με το ίδιο ux
+        ld      bc,FGC_ONE_US
+        inc     d
+        jr      fgc_d
+fgc_one:
+        add     hl,bc
+fgc_d:
+        dec     d
+        jr      nz,fgc_one
+fgc_us: ld      de,0
+        add     hl,de
+        ex      de,hl
+        jp      dhv_charge
 
 ; ---------------------------------------------------------------------------
 ; fg_draw — οι φιγούρες της λίστας που τέμνουν το clip. Από το ob_draw_all,
@@ -414,16 +572,16 @@ ob_fig:
 obfs_lp:
         ld      a,(de)
         and     (hl)
-        inc     hl
+        inc     l                       ; οι φιγούρες, 8 x 32, σε μία σελίδα
         or      (hl)
-        inc     hl
+        inc     l
         ld      (de),a
         inc     e
         ld      a,(de)
         and     (hl)
-        inc     hl
+        inc     l
         or      (hl)
-        inc     hl
+        inc     l
         ld      (de),a
         dec     e
         ld      a,d
@@ -510,11 +668,10 @@ fg_want:
         set     7,l
         ld      a,(hl)                  ; ρόλος
         and     7
-        push    hl
-        ld      hl,role_fig
-        call    ob_addu
-        ld      a,(hl)
-        pop     hl
+        add     a,role_fig & 255        ; μία σελίδα (assert): χωρίς ob_addu
+        ld      e,a
+        ld      d,role_fig >> 8
+        ld      a,(de)
         ld      (fw_f),a
         ld      h,AG_PG + 2
         ld      a,(hl)                  ; edge
@@ -620,14 +777,14 @@ fwa_pos:
         ld      h,a
         ld      l,c
         xor     a
-        ld      b,8
-fwa_lp:
+        ; ΞΕΔΙΠΛΩΜΕΝΟ (βήμα 106): χωρίς djnz, 25 us λιγότερα ανά άξονα — και
+        ; το fg_want το πληρώνει κάθε βήμα κάθε περιπατητή έξω, στο κάδρο ή όχι.
+        repeat  8
         srl     l
-        jr      nc,fwa_no
+        jr      nc,$ + 3
         add     a,h
-fwa_no:
         rra
-        djnz    fwa_lp
+        rend
         ld      h,a
         pop     af
         ld      a,h
@@ -669,8 +826,9 @@ fwx_st:
         add     a,(hl)                  ; + ST_SIZE
         add     a,a
         inc     a                       ; struct_dims[είδος*4 + μέγεθος].h
-        ld      hl,G_struct_dims
-        call    ob_addu
+        add     a,G_struct_dims & 255   ; μία σελίδα (assert)
+        ld      l,a
+        ld      h,G_struct_dims >> 8
         ld      a,(hl)
         rrca
         rrca
@@ -723,6 +881,8 @@ dhv_rect_us:
         call    dhv_clip
         pop     de
         ret     z
+; dhv_rect_c — το ίδιο, με το clip ήδη στημένο (fg_erase, βήμα 106).
+dhv_rect_c:
         call    dhv_charge
         ; Το φάντασμα, αν πέφτει εδώ (βήμα 89): ο θόλος του dh_slot και του
         ; dh_mach το σήκωσε ήδη στο dt_prep, το κελί μιας φιγούρας έξω όχι.
@@ -783,15 +943,12 @@ dhv_put:
         jr      c,dhv_row
         ld      bc,GA_PORT + PAGE_B1
         out     (c),c
-        ; --- και από πάνω ό,τι πατά εκεί: όλα, ή μόνο οι φιγούρες όταν το
-        ; λέει το fg_erase (dhv_fo, μία φορά) ---
-        ld      hl,dhv_fo
-        ld      a,(hl)
-        ld      (hl),0
-        ld      hl,ob_clip_full         ; η επιστροφή του ob_draw_all ή του
-        push    hl                      ; fg_draw1: μετά, το clip ολόκληρο
-        dec     a                       ; dhv_fo 0 -> NZ: όλα· 1 -> Z: φιγούρες
-        ; fall through, στο jp nz του fg_objs
+        ; --- και από πάνω ό,τι πατά εκεί: όλα. Ως το βήμα 105 και μόνο οι
+        ; φιγούρες, όταν το έλεγε το fg_erase· από το 106 εκείνο έχει δικό
+        ; του δρόμο (fge_free) ---
+        ld      hl,ob_clip_full         ; η επιστροφή του ob_draw_all: μετά,
+        push    hl                      ; το clip ολόκληρο
+        jp      ob_draw_all
 
 ; fg_objs — μετά από έδαφος (dh_tile): NZ, κάτι κατέχει τα tiles -> όλα τα
 ; αντικείμενα· Z -> μόνο οι φιγούρες έξω. Ως το βήμα 89 το Z δεν ζωγράφιζε
@@ -831,6 +988,8 @@ fg_tile:
         ld      c,a
         ld      a,(clip_y0)
         call    scr_addr                ; DE = η οθόνη· κρατά το BC
+; fgt_de — το ίδιο με DE = η οθόνη, C = clip_x0 (fge_free).
+fgt_de:
         ld      a,(clip_y0)
         and     8
         add     a,a
@@ -839,6 +998,7 @@ fg_tile:
         ld      a,c
         and     2                       ; 0 ή 2
         add     a,b
+        ld      (fgv_q + 1),a           ; το τέταρτο, και για τη φλέβα
         ld      c,a
         ld      b,0
         ld      hl,(ob_src)
@@ -847,14 +1007,14 @@ fg_tile:
 fgt_lp:
         ld      a,(hl)
         ld      (de),a
-        inc     hl
-        inc     e
+        inc     l                       ; το tile είναι 64 bytes σε όριο 64
+        inc     e                       ; (assert): το L δεν ξεχειλίζει
         ld      a,(hl)
         ld      (de),a
         dec     e
-        inc     hl
-        inc     hl
-        inc     hl                      ; η επόμενη γραμμή του tile
+        inc     l
+        inc     l
+        inc     l                       ; η επόμενη γραμμή του tile
         ld      a,d
         add     a,8
         ld      d,a
@@ -864,15 +1024,46 @@ fgt_lp:
         and     15
         cp      11                      ; βουνό με το bit πόρου
         ret     nz
+        ; ΚΑΙ Η ΦΛΕΒΑ ΚΑΤΕΥΘΕΙΑΝ (βήμα 106), όπως το obfs_lp. Ως το 105 το
+        ; ob_put της κόστιζε ~1.700 us, ενώ το σβήσιμο χρέωνε μόνο το tile.
+        ; Η φλέβα είναι 4 x 16 σε ζεύγη (μάσκα, data): 8 bytes η γραμμή, και
+        ; το τέταρτό της στο διπλάσιο του τετάρτου του tile.
+        ld      a,d
+        sub     8 * SLOT_H
+        ld      d,a                     ; η πρώτη γραμμή του κελιού ξανά
         ld      a,c
         add     a,a                     ; decor & 1 (bit 6) -> bit 7
         and     #80                     ; 2 παραλλαγές, x ORE_OVL_SZ
         ld      l,a
-        ld      h,G_ore_overlay >> 8
-        ld      (ob_src),hl
-        ld      hl,TILE_H*256 + TILE_W
-        xor     a                       ; με μάσκα
-        jp      ob_put
+fgv_q:  ld      a,0
+        add     a,a
+        add     a,l
+        ld      l,a
+        ld      h,G_ore_overlay >> 8    ; σε όριο 256 (tiles.asm): το L φτάνει
+        ld      b,SLOT_H
+fgv_lp:
+        ld      a,(de)
+        and     (hl)
+        inc     l
+        or      (hl)
+        inc     l
+        ld      (de),a
+        inc     e
+        ld      a,(de)
+        and     (hl)
+        inc     l
+        or      (hl)
+        ld      (de),a
+        dec     e
+        ld      a,l
+        add     a,5                     ; η επόμενη γραμμή της φλέβας
+        ld      l,a
+        ld      a,d
+        add     a,8
+        ld      d,a
+        djnz    fgv_lp
+        ld      de,FG_VEIN_US
+        jp      dhv_charge
 
 ; dhv_clip — το clip: το ορθογώνιο L x H στο ob_x, ob_y, κομμένο στο κάδρο.
 ; Z αν δεν φαίνεται, και τότε το clip είναι ολόκληρο το κάδρο.
@@ -927,7 +1118,6 @@ dhv_cut:
 fw_dx:      db -1, -2, 0, 1
 
 fg_n:       db 0                        ; εγγραφές της λίστας
-dhv_fo:     db 0                        ; 1 = το dhv_rect ζωγραφίζει μόνο φιγούρες
 fg_q:       db 0                        ; 1 = fg_build: χωρίς ζωγραφική
 fg_oy:      db 0                        ; fg_oy, fg_ox: το κελί που σβήνει
 fg_ox:      db 0
@@ -950,5 +1140,10 @@ fw_b:       dw 0                        ; by, bx
         assert  FG_CAP * 4 == 256 && SLOT_W == 2 && SLOT_H == 8
         assert  ((G_node_adj >> 3) & 255) + 128 <= 256
         assert  FG_SCAN_US == 24 && FG_CAP * 3 < 256
+        assert  FGC_SCAN_US == 8 && FGC_XM_US == 24    ; οι ολισθήσεις του fg_cell
+        assert  (role_fig & 255) + 8 <= 256
+        assert  ((G_tile_ground | G_tile_dust | G_tile_rock | G_tile_mountain) & 63) == 0
+        assert  ((G_tile_water | G_tile_deepwater | G_tile_crater | G_tile_foundation) & 63) == 0
+        assert  (G_struct_dims & 255) + 64 <= 256          ; 64 bytes (build/layout.txt)
         assert  obf_n == obf_k + 1 && (G_slot_empty >> 8) != 0
         assert  (G_struct_tbl & 255) == 0 && MAX_STRUCT * STRUCT_REC == 256 && MAX_DOME == 64
