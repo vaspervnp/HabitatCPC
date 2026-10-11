@@ -48,9 +48,10 @@ FILES = [
     ("GAME.BIN",    "game.bin",  0x0100, 0x0000),
     ("GAME2.BIN",   "game2.bin", 0,      0x0000),   # από το σύμβολο
     ("GEN.BIN",     "gen.bin",   0x8000, 0x8000),
-    ("PAGE2.BIN",   "page2o.bin", 0x8000, 0x0000),  # με τον κώδικα των τρυπών (βήμα 101)
+    ("PAGE2.BIN",   "page2.bin", 0x8000, 0x0000),
     ("BANK5.BIN",   "bank5c.bin", 0x7400, 0x0000),  # οι μηχανές (βήμα 85), με τον κώδικα του b5code (βήμα 97)
-    ("BANK1.BIN",   "bank1c.bin", 0x7000, 0x0000),  # με τον κώδικα του b1code (βήμα 94)
+    ("BANK1.BIN",   "bank1c.bin", 0,      0x0000),  # από το OV_LOAD: ο κώδικας των τρυπών (βήμα 102),
+                                                    # τα εικονίδια, ο κώδικας του b1code (βήμα 94)
     ("BANK6.BIN",   "bank6.bin", 0x4000, 0x0000),
     ("BANK7.BIN",   "bank7.bin", 0x4000, 0x0000),
     ("TEXT.BIN",    "text.bin",  0,      0x0000),   # από το layout: G_text
@@ -118,6 +119,7 @@ def boot_equ(name):
 SCRATCH = boot_equ("SCRATCH")
 SCRATCH_G2 = boot_equ("SCRATCH_G2")
 ICONS = boot_equ("ICONS")
+OV_LOAD = boot_equ("OV_LOAD")
 
 # Τα slots του §11 ζουν στα tracks 24-41, ΧΩΡΙΣ αρχείο AMSDOS από πάνω τους: ο
 # δίσκος είναι του παιχνιδιού. Αυτό ισχύει όσο τα αρχεία δεν φτάνουν ως εκεί —
@@ -230,41 +232,38 @@ def b5_base():
     sys.exit("δεν βρέθηκε το B5_BASE στο build/layout.asm")
 
 
-def page2_ovl():
-    """Τα δεδομένα της τράπεζας 2 και αμέσως μετά ο κώδικας που ο φορτωτής
-    αφήνει στο GH_BUF και το ov_install μοιράζει στις τρύπες του DIST (βήμα
-    101, src/demolish.asm). Το GH_BUF είναι το PAGE2_TOP, το τέλος του
-    page2.bin: το ένα ακολουθεί το άλλο χωρίς κενό."""
-    p2 = open(os.path.join(BUILD, "page2.bin"), "rb").read()
-    ov = open(os.path.join(BUILD, "ovl.bin"), "rb").read()
-    top = None
-    for line in open(os.path.join(BUILD, "layout.asm"), encoding="utf-8"):
-        if line.startswith("PAGE2_TOP"):
-            top = int(line.split("#")[1].split()[0], 16)
-    if top != 0x8000 + len(p2):
-        sys.exit(f"το page2.bin τελειώνει στο #{0x8000 + len(p2):04X}, όχι στο "
-                 f"PAGE2_TOP (#{top:04X}): ο κώδικας των τρυπών δεν θα έπεφτε στο GH_BUF")
-    open(os.path.join(BUILD, "page2o.bin"), "wb").write(p2 + ov)
+def check_ovl():
+    """Ο κώδικας που το ov_install μοιράζει στις τρύπες του DIST (βήμα 101,
+    src/demolish.asm) έρχεται στο OV_LOAD, στην αρχή της BANK1.BIN (βήμα 102).
+    Ο φορτωτής και το παιχνίδι το ξέρουν χωριστά, και πρέπει να είναι το ίδιο:
+    το src/main.asm σώζει το bank1c.bin από το δικό του OV_LOAD ως το #8000, ο
+    φορτωτής το φορτώνει στο δικό του. (Ενα equ δεν βγαίνει στο
+    rasmoutput.sym· το μήκος του αρχείου το λέει.)"""
+    n1 = os.path.getsize(os.path.join(BUILD, "bank1c.bin"))
+    if OV_LOAD + n1 != 0x8000:
+        sys.exit(f"το bank1c.bin ({n1} bytes) αρχίζει στο #{0x8000 - n1:04X} "
+                 f"του src/main.asm, και ο φορτωτής το φορτώνει στο OV_LOAD "
+                 f"(#{OV_LOAD:04X}): ο κώδικας των τρυπών θα ερχόταν αλλού από "
+                 f"εκεί που τον ψάχνει το ov_install")
 
 
 def check_scratch():
-    page2_ovl()
-    n2 = os.path.getsize(os.path.join(BUILD, "page2o.bin"))
+    n2 = os.path.getsize(os.path.join(BUILD, "page2.bin"))
     ng = os.path.getsize(os.path.join(BUILD, "game2.bin"))
     # Από το βήμα 86 σε δύο τράπεζες: τα δεδομένα της τράπεζας 2 στη βασική
     # τράπεζα 1 κάτω από τα εικονίδια, ο κώδικάς της στην τράπεζα 5 κάτω από
     # τις μηχανές, που φορτώνονται κατευθείαν στη θέση τους. Στην τράπεζα 5 και
     # τα τρία μαζί ήταν 16.475 bytes — 91 πάνω από ολόκληρη την τράπεζα.
-    if SCRATCH + n2 > ICONS:
-        sys.exit(f"το page2o.bin ({n2} bytes) φτάνει από το #{SCRATCH:04X} ως το "
-                 f"#{SCRATCH + n2:04X} και σβήνεται από το bank1.bin στο "
-                 f"#{ICONS:04X} ({SCRATCH + n2 - ICONS} bytes)")
+    if SCRATCH + n2 > OV_LOAD:
+        sys.exit(f"το page2.bin ({n2} bytes) φτάνει από το #{SCRATCH:04X} ως το "
+                 f"#{SCRATCH + n2:04X} και σβήνεται από το bank1c.bin στο "
+                 f"#{OV_LOAD:04X} ({SCRATCH + n2 - OV_LOAD} bytes)")
     base = b5_base()
     if SCRATCH_G2 + ng > base:
         sys.exit(f"το game2.bin ({ng} bytes) φτάνει ως το #{SCRATCH_G2 + ng:04X} "
                  f"και σβήνει τις μηχανές στο #{base:04X} "
                  f"({SCRATCH_G2 + ng - base} bytes πάνω)")
-    return ICONS - SCRATCH - n2
+    return OV_LOAD - SCRATCH - n2
 
 
 def build():
@@ -272,6 +271,7 @@ def build():
     slack = check_fit()
     check_scratch()
     sym = symbols()
+    check_ovl()
     lo, slack2 = check_page2(sym)
     gen_top = 0x8000 + os.path.getsize(os.path.join(BUILD, "gen.bin"))
     if gen_top > GEN_END:
@@ -289,6 +289,8 @@ def build():
             FILES[i] = (f[0], f[1], g_text(), f[3])
         elif f[0] == "B6CODE.BIN":
             FILES[i] = (f[0], f[1], g_text("G_b6code"), f[3])
+        elif f[0] == "BANK1.BIN":
+            FILES[i] = (f[0], f[1], OV_LOAD, f[3])
     print(f"τράπεζα 0: {slack} bytes ως τη σκαλωσιά των δοκιμών· "
           f"τράπεζα 2: κώδικας στο #{lo:04X}, {slack2} bytes ως το #C000· "
           f"γεννήτρια ως το #{gen_top:04X}, {GEN_END - gen_top} bytes ως τη "

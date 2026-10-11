@@ -39,11 +39,10 @@ dm_do:
         call    al_node                 ; το αποτύπωμά του (src/link.asm)
         ld      hl,al_rx                ; al_rx, al_ry, al_rw, al_rh
         call    dmv_put                 ; το πρώτο ορθογώνιο (dm_world)
-        ld      bc,GA_PORT + PAGE_B6
-        out     (c),c                   ; το al_node γυρίζει με την 1
+        call    asc_b6                  ; το al_node γυρίζει με την 1
         ; --- ΤΟ ΚΤΙΡΙΟ: η τιμή του στον κατάλογο (bld_items) ---
         ld      a,(dm_n)
-        call    dm_rec
+        call    mt_rec
         inc     hl
         inc     hl                      ; D_SIZE / ST_KIND
         push    hl
@@ -259,6 +258,7 @@ dmp_t:
         ld      (dm_in),a
         ld      hl,dm_out
         call    lk_each                 ; src/door.asm
+        call    dm_paths                ; τα μονοπάτια του (βήμα 102)
         ; --- Ο ΓΡΑΦΟΣ: οι ακμές του φεύγουν (lk_cut, που καλεί και το
         ; rt_mark). Η θέση που μένει πίσω στη λίστα κάθε γείτονα κρατά ακόμη
         ; τον κόμβο αν ήταν ο τελευταίος της: όποιος ταξίδευε προς αυτόν θα
@@ -303,7 +303,7 @@ dmg_end:
         ld      l,a
         ld      h,OCCPG
         ld      (hl),0                  ; καμία θέση πιασμένη
-        call    dm_rec
+        call    mt_rec
         ld      de,D_STATE
         add     hl,de
         ld      (hl),DS_EMPTY
@@ -325,8 +325,7 @@ dmg_end:
 dmw_go:
         call    dm_world
         ; --- ό,τι μετριέται από τα κτίρια ---
-        ld      bc,GA_PORT + PAGE_B6
-        out     (c),c
+        call    asc_b6
         call    rooms_rebuild           ; τα δωμάτια, η πίστα, το ταβάνι
         ld      a,1
         ld      (ec_fdiv),a             ; η ροή ξαναμετρά ρεύμα και ορυχεία
@@ -361,13 +360,172 @@ dmv_lp:
         ld      a,(dmv_p)
         cp      l
         jr      nz,dmv_lp
+        call    dm_relink               ; όποιος έχασε τη σύνδεσή του (βήμα 102)
         jp      dt_end
+
+; ---------------------------------------------------------------------------
+; dm_paths — ΤΑ ΜΟΝΟΠΑΤΙΑ ΤΟΥ (βήμα 102): το δικό του, και όσα τελείωναν σε
+; αυτόν. Το Γ καθενός είναι κρατημένο στο LK_OWN της δομής του (lk_keep,
+; src/link.asm), και ξαναπερπατιέται όπως στην τοποθέτηση (al_walk): τα tiles
+; του χάνουν το bit 5 και μένουν θεμέλιο, όπως το αποτύπωμα που γκρεμίστηκε.
+; Δεν φαίνεται τίποτα να αλλάζει (το bit 5 δεν ζωγραφίζεται), άρα τίποτα δεν
+; ξαναζωγραφίζεται, και κανένα άλλο μονοπάτι δεν χρειάζεται να ξαναγραφτεί:
+; ένα μονοπάτι πατά μόνο tiles που χτίζονται (bd_ok), άρα ποτέ άλλο μονοπάτι.
+; Οποια δομή η σύνδεσή της — μονοπάτι ή εδάφους — τελείωνε εδώ γίνεται
+; LKO_LOST, για το dm_relink. Πριν από τον γράφο και την εγγραφή: θέλει τις
+; εγγραφές ζωντανές (al_node). Γυρίζει με την 6.
+; ---------------------------------------------------------------------------
+dm_paths:
+        ld      a,255
+        ld      (dm_par),a              ; η άκρη της δικής του σύνδεσης: καμία
+        ld      c,MAX_DOME
+dmp_lp:
+        ld      h,NODEPG
+        ld      l,c
+        set     5,l                     ; LK_OWN + δομή
+        ld      a,(hl)
+        or      a
+        jr      z,dmp_nx                ; τίποτα κρατημένο
+        ld      e,a
+        and     #FF - #80 - LKO_GROUND
+        ld      b,a                     ; B = η άκρη
+        ld      a,(dm_n)
+        cp      c
+        jr      z,dmp_own               ; η δική του: φεύγει μαζί του
+        cp      b
+        jr      nz,dmp_nx               ; πάει αλλού
+        ld      a,LKO_LOST
+        jr      dmp_put
+dmp_own:
+        ld      a,b
+        ld      (dm_par),a              ; για όσους κρέμονταν από αυτόν (dm_relink)
+        xor     a
+dmp_put:
+        ld      (hl),a
+        bit     5,e                     ; LKO_GROUND: στο έδαφος δεν έχει bit
+        jr      nz,dmp_nx
+        push    bc
+        ld      a,e
+        and     #80
+        ld      (al_ori),a              ; το σχήμα: το al_k ρωτά μόνο «μηδέν;»
+        ld      a,c
+        call    dmp_set                 ; η δομή: το «νέο» του al_walk
+        pop     bc
+        push    bc
+        ld      a,b
+        call    al_node                 ; η άκρη: al_rx.. και al_q
+        ld      hl,dmp_cb
+        ld      (al_cb),hl
+        call    al_w4                   ; src/link.asm
+        pop     bc
+dmp_nx:
+        inc     c
+        ld      a,c
+        cp      MAX_NODE
+        jr      c,dmp_lp
+        jp      asc_b6                  ; η εγγραφή θέλει την 6
+; dmp_cb — ένα tile του μονοπατιού, με την 4: όχι πια μονοπάτι. NC.
+dmp_cb:
+        call    tile_addr               ; κρατά BC, DE
+        res     5,(hl)                  ; W_OCC_PATH
+        or      a
+        ret
+; dmp_set — A = κόμβος: το αποτύπωμά του στο al_nx.. και το κέντρο του στο
+; al_p, όπως τα αφήνει το al_find για ό,τι τοποθετείται. Γυρίζει με την 1.
+dmp_set:
+        call    al_node
+        ld      hl,al_rx
+        ld      de,al_nx
+        ld      bc,4
+        ldir
+        ld      hl,(al_q)
+        ld      (al_p),hl
+        ret
+
+; ---------------------------------------------------------------------------
+; dm_relink — ΟΠΟΙΑ ΔΟΜΗ ΚΡΕΜΟΤΑΝ ΑΠΟ ΑΥΤΟΝ (βήμα 102) — η σύνδεσή της, μονοπάτι
+; ή εδάφους, τελείωνε εκεί, LKO_LOST από το dm_paths — κρέμεται πια από εκεί που
+; κρεμόταν εκείνος (dm_par), με σύνδεση εδάφους ζωγραφισμένη όπως όλες (lk_keep,
+; lk_draw). Αλλιώς έμενε απρόσιτη: ένα εργοτάξιο που δεν τελειώνει ποτέ, ένα
+; ορυχείο που δεν φτάνει κανείς, ένα airlock που ήταν ο δρόμος της αποικίας ως
+; το σκάφος.
+;
+; ΟΧΙ ΤΟ ΚΟΝΤΙΝΟΤΕΡΟ AIRLOCK, όπως ό,τι μπαίνει χωρίς μονοπάτι (lk_ground). Το
+; κοντινότερο είναι συχνά ένα που κρέμεται από το ίδιο το ορφανό — δύο airlock
+; σε σειρά από το γκρεμισμένο — και τότε οι δύο δένονται μεταξύ τους, με δύο
+; ακμές, νησί χωρίς δρόμο ως το σκάφος. Το να αποκλειστεί ό,τι κρέμεται από
+; ορφανό θέλει να περπατηθεί όλο το δέντρο, και δεν χωρούσε εδώ. Ο γονιός του
+; γκρεμισμένου είναι πιο πάνω στο ίδιο δέντρο: κανένας κύκλος, καμία διπλή
+; ακμή, και ο ίδιος δρόμος ως το σκάφος που είχαν πριν. Αν ο γκρεμισμένος δεν
+; κρεμόταν από πουθενά (η αποικία δοκιμών, ένα σώσιμο πριν από το βήμα 102), ή
+; αν ο γονιός του έχει ήδη MAX_DEGREE ακμές, μένουν χωρίς σύνδεση, όπως ως τώρα.
+;
+; Μετά τον γράφο και την εγγραφή, και μετά το dm_world, ώστε το lk_draw να
+; βλέπει την κατοχή όπως έμεινε. Τα σκέλη που άλλαξαν δεν ζωγραφίζονται εδώ: το
+; alv_jp του al_vr (src/commit.asm, τράπεζα 1) δείχνει για λίγο στο dmv_leg, και
+; πάνε στη λίστα αλλαγών μετά από τα ορθογώνια του dm_do, ένα ανά πέρασμα.
+; ---------------------------------------------------------------------------
+dm_relink:
+        call    asc_b1                  ; το alv_jp είναι στην τράπεζα 1
+        ld      hl,dmv_leg
+        ld      (alv_jp + 1),hl
+        ld      c,MAX_DOME
+dml_lp:
+        ld      h,NODEPG
+        ld      l,c
+        set     5,l                     ; LK_OWN + δομή
+        ld      a,(hl)
+        inc     a                       ; LKO_LOST
+        jr      nz,dml_nx
+        ld      (hl),a                  ; 0, ώσπου να γράψει το lk_keep
+        ld      a,(dm_par)
+        ld      l,a
+        inc     a
+        jr      z,dml_nx                ; ο γκρεμισμένος δεν κρεμόταν από πουθενά
+        ld      a,(hl)                  ; ο βαθμός του γονιού
+        cp      MAX_DEGREE
+        jr      nc,dml_nx
+        ld      a,l
+        ld      (al_pt),a               ; η άκρη, για το lk_draw
+        push    bc
+        ld      b,c
+        ld      c,a
+        or      LKO_GROUND
+        call    lk_keep                 ; κρατιέται, και η ακμή (src/link.asm)
+        pop     bc
+        push    bc
+        ld      a,c
+        call    dmp_set                 ; το «νέο» του lk_draw
+        call    lk_draw                 ; src/commit.asm· γυρίζει με την 1
+        pop     bc
+dml_nx:
+        inc     c
+        ld      a,c
+        cp      MAX_NODE
+        jr      c,dml_lp
+        ld      hl,view_rect            ; με την 1, από την αρχή ή από το lk_draw
+        ld      (alv_jp + 1),hl
+        ret
+; dmv_leg — στη θέση του view_rect, από το al_vr: το ορθογώνιο ενός σκέλους
+; (vr_tx, vr_ty, vr_w, vr_h) στη λίστα αλλαγών, ένα DK_RSIZE και ένα DK_RECT
+; όπως τα ορθογώνια του dm_do — μετά από αυτά.
+dmv_leg:
+        ld      hl,(vr_w)               ; L = vr_w, H = vr_h
+        ld      b,l
+        ld      c,h
+        ld      a,DK_RSIZE
+        call    dirty_push
+        ld      hl,(vr_tx)              ; L = vr_tx, H = vr_ty
+        ld      b,l
+        ld      c,h
+        ld      a,DK_RECT
+        jp      dirty_push
 
 ; ---------------------------------------------------------------------------
 ; dm_world — η κατοχή του κόσμου (bit 4) ξαναγράφεται στα ορθογώνια της λίστας
 ; (dmv_r): σβήνει, και ξαναγράφεται από τα αποτυπώματα όσων μένουν και από όσους
 ; διαδρόμους περνούν από εκεί, με τη σφραγίδα της τοποθέτησης (cr_stampx). Τα
-; μονοπάτια (bit 5) μένουν.
+; μονοπάτια (bit 5) δεν τα αγγίζει: όσα φεύγουν τα σβήνει το dm_paths (βήμα 102).
 ; ΓΙΑΤΙ ΞΑΝΑΓΡΑΦΕΤΑΙ ΚΑΙ ΔΕΝ ΣΒΗΝΕΤΑΙ ΜΟΝΟ ΟΤΙ ΕΦΥΓΕ. Ενας διάδρομος σφραγίζει
 ; και τα tiles του μισού πλάτους όσα ήταν ελεύθερα, και το ποια ήταν δεν το
 ; κρατά κανείς· ένα tile του μπορεί να είναι και ενός άλλου διαδρόμου ή
@@ -429,7 +587,7 @@ dmw_cl:
         ld      bc,GA_PORT + PAGE_B6
         out     (c),c
         ; ΠΡΩΤΑ Η ΚΑΤΑΣΤΑΣΗ: οι άδειες εγγραφές είναι οι περισσότερες, και τα
-        ; δύο dm_rec πριν από αυτήν ήταν 17 ms στην αποικία δοκιμών.
+        ; δύο mt_rec πριν από αυτήν ήταν 17 ms στην αποικία δοκιμών.
         ld      bc,C_CSTATE
         add     hl,bc
         ld      a,(hl)
@@ -613,13 +771,13 @@ dmv_put:
 dmr_pair:
         push    af
         ld      a,c
-        call    dm_rec
+        call    mt_rec
         ld      c,(hl)                  ; cx
         inc     hl
         ld      b,(hl)                  ; cy
         pop     af
         push    bc
-        call    dm_rec
+        call    mt_rec
         pop     bc
         ld      de,dmv_t
         ld      a,(hl)
@@ -658,17 +816,8 @@ dmca_s:
         pop     hl
         ret
 
-; dm_rec — A = κόμβος -> HL = η εγγραφή του (τράπεζα 6). Χαλάει DE.
-dm_rec:
-        cp      MAX_DOME
-        jp      c,ob_domeadr
-        add     a,a
-        add     a,a
-        add     a,a                     ; (64 + δομή) x 8 = δομή x 8 σε 8 bits
-        ld      l,a
-        ld      h,G_struct_tbl >> 8
-        ret
-        assert  (G_struct_tbl & 255) == 0 && MAX_STRUCT * STRUCT_REC == 256
+        ; Η εγγραφή ενός κόμβου είναι το mt_rec (src/meteor.asm): A -> HL, με
+        ; την 6 μέσα, χαλάει A και DE. Ως το βήμα 102 εδώ υπήρχε αντίγραφό του.
         assert  D_STATE == ST_STATE && D_SIZE == ST_KIND && J_BUILD == 0
 
 ; ΟΙ ΜΕΤΑΒΛΗΤΕΣ ΔΕΝ ΓΡΑΦΟΝΤΑΙ στο ovl.bin ούτε στις τρύπες (nocode): ζουν
@@ -676,6 +825,7 @@ dm_rec:
 dm_ovl_code:
         nocode
 dm_st:      db 0
+dm_par:     db 0                ; ο γονιός του γκρεμισμένου (dm_paths), 255 = κανένας
 dm_in:      db 0
 dm_m:       dw 0
 dm_b:       dw 0

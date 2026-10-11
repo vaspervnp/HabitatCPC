@@ -162,13 +162,16 @@ def centre(G, n):
 # --------------------------------------------------------------------------
 # ο κόσμος από τις εγγραφές (tools/reach.py, tools/route.py)
 # --------------------------------------------------------------------------
-def model(G):
-    """Η τράπεζα 4 όπως πρέπει να είναι: ό,τι είναι, με το bit 4 από την αρχή,
-    από όσα μένουν — τα αποτυπώματα (reach.footprint), τα πλακίδια κάθε
-    διαδρόμου όπως τα βγάζει η διαδρομή του tools/route.py από τα δύο άκρα
-    του (reach.corridor_tiles), και τα tiles του μισού πλάτους όπου δεν έχει
-    μονοπάτι (reach.half_tiles). Το bit 4 είναι ένωση: η σειρά δεν μετρά."""
-    wl = bytearray(b & 0xEF for b in bytes(G.bank(4)[:0x4000]))
+def model(G, base=None):
+    """Η τράπεζα 4 όπως πρέπει να είναι: ό,τι είναι (ή το base, βήμα 102), με
+    το bit 4 από την αρχή, από όσα μένουν — τα αποτυπώματα (reach.footprint),
+    τα πλακίδια κάθε διαδρόμου όπως τα βγάζει η διαδρομή του tools/route.py από
+    τα δύο άκρα του (reach.corridor_tiles), και τα tiles του μισού πλάτους όπου
+    δεν έχει μονοπάτι (reach.half_tiles). Το bit 4 είναι ένωση: η σειρά δεν
+    μετρά."""
+    if base is None:
+        base = bytes(G.bank(4)[:0x4000])
+    wl = bytearray(b & 0xEF for b in base)
     on = lambda x, y: -64 <= x < 64 and -64 <= y < 64
     domes = [[r[0], r[1], r[2], r[4]] for r in (dome(G, d) for d in range(64))]
     structs = [struct(G, n) for n in range(64, 96)]

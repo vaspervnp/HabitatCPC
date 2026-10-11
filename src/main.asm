@@ -269,14 +269,19 @@ zz_bank0_end:
         ; μετά από αυτό δεν θα την έβρισκε. Στον δίσκο δεν γράφεται· το παιχνίδι
         ; δεν την καλεί ποτέ.
 ; --- ΚΩΔΙΚΑΣ ΓΙΑ ΤΙΣ ΤΡΥΠΕΣ ΤΟΥ DIST (βήμα 101, src/demolish.asm): γράφεται
-; για το GH_BUF, όπου τρέχει, και εκεί τον φέρνει και ο φορτωτής, αμέσως μετά
-; τα δεδομένα της τράπεζας 2 (PAGE2.BIN, tools/mkdsk.py). Το ov_install τον
-; μοιράζει στις τρύπες στην εκκίνηση. ---
-        org     GH_BUF
+; για το GH_BUF, όπου τρέχει, και ΦΤΑΝΕΙ στο OV_LOAD της βασικής τράπεζας 1,
+; κάτω από τα εικονίδια: στο snapshot εδώ, στον δίσκο με τη BANK1.BIN (βήμα
+; 102, tools/mkdsk.py). Το ov_install τον μοιράζει στις τρύπες στην εκκίνηση.
+; Ως το βήμα 101 ερχόταν στο ίδιο το GH_BUF, και έπρεπε να χωρά κάτω από την
+; αποικία δοκιμών: 904 bytes. Τώρα ολόκληρο το GH_LOG, 1.160: η αποικία τρέχει
+; στο game_new, πριν από κάθε κατεδάφιση, και ό,τι γράψει πάνω της το ov_run
+; δεν το ξαναζητά κανείς — όπως ένα μεγάλο φάντασμα. ---
+OV_LOAD     equ #7000 - GH_LOG          ; = το OV_LOAD του src/boot.asm
+        org     GH_BUF, OV_LOAD
         include "dm_ovl.asm"
 zz_ovl_end:
-        assert  zz_ovl_end <= PAGE2_CODE - 256  ; κάτω από την αποικία δοκιμών
-        save    "../build/ovl.bin", GH_BUF, zz_ovl_end - GH_BUF
+        assert  zz_ovl_end <= GH_BUF + GH_LOG
+        save    "../build/ovl.bin", OV_LOAD, zz_ovl_end - GH_BUF
 
         org     PAGE2_CODE - 256
 zz_colony:
@@ -350,7 +355,9 @@ zz_page2_end:
 zz_b1code_end:
         assert  zz_b1code_end <= G_b1code + B1C_MAX
         assert  G_b1code + B1C_MAX == #8000
-        save    "../build/bank1c.bin", #7000, #1000
+        ; ΚΑΙ ΑΠΟ ΚΑΤΩ ΤΟΥΣ Ο ΚΩΔΙΚΑΣ ΤΩΝ ΤΡΥΠΩΝ (βήμα 102): η BANK1.BIN αρχίζει
+        ; στο OV_LOAD, και το επίμετρο του φορτωτή σβήνει το DIST ως εκεί.
+        save    "../build/bank1c.bin", OV_LOAD, #8000 - OV_LOAD
 
         bankset 1
         org     #0000

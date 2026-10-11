@@ -30,7 +30,9 @@
      οι μηχανές και τα εικονίδια είναι byte προς byte όπως βγήκαν από το
      build, και τα δύο πρόχειρα μηδέν, όπως στο snapshot. Αρνητικό: ένας
      δίσκος με τα δύο σβησίματα του επιμέτρου κομμένα αφήνει γραφικά και
-     κώδικα σε αυτά.
+     κώδικα σε αυτά. Από το βήμα 102 η BANK1.BIN αρχίζει στο OV_LOAD, με τον
+     κώδικα των τρυπών του DIST κάτω από τα εικονίδια, και το DIST σβήνεται ως
+     εκεί.
 """
 import os, subprocess, sys
 
@@ -278,6 +280,18 @@ def main():
           f"ο κώδικας του τροχού ήρθε από τον δίσκο στην τράπεζα 6: {len(code)} bytes στο "
           f"#{at:04X}, {sum(x != y for x, y in zip(got, code))} διαφορετικά")
 
+    # --- 3γ. ο κώδικας της κατεδάφισης στις τρύπες του DIST (βήματα 101-102) -
+    # Τον φέρνει η BANK1.BIN στο OV_LOAD, κάτω από τα εικονίδια, και το
+    # ov_install τον μοιράζει στις στήλες 96-127 στην εκκίνηση. Ως το βήμα 101
+    # ερχόταν με την PAGE2.BIN στο GH_BUF· ένας δίσκος που τον ξεχνά αφήνει
+    # μηδενικά εκεί όπου πηδά το πρώτο M, D, FIRE.
+    ovl = open(os.path.join(ROOT, "build", "ovl.bin"), "rb").read()
+    b1 = cpc._lib.cpcemu_ram_ptr(m._h, 1)
+    holes = bytes(b1[128 * (k >> 5) + 96 + (k & 31)] for k in range(len(ovl)))
+    check(len(ovl) > 512 and holes == ovl,
+          f"ο κώδικας της κατεδάφισης ήρθε από τον δίσκο στις τρύπες του DIST: "
+          f"{len(ovl)} bytes, {sum(x != y for x, y in zip(holes, ovl))} διαφορετικά")
+
     # --- 4. ο κόσμος είναι παραγμένος ------------------------------------
     m.run_code(0x3EC0, open(os.path.join(ROOT, "build", "plane.bin"), "rb").read())
     m.run_frames(2)
@@ -308,6 +322,9 @@ def main():
     # BANK5.BIN από το βήμα 97: bank5c.bin, οι μηχανές, οι αρμοί ΚΑΙ ο κώδικας
     # των κοντών στροφών (src/bend.asm) στη δέσμευση b5code.
     mach, icons = img("bank5c.bin"), img("bank1c.bin")
+    # ...ΚΑΙ ΑΠΟ ΤΟ ΒΗΜΑ 102 ο κώδικας των τρυπών του DIST από κάτω τους: το
+    # bank1c.bin πάει από το OV_LOAD ως το #8000 (src/main.asm, tools/mkdsk.py).
+    ov = 0x8000 - len(icons)
     code = sym["ZZ_PAGE2_END"] - len(game2)
     b5base = None
     for line in open(os.path.join(ROOT, "build", "layout.asm"), encoding="utf-8"):
@@ -330,8 +347,8 @@ def main():
         return (diff(ram[0x8000:0x8000 + len(page2)], page2),
                 diff(ram[code:code + len(game2)], game2),
                 diff(b5[b5base - 0x4000:b5base - 0x4000 + len(mach)], mach),
-                diff(ram[0x7000:0x7000 + len(icons)], icons),
-                sum(1 for x in ram[0x4000:0x7000] if x),
+                diff(ram[ov:ov + len(icons)], icons),
+                sum(1 for x in ram[0x4000:ov] if x),
                 sum(1 for x in b5[:b5base - 0x4000] if x))
 
     st = scratch_state(DSK, eg) if eg else None
@@ -345,11 +362,11 @@ def main():
               f"#{code:04X} ({dg})")
         check(dm == 0 and di == 0,
               f"οι μηχανές στο #{b5base:04X} της τράπεζας 5 ({len(mach)} bytes, "
-              f"{dm} διαφορετικά) και τα εικονίδια με τον κώδικα της τοποθέτησης "
-              f"στο #7000 ({len(icons)}, {di})")
+              f"{dm} διαφορετικά) και ο κώδικας των τρυπών με τα εικονίδια και τον "
+              f"κώδικα της τοποθέτησης στο #{ov:04X} ({len(icons)}, {di})")
         check(z1 == 0 and z5 == 0,
               f"το πρόχειρο σβήστηκε όπως στο snapshot: {z1} bytes μη μηδενικά "
-              f"στο DIST (#4000-#6FFF), {z5} στο NEXTHOP ως τις μηχανές")
+              f"στο DIST (#4000-#{ov - 1:04X}), {z5} στο NEXTHOP ως τις μηχανές")
 
     # Αρνητικό: τα δύο ldir που σβήνουν το πρόχειρο γίνονται nop, μέσα στο
     # LOADER.BIN του ίδιου δίσκου. Το επίμετρο ψάχνεται ολόκληρο, όχι το
@@ -357,7 +374,7 @@ def main():
     dsk = bytearray(open(DSK, "rb").read())
     at = dsk.find(eg) if eg else -1
     cut = 0
-    for n in (b5base - 0x4001, 0x7000 - 0x4001):
+    for n in (b5base - 0x4001, ov - 0x4001):
         k = eg.find(bytes([0x01, n & 0xFF, n >> 8, 0xED, 0xB0]))
         if at >= 0 and k >= 0:
             dsk[at + k + 3:at + k + 5] = b"\0\0"
