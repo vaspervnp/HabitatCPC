@@ -66,8 +66,7 @@ sv_stop:
         call    fdc_off
         call    is_on                   ; οι λωρίδες ξαναγυρίζουν (src/isr.asm)
         call    hud_draw                ; ...και οι σειρές 0-2, που έσβησε το sv_begin
-        pop     af
-        or      a
+        pop     af                      ; Z αν A = 0 σε κάθε δρόμο ως εδώ
         ret
 
 ; ---------------------------------------------------------------------------
@@ -90,7 +89,51 @@ sv_load:
         call    sv_body
         jr      nz,sv_stop
         call    fdc_off
-        jp      sv_after
+        ; fall through: sv_after
+; ---------------------------------------------------------------------------
+; sv_after — ό,τι ΔΕΝ σώθηκε, ξαναφτιαγμένο.
+;
+; Η σειρά έχει σημασία: το NEXTHOP μηδενίζεται ΠΡΙΝ ξεκινήσει ο τροχός, γιατί
+; ένας πράκτορας που διαβάζει παλιό «επόμενο κόμβο» δεν διαβάζει σκουπίδι —
+; διαβάζει έγκυρο γείτονα ΑΛΛΟΥ κόσμου, και φεύγει προς τα εκεί.
+; ---------------------------------------------------------------------------
+sv_after:
+        ld      a,(SV_HDR + 7)
+        call    pal_planet              ; ο κόσμος που ήρθε μπορεί να είναι άλλος πλανήτης
+        call    is_on                   ; ΜΕΤΑ την παλέτα: δύο out ανά pen (src/isr.asm)
+        ; Η κάμερα μέσα στον κόσμο: μια θέση σωσμένη πριν από το βήμα 78 μπορεί
+        ; να την έχει στο -65 ή και πέρα, και μια πλήρης σχεδίαση εκεί διαβάζει
+        ; λάθος σειρές (DESIGN §15).
+        ld      hl,(SV_HDR + 8)         ; L = cam_tx, H = cam_ty
+        ld      a,l
+        ld      b,CAM_XMAX + #80
+        call    sv_cam
+        ld      l,a
+        ld      a,h
+        ld      b,CAM_YMAX + #80
+        call    sv_cam
+        ld      h,a
+        ld      (cam_tx),hl             ; cam_tx, cam_ty διπλανά (ui.asm)
+        ld      hl,(SV_HDR + 10)
+        ld      (cur_hx),hl             ; cur_hx, cur_hy διπλανά (ui.asm)
+        ld      bc,GA_PORT + PAGE_B5
+        out     (c),c
+        ld      hl,#4000
+        ld      bc,B5_BASE - #4001      ; ως τις μηχανές (βήμα 85)
+        call    ng_zero
+        call    dt_end
+        call    wheel_reset
+        call    rt_mark
+        call    dirty_reset
+        call    gh_reset
+        xor     a
+        ld      (ui_state),a
+        ld      (ui_sel),a
+        call    view_draw               ; κάνει και ob_touch και view_cam
+        call    ui_hudall
+        call    ui_show
+        xor     a
+        ret
 
 ; sv_begin — μοτέρ, και η κεφαλή στον πρώτο track του slot.
 sv_begin:
@@ -143,12 +186,8 @@ svb_nopage:
         ld      h,(ix+2)
         ld      b,(ix+3)
         ld      a,(sv_cmd)
-        call    fdc_stream
-        push    af
-        ld      bc,GA_PORT + PAGE_B1
-        out     (c),c
-        pop     af
-        or      a
+        call    fdc_stream              ; Z αν A = 0, και στο fst_bad (or a)
+        call    dt_end                  ; η 1 (src/dirty.asm): A και F μένουν
         ret     nz
         ld      de,4
         add     ix,de
@@ -190,20 +229,16 @@ SV_STATE    equ G_hud_shadow - SV_STATE_N * 512
 ; ---------------------------------------------------------------------------
 sv_hdr_make:
         ld      hl,SV_HDR
-        ld      (hl),0
-        ld      de,SV_HDR + 1
         ld      bc,511
-        ldir
+        call    ng_zero                 ; src/hw.asm
         ld      hl,sv_magic
         ld      de,SV_HDR
         ld      bc,5
         ldir
-        ld      bc,GA_PORT + PAGE_B6
-        out     (c),c
+        call    ob_b6
         ld      hl,(G_worldinfo)
         ld      a,(G_worldinfo + 2)
-        ld      bc,GA_PORT + PAGE_B1
-        out     (c),c
+        call    dt_end                  ; η 1· κρατά A, HL
         ld      (SV_HDR + 5),hl         ; seed
         ld      (SV_HDR + 7),a          ; πλανήτης
         ld      a,(cam_tx)
@@ -232,59 +267,10 @@ svo_lp:
         xor     a
         ret
 svo_bad:
-        ld      a,#FF
-        or      a
+        or      #FF                     ; A = #FF, NZ
         ret
 
 sv_magic:   db "HBT", SV_VER + '0', SV_VER
-
-; ---------------------------------------------------------------------------
-; sv_after — ό,τι ΔΕΝ σώθηκε, ξαναφτιαγμένο.
-;
-; Η σειρά έχει σημασία: το NEXTHOP μηδενίζεται ΠΡΙΝ ξεκινήσει ο τροχός, γιατί
-; ένας πράκτορας που διαβάζει παλιό «επόμενο κόμβο» δεν διαβάζει σκουπίδι —
-; διαβάζει έγκυρο γείτονα ΑΛΛΟΥ κόσμου, και φεύγει προς τα εκεί.
-; ---------------------------------------------------------------------------
-sv_after:
-        ld      a,(SV_HDR + 7)
-        call    pal_planet              ; ο κόσμος που ήρθε μπορεί να είναι άλλος πλανήτης
-        call    is_on                   ; ΜΕΤΑ την παλέτα: δύο out ανά pen (src/isr.asm)
-        ; Η κάμερα μέσα στον κόσμο: μια θέση σωσμένη πριν από το βήμα 78 μπορεί
-        ; να την έχει στο -65 ή και πέρα, και μια πλήρης σχεδίαση εκεί διαβάζει
-        ; λάθος σειρές (DESIGN §15).
-        ld      hl,(SV_HDR + 8)         ; L = cam_tx, H = cam_ty
-        ld      a,l
-        ld      b,CAM_XMAX + #80
-        call    sv_cam
-        ld      l,a
-        ld      a,h
-        ld      b,CAM_YMAX + #80
-        call    sv_cam
-        ld      h,a
-        ld      (cam_tx),hl             ; cam_tx, cam_ty διπλανά (ui.asm)
-        ld      hl,(SV_HDR + 10)
-        ld      (cur_hx),hl             ; cur_hx, cur_hy διπλανά (ui.asm)
-        ld      bc,GA_PORT + PAGE_B5
-        out     (c),c
-        ld      hl,#4000
-        ld      (hl),0
-        ld      de,#4001
-        ld      bc,B5_BASE - #4001      ; ως τις μηχανές (βήμα 85)
-        ldir
-        ld      bc,GA_PORT + PAGE_B1
-        out     (c),c
-        call    wheel_reset
-        call    rt_mark
-        call    dirty_reset
-        call    gh_reset
-        xor     a
-        ld      (ui_state),a
-        ld      (ui_sel),a
-        call    view_draw               ; κάνει και ob_touch και view_cam
-        call    ui_hudall
-        call    ui_show
-        xor     a
-        ret
 
 ; sv_cam — A προσημασμένο -> στο [-64, B - #80]. Με το xor #80 η σειρά των
 ; προσημασμένων γίνεται σειρά ανυπόγραφων, και αρκούν δύο cp.

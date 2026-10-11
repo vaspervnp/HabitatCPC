@@ -40,22 +40,20 @@ bd_select:
         ; Στο 127 το «πιο πέρα» θα ήταν το -128, η απέναντι άκρη του κόσμου:
         ; εκεί πάει μισό tile πίσω (βήμα 78).
         ld      hl,cur_hx
-        ld      a,(bd_w)
+        ld      de,bd_w
+        ld      b,2                     ; cur_hx με το bd_w, cur_hy με το bd_h
+bds_lp:
+        ld      a,(de)
         xor     (hl)
         rra                             ; CY: άλλη ισοτιμία
-        jr      nc,bds_y
+        jr      nc,bds_nx
         inc     (hl)
-        jp      po,bds_y
+        jp      po,bds_nx
         ld      (hl),126
-bds_y:
-        inc     hl                      ; cur_hy
-        ld      a,(bd_h)
-        xor     (hl)
-        rra
-        jr      nc,bds_sz
-        inc     (hl)
-        jp      po,bds_sz
-        ld      (hl),126
+bds_nx:
+        inc     hl
+        inc     de
+        djnz    bds_lp
 bds_sz:
         ; Το μέγεθος μιας δομής βγαίνει από το είδος: τα τέσσερα ενεργειακά
         ; υπάρχουν σε τρία μεγέθη και ο κατάλογος δίνει το μεγάλο· ορυχείο,
@@ -100,13 +98,11 @@ bd_redraw:
         ; το bd_commit — 35 ms από τα 160 ενός ηλιακού (βήμα 35).
         call    vr_tiles
         jr      z,bdr_out
-        ld      bc,GA_PORT + PAGE_B6
-        out     (c),c
+        call    ob_b6
         ld      a,(bd_node)
         sub     MAX_DOME
         call    ob_struct
-        ld      bc,GA_PORT + PAGE_B1
-        out     (c),c
+        call    dt_end                  ; η 1 (src/dirty.asm)
         call    ob_clip_full
 bdr_out:
         xor     a
@@ -325,10 +321,8 @@ bdk_find:
         add     hl,de
         djnz    bdk_find
 bdk_full:
-        ld      bc,GA_PORT + PAGE_B1
-        out     (c),c
         ld      a,255
-        ret
+        jp      dt_end                  ; η 1 (src/dirty.asm)· το A μένει
 bdk_got3:
         inc     c
 bdk_got2:
@@ -483,23 +477,24 @@ bdk_rec:
 ; bd_stock_pay — αφαιρεί το κόστος. Κρατά το BC (fit_set).
 bd_stock_pay:
         ld      de,(bd_metal)           ; E = μέταλλο, D = βιοπλαστικό
-        ld      hl,(EC_STOCK + S_METAL*2)
-        ld      a,l
+        ld      hl,EC_STOCK + S_METAL*2 ; και αμέσως μετά το βιοπλαστικό
+        ld      a,(hl)
         sub     e
-        ld      l,a
-        jr      nc,bsp_m
-        dec     h
-bsp_m:
-        ld      (EC_STOCK + S_METAL*2),hl
-        ld      hl,(EC_STOCK + S_BIOPL*2)
-        ld      a,l
+        ld      (hl),a
+        inc     hl
+        ld      a,(hl)
+        sbc     a,0
+        ld      (hl),a
+        inc     hl                      ; S_BIOPL
+        ld      a,(hl)
         sub     d
-        ld      l,a
-        jr      nc,bsp_b
-        dec     h
-bsp_b:
-        ld      (EC_STOCK + S_BIOPL*2),hl
+        ld      (hl),a
+        inc     hl
+        ld      a,(hl)
+        sbc     a,0
+        ld      (hl),a
         ret
+        assert  S_BIOPL == S_METAL + 1
 
 ; --- ο κατάλογος -----------------------------------------------------------
 ; είδος, παράμετρος, W tiles, H tiles, μέταλλο, βιοπλαστικό, όνομα

@@ -259,7 +259,8 @@ def main():
         return sym[at] + i
 
     ms = sym["MT_SCAN"]
-    st = find("IN_PANEL", [0xCD, ms & 255, ms >> 8], 40)         # το πρώτο: θόλοι
+    # στο MT_CURSOR από το βήμα 101: το ίδιο ερώτημα κάνει και η κατεδάφιση
+    st = find("MT_CURSOR", [0xCD, ms & 255, ms >> 8], 40)        # το πρώτο: θόλοι
     st2 = m.read_ram(st + 3, 40).find(bytes([0xCD, ms & 255, ms >> 8])) + st + 3
     neg = [("τις δομές που δεν ψάχνονται", [(st2, 0xB7), (st2 + 1, 0), (st2 + 2, 0)]),
            ("τα εδάφη ανά δέκα bytes", [(find("INP_R3", [0x81, 0x87, 0x81]) + 2, 0x00)]),

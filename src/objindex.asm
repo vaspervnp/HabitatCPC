@@ -212,7 +212,7 @@ ov_meas:
         ld      hl,(d_fy)
         ld      a,(d_qh)
         add     a,a
-        jp      oi_gy8
+        jr      oi_gy8
 
 
 ; oc_meas — το oc_run όταν χτίζεται το ευρετήριο: το κουτί του τρεξίματος
@@ -229,7 +229,7 @@ oc_meas:
         ld      hl,(ob_y)
         ld      a,(ob_h)
         call    ob_box
-        jp      oi_gy
+        jr      oi_gy
 
 
 os_meas:
@@ -238,7 +238,7 @@ os_meas:
         call    oi_gx8
         ld      hl,(ob_y)
         ld      a,(ob_h)
-        jp      oi_gy8
+        jr      oi_gy8
 
 oi_e:       defs OI_REC         ; η εγγραφή που μετριέται: x0, x1, y0, y1, id
 oi_ptr:     dw 0                ; πού πάει η επόμενη (τράπεζα 5)

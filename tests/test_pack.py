@@ -20,6 +20,10 @@ import pack                                                             # noqa: 
 fails = []
 
 
+# Οι χαρακτήρες 32-122 της γραμματοσειράς: τα {|}~ και το DEL δεν τα γράφει κανένα
+# κείμενο, και έδωσαν τα 40 bytes τους στην κατεδάφιση (βήμα 101, tools/pack.py).
+FONT_N = 0x7B - 32
+
 def check(cond, msg):
     if not cond:
         fails.append(msg)
@@ -111,7 +115,7 @@ def main():
     # 7. ό,τι δεικτοδοτείται με πολλαπλασιασμό πρέπει να είναι ΣΥΝΕΧΟΜΕΝΟ
     # (οι πόρτες, connectors 8 x 32, ως το βήμα 95: δεν ζωγραφίζονται πια· οι
     # αρμοί του 96 τους ελέγχει το test_object, απέναντι στη scene.joint)
-    for grp, stride, count in (("font_m1", 8, 96 + 5),
+    for grp, stride, count in (("font_m1", 8, FONT_N + 5),
                                ("slot_empty", 16, 24), ("fig_ring", 32, 8),
                                ("fig_gfx", 32, 8)):
         r = by_name[grp]
@@ -153,7 +157,7 @@ def main():
     import hudread
     r = by_name["font_m1"]
     img, base = image_of(r)
-    want = b"".join(hudread.font_m1()) + b"".join(
+    want = b"".join(hudread.font_m1()[:FONT_N]) + b"".join(
         hudread.CELLS[k] for k in ("blank", "low", "full", "white", "empty"))
     check(img[r.addr - base:r.addr - base + r.size] == want and r.addr % 8 == 0,
           f"font_m1 στο #{r.addr:04X}: δεν είναι το font_gfx σε Mode 1 και τα κελιά της μπάρας")

@@ -33,7 +33,8 @@ BUTTONS = [("domes", "D"), ("small", "S"), ("medium", "M"), ("large", "L"),
            ("transport", "T"), ("airlock", "A"), ("pad", "P"), ("ship", "C"),
            ("trade", "M"),                                     # βήμα 93: ο έμπορος
            ("manage", "M"), ("info", "I"), ("fit", "F"), ("save", "S"), ("load", "L"),
-           ("centre", "H"), ("help", "?")]
+           ("centre", "H"), ("demolish", "D"),                 # βήμα 101: η κατεδάφιση
+           ("help", "?")]
 ID = {n: i for i, (n, _) in enumerate(BUTTONS)}
 GROUPS = ["domes", "corridor", "power", "resources", "transport", "manage"]
 # Ο,τι ανοίγει κάθε ομάδα στην ίδια μπάρα (η ίδια πρώτη)
@@ -42,7 +43,7 @@ GROUP_BAR = {"domes": ["domes", "small", "medium", "large", "oxygen", "canteen",
              "power": ["power", "solar", "turbine", "collector"],
              "resources": ["resources", "extractor", "mine"],
              "transport": ["transport", "airlock", "pad", "ship", "trade"],
-             "manage": ["manage", "info", "fit", "save", "load", "centre"]}
+             "manage": ["manage", "info", "fit", "save", "load", "centre", "demolish"]}
 # Ο κατάλογος του src/build.asm (ui_sel) -> το κουμπί του
 ITEM_BTN = ["small", "medium", "large", "corridor", "solar", "turbine", "collector",
             "extractor", "mine", "airlock", "pad"]

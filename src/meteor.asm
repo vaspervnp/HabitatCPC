@@ -167,19 +167,17 @@ mth_struct:
         ld      a,(hl)
         cp      K_SHIP
         ret     z                       ; το σκάφος δεν είναι κτίριο (βήμα 87)
+        ld      e,a                     ; το είδος, για το airlock πιο κάτω
         inc     hl
         inc     hl
+        ld      (hl),DS_BUILDING        ; ξανά εργοτάξιο
         inc     hl
         ld      (hl),0                  ; ακεραιότητα 0
-        dec     hl
-        ld      (hl),DS_BUILDING        ; ξανά εργοτάξιο
         ld      a,1
         ld      (ec_fdiv),a             ; το ισοζύγιο ξαναμετρά (όπως το ja_build)
         ; Ενα airlock χωρίς αέρα: όσοι στέκονταν μέσα του είναι πια έξω, με
         ; στολή (βήμα 90· το §6.2 το άφηνε για όταν θα έρθουν οι στολές).
-        dec     hl
-        dec     hl                      ; ST_KIND
-        ld      a,(hl)
+        ld      a,e                     ; ST_KIND
         cp      K_AIRLOCK
         ld      a,c
         call    z,lk_air_out            ; src/door.asm· κρατά το C
@@ -339,18 +337,17 @@ msn_no:
 
 ; ---------------------------------------------------------------------------
 ; mt_rec — A = κόμβος (< MAX_NODE) -> HL = η εγγραφή του (θόλος < 64, δομή από
-; κει και πάνω). Χαλάει DE. Το καλεί και το ja_build (src/jobs.asm).
+; κει και πάνω). Χαλάει A και DE. Το καλεί και το ja_build (src/jobs.asm).
 mt_rec:
         cp      MAX_DOME
         jp      c,jb_dome_ptr
+        add     a,a
+        add     a,a
+        add     a,a                     ; *STRUCT_REC: (64 + δομή) x 8 = δομή x 8
         ld      l,a
-        ld      h,0
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl                   ; *STRUCT_REC
-        ld      de,G_struct_tbl - MAX_DOME * STRUCT_REC
-        add     hl,de
+        ld      h,G_struct_tbl >> 8     ; μία σελίδα (assert)
         ret
+        assert  (G_struct_tbl & 255) == 0 && MAX_STRUCT * STRUCT_REC == 256 && MAX_DOME == 64
 
 ; mt_byte — οκτώ βήματα της EC_MRND: A = L = ένα καινούργιο byte, H το
 ; προηγούμενο. Χαλάει B.

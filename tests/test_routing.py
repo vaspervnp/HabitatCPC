@@ -62,6 +62,24 @@ def build():
     return sym
 
 
+# ΟΙ ΣΤΗΛΕΣ 96-127 ΚΑΘΕ ΓΡΑΜΜΗΣ ΔΕΝ ΕΙΝΑΙ ΤΗΣ ΔΡΟΜΟΛΟΓΗΣΗΣ (βήμα 101): κόμβοι
+# είναι 96, και εκεί ζει ο κώδικας του ov_run (src/demolish.asm). Το rt_flush
+# γράφει 96 στήλες· η σύγκριση με την αναφορά τις αφήνει έξω, και ένας ΔΙΚΟΣ
+# τους έλεγχος λέει ότι η ανοικοδόμηση δεν τις άγγιξε (στο graphtest είναι 0).
+HOLE = 96
+
+
+def holes_of(buf):
+    return b"".join(buf[r * 128 + HOLE:(r + 1) * 128] for r in range(len(buf) // 128))
+
+
+def masked(buf):
+    b = bytearray(buf)
+    for r in range(len(b) // 128):
+        b[r * 128 + HOLE:(r + 1) * 128] = b"\xff" * (128 - HOLE)
+    return bytes(b)
+
+
 def run_z80(sym, g, entry="START", slice_b=None, patch=()):
     """Γράφει τον γράφο, τρέχει, και γυρίζει (DIST, NEXTHOP, frames, φέτες)."""
     from cpc import CPC
@@ -191,6 +209,10 @@ def restart_check(sym, patch=()):
             f"το rt_mark δεν ήρθε εκεί που έπρεπε: rt_src {src}, φάση {ph}"
         if dirty != 1:
             return f"B={bsz}, μετά από {k} φέτες: το rt_mark άφησε rt_dirty = {dirty}"
+        if any(holes_of(dist)) or any(holes_of(nxt)):
+            return f"B={bsz}, μετά από {k} φέτες: γράφτηκαν οι στήλες 96-127 (οι τρύπες)"
+        dist, nxt = masked(dist), masked(nxt)
+        wd, wn = masked(wd[:lim]) + wd[lim:], masked(wn[:lim]) + wn[lim:]
         if (dist, nxt) != (bytes(wd[:lim]), bytes(wn[:lim])):
             bad = sum(1 for i in range(lim) if dist[i] != wd[i] or nxt[i] != wn[i])
             first = next(i for i in range(lim) if dist[i] != wd[i] or nxt[i] != wn[i])
@@ -242,7 +264,12 @@ def main():
         # και καμία ερώτηση δεν διαβάζει εκείνες τις σειρές (βλ. rt_begin).
         lim = g.hw * 128
         dist, nxt = dist[:lim], nxt[:lim]
-        wd, wn = wd[:lim], wn[:lim]
+        if any(holes_of(dist)) or any(holes_of(nxt)):
+            print(f"  ΑΠΟΤΥΧΙΑ {name}: η δρομολόγηση έγραψε στις στήλες 96-127, τις τρύπες του ov_run")
+            fails += 1
+            continue
+        dist, nxt = masked(dist), masked(nxt)
+        wd, wn = masked(wd[:lim]), masked(wn[:lim])
 
         bad = 0
         if dist != wd:

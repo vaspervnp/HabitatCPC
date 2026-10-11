@@ -127,14 +127,11 @@ cr_read:
         ret
         assert  D_CX == 0 && D_CY == 1 && D_SIZE == 2 && D_STATE == 4
 crd_st:
-        sub     MAX_DOME
+        add     a,a
+        add     a,a
+        add     a,a                     ; (64 + δομή) x 8 = δομή x 8 σε 8 bits
         ld      l,a
-        ld      h,0
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl                   ; STRUCT_REC = 8
-        ld      bc,G_struct_tbl
-        add     hl,bc
+        ld      h,G_struct_tbl >> 8     ; μία σελίδα (assert πιο κάτω)
         ld      a,(hl)                  ; ST_CX
         ld      (de),a
         inc     hl
@@ -158,6 +155,7 @@ crd_st:
         ret                             ; NC από το sub
 
         assert  STRUCT_REC == 8 && ST_CX == 0 && ST_CY == 1 && ST_KIND == 2 && ST_STATE == 4
+        assert  (G_struct_tbl & 255) == 0 && MAX_STRUCT * STRUCT_REC == 256 && MAX_DOME == 64
 
 ; crs_far / crs_sym — οι δύο αποτυχίες που ΔΕΝ εξαρτώνται από το ποιος θόλος
 ; είναι η αφετηρία: 64 tiles ή περισσότερο σε έναν άξονα (cr_far = 1, για τον
@@ -391,14 +389,6 @@ cr_dir:
         ld      l,a
         ld      h,cr_dtab >> 8          ; >> και όχι / : ο rasm στρογγυλεύει
         ld      a,(hl)                  ; το / (#23F5 / 256 = #24, στο uitest)
-        ret
-
-; cr_look — A = δείκτης, HL = πίνακας -> A = πίνακας[δείκτης].
-cr_look:
-        ld      e,a
-        ld      d,0
-        add     hl,de
-        ld      a,(hl)
         ret
 
 ; ---------------------------------------------------------------------------
@@ -676,7 +666,7 @@ crw_v1:
         ld      d,0
 crw_run1:
         ld      a,(cr_l1)
-        jp      cr_line
+        jr      cr_line
 
 ; --- τρέξιμο 0 αξονικό: από το σημείο σύνδεσης, προς τα έξω ---------------
 ; Από το ra (νότος, ανατολή) ή το -ra-1 (βορράς, δύση) στον άξονα της κίνησης,
@@ -701,7 +691,7 @@ crw_axp:
         ld      b,0
 crw_axr:
         ld      a,(cr_l0)
-        jp      cr_line
+        jr      cr_line
 
 ; crw_dg — το πρώτο tile της διαγωνίου, το «πίσω» του πλακιδίου ka:
 ; B = ux*(ka-1) - (ux < 0), C = το ίδιο με το uy. D = ux, E = uy.
@@ -1015,8 +1005,8 @@ cra_tot:
         xor     a
         ret
 cra_no:
-        ld      a,1
-        or      a
+        xor     a
+        inc     a                       ; A = 1, NZ, NC (οι σημαίες του or a)
         ret
 
 ; ---------------------------------------------------------------------------
@@ -1062,10 +1052,8 @@ crm_find:
 crm_next:
         add     hl,de
         djnz    crm_find
-        ld      bc,GA_PORT + PAGE_B1
-        out     (c),c
         ld      a,1
-        ret
+        jp      dt_end                  ; η 1 (src/dirty.asm)· το A μένει
 crm_got:
         ld      de,(cr_d0)              ; E = d0, D = l0
         ld      a,(cr_from)
@@ -1141,16 +1129,14 @@ cr_pay:
 ; τελειώσει το κτίσμα (lk_done, src/door.asm). Ως το cr_commit κόστιζε 133 us
 ; σε κάθε διάδρομο κάθε τοποθέτησης, για μια ερώτηση με γνωστή απάντηση.
 cr_lnk:
-        ld      bc,GA_PORT + PAGE_B6
-        out     (c),c
+        call    ob_b6
         ld      a,(cr_from)
         call    gr_live
         jr      nz,crl_no
         ld      a,(cr_to)
         call    gr_live
 crl_no:
-        ld      bc,GA_PORT + PAGE_B1
-        out     (c),c
+        call    dt_end                  ; η 1· οι σημαίες μένουν
         ret     nz
 ; ---------------------------------------------------------------------------
 ; cr_link — η ακμή μπαίνει στον γράφο κόμβων και ξαναχτίζεται η δρομολόγηση.

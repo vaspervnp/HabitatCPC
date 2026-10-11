@@ -227,6 +227,10 @@ goto_st:    db 0
         ; bit_tab του ΚΑΤΩ από το #4000, που τα βλέπει με την 5 ή την 6 μέσα.
 bit_tab: db 1,2,4,8,16,32,64,128
         include "../src/objindex.asm"
+; τα DK_RSIZE και DK_RECT της κατεδάφισης (βήμα 101) ζουν στις τρύπες του
+; DIST (src/dm_ovl.asm), που εδώ δεν υπάρχουν· κανείς δεν τα σπρώχνει.
+DH_RSIZE    equ 0
+DH_RECT     equ 0
         include "../src/dirty.asm"
         include "../src/figure.asm"         ; βήμα 89: οι άποικοι έξω
         include "../src/hud.asm"

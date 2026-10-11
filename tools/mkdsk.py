@@ -48,7 +48,7 @@ FILES = [
     ("GAME.BIN",    "game.bin",  0x0100, 0x0000),
     ("GAME2.BIN",   "game2.bin", 0,      0x0000),   # από το σύμβολο
     ("GEN.BIN",     "gen.bin",   0x8000, 0x8000),
-    ("PAGE2.BIN",   "page2.bin", 0x8000, 0x0000),
+    ("PAGE2.BIN",   "page2o.bin", 0x8000, 0x0000),  # με τον κώδικα των τρυπών (βήμα 101)
     ("BANK5.BIN",   "bank5c.bin", 0x7400, 0x0000),  # οι μηχανές (βήμα 85), με τον κώδικα του b5code (βήμα 97)
     ("BANK1.BIN",   "bank1c.bin", 0x7000, 0x0000),  # με τον κώδικα του b1code (βήμα 94)
     ("BANK6.BIN",   "bank6.bin", 0x4000, 0x0000),
@@ -230,15 +230,33 @@ def b5_base():
     sys.exit("δεν βρέθηκε το B5_BASE στο build/layout.asm")
 
 
+def page2_ovl():
+    """Τα δεδομένα της τράπεζας 2 και αμέσως μετά ο κώδικας που ο φορτωτής
+    αφήνει στο GH_BUF και το ov_install μοιράζει στις τρύπες του DIST (βήμα
+    101, src/demolish.asm). Το GH_BUF είναι το PAGE2_TOP, το τέλος του
+    page2.bin: το ένα ακολουθεί το άλλο χωρίς κενό."""
+    p2 = open(os.path.join(BUILD, "page2.bin"), "rb").read()
+    ov = open(os.path.join(BUILD, "ovl.bin"), "rb").read()
+    top = None
+    for line in open(os.path.join(BUILD, "layout.asm"), encoding="utf-8"):
+        if line.startswith("PAGE2_TOP"):
+            top = int(line.split("#")[1].split()[0], 16)
+    if top != 0x8000 + len(p2):
+        sys.exit(f"το page2.bin τελειώνει στο #{0x8000 + len(p2):04X}, όχι στο "
+                 f"PAGE2_TOP (#{top:04X}): ο κώδικας των τρυπών δεν θα έπεφτε στο GH_BUF")
+    open(os.path.join(BUILD, "page2o.bin"), "wb").write(p2 + ov)
+
+
 def check_scratch():
-    n2 = os.path.getsize(os.path.join(BUILD, "page2.bin"))
+    page2_ovl()
+    n2 = os.path.getsize(os.path.join(BUILD, "page2o.bin"))
     ng = os.path.getsize(os.path.join(BUILD, "game2.bin"))
     # Από το βήμα 86 σε δύο τράπεζες: τα δεδομένα της τράπεζας 2 στη βασική
     # τράπεζα 1 κάτω από τα εικονίδια, ο κώδικάς της στην τράπεζα 5 κάτω από
     # τις μηχανές, που φορτώνονται κατευθείαν στη θέση τους. Στην τράπεζα 5 και
     # τα τρία μαζί ήταν 16.475 bytes — 91 πάνω από ολόκληρη την τράπεζα.
     if SCRATCH + n2 > ICONS:
-        sys.exit(f"το page2.bin ({n2} bytes) φτάνει από το #{SCRATCH:04X} ως το "
+        sys.exit(f"το page2o.bin ({n2} bytes) φτάνει από το #{SCRATCH:04X} ως το "
                  f"#{SCRATCH + n2:04X} και σβήνεται από το bank1.bin στο "
                  f"#{ICONS:04X} ({SCRATCH + n2 - ICONS} bytes)")
     base = b5_base()

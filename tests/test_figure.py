@@ -69,8 +69,8 @@ def dk_us():
     """Η χρέωση του DK_AGENT στον πίνακα dirty_cost (src/dirty.asm, 9η)."""
     src = open(os.path.join(ROOT, "src", "dirty.asm"), encoding="utf-8").read()
     body = src[src.index("\ndirty_cost:"):].split("\n")[1:]
-    vals = [int(ln.split()[1]) for ln in body if ln.split()[:1] == ["dw"]]
-    return vals[8]
+    vals = [ln.split()[1] for ln in body if ln.split()[:1] == ["dw"]]
+    return int(vals[8])                  # οι επόμενες (βήμα 101) λένε και DIRTY_BUD
 
 
 DK_US = dk_us()

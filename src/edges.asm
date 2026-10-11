@@ -25,18 +25,19 @@ cr_edge:
         ret     nc
         inc     (hl)
         ld      l,b
-        ld      h,0
+        ld      h,G_node_adj >> 11      ; G_node_adj + 8 * B, όπως το lk_adj
+        add     hl,hl                   ; (src/door.asm): το #300 με δύο inc h
         add     hl,hl
+        inc     h
         add     hl,hl
-        add     hl,hl
+        inc     h
         add     a,l                     ; ο βαθμός < 8: χωρά στα τρία bits
         ld      l,a
-        ld      de,G_node_adj
-        add     hl,de
         ld      (hl),c
         ret
 
         assert  MAX_DEGREE <= 8
+        assert  (G_node_adj & #7FF) == #300     ; τα δύο inc h του cr_edge
 
 ; ---------------------------------------------------------------------------
 ; gr_live — A = κόμβος, τράπεζα 6 μέσα -> Z αν το κτίσμα του είναι

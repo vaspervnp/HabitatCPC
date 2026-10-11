@@ -27,7 +27,7 @@
 ; το sl_draw της τράπεζας 2 (src/help.asm), που ζωγραφίζει και την οθόνη
 ; βοήθειας με τα ίδια κουμπιά.
 
-BT_N        equ 34                      ; κουμπιά (tools/buttons.py)· 33 ως το βήμα 92
+BT_N        equ 35                      ; κουμπιά (tools/buttons.py)· 34 ως το βήμα 100
 BT_SMALL    equ 1                       ; 1-3 τα μεγέθη
 BT_ROOM0    equ 4                       ; 4-13 τα δωμάτια, με τη σειρά του rm_list
 BT_CORR     equ 14
@@ -35,7 +35,8 @@ BT_SHIP     equ 25
 BT_TRADE    equ 26                      ; βήμα 93: αμέσως μετά το πλοίο
 BT_MANAGE   equ 27
 BT_FIT      equ 29
-BT_HELP     equ 33
+BT_DEMO     equ 33                      ; βήμα 101
+BT_HELP     equ 34
 BT_NONE     equ 255
 BAR_N       equ 16                      ; θέσεις
 BAR_HELP    equ 15                      ; το ?
@@ -66,6 +67,7 @@ AB_HOME     equ 4
 AB_SHIP     equ 5
 AB_TRADE    equ 6                       ; βήμα 93· το AB_HELP ήταν 6
 AB_HELP     equ 7
+AB_DEMO     equ 8                       ; βήμα 101: το src/act.asm πριν από τον πίνακα
 
 ; ---------------------------------------------------------------------------
 ; bt_tab — ανά κουμπί: το γράμμα, η γραμμή και η μάσκα του πλήκτρου στη μήτρα
@@ -105,7 +107,8 @@ bt_tab:
         db 'S',7,#10, KB_ACT << 5 | AB_SAVE     ; 30
         db 'L',4,#10, KB_ACT << 5 | AB_LOAD     ; 31
         db 'H',5,#10, KB_ACT << 5 | AB_HOME     ; 32
-        db '?',3,#40, KB_ACT << 5 | AB_HELP     ; 33 (το πλήκτρο / ?)
+        db 'D',7,#20, KB_ACT << 5 | AB_DEMO     ; 33 κατεδάφιση (βήμα 101)
+        db '?',3,#40, KB_ACT << 5 | AB_HELP     ; 34 (το πλήκτρο / ?)
 bt_end:
         assert  bt_end - bt_tab == 4 * BT_N
 
@@ -120,8 +123,8 @@ bld_end:
 ; και η ΔΙΑΧΕΙΡΙΣΗ. Η πρώτη είναι και η μπάρα του LOOK, στις θέσεις 0-5.
 ac_l_grp:   db 0, 14, 15, 19, 22, BT_MANAGE, BT_HELP
         ; bww_group: η ομάδα g είναι τα κουμπιά ac_l_grp[g] .. ac_l_grp[g + 1] - 1
-        assert  BT_CORR == 14 && BT_MANAGE == 27 && BT_HELP == BT_MANAGE + 6
-ac_l_man:   db 28, 29, 30, 31, 32, BT_HELP
+        assert  BT_CORR == 14 && BT_MANAGE == 27 && BT_HELP == BT_MANAGE + 7
+ac_l_man:   db 28, 29, 30, 31, 32, BT_DEMO, BT_HELP
 
 ; ---------------------------------------------------------------------------
 ; bk_scan — τα γράμματα της μπάρας που φαίνεται, μία φορά ανά frame.
@@ -358,11 +361,15 @@ bww_act:
 bww_man:
         ld      a,G_MANAGE
         call    bww_group
-        ld      a,(ac_fit)
-        or      a
-        jr      nz,bww_asel
+        ld      a,(ac_fit)              ; AF_FIT, AF_DEMO (src/act.asm)
+        rra
+        push    af
         ld      a,BT_FIT
-        call    bww_red
+        call    nc,bww_red
+        pop     af
+        rra
+        ld      a,BT_DEMO
+        call    nc,bww_red
         jr      bww_asel
 bww_agrp:
         call    bww_groups

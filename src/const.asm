@@ -335,7 +335,10 @@ DK_BUILT    equ 5                   ; a = κόμβος που μόλις τελ�
 DK_SITE     equ 6                   ; a = θόλος, b = σειρά tiles του εργοταξίου
 DK_CROW     equ 7                   ; a = tx, b = ty: τρία tiles μιας διαγωνίου
 DK_AGENT    equ 8                   ; a = πράκτορας: η φιγούρα του έξω (βήμα 89)
-DK_KINDS    equ 9
+DK_RSIZE    equ 9                   ; a = πλάτος, b = ύψος του DK_RECT που ακολουθεί
+DK_RECT     equ 10                  ; a = tx, b = ty: ορθογώνιο tiles, έδαφος και ό,τι
+                                    ; το πατά (βήμα 101, η κατεδάφιση)
+DK_KINDS    equ 11
 
 ; --- ευρετήριο αντικειμένων (src/object.asm, βήμα 39) ---
 ; Στην τράπεζα 5, πάνω από το NEXTHOP[MAX_NODE][128], που τελειώνει στο

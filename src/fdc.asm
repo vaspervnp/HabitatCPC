@@ -87,11 +87,7 @@ fi_wait:
 fdc_seek:
         ld      (fd_trk),a
         ld      a,#0F                   ; SEEK
-        call    fdc_out
-        xor     a
-        call    fdc_out                 ; drive 0, head 0
-        ld      a,(fd_trk)
-        call    fdc_out
+        call    fdc_cmd3                ; και drive 0 / head 0, και το track
         ld      b,100
 fs_lp:
         push    bc
@@ -118,11 +114,7 @@ fs_inv:
 ; ούτε μία σελιδοποίηση στη μέση — και εδώ τα δεδομένα αλλάζουν τράπεζα.
 ; ---------------------------------------------------------------------------
 fdc_cmd:
-        call    fdc_out                 ; εντολή (MFM)
-        xor     a
-        call    fdc_out                 ; drive 0, head 0
-        ld      a,(fd_trk)
-        call    fdc_out                 ; C
+        call    fdc_cmd3                ; εντολή (MFM), drive 0 / head 0, C
         xor     a
         call    fdc_out                 ; H
         ld      a,(fd_sect)
@@ -134,8 +126,16 @@ fdc_cmd:
         ld      a,#2A
         call    fdc_out                 ; GPL
         ld      a,#FF
-        call    fdc_out                 ; DTL
-        ret
+        jp      fdc_out                 ; DTL
+
+; fdc_cmd3 — A = εντολή, και μετά drive 0 / head 0 και το (fd_trk): τα τρία
+; πρώτα bytes, κοινά στο SEEK και στο READ / WRITE DATA.
+fdc_cmd3:
+        call    fdc_out
+        xor     a
+        call    fdc_out                 ; drive 0, head 0
+        ld      a,(fd_trk)
+        jp      fdc_out
 
 ; ---------------------------------------------------------------------------
 ; fdc_rsect / fdc_wsect — ένας τομέας από/προς το HL.
@@ -182,9 +182,7 @@ fd_end:
         ld      b,7
 fde_lp:
         push    bc
-        push    hl
-        call    fdc_in
-        pop     hl
+        call    fdc_in                  ; χαλάει μόνο A, BC
         ld      (hl),a
         inc     hl
         pop     bc

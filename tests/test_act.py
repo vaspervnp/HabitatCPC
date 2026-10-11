@@ -10,15 +10,19 @@
                σειρά 3   < POWER        >  FIRE=GO ESC=BACK
                σειρά 4   MAKE AND STORE POWER
              με την ταχύτητα στις στήλες 35-39 όπως πάντα.
-  M          η ΔΙΑΧΕΙΡΙΣΗ: INFO, FIT, SAVE, LOAD, CENTRE, ?, στο INFO. Το FIT
-             κόκκινο εκεί όπου το FIRE στο LOOK δεν θα άνοιγε τον εξοπλισμό.
+  M          η ΔΙΑΧΕΙΡΙΣΗ: INFO, FIT, SAVE, LOAD, CENTRE, DEMOLISH, ?, στο INFO.
+             Το FIT κόκκινο εκεί όπου το FIRE στο LOOK δεν θα άνοιγε τον
+             εξοπλισμό. Το DEMOLISH (βήμα 101) κόκκινο στο σκάφος, εκεί όπου δεν
+             είναι τίποτα, και στην πίστα ή σε θόλο αποθήκης όσο έρχεται ή
+             κάθεται πλοίο.
   ΜΕΤΑΦΟΡΑ   το SHIP κόκκινο εκτός αν υπάρχει αίθουσα ελέγχου, πίστα και
              κανένα πλοίο στον δρόμο.
   αριστερά/δεξιά  το προηγούμενο/επόμενο, κυκλικά· ο κέρσορας και η κάμερα
              μένουν
   FIRE, SPACE     το διαλεγμένο, σαν να πατήθηκε το γράμμα του: INFO -> οι
              σειρές του I, FIT -> ο εξοπλισμός, SAVE/LOAD -> η επιλογή θέσης,
-             CENTRE -> ο κέρσορας στο (0, 0)· και το C της ΜΕΤΑΦΟΡΑΣ -> η
+             CENTRE -> ο κέρσορας στο (0, 0), DEMOLISH -> ο θόλος κάτω από τον
+             κέρσορα φεύγει, πίσω στο LOOK· και το C της ΜΕΤΑΦΟΡΑΣ -> η
              γραμμή του πλοίου (βήμα 91), όπου το FIRE ή το SPACE -> το πλοίο
              και το μήνυμά του (η σειρά 4 κενή)
   ESC        πίσω στο LOOK
@@ -35,7 +39,8 @@
 ΚΑΙ Η ΕΠΙΛΟΓΗ ΘΕΣΗΣ ΔΙΣΚΟΥ ΣΕ ΠΑΥΣΗ (βήμα 80): S ή L, και τρία δεξιά, και η
 σειρά 3 λέει κάθε φορά τη θέση.
 
-Αρνητικά, με τον κώδικα πειραγμένο στη μνήμη: το FIT παντού πράσινο, το SHIP
+Αρνητικά, με τον κώδικα πειραγμένο στη μνήμη: το FIT παντού πράσινο, το
+DEMOLISH παντού πράσινο, το SHIP
 πράσινο με πλοίο στον δρόμο, το SPACE που δεν διαλέγει, η σειρά 4 που μένει
 μετά το πλοίο, το μενού χωρίς δική του κατάσταση στον διαλογέα (το
 αριστερά/δεξιά κουνά τον κέρσορα), η θέση δίσκου που αλλάζει χωρίς να φανεί,
@@ -124,7 +129,8 @@ class Game(TI.Game):
 
 # Η μπάρα των ομάδων με το ? (η λίστα του SPACE), και της ΔΙΑΧΕΙΡΙΣΗΣ
 FOCUS = B.GROUPS + ["help"]
-MANAGE = ["info", "fit", "save", "load", "centre", "help"]
+MANAGE = ["info", "fit", "save", "load", "centre", "demolish", "help"]
+K_PAD, K_SHIP, R_STORAGE = 6, 7, 6                       # src/const.asm
 TEXT = dict(zip([n for n, _ in B.BUTTONS], TB.HELP))
 
 
@@ -138,8 +144,23 @@ def focus_bar(name):
     return B.want_groups(lit=name)
 
 
-def manage_bar(name, fit):
-    bar = B.want_group("manage", lit={name} if name != "help" else (), red=() if fit else {"fit"})
+def demo_ok(G, fps, tx, ty):
+    """Γκρεμίζεται ό,τι είναι στο tile; Ποτέ το σκάφος, ούτε η πίστα ή θόλος
+    αποθήκης όσο έρχεται ή κάθεται πλοίο, και όχι το κενό (βήμα 101)."""
+    hit = next((f for f in fps if f[0] <= tx < f[0] + f[2] and f[1] <= ty < f[1] + f[3]),
+               None)
+    if hit is None:
+        return False
+    busy = G.m.peek(G.E["SHIP"]) != 0
+    if hit[4] == "d":
+        return not (busy and G.b6[TI.DOMES - 0x4000 + 24 * hit[5] + 3] == R_STORAGE)
+    kind = G.b6[TI.STRUCTS - 0x4000 + 8 * hit[5] + 2]
+    return kind != K_SHIP and not (busy and kind == K_PAD)
+
+
+def manage_bar(name, fit, demo=True):
+    red = (set() if fit else {"fit"}) | (set() if demo else {"demolish"})
+    bar = B.want_group("manage", lit={name} if name != "help" else (), red=red)
     if name == "help":
         bar[15] = ("help", B.WHITE)
     return bar
@@ -173,7 +194,8 @@ def run(sym, a, patch=(), quick=False):
         if G.state() != UI_LOOK:
             return f"tile ({tx}, {ty}): μετά το FIRE και το ESC, κατάσταση {G.state()}", n
         G.tap("M")
-        got, exp = (G.rows(), G.bar()), (rows("info"), manage_bar("info", fit))
+        got, exp = (G.rows(), G.bar()), (rows("info"),
+                                         manage_bar("info", fit, demo_ok(G, fps, tx, ty)))
         if G.state() != UI_ACT or got != exp:
             return (f"tile ({tx}, {ty}), FIRE {'ανοίγει' if fit else 'δεν ανοίγει'} τον "
                     f"εξοπλισμό: «{got[0][0]}», «{B.show(got[1])}», η πρόζα λέει "
@@ -223,12 +245,18 @@ def run(sym, a, patch=(), quick=False):
         n += 1
     G.tap(cpc.KEY_ESC)
 
-    # --- 4. κάθε ενέργεια της ΔΙΑΧΕΙΡΙΣΗΣ, με FIRE και με SPACE· και το πλοίο ---
+    # --- 4. κάθε ενέργεια της ΔΙΑΧΕΙΡΙΣΗΣ, με FIRE και με SPACE· και το πλοίο.
+    # Το DEMOLISH γκρεμίζει έναν θόλο της σκηνής κάθε φορά, όχι τον home ---
+    victims = [f for f in fps if f[4] == "d"][1:3]
     for k, name in enumerate(MANAGE[:-1] + ["ship"]):
         for how in ("FIRE", "SPACE"):
             G.ship(1, pad0 if pad0 != 255 else 3, 0)
             far = (home[0] + 3, home[1] + 2)
-            G.cursor(*(far if name == "centre" else home))
+            if name == "demolish":
+                v = victims[how == "SPACE"]
+                G.cursor(v[0] + v[2] // 2, v[1] + v[3] // 2)
+            else:
+                G.cursor(*(far if name == "centre" else home))
             if name == "ship":
                 # Το κουμπί ανοίγει τη γραμμή του πλοίου (βήμα 91), και το
                 # FIRE ή το SPACE εκεί το καλούν (tests/test_crew.py).
@@ -255,6 +283,8 @@ def run(sym, a, patch=(), quick=False):
             elif name == "ship":
                 ok = (st == UI_LOOK and m.peek(G.E["SHIP"]) != 0
                       and r3.startswith(TI.same("COLONIST SHIP CALLED")) and not r4.strip())
+            elif name == "demolish":
+                ok = st == UI_LOOK and G.b6[TI.DOMES - 0x4000 + 24 * v[5] + 4] == 0
             elif name in ("save", "load"):
                 ok = (st == UI_SLOT and m.peek(sym["SL_MODE"]) == (name == "load")
                       and r3.startswith(TI.same(f"{name.upper()} ")))
@@ -311,9 +341,15 @@ def main():
         assert i >= 0, f"δεν βρέθηκε το {pat} στο {at}"
         return sym[at] + i
 
-    fit = find("BWW_ACT", [0x3A, sym["AC_FIT"] & 255, sym["AC_FIT"] >> 8, 0xB7, 0x20], 40) + 4
+    # bww_man (βήμα 101): ld a,(ac_fit) · rra · push af · ld a,BT_FIT · call nc,bww_red.
+    # Το call γίνεται ld hl,nn: το FIT δεν βάφεται ποτέ κόκκινο.
+    fit = find("BWW_MAN", [0x3A, sym["AC_FIT"] & 255, sym["AC_FIT"] >> 8, 0x1F, 0xF5, 0x3E],
+               40) + 7
+    # ... pop af · rra · ld a,BT_DEMO · call nc,bww_red: το DEMOLISH δεν βάφεται ποτέ
+    demo = find("BWW_MAN", [0xF1, 0x1F, 0x3E], 40) + 4
     ship = find("BAR_SHIPOK", [0xB7, 0x20], 40)
-    neg = [("το FIT παντού πράσινο", [(fit, 0x18)]),
+    neg = [("το FIT παντού πράσινο", [(fit, 0x21)]),
+           ("το DEMOLISH παντού πράσινο", [(demo, 0x21)]),
            ("το SHIP πράσινο με πλοίο στον δρόμο", [(ship + 2, 0)]),
            ("το SPACE που δεν διαλέγει", [(find("ACT_FIRE", [0xE6, 0x50]) + 1, 0x10)]),
            ("τη σειρά 4 μετά το πλοίο", [(find("AC_SHIP", [0x06, 40]) + 1, 0)]),

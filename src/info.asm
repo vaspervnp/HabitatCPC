@@ -15,12 +15,12 @@
 ;   σειρά 4   MOUNTAIN   ORE VEIN                    (το έδαφος του tile)
 
 ; ---------------------------------------------------------------------------
-; in_panel — από το ui_panel, με το HUD στη σειρά 3, στήλη 0. Τελειώνει στο
-; uip_spd, την ταχύτητα στις στήλες 35-39 της σειράς 3.
+; mt_cursor — το κτίριο κάτω από τον κέρσορα, όπως το βρίσκει μια κρούση
+; (mt_scan). CY: A = ο κόμβος, HL -> η εγγραφή, E = το μήκος της (DOME_REC ή
+; STRUCT_REC). Πάντα B = x - MT_REACH, C = y του tile. Με την τράπεζα 6 μέσα.
+; Για το in_panel και την κατεδάφιση (βήμα 101, src/demolish.asm).
 ; ---------------------------------------------------------------------------
-in_panel:
-        ; --- ό,τι χρειάζεται από τις τράπεζες 6 και 4, πριν τυπωθεί τίποτα:
-        ; ο γλύφος σελιδοποιεί την 7 ---
+mt_cursor:
         call    ob_b6
         call    ui_curt                 ; L = x, H = y
         ld      a,l
@@ -30,13 +30,32 @@ in_panel:
         ld      hl,G_dome_tbl
         ld      de,MAX_DOME * 256 + DOME_REC
         call    mt_scan
-        ld      a,1                     ; θόλος
-        jr      c,inp_rec
+        ld      a,MAX_DOME
+        jr      c,mtc_hit
         ld      de,MAX_STRUCT * 256 + STRUCT_REC
         call    mt_scan                 ; το HL είναι ήδη στο G_struct_tbl
-        ld      a,2                     ; δομή
-        jr      c,inp_rec
-        xor     a                       ; τίποτα
+        ld      a,MAX_NODE
+        ret     nc
+mtc_hit:
+        sub     d                       ; ο κόμβος, όπως στο mt_hit
+        scf
+        ret
+        assert  DOME_REC & 16 && !(STRUCT_REC & 16)
+
+; ---------------------------------------------------------------------------
+; in_panel — από το ui_panel, με το HUD στη σειρά 3, στήλη 0. Τελειώνει στο
+; uip_spd, την ταχύτητα στις στήλες 35-39 της σειράς 3.
+; ---------------------------------------------------------------------------
+in_panel:
+        ; --- ό,τι χρειάζεται από τις τράπεζες 6 και 4, πριν τυπωθεί τίποτα:
+        ; ο γλύφος σελιδοποιεί την 7 ---
+        call    mt_cursor
+        ld      a,0                     ; τίποτα· οι σημαίες μένουν
+        jr      nc,inp_rec
+        inc     a                       ; θόλος
+        bit     4,e                     ; DOME_REC 24, STRUCT_REC 8
+        jr      nz,inp_rec
+        inc     a                       ; δομή
 inp_rec:
         ld      (in_t),a
         ld      a,b
@@ -51,11 +70,9 @@ inp_rec:
         assert  D_ROOM == D_SIZE + 1 && D_STATE == D_SIZE + 2 && D_INTEG == D_SIZE + 3
         assert  ST_SIZE == ST_KIND + 1 && ST_STATE == ST_KIND + 2 && ST_INTEG == ST_KIND + 3
         assert  D_SIZE == ST_KIND
-        ld      bc,GA_PORT + PAGE_B4
-        out     (c),c
         pop     bc
-        call    tile_addr
-        ld      a,(hl)
+        ld      a,#FF                   ; όλο το byte: το tl_occ (src/tiles.asm)
+        call    tl_occ                  ; με την 4 μέσα, και μετά πάλι η 1
         ld      (in_w),a
         ; Η τράπεζα 1 ξαναμπαίνει με τον πρώτο γλύφο: το hud_char γυρίζει
         ; στο hud_pg, που το hud_text7 αφήνει πάντα στην 1.

@@ -38,12 +38,22 @@ ac_open:
         ld      bc,0 * 256 + 7          ; B = ομάδες, C = πόσα
         jr      aco_set
 ac_manage:
+        xor     a                       ; το πρώτο κουμπί
+; acm_at — A = το διαλεγμένο (ac_demo: το DEMOLISH).
+acm_at:
+        push    af
         call    fit_can                 ; CY = ο εξοπλισμός ανοίγει εδώ
         sbc     a,a
+        and     AF_FIT
         ld      (ac_fit),a
+        call    dm_can                  ; CY = γκρεμίζεται (src/demolish.asm)
+        jr      nc,acm_nd
+        ld      hl,ac_fit
+        set     1,(hl)                  ; AF_DEMO
+acm_nd:
+        pop     af
         ld      hl,ac_l_man
-        ld      bc,1 * 256 + 6
-        xor     a
+        ld      bc,1 * 256 + 7
 aco_set:
         ld      (ac_lst),hl
         ld      l,c
@@ -176,6 +186,8 @@ btk_place:
 btk_act:
         cp      AB_HELP
         jp      z,hp_show               ; src/help.asm: η κατάσταση μένει
+        cp      AB_DEMO
+        jr      z,ac_demo               ; πριν από το UI_LOOK: θέλει την κατάσταση
         add     a,a
         ld      hl,btk_ajp
         call    ob_addu
@@ -194,6 +206,23 @@ btk_ajp:    dw ac_info, fit_enter, ac_save, ac_load, ac_home, cw_open, tr_open
 ac_info:
         ld      a,UI_INFO
         jp      ui_ask
+; ac_demo — το D, ή FIRE στο DEMOLISH (βήμα 101). Κόκκινο: όχι. Από τη
+; γραμμή του, με το DEMOLISH διαλεγμένο: γκρεμίζει (dm_go). Αλλιώς ανοίγει τη
+; ΔΙΑΧΕΙΡΙΣΗ πάνω του: η σειρά 3 λέει DEMOLISH και FIRE=GO ESC=BACK, και το
+; FIRE είναι η επιβεβαίωση.
+ac_demo:
+        ld      a,(ac_fit)
+        and     AF_DEMO
+        jp      z,uip_deny
+        ld      a,(ui_state)
+        cp      UI_ACT
+        jr      nz,acd_menu
+        call    ac_cur
+        cp      BT_DEMO
+        jp      z,dm_go                 ; src/demolish.asm
+acd_menu:
+        ld      a,BT_DEMO - BT_MANAGE - 1       ; η θέση του στο ac_l_man
+        jp      acm_at
 ; --- Η ΓΡΑΜΜΗ ΤΟΥ ΠΛΟΙΟΥ (βήμα 91): η κατάσταση εδώ, οι ειδικότητες και
 ; η εικόνα της στο src/crew.asm ---------------------------------------------
 ; cw_open — το κουμπί του πλοίου και το C: η γραμμή, στο UI_ACT.
@@ -296,5 +325,8 @@ ac_lst:     dw ac_l_grp
 ac_n:       db 7
 ac_sel:     db 0
 ac_mode:    db 0                        ; 0 οι ομάδες, 1 η ΔΙΑΧΕΙΡΙΣΗ
-ac_fit:     db 0                        ; #FF: ο εξοπλισμός ανοίγει εκεί που ήταν το M
+ac_fit:     db 0                        ; AF_FIT: ο εξοπλισμός ανοίγει εκεί που ήταν το M·
+                                        ; AF_DEMO: γκρεμίζεται (βήμα 101)
+AF_FIT      equ 1
+AF_DEMO     equ 2
         assert  ac_sel == ac_n + 1      ; aco_set

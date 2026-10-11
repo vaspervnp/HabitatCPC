@@ -17,7 +17,7 @@
 ; του rasm θα τα έδινε κατευθείαν σωστά, αλλά δεν συνδυάζεται με το `bankset 1`
 ; που στήνει τις τράπεζες 4-7 πιο πάνω.)
 
-TEXT_MAX    equ 2120                    ; η δέσμευση του §4.2 (2.100 ως το βήμα 89, 2.080 ως το 87, 2.064 ως το 85, 2.048 ως το 84, 1.280 ως το 83,
+TEXT_MAX    equ 2138                    ; η δέσμευση του §4.2 (2.120 ως το βήμα 100, 2.100 ως το βήμα 89, 2.080 ως το 87, 2.064 ως το 85, 2.048 ως το 84, 1.280 ως το 83,
                                         ; 1.024 ως το 79)
 TEXT_IMG    equ #C000 + G_text - #4000
 
@@ -162,6 +162,7 @@ x_t_help:     db "DOMES",0, "LIVE AND WORK INSIDE",0
               db "SAVE",0, "SAVE TO DISC",0
               db "LOAD",0, "LOAD FROM DISC",0
               db "CENTRE",0, "BACK TO THE MIDDLE",0
+              db "DEMOLISH",0, "MATERIAL BACK",0       ; βήμα 101
               db "HELP",0, "THIS SCREEN",0
 x_t_help_end:
 x_t_a_keys:   db "FIRE=GO ESC=BACK",0

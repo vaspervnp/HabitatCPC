@@ -55,6 +55,7 @@ start:
         ; Ως το βήμα 70 το έγραφαν δύο εντολές εδώ, έξι bytes για μια τιμή που
         ; δεν αλλάζει ποτέ.
         call    snd_init
+        call    ov_install              ; ο κώδικας του GH_BUF στις τρύπες (βήμα 101)
         call    game_new
         ; fall through
 
@@ -267,6 +268,16 @@ zz_bank0_end:
         ; και ως εδώ φτάνει μόνο ένα μεγάλο φάντασμα: ένα game_new της αποικίας
         ; μετά από αυτό δεν θα την έβρισκε. Στον δίσκο δεν γράφεται· το παιχνίδι
         ; δεν την καλεί ποτέ.
+; --- ΚΩΔΙΚΑΣ ΓΙΑ ΤΙΣ ΤΡΥΠΕΣ ΤΟΥ DIST (βήμα 101, src/demolish.asm): γράφεται
+; για το GH_BUF, όπου τρέχει, και εκεί τον φέρνει και ο φορτωτής, αμέσως μετά
+; τα δεδομένα της τράπεζας 2 (PAGE2.BIN, tools/mkdsk.py). Το ov_install τον
+; μοιράζει στις τρύπες στην εκκίνηση. ---
+        org     GH_BUF
+        include "dm_ovl.asm"
+zz_ovl_end:
+        assert  zz_ovl_end <= PAGE2_CODE - 256  ; κάτω από την αποικία δοκιμών
+        save    "../build/ovl.bin", GH_BUF, zz_ovl_end - GH_BUF
+
         org     PAGE2_CODE - 256
 zz_colony:
         include "colony.asm"
@@ -292,6 +303,7 @@ zz_page2_code:                          ; για το tools/mkdsk.py: πού φ�
         include "meteor.asm"            ; βήμα 38: ζει στον τροχό, σπάνια τρέχει
         include "objindex.asm"          ; βήμα 41: το χτίσιμο του ευρετηρίου
         include "info.asm"              ; βήμα 79: τι έχει κάτω ο κέρσορας (I)
+        include "demolish.asm"          ; βήμα 101: η κατεδάφιση
         include "act.asm"               ; βήμα 80: το μενού ενεργειών (SPACE)· 84: τα κουμπιά
         include "button.asm"            ; βήμα 84: ένα κουμπί στην οθόνη
         ; ΚΡΥΟΣ ΚΩΔΙΚΑΣ, ΜΕΤΑΚΟΜΙΣΕ ΣΤΟ ΒΗΜΑ 30. Το save.asm τρέχει όταν ο

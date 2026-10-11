@@ -174,9 +174,8 @@ fgp_lp:
 ; θόλος κομμένος σε 2x8 είναι ~25 blit.
 fg_erase:
         ld      hl,(fg_oy)              ; L = uy, H = ux
-        call    fg_in                   ; και ob_x, ob_y
+        call    fg_in                   ; και ob_x, ob_y· κρατά το HL
         ret     nc                      ; εκτός κάδρου: τίποτα να σβηστεί
-        ld      hl,(fg_oy)
         ld      a,h
         call    fge_t
         ld      e,a
@@ -249,19 +248,20 @@ fg_draw:
         ; κάλεσε: το dh_agent, το dh_tile, ένα άδειασμα θέσης. Με γεμάτη λίστα
         ; η σάρωση είναι 1,5 ms, και ένα σταθερό κόστος δεν θα το ήξερε.
         ld      l,a
+        add     a,a
+        add     a,l                     ; 3 x εγγραφές < 256 (FG_CAP, assert)
+        ld      l,a
         ld      h,0
         add     hl,hl
         add     hl,hl
-        add     hl,hl
-        ld      d,h
-        ld      e,l
-        add     hl,hl
-        add     hl,de                   ; 24 x εγγραφές
+        add     hl,hl                   ; 24 x εγγραφές
         ex      de,hl
         call    dhv_charge
         ld      hl,clip_x0
         ld      a,(cam_tx)
-        call    fgd_base                ; C = 2 * cam + 128
+        add     a,a
+        add     a,128
+        ld      c,a                     ; C = 2 * cam + 128
         ld      a,(hl)
         srl     a
         add     a,c
@@ -275,7 +275,9 @@ fg_draw:
         ld      e,a                     ; πλάτος ως ⌈x1 / 2⌉
         inc     hl
         ld      a,(cam_ty)
-        call    fgd_base
+        add     a,a
+        add     a,128
+        ld      c,a
         ld      a,(hl)
         rrca
         rrca
@@ -312,12 +314,6 @@ fgd_nx:
         inc     l
         djnz    fgd_lp
         ret
-fgd_base:
-        add     a,a
-        add     a,128
-        ld      c,a
-        ret
-
 ; fgd_one — η φιγούρα της εγγραφής L. Κρατά BC, DE, HL.
 fgd_one:
         push    bc
@@ -439,7 +435,7 @@ obfr_lp:
         inc     hl
         ld      (de),a
         inc     e
-        call    z,obf_wr
+        call    z,gh_wrap               ; src/ghost.asm: το ίδιο, τράπεζα 0
         ld      a,(bc)
         inc     bc
         and     (hl)
@@ -451,17 +447,6 @@ obfr_lp:
         call    scr_nextline
         dec     ixl
         jr      nz,obfr_lp
-        ret
-; obf_wr — το δεύτερο byte πέρασε σελίδα: η επόμενη, ή η αρχή του δαχτυλιδιού
-; των 2 KB αν ήταν η τελευταία του (§8.2).
-obf_wr:
-        inc     d
-        ld      a,d
-        and     7
-        ret     nz
-        ld      a,d
-        sub     8
-        ld      d,a
         ret
 ; obf_slow — μισή φιγούρα, στην άκρη του κάδρου: το γενικό ob_put.
 obf_slow:
@@ -649,9 +634,8 @@ fwa_add:
 ; από εκεί ως εκεί περπατά όποιος είναι έξω: από κέντρο σε κέντρο, η φιγούρα
 ; ξεκινούσε πάνω στη σκεπή του σκάφους. Τράπεζα 6. Κρατά C.
 fw_xy:
-        sub     MAX_DOME
+        cp      MAX_DOME
         jr      nc,fwx_st
-        add     a,MAX_DOME
         call    ob_domeadr
         inc     hl
         inc     hl
@@ -662,13 +646,11 @@ fw_xy:
         dec     hl
         jr      fwx_go
 fwx_st:
+        add     a,a
+        add     a,a
+        add     a,a                     ; (64 + δομή) x 8 = δομή x 8 σε 8 bits
         ld      l,a
-        ld      h,0
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl
-        ld      de,G_struct_tbl
-        add     hl,de
+        ld      h,G_struct_tbl >> 8     ; μία σελίδα (assert στο τέλος)
         push    hl
         inc     hl
         inc     hl
@@ -797,13 +779,10 @@ dhv_col:
         ld      hl,dhv_fo
         ld      a,(hl)
         ld      (hl),0
-        or      a
-        jr      nz,dhv_figs
-        call    ob_draw_all
-        jp      ob_clip_full
-dhv_figs:
-        call    fg_draw1
-        jp      ob_clip_full
+        ld      hl,ob_clip_full         ; η επιστροφή του ob_draw_all ή του
+        push    hl                      ; fg_draw1: μετά, το clip ολόκληρο
+        dec     a                       ; dhv_fo 0 -> NZ: όλα· 1 -> Z: φιγούρες
+        ; fall through, στο jp nz του fg_objs
 
 ; fg_objs — μετά από έδαφος (dh_tile): NZ, κάτι κατέχει τα tiles -> όλα τα
 ; αντικείμενα· Z -> μόνο οι φιγούρες έξω. Ως το βήμα 89 το Z δεν ζωγράφιζε
@@ -894,5 +873,6 @@ fw_b:       dw 0                        ; by, bx
         assert  (G_fig_list & 255) == 0 && (G_fig_gfx & 255) == 0
         assert  FG_CAP * 4 == 256 && SLOT_W == 2 && SLOT_H == 8
         assert  ((G_node_adj >> 3) & 255) + 128 <= 256
-        assert  FG_SCAN_US == 24
+        assert  FG_SCAN_US == 24 && FG_CAP * 3 < 256
         assert  obf_n == obf_k + 1 && (G_slot_empty >> 8) != 0
+        assert  (G_struct_tbl & 255) == 0 && MAX_STRUCT * STRUCT_REC == 256 && MAX_DOME == 64

@@ -55,8 +55,7 @@ sld_btn:
         ld      de,G_btn_gfx
         add     hl,de
         push    hl
-        ld      a,(sl_id)
-        add     a,a
+        add     a,a                     ; το A είναι ακόμη το sl_id (sld_btn)
         add     a,a
         ld      hl,bt_tab
         call    ob_addu
@@ -183,14 +182,13 @@ sld_w2:
         cp      #100 - BAR_W + 1
         jr      nc,sld_slow
 sld_fast:
+        push    hl                      ; (sl_at) + 80, από το sld_w2
         ld      hl,sl_buf
         ld      (sl_src),hl
         ld      hl,(sl_at)
         ld      bc,#0701                ; 7 γραμμές από τη γραμμή 1
         call    sld_row
-        ld      hl,(sl_at)
-        ld      de,80
-        add     hl,de
+        pop     hl
         ld      bc,#0800                ; 8 από τη 0, στην επόμενη σειρά
         call    sld_row
         jr      sld_out
@@ -387,12 +385,8 @@ bkg_lp:
         inc     hl                      ; το πάνω byte δεν αλλάζει (assert κάτω)
         inc     hl                      ; and
         ld      (hl),e
-        ld      a,l
-        add     a,4                     ; jr z, inc c: ίδια πάντα
-        ld      l,a
-        jr      nc,bkg_pop
-        inc     h
-bkg_pop:
+        ld      de,4                    ; jr z, inc c: ίδια πάντα· το DE
+        add     hl,de                   ; ξαναγυρίζει αμέσως
         pop     de
 bkg_next:
         inc     c
@@ -463,7 +457,7 @@ bsd_next:
         ld      (bs_pend),a
         ret
 bsd_pend:
-        ld      a,1
+        inc     a                       ; A = B = 0 (bsd_draw) -> 1
         ld      (bs_pend),a
         ret
 

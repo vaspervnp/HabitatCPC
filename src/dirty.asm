@@ -547,6 +547,7 @@ dkc_out:
 dirty_jmp:
         dw      dh_slot, dh_mach, dh_icon, dh_conn, dh_tile, dh_built, dh_site
         dw      dh_crow, dh_agent               ; src/figure.asm, τράπεζα 2
+        dw      DH_RSIZE, DH_RECT               ; στην τράπεζα 1 (src/dm_ovl.asm)
 
 ; dhs_vacate, dhv_rect, dhv_clip, dhv_charge: στην τράπεζα 2 από το βήμα 89,
 ; στο src/figure.asm, που τα χρησιμοποιεί κι αυτό. Ψυχρός κώδικας — ένα
@@ -573,6 +574,11 @@ dirty_cost:
         dw      1300                    ; φιγούρα έξω (βήμα 89) — ο υπολογισμός και
                                         ; το cpir σε γεμάτη λίστα (1.224)· τα κελιά
                                         ; και οι φιγούρες χρεώνονται μέσα (figure.asm)
+        dw      DIRTY_BUD               ; μέγεθος ορθογωνίου (βήμα 101): ΜΟΝΟ πρώτο
+                                        ; σε πέρασμα, ώστε το DK_RECT του να έρθει
+        dw      0                       ; αμέσως μετά, στο ίδιο — το vr_w δεν το
+                                        ; πειράζει κανείς ανάμεσα. Ενα ορθογώνιο
+                                        ; ανά πέρασμα, όσο κι αν κοστίζει
 
 dirty_ring: defs DIRTY_N * DIRTY_REC
 dirty_head: db 0                        ; αυτά τα τρία με αυτή τη σειρά:

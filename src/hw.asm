@@ -22,8 +22,14 @@ hw_mode0:
 ; ---------------------------------------------------------------------------
 hw_clear:
         ld      hl,SCR_BASE
-        ld      de,SCR_BASE + 1
         ld      bc,#4000 - 1
+        ; fall through
+; ng_zero — HL = αρχή, BC = μήκος - 1: μηδέν. Εδώ από το βήμα 101 (ως τότε στο
+; newgame.asm), ώστε το hw_clear να είναι η αρχή του.
+ng_zero:
+        ld      d,h
+        ld      e,l
+        inc     de
         ld      (hl),0
         ldir
         ret
@@ -46,6 +52,14 @@ ps_loop:
         jr      nz,ps_loop
         ret
 
+; ---------------------------------------------------------------------------
+; pal_border — χρώμα περιγράμματος από firmware αριθμό στον A: το «pen 16» του
+; gate array (GA_PEN | 16 = GA_BORDER), με τον κώδικα του pal_pen.
+; ---------------------------------------------------------------------------
+pal_border:
+        ld      e,GA_BORDER
+        assert  GA_BORDER == GA_PEN | 16
+        ; fall through
 ; ---------------------------------------------------------------------------
 ; pal_pen — ΕΝΑ pen. In: E = pen 0..15, A = firmware χρώμα 0..26.
 ; Χαλάει A, BC, HL. Κρατά το DE.
@@ -116,23 +130,6 @@ pp_lp:
 
 pal_terrain: db 7, 11, 12, 14
         endif
-
-; ---------------------------------------------------------------------------
-; pal_border — χρώμα περιγράμματος από firmware αριθμό στον A.
-; ---------------------------------------------------------------------------
-pal_border:
-        ld      hl,fw_to_hw
-        ld      e,a
-        ld      d,0
-        add     hl,de
-        ld      a,(hl)
-        or      GA_INK
-        ld      b,GA_PORT/256
-        ld      c,GA_BORDER
-        out     (c),c
-        ld      c,a
-        out     (c),c
-        ret
 
 ; firmware colour number -> hardware τιμή (χωρίς το bit #40)
 ; 27 χρώματα· ό,τι είναι πάνω από 26 δεν υπάρχει.

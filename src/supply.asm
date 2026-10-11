@@ -116,7 +116,7 @@ sp_jobs:
         ld      a,h
         or      l
         ld      a,b
-        jp      z,sp_build              ; δεν χρωστά τίποτα: κατευθείαν ο χτίστης
+        jr      z,sp_build              ; δεν χρωστά τίποτα: κατευθείαν ο χτίστης
         push    hl
         ld      c,J_SUPPLY
         inc     l
@@ -201,9 +201,6 @@ sp_take:
         ld      (de),a                  ; spare = 0: δεν κουβαλά ακόμη
         res     7,e
         ld      d,AG_PG + 1
-        ld      a,(G_struct_tbl + ST_KIND)
-        sub     K_SHIP
-        ld      (sp_mat),a              ; εδώ: 0 = υπάρχει σκάφος
         ld      a,(de)                  ; ο κόμβος του
         push    de
         push    hl
@@ -212,12 +209,12 @@ sp_take:
         srl     h
         rr      l
         set     6,h                     ; η γραμμή του στο DIST: #4000 + 128 x κόμβος
+        ld      a,(G_struct_tbl + ST_KIND)  ; με την 6 ακόμη μέσα
+        cp      K_SHIP                  ; Z: υπάρχει σκάφος
         ld      bc,GA_PORT + PAGE_B1
         out     (c),c
         ld      bc,#FFFF                ; B = η πηγή, C = η απόστασή της
-        ld      a,(sp_mat)
-        or      a
-        jr      nz,spt_st
+        jr      nz,spt_st               ; του cp: ld και out δεν αγγίζουν το F
         ld      a,MAX_DOME              ; το σκάφος, κόμβος 64
         call    spt_one
 spt_st:

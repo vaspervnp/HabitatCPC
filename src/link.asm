@@ -158,6 +158,7 @@ alf_n:
         ld      a,(al_n)
         or      a
         jr      z,alf_no
+alf_ok:
         xor     a
         ret
         ; --- μια δομή: μονοπάτι προς το κοντινότερο airlock ή δομή, ΠΟΤΕ σε
@@ -185,9 +186,6 @@ alf_r:
         ld      a,b
         ld      (bd_nres),a
         ld      a,1
-        ret
-alf_ok:
-        xor     a
         ret
 
 ; ---------------------------------------------------------------------------
@@ -238,6 +236,9 @@ asc_nx:
         add     hl,de
         inc     c
         djnz    asc_lp
+; asc_b1 / asc_b6 — η τράπεζα 1 ή 6 στο παράθυρο, και τίποτε άλλο: κρατούν
+; όλους τους καταχωρητές και τις σημαίες.
+asc_b1:
         push    bc
         ld      bc,GA_PORT + PAGE_B1
         jr      asc_out
@@ -315,14 +316,12 @@ al_cor1:
 ; ακόμη μέσα (al_scans).
 al_cor1a:
         ld      c,a
-        sub     MAX_DOME
         add     a,a
         add     a,a
-        add     a,a                     ; STRUCT_REC, κάτω από 256
+        add     a,a                     ; (64 + δομή) x 8 = δομή x 8 σε 8 bits
+        add     a,ST_KIND
         ld      l,a
-        ld      h,0
-        ld      de,G_struct_tbl + ST_KIND
-        add     hl,de
+        ld      h,G_struct_tbl >> 8     ; μία σελίδα (assert στο τέλος)
         ld      a,(hl)
         cp      K_AIRLOCK
         ret     nz
@@ -330,10 +329,7 @@ al_cor1a:
         ; το 87 το airlock έχει από την αρχή τη σύνδεση εδάφους του, και ο
         ; διάδρομός του γίνεται ακμή μόνο όταν τελειώσει — οπότε το λέει ένα
         ; byte της εγγραφής του (al_commit).
-        inc     hl
-        inc     hl
-        inc     hl
-        inc     hl                      ; ST_JOINED
+        set     2,l                     ; ST_JOINED = ST_KIND + 4: L = 8k + 2 -> 8k + 6
         ld      a,(hl)
         or      a
         ret     nz
@@ -368,6 +364,7 @@ al_cor:
         ret     nz
         ld      hl,al_ctmp
         call    crw_b4
+als_no:                                 ; και του al_set
         xor     a
         ret
 ; al_cor0 — το ίδιο, χωρίς τη σφραγίδα. Θυμάται στο al_why ΓΙΑΤΙ όχι: bit 0
@@ -434,9 +431,6 @@ al_set:
 als_sz:
         ld      (cr_fs),a
         jp      cr_pair
-als_no:
-        xor     a
-        ret
 
 ; al_each — HL = ρουτίνα ανά tile: κάθε διάδρομος της λίστας με την τράπεζα 4.
 al_each:
@@ -641,9 +635,8 @@ alb_l:
 al_node:
         ld      bc,GA_PORT + PAGE_B6
         out     (c),c
-        sub     MAX_DOME
+        cp      MAX_DOME
         jr      nc,aln_st
-        add     a,MAX_DOME
         call    ob_domeadr              ; HL -> cx
         inc     hl
         inc     hl
@@ -654,13 +647,12 @@ al_node:
         ld      e,a
         jr      aln_go
 aln_st:
+        add     a,a
+        add     a,a
+        add     a,a                     ; (64 + δομή) x 8 = δομή x 8 σε 8 bits
+        add     a,ST_KIND
         ld      l,a
-        ld      h,0
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl
-        ld      de,G_struct_tbl + ST_KIND
-        add     hl,de
+        ld      h,G_struct_tbl >> 8
         ld      a,(hl)                  ; ST_KIND
         inc     hl
         add     a,a
@@ -889,18 +881,14 @@ alc_out:
 alc_join:
         push    af
         push    hl
-        push    bc
-        call    asc_b6
-        call    gr_live                 ; HL -> ST_STATE
+        call    asc_b6                  ; το BC το κρατούν το asc_b6, το
+        call    gr_live                 ; gr_live και το asc_b1· HL -> ST_STATE
         inc     hl
         inc     hl                      ; ST_JOINED
         ld      (hl),1
-        ld      bc,GA_PORT + PAGE_B1
-        out     (c),c
-        pop     bc
         pop     hl
         pop     af
-        ret
+        jp      asc_b1
 alc_none:
         ; Χωρίς διάδρομο: ένα airlock που μπήκε μόνο του περιμένει τον θόλο του.
         ld      a,(bd_kind)
@@ -923,10 +911,7 @@ alc_none:
 lk_ground:
         call    asc_b6
         call    lk_anchor
-        push    bc
-        ld      bc,GA_PORT + PAGE_B1
-        out     (c),c
-        pop     bc
+        call    asc_b1
         ld      (al_pt),a
         ld      c,a
         inc     a
@@ -1043,3 +1028,5 @@ al_lb:      db 0
         assert  al_bad == al_cnt + 1 && al_nh == al_nw + 1 && al_rh == al_rw + 1
         assert  D_STATE == 4 && ST_STATE == 4 && ST_KIND == 2 && ST_SIZE == 3
         assert  D_SIZE == 2 && D_CX == 0 && D_CY == 1
+        assert  (G_struct_tbl & 255) == 0 && MAX_STRUCT * STRUCT_REC == 256 && MAX_DOME == 64
+        assert  STRUCT_REC == 8 && ST_JOINED == ST_KIND + 4   ; al_cor1a, al_node

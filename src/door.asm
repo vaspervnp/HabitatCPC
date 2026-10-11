@@ -36,7 +36,7 @@ lk_done:
         ld      a,(hl)
         or      a
         jr      z,lkd_corr              ; χωρίς σύνδεση εδάφους (σκηνές χωρίς άγκυρα)
-        ld      a,(lk_n)
+        ld      a,l                     ; ο κόμβος, όπως στο ld l,a
         call    lk_adj
         ld      a,(hl)                  ; εκεί που βγαίνει ο χτίστης
         cp      MAX_DOME
@@ -108,17 +108,18 @@ lkd_nx:
         ret
 
 ; lk_adj — A = κόμβος -> HL = node_adj + 8 * κόμβος. Κρατά A, BC, DE.
+; Το #9300 είναι (#12 << 11) + #300: το #12 μπαίνει στο H πριν από τα τρία
+; add, και το #300 με δύο inc h — #200 πριν από το τρίτο add, #100 μετά.
 lk_adj:
         ld      l,a
-        ld      h,0
+        ld      h,G_node_adj >> 11
         add     hl,hl
         add     hl,hl
+        inc     h                       ; x2 από το επόμενο add: #200
         add     hl,hl
-        push    de
-        ld      de,G_node_adj
-        add     hl,de
-        pop     de
+        inc     h                       ; #100
         ret
+        assert  (G_node_adj & #7FF) == #300  ; αλλιώς άλλα inc h (και στο cr_edge)
 
 ; lk_cut — σβήνει κάθε ακμή του (lk_n), και από τις δύο μεριές. Από τη λίστα
 ; του γείτονα φεύγει με το τελευταίο στη θέση του, και η τελευταία θέση μένει
@@ -288,13 +289,12 @@ eni_st:
         cp      1                       ; CY αν ήταν DS_ACTIVE
         ret
 eni_s:
+        add     a,a
+        add     a,a
+        add     a,a                     ; 8 * κόμβος σε 8 bits: = 8 * δομή
+        add     a,ST_KIND
         ld      l,a
-        ld      h,0
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl                   ; 8 * κόμβος
-        ld      de,G_struct_tbl - MAX_DOME * STRUCT_REC + ST_KIND
-        add     hl,de
+        ld      h,G_struct_tbl >> 8     ; μία σελίδα (assert πιο κάτω)
         ld      a,(hl)
         cp      K_AIRLOCK
         ld      de,ST_STATE - ST_KIND
@@ -304,6 +304,7 @@ eni_s:
 
         assert  DOME_REC == 24 && STRUCT_REC == 8
         assert  F_INDOORS == 2 && MAX_DOME == 64 && ST_STATE - ST_KIND == 2
+        assert  (G_struct_tbl & 255) == 0 && MAX_STRUCT * STRUCT_REC == 256
 
 ; en_count — C = ζωντανοί, E = ζωντανοί με F_INDOORS (το ef_o2, src/econ.asm).
 ; ΜΟΝΟ ΟΙ ΑΠΟΙΚΟΙ, 0-79 (βήμα 92): τα ρομπότ δεν πιάνουν θέση στο ταβάνι και δεν

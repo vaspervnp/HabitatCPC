@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from sprites import load_map, load_bin, ROOT
 import buttons
 
-TEXT_MAX = 2120                 # = TEXT_MAX του src/uitext.asm (assert εκεί)
+TEXT_MAX = 2138                 # = TEXT_MAX του src/uitext.asm (assert εκεί)
 B6C_MAX = 1554                  # = B6C_MAX του src/bots.asm (assert στο main.asm)· 256 ως το 92, 1.280 ως το 93, 1.298 ως το 95
 B1C_MAX = 160                   # = B1C_MAX του src/commit.asm (assert στο main.asm), βήμα 94
 B5C_MAX = 248                   # = B5C_MAX του src/bend.asm (assert στο main.asm), βήμα 97· 272 ως το 99
@@ -106,11 +106,12 @@ def _cell(top, mid, bot):
     return bytes([0, top, mid, mid, mid, bot, 0, 0])
 
 
-HUD_CELLS = (bytes(8)                      # #80 κενό
-             + _cell(0xF0, 0xF0, 0xF0)     # #81 pen 1 — κόκκινο, λίγο
-             + _cell(0x0F, 0x0F, 0x0F)     # #82 pen 2 — πράσινο, γεμάτο
-             + _cell(0xFF, 0xFF, 0xFF)     # #83 pen 3 — λευκό
-             + _cell(0xFF, 0x00, 0xFF))    # #84 άδειο
+FONT_N = 0x7B - 32                         # οι χαρακτήρες 32-122 (βήμα 101)
+HUD_CELLS = (bytes(8)                      # #7B κενό (#80 ως το βήμα 100)
+             + _cell(0xF0, 0xF0, 0xF0)     # #7C pen 1 — κόκκινο, λίγο
+             + _cell(0x0F, 0x0F, 0x0F)     # #7D pen 2 — πράσινο, γεμάτο
+             + _cell(0xFF, 0xFF, 0xFF)     # #7E pen 3 — λευκό
+             + _cell(0xFF, 0x00, 0xFF))    # #7F άδειο
 
 
 # --- οι φιγούρες ΕΞΩ (βήμα 89) ----------------------------------------------
@@ -714,7 +715,11 @@ def build_runs(smap, blob):
     s = smap.get("font_gfx")
     if s is None:
         raise Fail("λείπει sprite: font_gfx")
-    font = mode1_font(blob[s.off:s.off + s.size]) + HUD_CELLS
+    # ΟΧΙ ΟΙ ΠΕΝΤΕ ΤΕΛΕΥΤΑΙΟΙ (βήμα 101): τους { | } ~ και τον 127 δεν τους
+    # τυπώνει κανένα κείμενο, και τα 40 bytes τους πήραν το σύμβολο και τη
+    # βοήθεια του DEMOLISH. Τα κελιά έρχονται στη θέση τους, #7B-#7F
+    # (HUD_CELL0, src/hud.asm).
+    font = mode1_font(blob[s.off:s.off + s.size])[:FONT_N * 8] + HUD_CELLS
     bank7.append(Run("font_m1", len(font), font, align=8,
                      note="παράγεται από το font_gfx"))       # (ch-32)*8
     # ΤΑ ΣΥΜΒΟΛΑ ΤΩΝ ΚΟΥΜΠΙΩΝ (βήμα 84, §9.3): 33 x 17 bytes, ένα bit το pixel,
