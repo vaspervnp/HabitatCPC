@@ -1489,7 +1489,7 @@ def slot15(sim, n):
     for _ in range(n):
         new_sol = EC.events(sim.e)
         if sim.e.air_out != 255:                # βήμα 90: ένα airlock χτυπήθηκε
-            E.air_out(sim.a, sim.e.air_out)
+            E.air_out(sim.a, sim.e.air_out, sim.g)
             sim.e.air_out = 255
         if new_sol:
             EC.sol_rollover(sim.e, sim.a, E.F_ALIVE, E.F_WORKING, E.NEED_LOW)

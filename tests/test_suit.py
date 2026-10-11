@@ -19,6 +19,24 @@
   ΜΕΤΕΩΡΙΤΗΣ ένα airlock ξαναγίνεται εργοτάξιο (lk_air_out): όσοι στέκονταν
              μέσα του είναι έξω, με γεμάτη στολή, και φαίνονται (DK_AGENT)·
              κανείς άλλος δεν αλλάζει.
+  ΣΩΛΗΝΑΣ    (βήμα 104) στο παιχνίδι, με μετεωρίτη αληθινό: ο 0 φεύγει από τον
+             θόλο για το σκάφος και ο 2 από το airlock για τον θόλο, μέσα στον
+             σωλήνα και οι δύο, ο 1 μένει στον θόλο. Η βροχή στοχεύει το
+             airlock και η κρούση το κάνει εργοτάξιο ενώ ταξιδεύουν: ο 0 είναι
+             ΕΚΕΙΝΗ ΤΗ ΣΤΙΓΜΗ έξω, με γεμάτη στολή, στην ίδια ακμή, φτάνει στο
+             εργοτάξιο έξω και συνεχίζει έξω ως το σκάφος· ο 2 φτάνει μέσα στον
+             θόλο, και ο 1 δεν αλλάζει. Ως το βήμα 103 ο 0 έφτανε στο
+             εργοτάξιο με το F_INDOORS, και ανέπνεε τον αέρα της αποικίας.
+  ΤΥΧΑΙΑ     (βήμα 104) 400 κλήσεις του lk_air_out σε τυχαίες καταστάσεις —
+             σημαίες, κόμβοι, ακμές, στολές των 128, και ένας τυχαίος γράφος
+             με μισές και διπλές ακμές — = η αναφορά (tools/entity.py,
+             air_out): όσοι στέκονται στο airlock, και όσοι ταξιδεύουν μέσα
+             και η ακμή τους καταλήγει σε αυτό· οι σημαίες, οι στολές και τα
+             σημάδια (fg_mark) των 128, και τίποτε άλλο στα πεδία τους.
+  ΚΟΣΤΟΣ     (βήμα 104) μια κρούση σε έτοιμο airlock, με τρεις μέσα του, το
+             mt_tick ολόκληρο: κάτω από 7.100 µs. 6.025 ως το βήμα 103· το
+             tests/test_impact.py δεν χτυπά ποτέ έτοιμο airlock, και το ταβάνι
+             του για τα κτίρια (5.270) δεν το κάλυπτε.
   ΕΡΓΟΤΑΞΙΟ  ένα εργοτάξιο κοιτώνα, και ο χτίστης του στέκεται εκεί, έξω,
              με ύπνο 10: δεν κοιμάται. Εξω κανένα δωμάτιο δεν δίνει τίποτα —
              ως το βήμα 89 ο ύπνος του γινόταν 255 στην πρώτη επίσκεψη.
@@ -32,9 +50,12 @@
 πεθαίνει), ο μετρητής του HUD που μετρά μόνο όταν φαίνεται (η ΕΠΙΣΤΡΟΦΗ),
 το lks_out χωρίς το F_INDOORS (ο ΜΕΤΕΩΡΙΤΗΣ), το su_tick που γυρίζει στο
 nd_d2 όπως ως το βήμα 89 (το ΕΡΓΟΤΑΞΙΟ), και 64 δομές στο rooms_rebuild (η
-ΠΙΣΤΑ).
+ΠΙΣΤΑ). Από το βήμα 104: το lk_air_out χωρίς τον σωλήνα, όπως ως το 103 (ο
+ΣΩΛΗΝΑΣ και τα ΤΥΧΑΙΑ), ο σωλήνας και για όσους ταξιδεύουν έξω, πάντα η
+πρώτη ακμή του κόμβου, και το lk_each χωρίς τον τελευταίο πράκτορα (τα
+ΤΥΧΑΙΑ).
 """
-import ctypes, os, sys
+import copy, ctypes, os, random, sys, types
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -46,6 +67,9 @@ import test_outside as TO                                # noqa: E402
 import balance as B                                      # noqa: E402
 import hudread                                           # noqa: E402
 import cpc                                               # noqa: E402
+import econ as EC                                        # noqa: E402
+import entity as E                                       # noqa: E402
+import test_impact as TI                                 # noqa: E402
 
 UNIT = 128                  # frames του τροχού ανά μονάδα στολής
 MIN = 3000                  # frames σε ένα λεπτό (50 το δευτερόλεπτο)
@@ -278,6 +302,194 @@ def meteor(sym, g, patch=(), quiet=False):
     return None
 
 
+def aim(w, node):
+    """Η βροχή στο κέντρο του κόμβου, και ένα mrnd που ρίχνει την επόμενη κρούση
+    μέσα στο αποτύπωμά του (η αναφορά: EC._impact, TI.hit_node)."""
+    e = EC.Econ()
+    e.dome = bytearray(w.b6(w.L["G_dome_tbl"], EC.MAX_DOME * EC.DOME_REC))
+    e.struct = bytearray(w.b6(w.L["G_struct_tbl"], EC.MAX_STRUCT * EC.STRUCT_REC))
+    rec, b = EC._node_rec(e, node)
+    mcx, mcy = TI.s8(rec[b]) >> 1, TI.s8(rec[b + 1]) >> 1
+    for mr in range(1, 65536):
+        f = copy.copy(e)
+        f.mrnd = mr
+        byte = EC._mbyte(f)
+        if TI.hit_node(e, TI.s8(mcx + (byte & 15) - 8), TI.s8(mcy + (byte >> 4) - 8)) == node:
+            return mcx, mcy, mr
+    return None
+
+
+def tube(sym, g, patch=(), quiet=False):
+    """ΣΩΛΗΝΑΣ. Η πρώτη διαφορά από την πρόζα, ή None."""
+    say = (lambda s: None) if quiet else (lambda s: print("    " + s))
+    w, why = base(sym, g, patch, quiet)
+    if why:
+        return why
+    m = w.m
+    for i in (0, 1):
+        w.put(i, 512, DOME)
+    if w.wait(lambda: all((w.a(i)["node"], w.a(i)["edge"], w.a(i)["f"] & 3)
+                          == (DOME, 255, 3) for i in (0, 1)), 6000, 10) is None:
+        return f"ΣΩΛΗΝΑΣ: οι 0 και 1 δεν μπήκαν στον θόλο: {[w.a(i) for i in range(4)]}"
+    k0, k2 = w.nb(DOME).index(LOCK), w.nb(LOCK).index(DOME)
+    w.put(0, 512, SHIP)
+    w.put(2, 512, DOME)
+    if w.wait(lambda: w.a(0)["edge"] != 255 and w.a(2)["edge"] != 255, 3000, 1) is None:
+        return f"ΣΩΛΗΝΑΣ: οι 0 και 2 δεν ξεκίνησαν: {w.a(0)}, {w.a(2)}"
+    before = [w.a(i) for i in range(4)]
+    if ((before[0]["node"], before[0]["edge"], before[0]["f"] & 3) != (DOME, k0, 3)
+            or (before[2]["node"], before[2]["edge"], before[2]["f"] & 3) != (LOCK, k2, 3)):
+        return f"ΣΩΛΗΝΑΣ: η σκηνή δεν έχει δύο στον σωλήνα, μέσα: {before[0]}, {before[2]}"
+    at = aim(w, LOCK)
+    if at is None:
+        return "ΣΩΛΗΝΑΣ: κανένα mrnd δεν ρίχνει την κρούση στο airlock"
+    mcx, mcy, mr = at
+    for off, v in ((87, mcx & 255), (88, mcy & 255), (89, mr & 255), (90, mr >> 8), (86, 1)):
+        m.poke(g + off, v)
+    log = []
+
+    def hit():
+        log.append([w.a(i) for i in range(4)])
+        return w.lock()[4] == EC.DS_BUILDING
+    if w.wait(hit, 400, 1) is None:
+        return f"ΣΩΛΗΝΑΣ: η κρούση δεν έπεσε στο airlock: {w.lock()}"
+    x = log[-1]
+    if x[0]["edge"] != k0 or x[2]["edge"] != k2:
+        return f"ΣΩΛΗΝΑΣ: η κρούση έπεσε όταν δεν ταξίδευαν πια: {x[0]}, {x[2]}"
+    if x[0]["f"] & F_INDOORS or abs(x[0]["suit"] * UNIT - 3 * MIN) > 2 * UNIT:
+        return (f"ΣΩΛΗΝΑΣ: στην κρούση ο 0 στον σωλήνα προς το airlock: {x[0]} — "
+                f"έξω, με στολή τριών λεπτών")
+    if not x[2]["f"] & F_INDOORS or x[2]["suit"] != before[2]["suit"]:
+        return f"ΣΩΛΗΝΑΣ: στην κρούση ο 2, από το airlock στον θόλο: {before[2]} -> {x[2]}"
+    if x[1] != before[1]:
+        return f"ΣΩΛΗΝΑΣ: ο 1 στον θόλο άλλαξε: {before[1]} -> {x[1]}"
+    trail, two = [], []
+
+    def go():
+        y = w.a(0)
+        k = (y["node"], y["edge"] == 255, bool(y["f"] & F_INDOORS))
+        if not trail or trail[-1] != k:
+            trail.append(k)
+        z = w.a(2)
+        if not two or two[-1][:2] != (DOME, 255):      # ως να φτάσει στον θόλο
+            two.append((z["node"], z["edge"], bool(z["f"] & F_INDOORS)))
+    if w.wait(lambda: (w.a(0)["node"], w.a(0)["edge"]) == (SHIP, 255), 6000, 1, go) is None:
+        return f"ΣΩΛΗΝΑΣ: ο 0 δεν έφτασε στο σκάφος: {w.a(0)}, διαδρομή {trail}"
+    if any(t[2] for t in trail) or (LOCK, True, False) not in trail:
+        return (f"ΣΩΛΗΝΑΣ: ο 0 από την κρούση ως το σκάφος {trail} — "
+                f"στο εργοτάξιο έξω, και έξω ως το τέλος")
+    if two[-1] != (DOME, 255, True) or any(not t[2] for t in two):
+        return f"ΣΩΛΗΝΑΣ: ο 2 ως τον θόλο: {two[-3:]} — μέσα, σε όλο τον δρόμο"
+    say(f"ΣΩΛΗΝΑΣ: η κρούση έπεσε στο airlock με τον 0 στον σωλήνα από τον θόλο "
+        f"και τον 2 από το airlock προς τον θόλο: ο 0 έξω εκείνη τη στιγμή, στολή {x[0]['suit']} "
+        f"({x[0]['suit'] * UNIT / MIN:.1f} λεπτά), διαδρομή {trail}; ο 2 μέσα ως τον "
+        f"θόλο, ο 1 ίδιος")
+    return None
+
+
+HIT_US = 7100              # βήμα 104: μετρημένο 6.952 (6.025 ως το 103)
+
+
+def hit_cost(sym, g, patch=(), quiet=False):
+    """ΚΟΣΤΟΣ. Μια κρούση σε έτοιμο airlock, με τρεις μέσα του: το mt_tick
+    ολόκληρο, σε µs. -> (µs, ή None αν δεν γύρισε, λάθος)."""
+    w, why = base(sym, g, patch, quiet)
+    if why:
+        return None, why
+    m = w.m
+    m.poke(sym["UI_SPD"], 0)
+    m.run_frames(4)
+    at = aim(w, LOCK)
+    if at is None:
+        return None, "ΚΟΣΤΟΣ: κανένα mrnd δεν ρίχνει την κρούση στο airlock"
+    mcx, mcy, mr = at
+    for off, v in ((87, mcx & 255), (88, mcy & 255), (89, mr & 255), (90, mr >> 8), (86, 1)):
+        m.poke(g + off, v)
+    code = ([0xF3, 0x31, 0x00, 0x01, 0x01, 0xC6, 0x7F, 0xED, 0x49]       # τράπεζα 6
+            + call(sym, "MT_TICK") + [0x18, 0xFE])
+    m.write_ram(PROBE, bytes(code))
+    m.set_pc(PROBE)
+    end, t = PROBE + len(code) - 2, 0
+    while not (end <= m.pc <= end + 2):
+        m.run_us(1)
+        t += 1
+        if t > 100_000:
+            return None, "ΚΟΣΤΟΣ: το mt_tick δεν γύρισε"
+    if w.lock()[4] != EC.DS_BUILDING:
+        return None, f"ΚΟΣΤΟΣ: η κρούση δεν έπεσε στο airlock: {w.lock()}"
+    return t, None
+
+
+def rand_state(rnd, w):
+    """Μια τυχαία κατάσταση για το lk_air_out: τα πεδία των 128 και ο γράφος
+    στη μνήμη. -> (airlock, πράκτορες, γράφος) της αναφοράς."""
+    L, m = w.L, w.m
+    n = rnd.choice([64, 65, 95, rnd.randrange(64, 96)])
+    near = [n] + [rnd.randrange(96) for _ in range(3)] + [0, 63]
+    a = types.SimpleNamespace(flags=bytearray(128), node=bytearray(128),
+                              edge=bytearray(128), suit=bytearray(128))
+    for k in range(128):
+        a.flags[k] = rnd.choice([0, 1, 3, 3, 2, 65, 67, rnd.randrange(256)])
+        a.node[k] = rnd.choice(near) if rnd.random() < 0.8 else rnd.randrange(96)
+        a.edge[k] = 255 if rnd.random() < 0.5 else rnd.choice([0, 1, 7, rnd.randrange(8)])
+        a.suit[k] = rnd.randrange(256)
+    if rnd.random() < 0.2:                 # οι άδειες θέσεις του game_new
+        for k in range(rnd.randrange(128), 128):
+            a.flags[k], a.node[k], a.edge[k] = 0, 0, 255
+    gr = types.SimpleNamespace(adj=bytearray(rnd.choice(near) if rnd.random() < 0.6
+                                             else rnd.randrange(96) for _ in range(768)))
+    deg = bytes(rnd.randrange(9) for _ in range(96))
+    for col, data in ((0, a.flags), (256, a.node), (640, a.edge), (1792, a.suit)):
+        w.put6(L["G_agent_fields"] + col, data)
+    w.put6(L["G_node_occ"] + 128, bytes(128))
+    m.write_ram(L["G_rt_nodes"], deg)
+    m.write_ram(L["G_node_adj"], bytes(gr.adj))
+    m.poke(w.sym["DIRTY_NUM"], 0)
+    gr.adj += bytes(1024 - 768)
+    return n, a, gr
+
+
+def random_calls(sym, g, patch=(), quiet=False, n=400):
+    """ΤΥΧΑΙΑ. Η πρώτη διαφορά από την αναφορά, ή None."""
+    say = (lambda s: None) if quiet else (lambda s: print("    " + s))
+    w = W(sym, g, patch)
+    L = w.L
+    rnd = random.Random(104)
+    w.m.poke(sym["UI_SPD"], 0)
+    w.m.run_frames(4)
+    seen = {"στέκονται": 0, "σωλήνας": 0}
+    for case in range(n):
+        node, a, gr = rand_state(rnd, w)
+        before = copy.deepcopy(a)
+        if not w.probe([0x3E, node] + call(sym, "LK_AIR_OUT")):
+            return f"ΤΥΧΑΙΑ {case}: το lk_air_out δεν γύρισε"
+        E.air_out(a, node, gr)
+        got = {c: w.b6(L["G_agent_fields"] + off, 128)
+               for c, off in (("flags", 0), ("node", 256), ("edge", 640), ("suit", 1792))}
+        marks = w.b6(L["G_node_occ"] + 128, 128)
+        out = {k for k in range(128) if a.flags[k] != before.flags[k] or a.suit[k] != before.suit[k]}
+        for c in ("flags", "node", "edge", "suit"):
+            want = bytes(getattr(a, c))
+            if got[c] != want:
+                k = next(k for k in range(128) if got[c][k] != want[k])
+                return (f"ΤΥΧΑΙΑ {case} (airlock {node}): {c} του {k} = {got[c][k]}, η αναφορά "
+                        f"λέει {want[k]} (πριν: σημαίες {before.flags[k]}, κόμβος "
+                        f"{before.node[k]}, ακμή {before.edge[k]})")
+        marked = {k for k in range(128) if marks[k]}
+        want_marked = {k for k in range(128) if a.flags[k] & 1 and (
+            (before.edge[k] == 255 and before.node[k] == node) or k in out)}
+        if marked != want_marked:
+            return (f"ΤΥΧΑΙΑ {case}: σημάδια {sorted(marked)[:6]}, η αναφορά λέει "
+                    f"{sorted(want_marked)[:6]}")
+        for k in out:
+            seen["στέκονται" if before.edge[k] == 255 else "σωλήνας"] += 1
+    if not seen["σωλήνας"] or not seen["στέκονται"]:
+        return f"ΤΥΧΑΙΑ: οι σκηνές δεν δοκιμάζουν και τα δύο: {seen}"
+    say(f"ΤΥΧΑΙΑ: {n} κλήσεις = η αναφορά· έξω {seen['στέκονται']} που στέκονταν και "
+        f"{seen['σωλήνας']} από τον σωλήνα")
+    return None
+
+
 def site(sym, g, patch=(), quiet=False):
     """ΕΡΓΟΤΑΞΙΟ. Η πρώτη διαφορά από την πρόζα, ή None."""
     w = W(sym, g, patch)
@@ -325,11 +537,18 @@ def pad(sym, g, patch=(), quiet=False):
 
 def main():
     sym, g = TG.build()
+    t, why = hit_cost(sym, g)
+    check(why is None and t <= HIT_US,
+          why or f"ΚΟΣΤΟΣ: μια κρούση σε έτοιμο airlock, με τρεις μέσα του: {t} us <= {HIT_US}")
     for fn, what in ((start, "ΑΡΧΗ: δέκα λεπτά, μία μονάδα ανά 128 frames, θάνατος όταν "
                              "αδειάσει, SUIT AIR LOW κάτω από ένα λεπτό"),
                      (trip, "ΕΞΟΔΟΣ και ΕΠΙΣΤΡΟΦΗ: γεμάτη στολή στην έξοδο, μόνος του "
                             "στο airlock με ένα λεπτό"),
                      (meteor, "ΜΕΤΕΩΡΙΤΗΣ: όσοι στέκονταν στο airlock, έξω με στολή"),
+                     (tube, "ΣΩΛΗΝΑΣ: όποιος ερχόταν μέσα στο airlock, έξω τη στιγμή "
+                            "της κρούσης"),
+                     (random_calls, "ΤΥΧΑΙΑ: το lk_air_out = η αναφορά σε 400 τυχαίες "
+                                    "καταστάσεις"),
                      (site, "ΕΡΓΟΤΑΞΙΟ: έξω κανένα δωμάτιο δεν δίνει τίποτα"),
                      (pad, "ΠΙΣΤΑ: οι δομές είναι 32")):
         why = fn(sym, g)
@@ -351,6 +570,11 @@ def main():
     rr = find(sym["ROOMS_REBUILD"], [0x01, 64, 32], 200)        # ld bc,32*256+64
     # το su_tick γυρίζει στο nd_d2, όπως ως το βήμα 89: ξανά το nd_sat έξω
     ld = find(sym["SU_TICK"], [0xC3] + w(sym["ND_LOAD"]), 200)
+    # βήμα 104: μετά το πρώτο lk_each του lk_air_out, pop bc / ret (ως το 103)
+    ao = find(sym["LK_AIR_OUT"], [0xCD] + w(sym["LK_EACH"]), 16)
+    ai = find(sym["LKT_TR"], [0xE6, 3, 0xFE, 3], 40)          # and/cp ALIVE+INDOORS
+    ak = find(sym["LKT_TR"], [0xCD] + w(sym["LK_ADJ"]) + [0x7D, 0x81], 40)   # add a,c
+    ae = find(sym["LK_EACH"], [0x01, 128, 0], 8)              # ld bc,N_AGENT
     while ld is not None and find(ld + 1, [0xC3] + w(sym["ND_LOAD"]), 8) is not None:
         ld = find(ld + 1, [0xC3] + w(sym["ND_LOAD"]), 8)      # το τελευταίο jp
     for label, fn, patch in (
@@ -360,7 +584,15 @@ def main():
             ("χωρίς airlock στο su_lock", trip, lk and [(lk, 0x3E), (lk + 1, 0xFF), (lk + 2, 0)]),
             ("το lks_out χωρίς το F_INDOORS", meteor, lo and [(lo, 0), (lo + 1, 0)]),
             ("64 δομές στο rooms_rebuild", pad, rr and [(rr + 2, 64)]),
-            ("το nd_sat και έξω", site, ld and [(ld + 1 + k, v) for k, v in enumerate(w(sym["ND_D2"]))])):
+            ("το nd_sat και έξω", site, ld and [(ld + 1 + k, v) for k, v in enumerate(w(sym["ND_D2"]))]),
+            ("το lk_air_out χωρίς τον σωλήνα (βήμα 103)", tube,
+             ao and [(ao + 3, 0xC1), (ao + 4, 0xC9)]),
+            ("το lk_air_out χωρίς τον σωλήνα (βήμα 103)", random_calls,
+             ao and [(ao + 3, 0xC1), (ao + 4, 0xC9)]),
+            ("ο σωλήνας και για όσους ταξιδεύουν έξω", random_calls,
+             ai and [(ai + 1, 1), (ai + 3, 1)]),
+            ("πάντα η πρώτη ακμή του κόμβου", random_calls, ak and [(ak + 4, 0)]),
+            ("το lk_each χωρίς τον τελευταίο πράκτορα", random_calls, ae and [(ae + 1, 127)])):
         if not patch:
             check(False, f"δεν βρέθηκε πού να πειραχτεί για «{label}»")
             continue

@@ -428,7 +428,7 @@ class Sim:
         elif s == 15:
             new_sol = EC.events(self.e)
             if self.e.air_out != 255:
-                air_out(self.a, self.e.air_out)
+                air_out(self.a, self.e.air_out, self.g)
                 self.e.air_out = 255
             if new_sol:
                 EC.sol_rollover(self.e, self.a, F_ALIVE, F_WORKING, NEED_LOW)
@@ -438,11 +438,20 @@ class Sim:
         # στον Z80.
 
 
-def air_out(a, n):
+def air_out(a, n, g):
     """Το lk_air_out (src/door.asm, βήμα 90): ένα airlock ξανάγινε εργοτάξιο,
-    και όσοι στέκονταν μέσα του είναι έξω, με γεμάτη στολή."""
+    και όσοι στέκονταν μέσα του είναι έξω, με γεμάτη στολή. Και από το βήμα
+    104 όσοι ταξιδεύουν μέσα προς αυτό: ζωντανοί, με το F_INDOORS, και ο
+    κόμβος στην άλλη άκρη της ακμής τους (η άφιξη, move_one) είναι το n."""
     for k in range(MAXAGENT):
-        if a.node[k] == n and a.edge[k] == NO_EDGE and a.flags[k] & F_ALIVE:
+        if not a.flags[k] & F_ALIVE:
+            continue
+        if a.edge[k] == NO_EDGE:
+            out = a.node[k] == n
+        else:
+            out = (a.flags[k] & F_INDOORS
+                   and g.adj[a.node[k] * G.MAXDEG + a.edge[k]] == n)
+        if out:
             a.flags[k] &= ~F_INDOORS & 0xFF
             a.suit[k] = EC.SUIT_TRIP
 

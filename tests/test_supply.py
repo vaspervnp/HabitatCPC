@@ -217,14 +217,14 @@ def main():
     jobs_at = find(sym["BDK_POST"], [0xCD, sym["SP_JOBS"] & 255, sym["SP_JOBS"] >> 8], 8)
     pb = sym["JB_POST_BUILD"]
     scf = find(sym["SPN_AG"], [0x37], 40)                # scf: κανείς
-    lko = find(sym["LK_OUT"], [0x06, 0x80], 16)          # ld b,N_AGENT (lk_each)
+    lko = find(sym["LK_OUT"], [0x01, 0x80, 0], 16)       # ld bc,N_AGENT (lk_each, cpir από το 104)
     for label, fn, patch in (
             ("Build στο FIRE (ως το 87)", solar,
              jobs_at and [(jobs_at + 1, pb & 255), (jobs_at + 2, pb >> 8)]),
             ("Build από οποιονδήποτε", solar, [(sym["JOB_ROLES"], 0xFF)]),
             ("sp_noeng χωρίς απάντηση", no_engineer, scf and [(scf, 0xB7)]),   # or a
             # το lk_each κοιτά μόνο τον χτίστη, όπως το lk_out ως το 87:
-            # ld hl,(AG_PG + 1) * 256 -> + ENGINEER, ld b,N_AGENT -> 1
+            # ld hl,(AG_PG + 1) * 256 -> + ENGINEER, ld bc,N_AGENT -> 1
             ("lk_out μόνο για τον χτίστη", dome,
              lko and [(lko - 3 + 1, ENGINEER), (lko + 1, 1)])):
         if not patch:

@@ -177,41 +177,50 @@ lk_out:
         ld      hl,lko_one
 ; lk_each — HL = ρουτίνα: καλείται με A = κάθε ζωντανός που στέκεται στον
 ; (lk_n), όχι στον δρόμο. Ενα πέρασμα των 128, μία φορά ανά θόλο ή airlock που
-; τελειώνει: ο κόμβος μένει στον A και ο πράκτορας είναι ο L, οπότε όποιος
-; είναι αλλού κοστίζει cp (hl), jr, inc l, djnz — 36 T, ~1,2 ms οι 128. Η
-; κλήση γράφεται στη δική της διεύθυνση, όπως στο ent_needs_slice.
+; τελειώνει. Η κλήση γράφεται στη δική της διεύθυνση, όπως στο
+; ent_needs_slice.
+;
+; ΜΕ ΤΟ cpir (βήμα 104): όποιος είναι αλλού κοστίζει 21 T. Ως τότε cp (hl),
+; jr, inc l, djnz — 31 T, ~1 ms οι 128. Και ένας νεκρός, ή μια άδεια θέση,
+; κοιτάζεται χωρίς push και pop: οι άδειες θέσεις έχουν κόμβο 0 (game_new),
+; οπότε για τον θόλο 0 ο βρόχος σταματούσε 124 φορές, 6 ms. Πληρώνει το
+; δεύτερο πέρασμα του lk_air_out, για τον σωλήνα.
 lk_each:
         ld      (lke_call + 1),hl
-        ld      hl,(AG_PG + 1) * 256    ; οι κόμβοι· L = ο πράκτορας
-        ld      b,N_AGENT
+        ld      hl,(AG_PG + 1) * 256    ; οι κόμβοι· L - 1 = ο πράκτορας
+        ld      bc,N_AGENT
+lke_a:
         ld      a,(lk_n)
-lke_lp:
-        cp      (hl)
-        jr      z,lke_hit
-lke_nx:
-        inc     l
-        djnz    lke_lp
-        ret
-lke_hit:
+        cpir
+        ret     nz                      ; κανείς άλλος
+        dec     l                       ; L = ο πράκτορας
+        dec     h                       ; AG_PG: οι σημαίες
+        bit     0,(hl)                  ; F_ALIVE
+        jr      z,lke_no                ; νεκρός, ή άδεια θέση: κόμβος 0
+        inc     h
+        inc     h
+        set     7,l
+        ld      a,(hl)                  ; edge
+        res     7,l
+        dec     h                       ; ξανά στους κόμβους
+        inc     a
+        jr      nz,lke_nx               ; στον δρόμο
         push    bc
         push    hl
-        set     7,l
-        inc     h
-        ld      a,(hl)                  ; edge
-        inc     a
-        jr      nz,lke_pop              ; στον δρόμο
-        res     7,l
-        ld      h,AG_PG
-        bit     0,(hl)                  ; F_ALIVE
-        jr      z,lke_pop
         ld      a,l
 lke_call:
         call    lko_one
-lke_pop:
         pop     hl
         pop     bc
-        ld      a,(lk_n)
         jr      lke_nx
+lke_no:
+        inc     h
+lke_nx:
+        inc     l
+        ld      a,b
+        or      c
+        jr      nz,lke_a
+        ret
 ; lks_in — A = πράκτορας: μέσα (F_INDOORS).
 lks_in:
         ld      l,a
@@ -220,13 +229,65 @@ lks_in:
         ret
 ; lk_air_out — A = ένα airlock που ξανάγινε εργοτάξιο (src/meteor.asm): όσοι
 ; στέκονταν μέσα του, έξω, με γεμάτη στολή (βήμα 90). Κρατά το BC.
+;
+; ΚΑΙ ΟΣΟΙ ΕΡΧΟΝΤΑΙ ΣΤΟΝ ΣΩΛΗΝΑ (βήμα 104). Οποιος ταξιδεύει μέσα φτάνει
+; μέσα: η αναχώρηση ρώτησε τον στόχο, και τότε το airlock είχε αέρα. Οποιος
+; ερχόταν σε αυτό από θόλο τη στιγμή της κρούσης θα έφτανε σε εργοτάξιο με το
+; F_INDOORS, και θα ανέπνεε τον αέρα της αποικίας ως την επόμενη αναχώρησή
+; του. Βγαίνει τώρα, όπως αν είχε ξεκινήσει μετά την κρούση: έξω, με γεμάτη
+; στολή, στο έδαφος. «Ερχόταν» είναι ό,τι ρωτά η άφιξη (em_arrive): ο κόμβος
+; στην άλλη άκρη της ακμής του, node_adj[node * 8 + edge].
+;
+; Ενα πέρασμα των 128 στη στήλη των edge: όσοι δεν ταξιδεύουν κοστίζουν 35 T,
+; ~1,1 ms. Μόνο σε κρούση σε έτοιμο airlock.
 lk_air_out:
         ld      (lk_n),a
         push    bc
         ld      hl,lks_out
         call    lk_each
+        ld      a,(lk_n)
+        ld      e,a                     ; E = το airlock
+        ld      hl,(AG_PG + 2) * 256 + 128      ; τα edge· L - 128 = ο πράκτορας
+        ld      b,N_AGENT
+lkt_lp:
+        ld      a,(hl)
+        inc     a
+        jr      nz,lkt_tr               ; ταξιδεύει
+lkt_nx:
+        inc     l
+        djnz    lkt_lp
         pop     bc
         ret
+lkt_tr:
+        push    bc
+        push    hl
+        dec     a
+        ld      c,a                     ; C = edge
+        res     7,l
+        dec     h                       ; AG_PG + 1: ο κόμβος
+        ld      a,(hl)
+        push    hl
+        call    lk_adj                  ; κρατά A, BC, DE
+        ld      a,l
+        add     a,c                     ; η γραμμή των 8 δεν περνά σελίδα
+        ld      l,a
+        ld      a,(hl)                  ; εκεί που φτάνει
+        pop     hl
+        cp      e
+        jr      nz,lkt_pop
+        dec     h                       ; AG_PG: οι σημαίες
+        ld      a,(hl)
+        and     F_ALIVE + F_INDOORS
+        cp      F_ALIVE + F_INDOORS
+        jr      nz,lkt_pop              ; νεκρός, ή ήδη έξω με τη στολή του
+        ld      a,l
+        push    de
+        call    lks_out
+        pop     de
+lkt_pop:
+        pop     hl
+        pop     bc
+        jr      lkt_nx
 lks_out:
         ld      l,a
         ld      h,AG_PG
