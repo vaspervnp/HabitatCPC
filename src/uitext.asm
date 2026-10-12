@@ -17,7 +17,7 @@
 ; του rasm θα τα έδινε κατευθείαν σωστά, αλλά δεν συνδυάζεται με το `bankset 1`
 ; που στήνει τις τράπεζες 4-7 πιο πάνω.)
 
-TEXT_MAX    equ 2138                    ; η δέσμευση του §4.2 (2.120 ως το βήμα 100, 2.100 ως το βήμα 89, 2.080 ως το 87, 2.064 ως το 85, 2.048 ως το 84, 1.280 ως το 83,
+TEXT_MAX    equ 2148                    ; η δέσμευση του §4.2 (2.138 ως το βήμα 110, 2.120 ως το βήμα 100, 2.100 ως το βήμα 89, 2.080 ως το 87, 2.064 ως το 85, 2.048 ως το 84, 1.280 ως το 83,
                                         ; 1.024 ως το 79)
 TEXT_IMG    equ #C000 + G_text - #4000
 
@@ -43,6 +43,7 @@ x_txt_lost:   db "COLONY LOST",0
 x_txt_noeng:  db "NO ENGINEER",0   ; βήμα 88
 x_txt_suit:   db "SUIT AIR LOW",0   ; βήμα 90
 x_txt_mer:    db "MERCHANT LANDED",0   ; βήμα 93: χωρίς κενά στο τέλος, όπως όλα από το 93 (hd_say)
+x_txt_foe:    db "INTRUDERS",0         ; βήμα 111
 x_t_saving:   db "SAVING TO DISC...",0
 x_t_saved:    db "SAVED TO SLOT 1",0
 x_t_loading:  db "LOADING FROM DISC...",0
@@ -247,6 +248,7 @@ t_help    equ x_t_help - TEXT_IMG + G_text
 t_a_keys  equ x_t_a_keys - TEXT_IMG + G_text
 t_hfoot   equ x_t_hfoot - TEXT_IMG + G_text
 txt_mer   equ x_txt_mer - TEXT_IMG + G_text
+txt_foe   equ x_txt_foe - TEXT_IMG + G_text
 t_tr_take equ x_t_tr_take - TEXT_IMG + G_text
 t_tr_give equ x_t_tr_give - TEXT_IMG + G_text
 t_tr_fire equ x_t_tr_fire - TEXT_IMG + G_text

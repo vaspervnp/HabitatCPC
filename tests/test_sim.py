@@ -59,6 +59,44 @@ def enter(m, sym, label, limit=600):
 
 def run_z80(sym, g, sim, ticks, move_n=None, decay_n=None, off=(), pin=None,
             rt_n=None, patch=()):
+    m = z80_load(sym, g, sim, rt_n, patch)
+    for slot in off:
+        m.poke(sym["WH_ON"] + slot, 0)
+    if pin is not None:
+        m.poke(sym["PIN_SLOT"], pin)
+    if move_n is not None:
+        m.poke(sym["WH_MOVE_N"], move_n)
+    if decay_n is not None:
+        m.poke(sym["WH_DECAY_N"], decay_n)
+    m.poke(sym["TICK_COUNT"], ticks & 0xFF)
+    m.poke(sym["TICK_COUNT"] + 1, ticks >> 8)
+    frames = enter(m, sym, "RUN_TICKS")
+
+    enter(m, sym, "SAVE_STATE")
+    return (m.read_ram(STAGE_AG, 2048), m.read_ram(STAGE_OCC, 128), frames,
+            m.read_ram(STAGE_DOME, 1536), m.read_ram(STAGE_STR, 32 * 8),
+            m.read_ram(sym["G_ECON_STATE"], EC.ECON_BYTES),
+            m.read_ram(sym["G_JOB_TBL"], EC.MAX_JOB * EC.JOB_REC),
+            m.read_ram(sym["G_ROOM_N"], 12) +
+            m.read_ram(sym["G_ROOM_LIST"], 96))
+
+
+def tick_us(m, sym):
+    """Ενα frame του τροχού, μετρημένο ανά 10 us (βήμα 111): όσα run_frames
+    μετρά το enter, εδώ με ακρίβεια."""
+    m.poke(sym["TICK_COUNT"], 1)
+    m.poke(sym["TICK_COUNT"] + 1, 0)
+    m.poke(sym["DONE_FLAG"], 0)
+    m.set_pc(sym["RUN_TICKS"])
+    us = 0
+    while m.peek(sym["DONE_FLAG"]) != 0x5A:
+        m.run_us(10)
+        us += 10
+    return us
+
+
+def z80_load(sym, g, sim, rt_n=None, patch=()):
+    """Ο Z80 με την κατάσταση της αναφοράς φορτωμένη, πριν από το πρώτο frame."""
     from cpc import CPC
     m = CPC()
     m.run_frames(60)
@@ -85,25 +123,7 @@ def run_z80(sym, g, sim, ticks, move_n=None, decay_n=None, off=(), pin=None,
 
     for at, v in patch:                     # τα αρνητικά: κώδικας αλλαγμένος
         m.poke(at, v)
-    for slot in off:
-        m.poke(sym["WH_ON"] + slot, 0)
-    if pin is not None:
-        m.poke(sym["PIN_SLOT"], pin)
-    if move_n is not None:
-        m.poke(sym["WH_MOVE_N"], move_n)
-    if decay_n is not None:
-        m.poke(sym["WH_DECAY_N"], decay_n)
-    m.poke(sym["TICK_COUNT"], ticks & 0xFF)
-    m.poke(sym["TICK_COUNT"] + 1, ticks >> 8)
-    frames = enter(m, sym, "RUN_TICKS")
-
-    enter(m, sym, "SAVE_STATE")
-    return (m.read_ram(STAGE_AG, 2048), m.read_ram(STAGE_OCC, 128), frames,
-            m.read_ram(STAGE_DOME, 1536), m.read_ram(STAGE_STR, 32 * 8),
-            m.read_ram(sym["G_ECON_STATE"], EC.ECON_BYTES),
-            m.read_ram(sym["G_JOB_TBL"], EC.MAX_JOB * EC.JOB_REC),
-            m.read_ram(sym["G_ROOM_N"], 12) +
-            m.read_ram(sym["G_ROOM_LIST"], 96))
+    return m
 
 
 def describe(blob, sim):
@@ -159,7 +179,7 @@ def fresh(g, nexthop, src):
               "sollen", "daylen", "prod_mask", "ship_state", "ship_kind",
               "ship_eta", "pop_cap", "pad_node", "milestones", "deaths_sol",
               "no_death_sols", "green_sols", "no_trade_sols", "traded",
-              "meteor", "mcx", "mcy", "mrnd", "nbuild", "markup"):
+              "meteor", "mcx", "mcy", "mrnd", "nbuild", "markup", "lands"):
         setattr(s.e, f, getattr(src.e, f))
     return s
 
@@ -517,6 +537,10 @@ def main():
 
     # --- πλοία, σερί και ορόσημα στα όριά τους (βήμα 57) ---
     if ship_branches(sym, g, nexthop, sim0):
+        return 1
+
+    # --- η μάχη με τους εισβολείς (βήμα 111) ---
+    if foe_battle(sym, g, nexthop, sim0):
         return 1
 
     # --- η κίνηση στα όριά της (βήμα 59) ---
@@ -1102,6 +1126,55 @@ def _merchant(cond):
 # (όνομα, περιστροφές, στήσιμο) — βήμα 57. Κάθε μία είναι ένα κενό που βρήκαν
 # τα σκόπιμα λάθη του βήματος: ο κώδικας άλλαζε, και ούτε το κοινό τρέξιμο
 # ούτε το tests/test_game.py το έβλεπαν.
+# --- ΟΙ ΕΙΣΒΟΛΕΙΣ (βήμα 111): η ζαριά, η προσγείωση και η μάχη ---------------
+
+def _foe_due(alive, lands, roll=0):
+    """Η ζαριά των απρόσκλητων (επισκέπτες, ή έμπορος με roll = MER_ROLL) με
+    alive ζωντανούς και lands προσγειώσεις μετρημένες."""
+    return lambda e, a: (setattr(e, "ship_state", 0), setattr(e, "rnd", _visit_roll(roll)),
+                         setattr(e, "alive", alive), setattr(e, "lands", lands))
+
+
+def _foe_land(alive, taken=0):
+    """Το πλοίο των εισβολέων προσγειώνεται με alive ζωντανούς· οι πρώτες taken
+    από τις θέσεις 96-99 έχουν ήδη εισβολέα (μιας προηγούμενης φοράς)."""
+    def f(e, a):
+        e.ship_state, e.ship_kind, e.ship_eta = EC.SHIP_INCOMING, EC.SK_FOE, 0
+        e.alive, e.lands = alive, 9
+        for k in range(EC.AG_NFOE):
+            i = EC.AG_FOE0 + k
+            if k < taken:
+                EC.born(a, i, E.F_ALIVE, EC.RL_FOE, e.pad_node, bytearray(256))
+                a.task[i], a.health[i] = EC.T_FIGHT, EC.FOE_HP
+                a.slot[i] = 255
+    return f
+
+
+def _lands(kind, n):
+    """Ενα πλοίο προσγειώνεται με n προσγειώσεις ήδη μετρημένες."""
+    return lambda e, a: (setattr(e, "ship_state", EC.SHIP_INCOMING),
+                         setattr(e, "ship_kind", kind), setattr(e, "ship_eta", 0),
+                         setattr(e, "lands", n))
+
+
+FOE_SHIP_CASES = (
+    # ΟΙ ΕΙΣΒΟΛΕΙΣ (βήμα 111): από τη ζαριά των απρόσκλητων, στα όριά της —
+    # 20 ζωντανοί και 8 προσγειώσεις φέρνουν εισβολείς, 19 ή 7 όχι, και από τη
+    # ζαριά του εμπόρου το ίδιο.
+    ("εισβολείς: 20 ζωντανοί, 8 προσγειώσεις", 2, _foe_due(20, 8)),
+    ("εισβολείς: 19 ζωντανοί", 2, _foe_due(19, 8)),
+    ("εισβολείς: 7 προσγειώσεις", 2, _foe_due(20, 7)),
+    ("εισβολείς: η ζαριά του εμπόρου", 2, _foe_due(41, 200, EC.MER_ROLL)),
+    ("εισβολείς: προσγείωση με 39 ζωντανούς", 2, _foe_land(39)),
+    ("εισβολείς: με 40", 2, _foe_land(40)),
+    ("εισβολείς: με 59", 2, _foe_land(59)),
+    ("εισβολείς: με 60", 2, _foe_land(60)),
+    ("εισβολείς: με 80, και τρεις ήδη εδώ", 2, _foe_land(80, taken=3)),
+    ("προσγειώσεις: οι επισκέπτες μετράνε", 1, _lands(EC.SK_VISITOR, 7)),
+    ("προσγειώσεις: ως το 255", 1, _lands(EC.SK_MERCHANT, 255)),
+)
+
+
 SHIP_CASES = (
     # Ο ΕΛΕΓΧΟΣ ΤΗΣ ΠΙΣΤΑΣ στο ship_call: το C τον κάνει μόνο του πριν το
     # καλέσει, οπότε μόνο οι επισκέπτες της ζαριάς φτάνουν εδώ χωρίς πίστα.
@@ -1171,6 +1244,9 @@ SHIP_CASES = (
 )
 
 
+SHIP_CASES += FOE_SHIP_CASES             # βήμα 111
+
+
 def ship_branches(sym, g, nexthop, sim0):
     """Η θέση 15 καρφωμένη: κάθε SHIP_CASES από την ίδια κατάσταση, στον Z80
     και στην αναφορά (slot15), και όλα τα bytes ίδια."""
@@ -1208,7 +1284,161 @@ def ship_branches(sym, g, nexthop, sim0):
           f"ρομπότ, οι δύο μάσκες, "
           f"habitat — ίδια bytes στον Z80 και στην αναφορά. ΑΡΝΗΤΙΚΟ: με "
           f"αυτοματισμό από 9 ρομπότ διαφέρουν")
+    # ΑΡΝΗΤΙΚΟ (βήμα 111): οι εισβολείς από 19 ζωντανούς (cp FOE_POP -> cp 19
+    # στο ev_ship).
+    at = sym["EV_SHIP"]
+    code = run_peek(sym, at, 16)
+    k = next((k for k in range(14) if code[k:k + 2] == [0xFE, EC.FOE_POP]), None)
+    st, n, want = starts["εισβολείς: 19 ζωντανοί"]
+    if k is None or z80(st, n, patch=[(at + k + 1, 19)]) == want:
+        print("ΑΠΟΤΥΧΙΑ πλοία και sol: ΑΡΝΗΤΙΚΟ — με εισβολείς από 19 ζωντανούς "
+              "ο Z80 βγαίνει ίδιος με την αναφορά")
+        return 1
+    print("OK πλοία και sol: εισβολείς από τη ζαριά των απρόσκλητων με 20 ζωντανούς "
+          "και 8 προσγειώσεις, όχι με 19 ή 7· 2, 3, 3, 4 στην πίστα με 39, 40, 59, 60· "
+          "οι προσγειώσεις ως το 255. ΑΡΝΗΤΙΚΟ: από 19 ζωντανούς διαφέρουν")
     return 0
+
+
+# --- Η ΜΑΧΗ (βήμα 111, src/foe.asm): εισβολείς, άποικοι και φρουροί ---------
+FOE_PIN = 12                # περιστροφές της καρφωμένης θέσης 15
+FOE_TICKS = 16 * 40         # frames του ολόκληρου τροχού
+
+
+def foe_state(g, nexthop, sim0):
+    """Ο συναγερμός στημένος σε κάθε κλάδο του fo_tick: ο 96 στέκεται στον
+    κόμβο του φρουρού 4 και ενός ακόμη, ο 97 στον κόμβο του φρουρού 44, ο 98 σε
+    γειτονικό κόμβο του φρουρού 12 που έχει ήδη όπλο, ο 99 περπατά προς κόμβο
+    με κόσμο. Δύο Gun στο απόθεμα για τους υπόλοιπους εννέα φρουρούς, ο 36 πάει
+    για ανάγκη (T_NEED), ο 28 περπατά."""
+    st = fresh(g, nexthop, sim0)
+    a, e = st.a, st.e
+
+    def put(i, node, edge=E.NO_EDGE, prog=0):
+        a.flags[i] = E.F_ALIVE | (E.F_INDOORS if EC.indoor_node(e, node) else 0)
+        a.role[i], a.node[i], a.dest[i], a.edge[i] = EC.RL_FOE, node, node, edge
+        a.slot[i] = E.claim(st.occ, node) if edge == E.NO_EDGE else E.NO_SLOT
+        a.task[i], a.health[i], a.progress[i] = EC.T_FIGHT, EC.FOE_HP, prog
+    near = next(n for n in (g.adj[47 * G.MAXDEG + q] for q in range(g.deg[47]))
+                if not any(a.flags[c] & E.F_ALIVE and a.role[c] == EC.RL_GUARD
+                           and a.node[c] == n for c in range(EC.AG_BOT0)))
+    put(96, a.node[4])
+    put(97, a.node[44])
+    put(98, near)
+    put(99, 6, edge=0, prog=200)
+    a.flags[12] |= EC.F_GUN
+    a.task[36] = E.T_NEED
+    E.release(st.occ, a.node[28], a.slot[28])
+    a.slot[28], a.edge[28], a.progress[28] = E.NO_SLOT, 0, 50
+    e.stock[EC.S_GUN] = 2
+    return st
+
+
+def foe_battle(sym, g, nexthop, sim0):
+    """Η μάχη στον Z80 και στην αναφορά (tools/entity.py, foe_tick), byte προς
+    byte: πρώτα η θέση 15 καρφωμένη, μετά ολόκληρος ο τροχός."""
+    st = foe_state(g, nexthop, sim0)
+    keys = lambda z: (z.a.to_bytes(), bytes(z.e.dome), bytes(z.e.struct),
+                      EC.to_bytes(z.e), bytes(z.e.job), bytes(z.occ[:128]))
+
+    def z80(patch=()):
+        got = run_z80(sym, g, fresh(g, nexthop, st), FOE_PIN, pin=15,
+                      rt_n=EC.MAX_DOME + EC.MAX_STRUCT, patch=patch)
+        return (got[0], got[3], got[4], got[5], got[6], got[1]), got[2]
+
+    want = fresh(g, nexthop, st)
+    want.foe = {"pk": 0}
+    slot15(want, FOE_PIN)
+    got, _ = z80()
+    if got != keys(want):
+        bad = [(k, [(i, x, y) for i, (x, y) in enumerate(zip(a_, b_)) if x != y][:5])
+               for k, (a_, b_) in enumerate(zip(got, keys(want))) if a_ != b_]
+        print(f"ΑΠΟΤΥΧΙΑ μάχη: η θέση 15 καρφωμένη, {FOE_PIN} περιστροφές — "
+              f"ο Z80 διαφέρει από την αναφορά: {bad}")
+        return 1
+    n = want.foe["n"]
+    need = ("χτυπήματα εισβολέων", "άποικοι έπεσαν", "εισβολείς έπεσαν", "όπλα",
+            "με όπλο, από γειτονικό", "με όπλο, στον κόμβο", "με τα χέρια")
+    if any(not n.get(k) for k in need) or want.e.stock[EC.S_GUN] != 0 \
+            or want.a.task[36] != E.T_NEED:
+        print(f"ΑΠΟΤΥΧΙΑ μάχη: η σκηνή δεν περνά από όλους τους κλάδους: {n}")
+        return 1
+    def find(label, pat, span=80):
+        code = run_peek(sym, sym[label], span)
+        k = next((k for k in range(span - len(pat)) if code[k:k + len(pat)] == pat), None)
+        return None if k is None else sym[label] + k
+    w = lambda v: [v & 255, v >> 8]
+    # ΤΟ ΚΟΣΤΟΣ, ΑΝΑ ΠΕΡΙΣΤΡΟΦΗ ΚΑΙ ΜΕ ΑΚΡΙΒΕΙΑ: η θέση 15 ολόκληρη (ζαριές, πλοίο
+    # και εισβολείς), στη χειρότερη από τις FOE_PIN· και χωρίς εισβολείς.
+    # Χωρίς πλοίο: η προσγείωση αποίκων της αποικίας της δοκιμής κοστίζει
+    # μόνη της ~4,5 ms στην 7η περιστροφή, και δεν είναι των εισβολέων.
+    calm_st = fresh(g, nexthop, st)
+    calm_st.e.ship_state = EC.SHIP_NONE
+    m = z80_load(sym, g, calm_st, EC.MAX_DOME + EC.MAX_STRUCT)
+    m.poke(sym["PIN_SLOT"], 15)
+    per = [tick_us(m, sym) for _ in range(FOE_PIN)]
+    pin_us = max(per)
+    calm_st = fresh(g, nexthop, sim0)
+    calm_st.e.ship_state = EC.SHIP_NONE
+    m = z80_load(sym, g, calm_st, EC.MAX_DOME + EC.MAX_STRUCT)
+    m.poke(sym["PIN_SLOT"], 15)
+    calm = [tick_us(m, sym) for _ in range(4)]
+    # ΑΡΝΗΤΙΚΟ του κόστους: χωρίς την πόρτα του fo_n (jp z,ship_tick -> nop)
+    # η θέση 15 μετρά τους εισβολείς και ελευθερώνει φρουρούς σε κάθε περιστροφή.
+    gate = find("FO_TICK", [0xCA] + w(sym["SHIP_TICK"]), 8)
+    m = z80_load(sym, g, calm_st, EC.MAX_DOME + EC.MAX_STRUCT,
+                 patch=gate and [(gate + k, 0) for k in range(3)])
+    m.poke(sym["PIN_SLOT"], 15)
+    open_gate = [tick_us(m, sym) for _ in range(4)]
+    if not gate or max(open_gate[1:]) <= FOE_CALM_US:
+        print(f"ΑΠΟΤΥΧΙΑ μάχη: ΑΡΝΗΤΙΚΟ — χωρίς την πόρτα του fo_n η θέση 15 κοστίζει "
+              f"{open_gate} us, όχι πάνω από το ταβάνι {FOE_CALM_US}")
+        return 1
+    # ΑΡΝΗΤΙΚΑ: ο κώδικας πειραγμένος, και ο Z80 πρέπει να διαφέρει.
+    gh = find("FOG_TGT", [0x06, EC.GUN_HIT], 80)            # ld b,GUN_HIT
+    nb = find("FO_ZONE", [0x0C, 0x0D, 0xC8], 30)            # inc c / dec c / ret z
+    fv = find("FOV_H", [0x2F, 0xA1, 0x4F], 10)              # cpl / and c / ld c,a
+    tn = find("FO_GUARD", [0xFE, E.T_NEED])                 # cp T_NEED
+    pk = find("FOS_GO", [0x32] + w(sym["FO_PK"]))           # ld (fo_pk),a
+    mv = find("FO_TICK", [0xCD] + w(sym["ENT_MOVE_SLICE"]), 40)
+    for label, patch in (
+            ("το όπλο όσο τα χέρια", gh and [(gh + 1, EC.HAND_HIT)]),
+            ("κανείς γειτονικός", nb and [(nb, 0xC9)]),
+            ("ο εισβολέας χτυπά όλους στον κόμβο", fv and [(fv + 2, 0)]),
+            ("και όποιος πάει για ανάγκη στη μάχη", tn and [(tn + 1, 0)]),
+            ("ο επόμενος στόχος πάντα από τον πρώτο", pk and [(pk + k, 0) for k in range(3)]),
+            ("οι εισβολείς δεν κινούνται", mv and [(mv + k, 0) for k in range(3)])):
+        if not patch:
+            print(f"ΑΠΟΤΥΧΙΑ μάχη: δεν βρέθηκε πού να πειραχτεί για «{label}»")
+            return 1
+        if z80(patch)[0] == got:
+            print(f"ΑΠΟΤΥΧΙΑ μάχη: ΑΡΝΗΤΙΚΟ — με «{label}» ο Z80 βγαίνει ίδιος")
+            return 1
+    # ΚΑΙ ΟΛΟΚΛΗΡΟΣ Ο ΤΡΟΧΟΣ: οι άποικοι και οι φρουροί κινούνται, οι ανάγκες
+    # και ο πίνακας εργασιών ανάμεσα.
+    if same(sym, g, nexthop, st, FOE_TICKS, "μάχη, ολόκληρος ο τροχός") is None:
+        return 1
+    print(f"OK μάχη: {FOE_PIN} περιστροφές της θέσης 15 — "
+          + ", ".join(f"{k} {v}" for k, v in sorted(n.items()))
+          + f" — και {FOE_TICKS // 16} ολόκληρες· ίδια bytes στον Z80 και στην "
+          f"αναφορά. ΑΡΝΗΤΙΚΑ: όπλο = χέρια, χωρίς γειτονικούς, χτυπά όλους, "
+          f"και η ανάγκη στη μάχη, ο στόχος από την αρχή, ακίνητοι — διαφέρουν")
+    print(f"              η θέση 15 με τέσσερις εισβολείς, 80 αποίκους και 10 "
+          f"φρουρούς: ως {pin_us} us (μέση {sum(per) // len(per)}, ταβάνι "
+          f"{FOE_PIN_US})· χωρίς εισβολείς {calm[1:]} us (ταβάνι {FOE_CALM_US}), "
+          f"{calm[0]} η πρώτη, που τους μετρά· ΑΡΝΗΤΙΚΟ: χωρίς την πόρτα του fo_n "
+          f"{open_gate[1:]}")
+    if pin_us > FOE_PIN_US or max(calm[1:]) > FOE_CALM_US:
+        print(f"ΑΠΟΤΥΧΙΑ μάχη: η θέση 15 κοστίζει πάνω από το ταβάνι")
+        return 1
+    return 0
+
+
+# ΤΑΒΑΝΙΑ, μετρημένα στο βήμα 111. Με εισβολείς η θέση 15 είναι η ακριβότερη
+# του τροχού όσο ζουν (η 14 είναι 4,7 ms): ο συναγερμός κρατά δευτερόλεπτα.
+# Χωρίς, ό,τι ήταν στο 110 και ένα byte (fo_n) με ένα άλμα.
+FOE_PIN_US = 6200
+FOE_CALM_US = 480
 
 
 def move_graph():
@@ -1494,6 +1724,7 @@ def slot15(sim, n):
         if new_sol:
             EC.sol_rollover(sim.e, sim.a, E.F_ALIVE, E.F_WORKING, E.NEED_LOW)
         EC.bot_tick(sim.e, sim.a, sim.occ)
+        E.foe_tick(sim.e, sim.a, sim.g, sim.nexthop, sim.occ, sim.foe)   # βήμα 111
         EC.ship_tick(sim.e, sim.a, sim.e.pad_node, E.F_ALIVE, sim.occ)
 
 

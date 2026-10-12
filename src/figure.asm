@@ -349,17 +349,15 @@ fgc_y:  cp      0
         jr      nz,fgc_nx
         inc     d
         set     7,l
-        ld      a,(hl)                  ; φιγούρα 1-8
+        ld      a,(hl)                  ; ο κωδικός της φιγούρας
         res     7,l
         push    bc
         push    de
         push    hl
-        dec     a
-        rrca
-        rrca
-        rrca                            ; * 32: μία σελίδα, 8 x 32
-        ld      l,a
-        ld      h,G_fig_gfx >> 8
+        ld      l,a                     ; το L της, και το bit 0 η σελίδα (βήμα
+        and     1                       ; 111, tools/pack.py: fig_code)
+        add     a,G_fig_gfx >> 8
+        ld      h,a
 fgc_de: ld      de,0
         ld      b,SLOT_H
         call    obfs_lp                 ; πάνω σε ό,τι είναι ήδη εκεί
@@ -490,17 +488,15 @@ fgd_one:
         ld      e,(hl)                  ; uy
         set     7,l
         res     6,l
-        ld      a,(hl)                  ; φιγούρα 1-8
+        ld      a,(hl)                  ; ο κωδικός της φιγούρας
         ex      de,hl
         push    af
         call    fg_in                   ; μέσα στο παράθυρο = μέσα στο κάδρο
         pop     af
-        dec     a
-        rrca
-        rrca
-        rrca                            ; * 32: μία σελίδα, 8 x 32
-        ld      l,a
-        ld      h,G_fig_gfx >> 8
+        ld      l,a                     ; το L της, και το bit 0 η σελίδα
+        and     1
+        add     a,G_fig_gfx >> 8
+        ld      h,a
         ld      b,0                     ; πάνω σε ό,τι είναι ήδη εκεί
         call    ob_fig
         ld      de,FG_ONE_US
@@ -572,7 +568,7 @@ ob_fig:
 obfs_lp:
         ld      a,(de)
         and     (hl)
-        inc     l                       ; οι φιγούρες, 8 x 32, σε μία σελίδα
+        inc     l                       ; καμία φιγούρα δεν περνά σελίδα (pack.py)
         or      (hl)
         inc     l
         ld      (de),a
@@ -658,7 +654,7 @@ fgb_lp:
 
 ; ---------------------------------------------------------------------------
 ; fg_want — L = πράκτορας (το bit 7 δεν μετρά), τράπεζα 6. Πού φαίνεται έξω:
-; A = φιγούρα 1-8, D = ux, E = uy (μισά tiles + 128)· ή A = 0, πουθενά.
+; A = ο κωδικός της φιγούρας (βήμα 111), D = ux, E = uy (μισά tiles + 128)· ή A = 0, πουθενά.
 ; ---------------------------------------------------------------------------
 fg_want:
         res     7,l
@@ -667,7 +663,7 @@ fg_want:
         jr      z,fw_none
         set     7,l
         ld      a,(hl)                  ; ρόλος
-        and     7
+        and     15                      ; 0-8: ο εισβολέας είναι ο 8 (βήμα 111)
         add     a,role_fig & 255        ; μία σελίδα (assert): χωρίς ob_addu
         ld      e,a
         ld      d,role_fig >> 8
@@ -1164,12 +1160,13 @@ fw_b:       dw 0                        ; by, bx
 
         assert  fg_ox == fg_oy + 1 && fg_nx == fg_ny + 1
         assert  fg_ny == fg_nf + 1 && fg_nf == fg_na + 1
-        assert  (G_fig_list & 255) == 0 && (G_fig_gfx & 255) == 0
+        assert  (G_fig_list & 255) == 0 && (G_fig_gfx & 255) == 192   ; FIG_PHASE (tools/pack.py)
         assert  FG_CAP * 4 == 256 && SLOT_W == 2 && SLOT_H == 8
         assert  ((G_node_adj >> 3) & 255) + 128 <= 256
         assert  FG_SCAN_US == 24 && FG_CAP * 3 < 256
         assert  FGC_SCAN_US == 8 && FGC_XM_US == 24    ; οι ολισθήσεις του fg_cell
-        assert  (role_fig & 255) + 8 <= 256
+        assert  (role_fig & 255) + 16 <= 256   ; and 15
+        assert  FC_COLONIST & 1 && (FC_INTRUDER & 1) == 0   ; οι δύο σελίδες (tools/pack.py)
         assert  ((G_tile_ground | G_tile_dust | G_tile_rock | G_tile_mountain) & 63) == 0
         assert  ((G_tile_water | G_tile_deepwater | G_tile_crater | G_tile_foundation) & 63) == 0
         assert  (G_struct_dims & 255) + 64 <= 256          ; 64 bytes (build/layout.txt)

@@ -20,8 +20,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from sprites import load_map, load_bin, ROOT
 import buttons
 
-TEXT_MAX = 2138                 # = TEXT_MAX του src/uitext.asm (assert εκεί)
-B6C_MAX = 5138                  # = B6C_MAX του src/bots.asm (assert στο main.asm)· 256 ως το 92, 1.280 ως το 93, 1.298 ως το 95, 1.554 ως το 109 (τα κελύφη, βήμα 110)
+TEXT_MAX = 2148                 # = TEXT_MAX του src/uitext.asm (assert εκεί)
+B6C_MAX = 5063                  # = B6C_MAX του src/bots.asm (assert στο main.asm)· 256 ως το 92, 1.280 ως το 93, 1.298 ως το 95, 1.554 ως το 109 (τα κελύφη, βήμα 110), 5.138 ως το 110 (οι εννιά φιγούρες, βήμα 111)
 B1C_MAX = 160                   # = B1C_MAX του src/commit.asm (assert στο main.asm), βήμα 94
 B5C_MAX = 248                   # = B5C_MAX του src/bend.asm (assert στο main.asm), βήμα 97· 272 ως το 99
 
@@ -54,9 +54,11 @@ class Fail(SystemExit):
 class Run:
     """Ένα κομμάτι που πρέπει να μείνει ΕΝΙΑΙΟ."""
 
-    def __init__(self, name, size, data=None, align=1, note="", page=0, at=None):
+    def __init__(self, name, size, data=None, align=1, note="", page=0, at=None,
+                 phase=None):
         self.name, self.size, self.data = name, size, data
         self.align, self.note = align, note
+        self.phase = phase      # το κάτω byte της αρχής του (βήμα 111, οι φιγούρες)
         self.at = at            # καρφωμένη διεύθυνση: ό,τι μένει από κάτω είναι κενό
         self.page = page        # τόσα bytes από την αρχή να μη περνούν σελίδα
         self.addr = None
@@ -85,6 +87,8 @@ def pack_flat(runs, base, size, label):
             a = (a + r.align - 1) & ~(r.align - 1)
         if r.page and (a & 255) + r.page > 256:
             a = (a + 255) & ~255
+        if r.phase is not None:
+            a += (r.phase - a) & 255
         r.addr = a
         a += r.size
     used = a - base
@@ -135,6 +139,38 @@ OB6 = ("struct_ptr", "icon_s_ptr", "icon_m_ptr", "icon_l_ptr",
 FIG_NAMES = ["colonist", "biologist", "medic", "guard", "carrier", "driller",
              "engineer", "constructor"]                      # φιγούρα 1..8
 
+# Ο ΕΙΣΒΟΛΕΑΣ (βήμα 111): ο άποικος ξαναβαμμένος, κόκκινος με μαύρο πρόσωπο,
+# ζώνη και μπότες — όπως τα σήματα των μηχανών (MARK_PEN), χωρίς νέο σχέδιο
+# στα assets (η απόφαση του παίκτη). Τα μαύρα pixels είναι ΜΕΣΑ στη σιλουέτα
+# (fig_grid το ελέγχει)· όλα τα άλλα του αποίκου γίνονται κόκκινα.
+FOE_FIG = "intruder"
+FOE_BLACK = {(1, 2), (1, 4), (0, 6), (2, 6)}                 # (x, y) στο 4x8
+FIG_ALL = FIG_NAMES + [FOE_FIG]
+# ΕΝΝΙΑ ΦΙΓΟΥΡΕΣ ΣΕ ΔΥΟ ΣΕΛΙΔΕΣ, ΚΑΙ Ο ΚΩΔΙΚΑΣ ΕΙΝΑΙ Η ΔΙΕΥΘΥΝΣΗ (βήμα 111).
+# Ως το 110 οκτώ φιγούρες γέμιζαν μία σελίδα, ο ρόλος έδινε τον αριθμό 1-8 και
+# ο renderer έκανε dec / rrca x 3 / ld l,a / ld h,σελίδα. Τώρα ο ρόλος δίνει
+# το κάτω byte της ίδιας της φιγούρας, και το bit 0 του λέει τη σελίδα: ld l,a
+# / and 1 / add a,σελίδα / ld h,a, 22 T-states αντί για 27. Οι επτά πρώτες στα
+# 1, 33, ..., 193 της ΔΕΥΤΕΡΗΣ σελίδας, οι δύο τελευταίες στα 192 και 224 της
+# πρώτης: το κομμάτι αρχίζει στο 192 μιας σελίδας (phase) και είναι 289 bytes
+# με μία τρύπα του ενός byte, όχι δύο σελίδες. Το 0 μένει «κενή θέση».
+FIG_LO = 7                                                   # στη δεύτερη σελίδα
+FIG_PHASE = 192
+
+
+def fig_code(j):
+    """Ο κωδικός της φιγούρας j (0 = colonist) — το L της, και το bit 0 η σελίδα."""
+    return 1 + 32 * j if j < FIG_LO else FIG_PHASE + 32 * (j - FIG_LO)
+
+
+def fig_off(j):
+    """Πού αρχίζει η φιγούρα j μέσα στο κομμάτι fig_gfx / fig_ring."""
+    c = fig_code(j)
+    return c + 256 * (c & 1) - FIG_PHASE
+
+
+FIG_RUN = 256 - FIG_PHASE + 1 + 32 * FIG_LO                 # 289
+
 
 def _m0_pens(b):
     """Byte Mode 0 -> (αριστερό pen, δεξί pen)."""
@@ -152,39 +188,55 @@ def _m0_byte(left, right):
     return out
 
 
+def fig_grid(smap, blob, name):
+    """Η σιλουέτα μιας φιγούρας: 8 γραμμές x 4 pixel, pen ή None (διαφανές)."""
+    if name == FOE_FIG:
+        grid = fig_grid(smap, blob, "colonist")
+        for x, y in FOE_BLACK:
+            if grid[y][x] is None:
+                raise Fail(f"εισβολέας: το μαύρο ({x}, {y}) είναι έξω από τον άποικο")
+        return [[None if grid[y][x] is None else
+                 MARK_PEN["K" if (x, y) in FOE_BLACK else "R"] for x in range(4)]
+                for y in range(8)]
+    grid = [[None] * 4 for _ in range(8)]
+    for size in "sml":
+        for slot in range(8):
+            e, f = smap[f"slot_{size}_{slot}_empty"], smap[f"slot_{size}_{slot}_{name}"]
+            for y in range(8):
+                for xb in range(2):
+                    pe = _m0_pens(blob[e.off + y * 2 + xb])
+                    pf = _m0_pens(blob[f.off + y * 2 + xb])
+                    for k in range(2):
+                        if pf[k] != pe[k]:
+                            x = xb * 2 + k
+                            if grid[y][x] not in (None, pf[k]):
+                                raise Fail(f"φιγούρα {name}: οι θέσεις διαφωνούν "
+                                           f"στο pixel ({x}, {y})")
+                            grid[y][x] = pf[k]
+    if not any(v is not None for row in grid for v in row):
+        raise Fail(f"φιγούρα {name}: κενή")
+    return grid
+
+
 def out_figs(smap, blob, shadow=True):
-    """8 φιγούρες x 8 γραμμές x (μάσκα, data, μάσκα, data) = 256 bytes. Με σκιά
-    για έξω (fig_gfx), χωρίς για τον δακτύλιο (fig_ring)."""
-    data = bytearray()
-    for name in FIG_NAMES:
-        grid = [[None] * 4 for _ in range(8)]
-        for size in "sml":
-            for slot in range(8):
-                e, f = smap[f"slot_{size}_{slot}_empty"], smap[f"slot_{size}_{slot}_{name}"]
-                for y in range(8):
-                    for xb in range(2):
-                        pe = _m0_pens(blob[e.off + y * 2 + xb])
-                        pf = _m0_pens(blob[f.off + y * 2 + xb])
-                        for k in range(2):
-                            if pf[k] != pe[k]:
-                                x = xb * 2 + k
-                                if grid[y][x] not in (None, pf[k]):
-                                    raise Fail(f"φιγούρα {name}: οι θέσεις διαφωνούν "
-                                               f"στο pixel ({x}, {y})")
-                                grid[y][x] = pf[k]
-        if not any(v is not None for row in grid for v in row):
-            raise Fail(f"φιγούρα {name}: κενή")
+    """9 φιγούρες x 8 γραμμές x (μάσκα, data, μάσκα, data), στη θέση του
+    fig_off: FIG_RUN bytes, οι δύο τρύπες μηδέν. Με σκιά για έξω (fig_gfx),
+    χωρίς για τον δακτύλιο (fig_ring)."""
+    data = bytearray(FIG_RUN)
+    for j, name in enumerate(FIG_ALL):
+        grid = fig_grid(smap, blob, name)
         sha = [[shadow and grid[y][x] is None and 0 < x and 0 < y
                 and grid[y - 1][x - 1] is not None
                 for x in range(4)] for y in range(8)]
+        fig = bytearray()
         for y in range(8):
             for xb in range(2):
                 px = [grid[y][xb * 2 + k] for k in range(2)]
                 sh = [sha[y][xb * 2 + k] for k in range(2)]
                 mask = (0xAA if px[0] is None and not sh[0] else 0) | \
                        (0x55 if px[1] is None and not sh[1] else 0)
-                data += bytes([mask, _m0_byte(px[0] or 0, px[1] or 0)])
-    assert len(data) == 256
+                fig += bytes([mask, _m0_byte(px[0] or 0, px[1] or 0)])
+        data[fig_off(j):fig_off(j) + 32] = fig
     return bytes(data)
 
 
@@ -202,7 +254,7 @@ def check_ring(smap, blob, empty, ring):
         e = empty[i * 16:(i + 1) * 16]
         for f, name in enumerate(FIG_NAMES):
             want = blob[smap[f"slot_{z}_{t}_{name}"].off:][:16]
-            spr = ring[f * 32:(f + 1) * 32]
+            spr = ring[fig_off(f):fig_off(f) + 32]
             got = bytes((e[k] & spr[2 * k]) | spr[2 * k + 1] for k in range(16))
             if got != want:
                 raise Fail(f"slot_{z}_{t}_{name}: η κενή + η φιγούρα δεν είναι η "
@@ -622,32 +674,42 @@ def build_runs(smap, blob):
     # είναι ήδη αρχή σελίδας.
     empty, ring = slot_empty(smap, blob), out_figs(smap, blob, shadow=False)
     check_ring(smap, blob, empty, ring)
-    bank6.append(Run("fig_list", 256, None, align=256,
-                     note="ΔΕΣΜΕΥΣΗ — 64 φιγούρες έξω: ux, uy, φιγούρα, πράκτορας"))
-    bank6.append(Run("fig_gfx", 256, out_figs(smap, blob), align=256,
-                     note="παράγεται από τα slot_*: οι 8 φιγούρες με μάσκα και σκιά"))
-    bank6.append(Run("fig_ring", 256, ring, align=256,
-                     note="παράγεται από τα slot_*: οι 8 φιγούρες με μάσκα"))
-    bank6.append(Run("slot_empty", len(empty), empty,
-                     note="οι 24 κενές θέσεις δακτυλίου, αδιαφανείς"))
-    for n in ("corr_h", "corr_v", "corr_dr", "corr_dl"):
-        bank6.append(spr(n))
-    # ΟΙ ΠΟΡΤΕΣ (conn_{dir}, 8 x 32) ΕΦΥΓΑΝ ΣΤΟ ΒΗΜΑ 96: ο διάδρομος σταματά στο
-    # εξωτερικό χείλος του δακτυλίου (ο παίκτης), και ό,τι ανοίγει τον
-    # δακτύλιο δεν ζωγραφίζεται πια. Τα 256 bytes τους πήγαν στο b6code.
-    # ΟΙ ΠΙΝΑΚΕΣ ΤΟΥ ΠΕΡΑΣΜΑΤΟΣ ΑΝΤΙΚΕΙΜΕΝΩΝ, ΑΠΟ ΤΗΝ ΤΡΑΠΕΖΑ 2 (βήμα 90). Τους
-    # διαβάζει μόνο το src/object.asm, και πάντα με την 6 στο παράθυρο: ο δείκτης
-    # ενός εικονιδίου ή μιας δομής ΠΡΙΝ σελιδοποιηθεί η τράπεζα του sprite, οι
-    # θέσεις και οι πόρτες με τον θόλο. Τα 238 bytes τους γίνονται χώρος ΚΩΔΙΚΑ
-    # στη 2, για τις στολές. Σε ΜΙΑ σελίδα, κανένας πάνω σε όριο: το ob_addu
-    # πληρώνει το inc h όταν ένας πίνακας περνά σελίδα (βήμα 89, ob_index).
-    for n in OB6:
+    # ΣΕ ΑΥΤΗ ΤΗ ΣΕΙΡΑ ΑΠΟ ΤΟ ΒΗΜΑ 111. Οι δύο ομάδες φιγούρων αρχίζουν στο 192
+    # μιας σελίδας (FIG_PHASE) και είναι 289 bytes η καθεμία· ό,τι μπαίνει πριν
+    # και ανάμεσα τις φέρνει εκεί με 9 bytes κενά όλα κι όλα — η σειρά βγήκε
+    # από αναζήτηση στις 3^12 μοιρασιές, και κανένας δεν τη διαβάζει: όλοι οι
+    # πίνακες βρίσκονται με το όνομά τους (G_*).
+    def ob6(n):
         if n in ptr:
             r = Run(n, len(ptr[n]) * 2, bytes(len(ptr[n]) * 2), note="παράγεται")
         else:
             r = spr(n)
         r.page = r.size
-        bank6.append(r)
+        return r
+
+    bank6.append(Run("fig_list", 256, None, align=256,
+                     note="ΔΕΣΜΕΥΣΗ — 64 φιγούρες έξω: ux, uy, φιγούρα, πράκτορας"))
+    bank6.append(Run("slot_empty", len(empty), empty,
+                     note="οι 24 κενές θέσεις δακτυλίου, αδιαφανείς"))
+    bank6 += [spr("corr_dr"), spr("corr_dl"), ob6("struct_ptr")]
+    bank6.append(Run("fig_gfx", FIG_RUN, out_figs(smap, blob), phase=FIG_PHASE,
+                     note="παράγεται από τα slot_*: οι 9 φιγούρες με μάσκα και σκιά (fig_code)"))
+    bank6 += [spr("corr_h"), ob6("corr_slots"), ob6("conn_points"),
+              ob6("icon_s_ptr"), ob6("icon_m_ptr"), ob6("interior_ofs")]
+    bank6.append(Run("fig_ring", FIG_RUN, ring, phase=FIG_PHASE,
+                     note="παράγεται από τα slot_*: οι 9 φιγούρες με μάσκα (fig_code)"))
+    bank6 += [spr("corr_v"), ob6("icon_l_ptr")]
+    # ΟΙ ΠΟΡΤΕΣ (conn_{dir}, 8 x 32) ΕΦΥΓΑΝ ΣΤΟ ΒΗΜΑ 96: ο διάδρομος σταματά στο
+    # εξωτερικό χείλος του δακτυλίου (ο παίκτης), και ό,τι ανοίγει τον
+    # δακτύλιο δεν ζωγραφίζεται πια. Τα 256 bytes τους πήγαν στο b6code.
+    # ΟΙ ΠΙΝΑΚΕΣ ΤΟΥ ΠΕΡΑΣΜΑΤΟΣ ΑΝΤΙΚΕΙΜΕΝΩΝ (OB6, ob6), ΑΠΟ ΤΗΝ ΤΡΑΠΕΖΑ 2 (βήμα
+    # 90). Τους διαβάζει μόνο το src/object.asm, και πάντα με την 6 στο
+    # παράθυρο: ο δείκτης ενός εικονιδίου ή μιας δομής ΠΡΙΝ σελιδοποιηθεί η
+    # τράπεζα του sprite, οι θέσεις και οι πόρτες με τον θόλο. Τα 238 bytes τους
+    # έγιναν χώρος ΚΩΔΙΚΑ στη 2, για τις στολές. Ο καθένας σε ΜΙΑ σελίδα,
+    # κανένας πάνω σε όριο: το ob_addu πληρώνει το inc h όταν ένας πίνακας
+    # περνά σελίδα (βήμα 89, ob_index).
+    assert sorted(OB6) == sorted(r.name for r in bank6 if r.name in OB6)
     # --- πίνακες οντοτήτων: δομή-από-πίνακες, σελιδοποιημένη (§6.1) ---
     # Το agent_fields ΠΡΕΠΕΙ σε σελίδα: η ανάγνωση πεδίου είναι `ld h,σελίδα /
     # ld l,id`, και χωρίς στοίχιση δεν υπάρχει τέτοια ανάγνωση. ΚΑΙ ΣΤΟ #6C00:
@@ -700,6 +762,13 @@ def build_runs(smap, blob):
     # ανεβαίνει 256 bytes· η τράπεζα 7 έχει 952 ελεύθερα από πάνω της.
     # 2.048 από το βήμα 84: η οθόνη βοήθειας λέει όνομα και μια γραμμή για
     # καθένα από τα 33 κουμπιά (790 bytes).
+    # ΤΑ ΣΥΜΒΟΛΑ ΤΩΝ ΚΟΥΜΠΙΩΝ (βήμα 84, §9.3): 33 x 17 bytes, ένα bit το pixel,
+    # από το tools/buttons.py. Τα διαβάζει μόνο το src/bar.asm, με την τράπεζα 7
+    # μέσα όπως για τον γλύφο. ΠΡΙΝ ΑΠΟ ΤΑ ΚΕΙΜΕΝΑ από το βήμα 111: με τα 2.148
+    # bytes τους η γραμματοσειρά (στοίχιση 8) θα πήγαινε 8 πιο πέρα και η
+    # τράπεζα δεν θα χωρούσε· έτσι γεμίζει ακριβώς ως το #8000.
+    gfx = buttons.gfx()
+    bank7.append(Run("btn_gfx", len(gfx), gfx, note="παράγεται από το tools/buttons.py"))
     bank7.append(Run("text", TEXT_MAX, None, note="ΔΕΣΜΕΥΣΗ — τα κείμενα (src/uitext.asm)"))
     # Η ΓΡΑΜΜΑΤΟΣΕΙΡΑ, ΕΚΕΙ ΟΠΟΥ ΗΤΑΝ Η ΔΕΣΜΕΥΣΗ «audio» (βήμα 33). Τα 2.048
     # bytes κρατιούνταν από το §4.2 για μουσική μέσα στο παιχνίδι, και το §9.5
@@ -727,11 +796,6 @@ def build_runs(smap, blob):
     font = mode1_font(blob[s.off:s.off + s.size])[:FONT_N * 8] + HUD_CELLS
     bank7.append(Run("font_m1", len(font), font, align=8,
                      note="παράγεται από το font_gfx"))       # (ch-32)*8
-    # ΤΑ ΣΥΜΒΟΛΑ ΤΩΝ ΚΟΥΜΠΙΩΝ (βήμα 84, §9.3): 33 x 17 bytes, ένα bit το pixel,
-    # από το tools/buttons.py. Τα διαβάζει μόνο το src/bar.asm, με την τράπεζα 7
-    # μέσα όπως για τον γλύφο.
-    gfx = buttons.gfx()
-    bank7.append(Run("btn_gfx", len(gfx), gfx, note="παράγεται από το tools/buttons.py"))
 
     return arena, bank1, bank5, bank6, bank7, ptr
 
@@ -887,6 +951,10 @@ def pack():
         f.write(f"B5_BASE     equ #{BANK5_BASE:04X}   ; οι μηχανές στην τράπεζα 5\n")
         f.write(f"B5_LEN      equ {u5}\n")
         f.write("; Οι τράπεζες 6/7 φαίνονται στο &4000 όταν σελιδοποιηθούν.\n\n")
+        f.write("; οι κωδικοί των φιγούρων (βήμα 111): το L τους, και το bit 0 η σελίδα\n")
+        for j, name in enumerate(FIG_ALL):
+            f.write(f"FC_{name.upper():<14} equ {fig_code(j)}\n")
+        f.write("\n")
         for label, runs in (("τράπεζα 2", arena), ("τράπεζα 1", bank1),
                             ("τράπεζα 5", bank5), ("τράπεζα 6", bank6),
                             ("τράπεζα 7", bank7)):

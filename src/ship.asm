@@ -70,6 +70,16 @@ st_here:
         call    snd_ping
         ld      hl,SHIP_STAY
         ld      (EC_SHETA),hl
+        ; ΜΕΤΡΑΝΕ ΟΛΕΣ ΟΙ ΠΡΟΣΓΕΙΩΣΕΙΣ (βήμα 111, η απόφαση του παίκτη):
+        ; άποικοι, επισκέπτες, έμποροι, ως το 255. Των εισβολέων το μηδενίζει.
+        ld      a,(EC_SHKIND)
+        cp      SK_FOE
+        jp      z,fo_land               ; src/foe.asm
+        ld      hl,EC_LANDS
+        inc     (hl)
+        jr      nz,st_disp
+        dec     (hl)
+st_disp:
         ld      a,(EC_SHKIND)
         or      a                       ; SK_COLONIST
         jr      z,ship_crew

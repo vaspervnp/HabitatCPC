@@ -72,7 +72,7 @@ start:
         pop     af
         pop     bc
         call    scr_addr
-        ld      hl,G_fig_ring                      ; fig 1
+        ld      hl,(G_fig_ring & #FF00) + 256 + FC_COLONIST  ; ο άποικος (βήμα 111: fig_code)
         ld      b,SLOT_W
         ld      c,SLOT_H
         call    blit_mask

@@ -475,27 +475,7 @@ nd_die:
         call    op_ptr
         dec     (hl)
 nd_d_slot:
-        ld      a,(nd_i)
-        ld      (em_id),a
-        ld      l,a
-        ld      h,AG_PG + 1
-        ld      a,(hl)
-        ld      (em_node),a
-        call    ent_release             ; ελευθερώνει και μηδενίζει το slot
-
-        ld      a,(nd_i)
-        ld      l,a
-        ld      h,AG_PG
-        ld      (hl),0                  ; δεν ζει πια
-        ld      h,AG_PG + 2
-        set     7,l
-        ld      (hl),NO_EDGE
-        inc     h
-        ld      (hl),NO_TASK
-        res     7,l
-        ld      (hl),0                  ; progress
-        call    fg_mark                 ; αν φαινόταν έξω, σβήνει (βήμα 89)
-
+        call    nd_bury
         ld      a,(EC_GLOOM)            ; το πένθος, με ταβάνι
         add     a,16
         jr      nc,nd_gl
@@ -507,6 +487,30 @@ nd_gl:
         ret     nz
         dec     (hl)
         ret
+
+; nd_bury — (nd_i) = ταυτότητα: ό,τι κάνει ο θάνατος εκτός από χειριστή και
+; πένθος — η θέση, οι σημαίες, η ακμή, η εργασία, η πρόοδος, η φιγούρα. Και ο
+; εισβολέας που πέφτει (src/foe.asm, βήμα 111): εκείνος δεν φέρνει πένθος.
+nd_bury:
+        ld      a,(nd_i)
+        ld      (em_id),a
+        ld      l,a
+        ld      h,AG_PG + 1
+        ld      a,(hl)
+        ld      (em_node),a
+        call    ent_release             ; ελευθερώνει και μηδενίζει το slot
+        ld      a,(nd_i)
+        ld      l,a
+        ld      h,AG_PG
+        ld      (hl),0                  ; δεν ζει πια
+        ld      h,AG_PG + 2
+        set     7,l
+        ld      (hl),NO_EDGE
+        inc     h
+        ld      (hl),NO_TASK
+        res     7,l
+        ld      (hl),0                  ; progress
+        jp      fg_mark                 ; αν φαινόταν έξω, σβήνει (βήμα 89)
 
 ; ---------------------------------------------------------------------------
 ; rooms_rebuild — θέση 14: ποιοι θόλοι είναι τι. 64 εγγραφές ανά περιστροφή.

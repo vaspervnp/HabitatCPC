@@ -498,6 +498,20 @@ ev_vis:
         jr      nz,ev_flare
         ld      a,SK_VISITOR
 ev_ship:
+        ; ΕΙΣΒΟΛΕΙΣ ΑΝΤΙ ΓΙΑ Ο,ΤΙ ΕΦΕΡΕ Η ΖΑΡΙΑ (βήμα 111): αν μετρήθηκαν
+        ; FOE_EVERY προσγειώσεις και ζουν FOE_POP άποικοι. Το πλοίο αποίκων που
+        ; καλεί ο παίκτης δεν περνά από εδώ. Μόνο όταν πέσει η ζαριά: καμία
+        ; περιστροφή δεν το πληρώνει.
+        ld      b,a
+        ld      a,(EC_ALIVE)
+        cp      FOE_POP
+        jr      c,evs_call
+        ld      a,(EC_LANDS)
+        cp      FOE_EVERY
+        jr      c,evs_call
+        ld      b,SK_FOE
+evs_call:
+        ld      a,b
         call    ship_call
 
 ev_flare:                               ; --- έκλαμψη: ψηλά του ίδιου ---

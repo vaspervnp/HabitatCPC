@@ -207,6 +207,7 @@ class Econ:
         self.markup = 0             # το κέρδος του, 35-65 (%)
         self.cargo = [0] * (2 * MER_SLOTS)  # [αγαθό, ποσότητα] x 4· αγαθό 0: κενό
         self.mines = 0              # έτοιμα ορυχεία, από τον κύκλο ροής (βήμα 94)
+        self.lands = 0              # EC_LANDS: προσγειώσεις από τους τελευταίους εισβολείς (βήμα 111)
         self.air_out = 255          # airlock που ξανάγινε εργοτάξιο (βήμα 90)
         self.dist = None            # ο πίνακας αποστάσεων, δίνεται απ' έξω
 
@@ -533,13 +534,13 @@ def events(e):
     # Ενας επισκέπτης ανά ~2,7 sol, όχι δώδεκα το sol: βλ. src/econ.asm — με
     # 1/64 ανά περιστροφή οι επισκέπτες έτρωγαν 70 τρόφιμα το sol.
     if (r2 & 0x7FF) == 0 and e.ship_state == SHIP_NONE and e.pad_node != 255:
-        call_ship(e, SK_VISITOR)            # απρόσκλητοι (§6.11)
+        call_ship(e, unbidden(e, SK_VISITOR))   # απρόσκλητοι (§6.11)
     # Ο ΕΜΠΟΡΟΣ ΕΡΧΕΤΑΙ ΜΟΝΟΣ ΤΟΥ (βήμα 93), με την ίδια συχνότητα από τα ίδια
     # έντεκα bits: μηδέν είναι επισκέπτης, MER_ROLL έμπορος. Το MER_ROLL έχει
     # ένα στο bit 0 (όχι αλλαγή ανέμου), στο 2 (όχι βλάβη), στο 7 (όχι θύελλα,
     # όχι έκλαμψη) και μηδέν στο 3 (όχι μετεωρίτες): δεν συμπίπτει με κανένα.
     if (r2 & 0x7FF) == MER_ROLL and e.ship_state == SHIP_NONE and e.pad_node != 255:
-        call_ship(e, SK_MERCHANT)
+        call_ship(e, unbidden(e, SK_MERCHANT))
 
     if (r3 >> 6) == 0:                      # ηλιακή έκλαμψη: τα ψηλά του ίδιου
         break_one(e, r3 + 37)               # 1/1024 — τρεις ανά τέσσερα sols
@@ -750,11 +751,12 @@ def to_bytes(e):
     out += bytes(e.land)                                     # βήμα 91
     out += bytes([e.markup] + list(e.cargo))                 # βήμα 93
     out += bytes([e.mines])                                  # βήμα 94
+    out += bytes([e.lands])                                  # βήμα 111
     return bytes(out)
 
 
-# + μετεωρίτες, Build, ειδικότητες, έμπορος, ορυχεία = 107
-ECON_BYTES = 64 + 8 + 10 + 4 + 5 + 1 + 5 + 9 + 1
+# + μετεωρίτες, Build, ειδικότητες, έμπορος, ορυχεία, προσγειώσεις = 108
+ECON_BYTES = 64 + 8 + 10 + 4 + 5 + 1 + 5 + 9 + 1 + 1
 
 
 POP_DOME, POP_STRUCT = 24, 30          # η αποικία του populate (tests/test_sim.py)
@@ -1356,6 +1358,7 @@ def nearest_room(e, room, node):
 SHIP_NONE, SHIP_INCOMING, SHIP_LANDED = 0, 1, 2
 SK_COLONIST, SK_MERCHANT, SK_VISITOR = 0, 1, 2
 SK_DEALT = 3                # ο έμπορος μετά τη συμφωνία, ώσπου να κουβαληθούν όλα
+SK_FOE = 4                  # οι εισβολείς (βήμα 111)
 TRADE_JOBS = 2              # εργασίες J_TRADE ανά συμφωνία (src/carry.asm)
 TRADE_LOAD = 10
 TRADE_GIVE = 0x0F           # J_SITE μιας J_TRADE: ένα φορτίο ΓΙΑ τον έμπορο
@@ -1551,6 +1554,13 @@ def ship_tick(e, a, spawn_node, F_ALIVE, occ):
     if e.ship_state == SHIP_INCOMING:
         e.ship_state = SHIP_LANDED
         e.ship_eta = SHIP_STAY
+        # ΜΕΤΡΑΝΕ ΟΛΕΣ ΟΙ ΠΡΟΣΓΕΙΩΣΕΙΣ (βήμα 111, η απόφαση του παίκτη): άποικοι,
+        # επισκέπτες, έμποροι. Των εισβολέων μηδενίζει το μέτρημα.
+        if e.ship_kind == SK_FOE:
+            e.lands = 0
+            land_foes(e, a, spawn_node, F_ALIVE, occ)
+            return
+        e.lands = min(255, e.lands + 1)
         if e.ship_kind == SK_COLONIST:
             land_colonists(e, a, spawn_node, F_ALIVE, occ)
         elif e.ship_kind == SK_VISITOR:
@@ -1689,6 +1699,48 @@ def visit(e, a, F_ALIVE):
     for i in range(AG_BOT0):            # οι άποικοι· τα ρομπότ δεν έχουν ηθικό (92)
         if a.flags[i] & F_ALIVE:
             a.morale[i] = min(255, a.morale[i] + VISITOR_MORALE)
+
+
+# --- οι εισβολείς (βήμα 111, §6.10) -----------------------------------------
+# ΟΠΩΣ ΣΤΟ PLANETBASE, με τις αποφάσεις του παίκτη: έρχονται με δικό τους
+# πλοίο, το επόμενο απρόσκλητο αφού μετρηθούν FOE_EVERY προσγειώσεις — ποτέ το
+# πλοίο αποίκων που καλείς — και ποτέ με λιγότερους από FOE_POP αποίκους. Δύο
+# με 20-39, τρεις με 40-59, τέσσερις με 60 και πάνω. Ζουν στις θέσεις 96-99,
+# που ως τώρα δεν είχαν κανέναν: χωρίς ανάγκες, χωρίς εργασίες (T_FIGHT), με
+# τον ρόλο 8 και τη δική τους κόκκινη φιγούρα.
+FOE_POP = 20
+FOE_EVERY = 8
+AG_FOE0, AG_NFOE = 96, 4
+RL_GUARD = 4
+RL_FOE = 8
+T_FIGHT = 253               # εισβολέας, ή φρουρός στη μάχη: όχι δείκτης εργασίας
+F_GUN = 128                 # ο φρουρός έχει όπλο, για πάντα
+FOE_HP = 160                # η υγεία του εισβολέα όταν κατεβαίνει
+FOE_HIT = 32                # ό,τι παίρνει από έναν άποικο, ανά περιστροφή
+HAND_HIT = 32               # ό,τι του παίρνει ένας φρουρός με τα χέρια, δίπλα του
+GUN_HIT = 64                # ...και με όπλο, ως έναν κόμβο μακριά
+
+
+def unbidden(e, kind):
+    """Το απρόσκλητο πλοίο (src/econ.asm, ev_ship): οι εισβολείς, αν μετρήθηκαν
+    FOE_EVERY προσγειώσεις και ζουν FOE_POP άποικοι· αλλιώς ό,τι έφερε η ζαριά."""
+    return SK_FOE if e.alive >= FOE_POP and e.lands >= FOE_EVERY else kind
+
+
+def land_foes(e, a, node, F_ALIVE, occ):
+    """Το in_land (src/ship.asm): 2-4 εισβολείς στην πίστα, έξω, στις πρώτες
+    ελεύθερες από τις θέσεις 96-99. Γεννιούνται όπως ο άποικος (born) και
+    μετά: εργασία T_FIGHT, υγεία FOE_HP."""
+    n = 2 + (e.alive >= 40) + (e.alive >= 60)
+    for i in range(AG_FOE0, AG_FOE0 + AG_NFOE):
+        if not n:
+            break
+        if a.flags[i] & F_ALIVE:
+            continue
+        born(a, i, F_ALIVE, RL_FOE, node, occ)
+        a.task[i] = T_FIGHT
+        a.health[i] = FOE_HP
+        n -= 1
 
 
 def sol_rollover(e, a, F_ALIVE, F_WORKING, NEED_LOW):

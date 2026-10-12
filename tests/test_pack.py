@@ -152,11 +152,28 @@ def main():
     # (οι πόρτες, connectors 8 x 32, ως το βήμα 95: δεν ζωγραφίζονται πια· οι
     # αρμοί του 96 τους ελέγχει το test_object, απέναντι στη scene.joint)
     for grp, stride, count in (("font_m1", 8, FONT_N + 5),
-                               ("slot_empty", 16, 24), ("fig_ring", 32, 8),
-                               ("fig_gfx", 32, 8)):
+                               ("slot_empty", 16, 24)):
         r = by_name[grp]
         check(r.size == stride * count,
               f"{grp}: {r.size} B, περίμενα {stride*count}")
+    # ΟΙ ΕΝΝΙΑ ΦΙΓΟΥΡΕΣ (βήμα 111) δεν δεικτοδοτούνται με πολλαπλασιασμό: ο
+    # κωδικός της καθεμίας είναι το L της, και το bit 0 η σελίδα πάνω από την
+    # πρώτη (src/figure.asm: ld l,a / and 1 / add a,σελίδα / ld h,a). Κάθε
+    # φιγούρα όλη σε μία σελίδα (inc l), καμία πάνω σε άλλη, κανένας κωδικός 0.
+    for grp in ("fig_gfx", "fig_ring"):
+        r = by_name[grp]
+        page = r.addr >> 8
+        spans = []
+        for j, nm in enumerate(pack.FIG_ALL):
+            c = pack.fig_code(j)
+            at = r.addr + pack.fig_off(j)
+            spans.append((at, at + 32))
+            check(c != 0 and at == ((page + (c & 1)) << 8) + c
+                  and (at >> 8) == ((at + 31) >> 8) and at + 32 <= r.addr + r.size,
+                  f"{grp}: η φιγούρα {nm} (κωδικός {c}) στο #{at:04X}")
+        spans.sort()
+        check(all(a1 <= b0 for (_, a1), (b0, _) in zip(spans, spans[1:])),
+              f"{grp}: φιγούρες η μία πάνω στην άλλη")
 
     # 7α. ΟΙ ΘΕΣΕΙΣ ΤΟΥ ΔΑΚΤΥΛΙΟΥ (βήμα 89): η κενή, και από πάνω η φιγούρα με
     #     μάσκα, είναι η ψημένη παραλλαγή των assets — και για τις 24 x 8, από
@@ -171,17 +188,50 @@ def main():
     for i, (z, t) in enumerate((z, t) for z in "sml" for t in range(8)):
         for f, nm in enumerate(pack.FIG_NAMES):
             want = blob[smap[f"slot_{z}_{t}_{nm}"].off:][:16]
-            spr = ring[f * 32:(f + 1) * 32]
+            spr = ring[pack.fig_off(f):pack.fig_off(f) + 32]
             got = bytes((empty[i * 16 + k] & spr[2 * k]) | spr[2 * k + 1] for k in range(16))
             if got != want:
                 bad.append(f"slot_{z}_{t}_{nm}")
     check(not bad, f"κενή + φιγούρα δεν είναι η ψημένη θέση: {bad[:4]}")
-    same = all((out[k] | ring[k]) == ring[k] if k % 2 == 0 else
-               (ring[k] & ~ring[k - 1] & 0xFF) == (out[k] & ~ring[k - 1] & 0xFF)
-               for k in range(256))
+    figk = [(pack.fig_off(j) + k, k) for j in range(len(pack.FIG_ALL)) for k in range(32)]
+    same = all((out[a] | ring[a]) == ring[a] if k % 2 == 0 else
+               (ring[a] & ~ring[a - 1] & 0xFF) == (out[a] & ~ring[a - 1] & 0xFF)
+               for a, k in figk)
     check(same, "η φιγούρα έξω δεν είναι η σιλουέτα του δακτυλίου")
-    for n in ("fig_list", "fig_gfx", "fig_ring"):
-        check(by_name[n].addr % 256 == 0, f"το {n} στο #{by_name[n].addr:04X} δεν είναι σε σελίδα")
+    check(by_name["fig_list"].addr % 256 == 0,
+          f"το fig_list στο #{by_name['fig_list'].addr:04X} δεν είναι σε σελίδα")
+    for n in ("fig_gfx", "fig_ring"):
+        check(by_name[n].addr % 256 == pack.FIG_PHASE,
+              f"το {n} στο #{by_name[n].addr:04X}, όχι στο {pack.FIG_PHASE} μιας σελίδας")
+
+    # 7β'. Ο ΕΙΣΒΟΛΕΑΣ (βήμα 111): στον δακτύλιο, η σιλουέτα του αποίκου pixel
+    #     προς pixel, κόκκινη (pen 8) εκτός από τα τέσσερα μαύρα — από τα bytes
+    #     της τράπεζας 6. Και έξω η ίδια, με τη σκιά του αποίκου.
+    def pens(tab, j):
+        o, px = pack.fig_off(j), {}
+        for y in range(8):
+            for xb in range(2):
+                mk, d = tab[o + y * 4 + xb * 2], tab[o + y * 4 + xb * 2 + 1]
+                pl, pr = pack._m0_pens(d)
+                for k, (bits, pen) in enumerate(((0xAA, pl), (0x55, pr))):
+                    if not mk & bits:
+                        px[(xb * 2 + k, y)] = pen
+        return px
+    jc, jf = pack.FIG_ALL.index("colonist"), pack.FIG_ALL.index(pack.FOE_FIG)
+
+    def foe_ok(ring, tab):
+        col, foe = pens(tab, jc), pens(tab, jf)
+        sil = {p for p, v in pens(ring, jc).items()}
+        want = {p: (0 if p in pack.FOE_BLACK else 8) if p in sil else v
+                for p, v in col.items()}
+        return foe == want and len(pack.FOE_BLACK) == 4 and pack.FOE_BLACK <= sil
+    for tab, nm in ((ring, "δακτύλιος"), (out, "έξω")):
+        check(foe_ok(ring, tab),
+              f"ο εισβολέας ({nm}) δεν είναι ο άποικος σε κόκκινο με τέσσερα μαύρα")
+    # ΑΡΝΗΤΙΚΟ: ο εισβολέας ίδιος με τον άποικο (το pack.py τον ξέχασε).
+    bad = bytearray(ring)
+    bad[pack.fig_off(jf):pack.fig_off(jf) + 32] = ring[pack.fig_off(jc):pack.fig_off(jc) + 32]
+    check(not foe_ok(ring, bytes(bad)), "ΑΡΝΗΤΙΚΟ: ένας κίτρινος εισβολέας περνά τον έλεγχο")
     check(by_name["agent_fields"].addr == 0x6C00,
           f"το agent_fields στο #{by_name['agent_fields'].addr:04X}, όχι στο #6C00 του σωσίματος")
 

@@ -443,6 +443,7 @@ zz_b5code_end:
         org     G_b6code, #8000 + G_b6code - #4000
         include "bots.asm"              ; βήμα 92: τα ρομπότ από το απόθεμα
         include "ship.asm"              ; βήμα 93: πλοία και ορόσημα, από την τράπεζα 0
+        include "foe.asm"               ; βήμα 111: οι εισβολείς
         include "crew.asm"              ; βήμα 93: ποιοι έρχονται, από την τράπεζα 0
         include "flow.asm"              ; βήμα 93: η θέση 12, από την τράπεζα 0
         include "joint.asm"             ; βήμα 96: οι αρμοί, με την 6 στο παράθυρο
@@ -454,6 +455,7 @@ zz_b5code_end:
         include "meteor.asm"            ; από την τράπεζα 2 (βήμα 110)
 zz_b6code_end:
         assert  zz_b6code_end <= G_b6code + B6C_MAX
+        assert  zz_b6code_end <= FO_MAP         ; ο χάρτης των εισβολέων (src/foe.asm)
         assert  G_b6code + B6C_MAX == G_agent_fields   ; = η δέσμευση του pack.py
         save    "../build/b6code.bin", #8000 + G_b6code - #4000, zz_b6code_end - G_b6code
         org     #8000 + G_b6code + B6C_MAX - #4000

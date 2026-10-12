@@ -105,7 +105,7 @@ def move_one(a, i, g, nexthop, occ, e=None):
 
     if a.edge[i] != NO_EDGE:
         # --- ΤΑΞΙΔΕΥΕΙ ---
-        p = a.progress[i] + ROLE_SPEED[a.role[i]]
+        p = a.progress[i] + ROLE_SPEED[a.role[i] & 7]   # ο εισβολέας (8): όπως ο εργάτης
         if p < 256:
             a.progress[i] = p
             return
@@ -312,14 +312,147 @@ def die(a, e, occ, i):
         else:                           # ένα ορυχείο (βήμα 94, op_ptr): dec (hl)
             b = (a.node[i] - EC.MAX_DOME) * EC.STRUCT_REC + EC.ST_OPS
             e.struct[b] = (e.struct[b] - 1) & 0xFF
+    bury(a, occ, i)
+    e.gloom = min(255, e.gloom + 16)
+    e.deaths_sol = min(255, e.deaths_sol + 1)
+
+
+def bury(a, occ, i):
+    """Το nd_bury (βήμα 111): θέση, σημαίες, ακμή, εργασία, πρόοδος — ό,τι
+    κάνει ο θάνατος εκτός από χειριστή και πένθος. Και ο εισβολέας που πέφτει."""
     release(occ, a.node[i], a.slot[i])
     a.flags[i] = 0
     a.slot[i] = NO_SLOT
     a.edge[i] = NO_EDGE
     a.task[i] = NO_TASK
     a.progress[i] = 0
-    e.gloom = min(255, e.gloom + 16)
-    e.deaths_sol = min(255, e.deaths_sol + 1)
+
+
+# --- οι εισβολείς (βήμα 111, src/foe.asm) --------------------------------
+#
+# Μία φορά ανά περιστροφή, στη θέση 15 μετά τα ρομπότ και πριν από το πλοίο.
+# Ολα με τη σειρά που τα κάνει ο Z80, γιατί η δοκιμή συγκρίνει bytes:
+#
+#   1. αν δεν ζει κανείς από τους 96-99: όποιος φρουρός είναι ακόμη στη μάχη
+#      (T_FIGHT) γίνεται διαθέσιμος, και τέλος.
+#   2. κινούνται, όπως κάθε πράκτορας (move_slice 96, 4).
+#   3. ποιος στέκεται πού (fn), ποιος ζει πού (an), ποιοι ζουν (tg).
+#   4. οι άποικοι 0-79 με τη σειρά. Οποιος ΣΤΕΚΕΤΑΙ σε κόμβο όπου στέκεται
+#      εισβολέας που δεν χτύπησε ακόμη, τρώει FOE_HIT από αυτόν — ο καθένας
+#      χτυπά τον πρώτο που βρίσκει, μία φορά. Στο μηδέν πεθαίνει (die).
+#      Ο φρουρός που ζει και δεν πάει για ανάγκη (T_NEED): T_FIGHT, ένα όπλο
+#      αν δεν έχει και υπάρχει στο απόθεμα, ο στόχος του κατά σειρά (gi mod
+#      ζωντανοί), και αν στέκεται: χτυπά τον πρώτο που φτάνει — με τα χέρια
+#      όποιον στέκεται στον κόμβο του, με όπλο και όποιον είναι στον κόμβο
+#      του ή σε γειτονικό — και μένει· αλλιώς πάει στον κόμβο του στόχου.
+#   5. οι εισβολείς: T_FIGHT ξανά (μια απρόσιτη διαδρομή το σβήνει), και όποιος
+#      στέκεται: αν χτύπησε μένει, αν έφτασε στον προορισμό ψάχνει τον επόμενο
+#      άποικο που στέκεται αλλού, από εκεί που σταμάτησε ο προηγούμενος (pk).
+#   6. αν δεν ζει πια κανείς, όπως το 1.
+FOE_STATE = {"pk": 0}           # το fo_pk του Z80: ο τελευταίος στόχος
+
+
+def foe_free(a):
+    for c in range(EC.AG_BOT0):
+        if a.task[c] == EC.T_FIGHT:
+            a.task[c] = NO_TASK
+
+
+def foe_tick(e, a, g, nexthop, occ, st=FOE_STATE):
+    foes = range(EC.AG_FOE0, EC.AG_FOE0 + EC.AG_NFOE)
+    if not any(a.flags[i] & F_ALIVE for i in foes):
+        foe_free(a)
+        return
+    move_slice(a, g, nexthop, occ, EC.AG_FOE0, EC.AG_NFOE, e)
+    fn, an = [255] * EC.AG_NFOE, [255] * EC.AG_NFOE
+    for k, i in enumerate(foes):
+        if a.flags[i] & F_ALIVE:
+            an[k] = a.node[i]
+            if a.edge[i] == NO_EDGE:
+                fn[k] = a.node[i]
+    tg = [k for k in range(EC.AG_NFOE) if an[k] != 255]
+    an0 = list(an)
+    hit, gi = [False] * EC.AG_NFOE, 0
+    n = st.setdefault("n", {})          # μετρητές για τις δοκιμές, όχι κατάσταση
+
+    def count(k):
+        n[k] = n.get(k, 0) + 1
+
+    def foe_down(k):
+        i = EC.AG_FOE0 + k
+        bury(a, occ, i)
+        fn[k] = an[k] = 255
+        count("εισβολείς έπεσαν")
+
+    # ΠΡΩΤΑ ΧΤΥΠΟΥΝ ΟΙ ΕΙΣΒΟΛΕΙΣ
+    for c in range(EC.AG_BOT0):
+        if not a.flags[c] & F_ALIVE or a.edge[c] != NO_EDGE:
+            continue
+        for k in range(EC.AG_NFOE):
+            if fn[k] == a.node[c] and not hit[k]:
+                hit[k] = True
+                count("χτυπήματα εισβολέων")
+                a.health[c] = max(0, a.health[c] - EC.FOE_HIT)
+                if not a.health[c]:
+                    die(a, e, occ, c)
+                    count("άποικοι έπεσαν")
+                    break
+    # ΜΕΤΑ ΑΠΑΝΤΟΥΝ ΟΙ ΦΡΟΥΡΟΙ
+    for c in range(EC.AG_BOT0):
+        if not a.flags[c] & F_ALIVE:
+            continue
+        here = a.node[c]
+        stand = a.edge[c] == NO_EDGE
+        if a.role[c] != EC.RL_GUARD or a.task[c] == T_NEED:
+            continue
+        a.task[c] = EC.T_FIGHT
+        if not a.flags[c] & EC.F_GUN and e.stock[EC.S_GUN]:
+            e.stock[EC.S_GUN] -= 1
+            a.flags[c] |= EC.F_GUN
+            count("όπλα")
+        t = tg[(gi & 3) % len(tg)]      # fo_ts[g & 3]: ο κόμβος του στην αρχή
+        gi += 1
+        gun = a.flags[c] & EC.F_GUN
+        j = None
+        if stand:
+            # ΤΟ ΟΠΛΟ ΦΤΑΝΕΙ από τον κόμβο του εισβολέα στους γείτονές του —
+            # η λίστα γειτνίασης του ΕΙΣΒΟΛΕΑ, όπως τη γράφει ο χάρτης του Z80.
+            for k in range(EC.AG_NFOE):
+                if an[k] == 255:
+                    continue
+                near = (an[k] == here or here in
+                        (g.adj[an[k] * G.MAXDEG + q] for q in range(g.deg[an[k]])))
+                if fn[k] == here or (gun and near):
+                    j = k
+                    break
+        if j is not None:
+            count("με όπλο, από γειτονικό" if gun and an[j] != here else
+                  "με όπλο, στον κόμβο" if gun else "με τα χέρια")
+            i = EC.AG_FOE0 + j
+            a.health[i] = max(0, a.health[i] - (EC.GUN_HIT if gun else EC.HAND_HIT))
+            if not a.health[i]:
+                foe_down(j)
+            a.dest[c] = here
+        else:
+            a.dest[c] = an0[t]          # κι αν έπεσε στο μεταξύ: εκεί πάει
+
+    for k, i in enumerate(foes):
+        if an[k] == 255:
+            continue
+        a.task[i] = EC.T_FIGHT
+        if fn[k] == 255:
+            continue
+        if hit[k]:
+            a.dest[i] = a.node[i]
+        elif a.node[i] == a.dest[i]:
+            for q in range(1, EC.AG_BOT0 + 1):
+                c = (st["pk"] + q) % EC.AG_BOT0
+                if a.flags[c] & F_ALIVE and a.edge[c] == NO_EDGE and a.node[c] != a.node[i]:
+                    a.dest[i] = a.node[c]
+                    st["pk"] = c
+                    break
+    if not any(a.flags[i] & F_ALIVE for i in foes):
+        foe_free(a)
 
 
 T_NEED = 254        # «πάω για φαγητό» — δεν είναι δείκτης εργασίας (§6.7)
@@ -389,6 +522,7 @@ class Sim:
         self.need_base = 0
         self.e = EC.Econ()
         self.e.dist = dist
+        self.foe = {"pk": 0}            # το fo_pk (βήμα 111)
         if Sim.PLANT_CLASS is None:
             Sim.PLANT_CLASS = EC.load_plant_class()
         self.pc = Sim.PLANT_CLASS
@@ -433,6 +567,7 @@ class Sim:
             if new_sol:
                 EC.sol_rollover(self.e, self.a, F_ALIVE, F_WORKING, NEED_LOW)
             EC.bot_tick(self.e, self.a, self.occ)
+            foe_tick(self.e, self.a, self.g, self.nexthop, self.occ, self.foe)
             EC.ship_tick(self.e, self.a, self.e.pad_node, F_ALIVE, self.occ)
         # 13 πίνακας εργασιών, 14 ελεύθερη — δεν έχουν γραφτεί, ούτε εδώ ούτε
         # στον Z80.

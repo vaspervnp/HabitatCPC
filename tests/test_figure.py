@@ -166,7 +166,7 @@ class G:
         f = self.ag(i, 0)
         if not f & 1:
             return None
-        fig = self.m.peek(self.sym["ROLE_FIG"] + (self.ag(i, 128) & 7))
+        fig = self.m.peek(self.sym["ROLE_FIG"] + (self.ag(i, 128) & 15))   # 8: ο εισβολέας
         edge, node = self.ag(i, 640), self.ag(i, 256)
         if edge == 255:
             slot = self.ag(i, 384)
@@ -223,8 +223,9 @@ class G:
             n += 1
             for r in range(8):
                 for c in range(2):
-                    mk = self.b6(gfx + (f - 1) * 32 + r * 4 + c * 2)
-                    d = self.b6(gfx + (f - 1) * 32 + r * 4 + c * 2 + 1)
+                    at = (gfx & 0xFF00) + 256 * (f & 1) + f   # ο κωδικός (βήμα 111)
+                    mk = self.b6(at + r * 4 + c * 2)
+                    d = self.b6(at + r * 4 + c * 2 + 1)
                     if play[(ly + r) * 80 + bx + c] & ~mk & 0xFF != d & ~mk & 0xFF:
                         bad.append((a, x, y))
                         break
@@ -501,7 +502,14 @@ def cells(sym, g, patch=(), quiet=False):
         for name, v in (("OB_X", ox), ("OB_Y", oy)):
             c.m.poke(s_[name], v)
             c.m.poke(s_[name] + 1, 0)
-        c.probe(c.call("DHS_VACATE"))
+        try:
+            c.probe(c.call("DHS_VACATE"))
+        except AssertionError:
+            # Με το fg_tile αντί για το ob_put το άδειασμα γράφει σε λάθος
+            # γραμμές — και από το βήμα 111 (άλλη διάταξη στην τράπεζα 6)
+            # γράφει και πάνω στον κώδικα και δεν γυρίζει. Και τα δύο είναι
+            # «δεν είναι η πλήρης σχεδίαση».
+            return f"ΚΕΛΙ: ένα άδειασμα θέσης στο ({ox}, {oy}) δεν τελείωσε"
         if c.play() != ref:
             return (f"ΚΕΛΙ: ένα άδειασμα θέσης στο ({ox}, {oy}) μετά από τα σβησίματα δεν "
                     f"είναι η πλήρης σχεδίαση")
