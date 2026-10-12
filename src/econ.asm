@@ -664,3 +664,6 @@ tab_extr_out:   db 1,2,5
 ef_wat:     dw 0
 ec_pdiv:    db 1
 ec_fdiv:    db 1
+; έπεσε μετεωρίτης· ο ήχος από το main. Εδώ από το βήμα 110: το src/meteor.asm
+; ζει στο b6code, και ο κύριος βρόχος το διαβάζει με όποια τράπεζα έχει μέσα.
+mt_boom:    db 0

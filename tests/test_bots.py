@@ -480,15 +480,14 @@ def negatives(sym):
     at = find(b6, sym["BOT_TICK"], [0x1C, 0x10])      # inc e / djnz bt_flp
     out.append(("μόνο το πρώτο εργοστάσιο",
                 [(at[0] + 1, 0), (at[0] + 2, 0)] if len(at) == 1 else None, True, "rules"))
-    zero("οι ανάγκες και στα ρομπότ", "ENT_NEEDS_SLICE", 8, [0xFE, BOT0, 0xD0],
-         [(1, 0xFF)], "chain")
+    # οι ανάγκες στο b6code από το βήμα 110 (src/main.asm)
+    bank6("οι ανάγκες και στα ρομπότ", "ENT_NEEDS_SLICE", 8, [0xFE, BOT0, 0xD0],
+          [(1, 0xFF)], "chain")
     zero("ο μετρητής ζωντανών στις 128", "EN_COUNT", 12, [0x01, 0x00, BOT0 // 8],
          [(2, 16)], "chain")
     # cp 81 / jr c,+2 / ld a,80 στο rooms_rebuild· ως το 91 cp 129 και 128
-    at = find(m.read_ram(sym["ROOMS_REBUILD"], 160), sym["ROOMS_REBUILD"],
-              [0xFE, BOT0 + 1, 0x38, 0x02, 0x3E, BOT0])
-    out.append(("ταβάνι 128", [(at[0] + 1, 129), (at[0] + 5, 128)] if len(at) == 1 else None,
-                False, "cap"))
+    bank6("ταβάνι 128", "ROOMS_REBUILD", 160, [0xFE, BOT0 + 1, 0x38, 0x02, 0x3E, BOT0],
+          [(1, 129), (5, 128)], "cap")
     bank6("το πλοίο γεννά στις θέσεις ρομπότ", "SHIP_CREW", 12, [0xD6, BOT0, 0xD0],
           [(1, 128), (2, 0xC8)], "cap")
     bank6("Automation με F_WORKING", "SOL_ROLLOVER", 200, [0xE6, 0x01, 0x81], [(1, 0x20)],

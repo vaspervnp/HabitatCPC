@@ -157,6 +157,7 @@ rtr_lp:
         include "../src/wheel.asm"
         include "../src/sound.asm"
         include "../src/meteor.asm"
+        include "../src/b6out.asm"          ; βήμα 110: ό,τι των needs/meteor θέλει άλλη τράπεζα
         include "../src/door.asm"           ; βήμα 87: το ja_build το καλεί
         include "../src/edges.asm"          ; βήμα 87: οι ακμές
 

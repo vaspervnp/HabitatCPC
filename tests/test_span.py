@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Το ob_blit ένα sprite τη φορά, απέναντι σε μοντέλο (βήμα 108, DESIGN §8.4).
+"""Το ob_blit ένα sprite τη φορά, απέναντι σε μοντέλο (βήματα 108 και 110, DESIGN §8.4).
 
 ΓΙΑΤΙ ΧΩΡΙΣΤΑ. Από το βήμα 108 τα τεταρτημόρια των θόλων και των δακτυλίων
 ζωγραφίζονται σε κομμάτια των οκτώ γραμμών πηγής, και σε καθένα μόνο το
@@ -9,7 +9,14 @@
 προσανατολισμοί, σε τυχαίες θέσεις — και έξω από το κάδρο — με τυχαίο clip:
 ολόκληρο, στήλη των 4 bytes, σειρά των 16 γραμμών, ή ό,τι να 'ναι. Ο βρόχος
 του ob_blit άλλαξε για όλα τα sprites (κομμάτια, πηγή και βήμα μέσα στις
-εντολές), οπότε και τα ίδια τεταρτημόρια χωρίς διαστήματα, και αδιαφανή.
+εντολές), οπότε και άλλα sprites, με μάσκα και αδιαφανή.
+
+ΑΠΟ ΤΟ ΒΗΜΑ 110 τα κελύφη είναι αποθηκευμένα ΜΟΝΟ ως διαστήματα (tools/pack.py,
+shell): μια κεφαλίδα και οκτώ γραμμές των 2n bytes ανά ομάδα. Το μοντέλο τα
+παίρνει ολόκληρα από το assets/sprites.bin, όχι από την τράπεζα 6 — και ένα
+λάθος του pack.py φαίνεται εδώ όπως ένα του span.asm. Ενα κέλυφος δεν
+ζωγραφίζεται πια χωρίς διαστήματα: η σύγκριση με αυτό έγινε ταβάνι, τα 922.920
+us του βήματος 109 για τις ίδιες 144 περιπτώσεις.
 
 Το μοντέλο είναι η πρόζα του §8.2 και του SPRITES.md §2: για κάθε byte του
 clip που καλύπτει το sprite, η γραμμή πηγής (ανάποδα αν καθρεφτίζεται κάθετα),
@@ -17,14 +24,13 @@ clip που καλύπτει το sprite, η γραμμή πηγής (ανάπο
 #C000 + (y & 7) * #800 + ((y >> 3) * 80 + x + cam_p) & #7FF. Η οθόνη ξεκινά
 με σκουπίδια, και όλα τα 16 KB της συγκρίνονται.
 
-Και ο ΧΡΟΝΟΣ: όλα τα τεταρτημόρια με τα διαστήματα κοστίζουν λιγότερο από τα
-ίδια χωρίς — μετρημένο, όχι υποτιθέμενο.
-
-Αρνητικά, με τον κώδικα πειραγμένο: ο πίνακας μία στήλη πιο δεξιά, η κάθετη
-κατεύθυνση των ομάδων ανάποδα, το DE που δεν ξαναβρίσκεται σε κάθε ομάδα, η
-πηγή που δεν μετακινείται με το διάστημα, και το κομμάτι που δεν κόβεται
-στις γραμμές που μένουν. Και ένα που φαίνεται μόνο στον χρόνο: η άδεια ομάδα
-που ζωγραφίζει γράφει μόνο ζεύγη (#FF, 0), άρα την ίδια εικόνα, αργότερα.
+Αρνητικά, με τον κώδικα πειραγμένο: ο πίνακας μία στήλη πιο δεξιά (στην
+κεφαλίδα του κελύφους, στην τράπεζα 6), η κάθετη κατεύθυνση των ομάδων
+ανάποδα, το DE που δεν ξαναβρίσκεται σε κάθε ομάδα, η στήλη της πηγής χωρίς το
+x 2 του ζεύγους, η γραμμή μέσα στην ομάδα που ξεχνιέται, το βήμα χωρίς το
+πρόσημο του κάθετου καθρεφτίσματος, και το κομμάτι που δεν κόβεται στις
+γραμμές που μένουν. Ως το βήμα 109 και ένα που φαινόταν μόνο στον χρόνο: η
+άδεια ομάδα που ζωγραφίζει έγραφε ζεύγη (#FF, 0)· από το 110 δεν έχει bytes.
 """
 import ctypes, os, random, sys
 
@@ -58,15 +64,19 @@ def layout():
     return out
 
 
-def model(scr, b6, cam, c):
+def model(scr, b6, cam, c, base=None):
+    """base: πού είναι η γραμμή 0 μέσα στο b6 — ή, για κέλυφος, τα bytes του
+    ολόκληρου nw από το sprites.bin με base = 0."""
     src, x, y, w, h, fl, (x0, x1, y0, y1) = c
     masked = not fl & 4
     stride = w * 2 if masked else w
+    if base is None:
+        base = src - 0x4000
     for yy in range(max(y, y0), min(y + h, y1)):
         r = yy - y
         if fl & 2:
             r = h - 1 - r
-        row = src - 0x4000 + r * stride
+        row = base + r * stride
         for xx in range(max(x, x0), min(x + w, x1)):
             k = xx - x
             if fl & 1:
@@ -87,9 +97,13 @@ class Z80:
         m = self.m = cpc.CPC()
         m.run_frames(60)
         assert m.quickload(SNA, start=False), "quickload απέτυχε"
+        b6 = cpc._lib.cpcemu_ram_ptr(m._h, 6)
         for at, v in patch:
-            m.poke(at, v)
-        self.b6 = ctypes.string_at(cpc._lib.cpcemu_ram_ptr(m._h, 6), 0x4000)
+            if isinstance(at, tuple):            # ("b6", διεύθυνση του παραθύρου)
+                b6[at[1] - 0x4000] = v
+            else:
+                m.poke(at, v)
+        self.b6 = ctypes.string_at(b6, 0x4000)
 
     def w16(self, name, v):
         self.m.poke(self.sym[name], v & 255)
@@ -155,30 +169,28 @@ def cases(L, rnd, n):
     return out
 
 
-def run(sym, L, patch=(), n=6, plain=True, seed=108):
-    """Η πρώτη διαφορά από το μοντέλο ή None, και οι χρόνοι (με, χωρίς)."""
+def run(sym, L, patch=(), n=6, seed=108):
+    """Η πρώτη διαφορά από το μοντέλο ή None, και ο χρόνος όλων."""
+    from sprites import load_map, load_bin
+    smap, blob = load_map(), load_bin()
     rnd = random.Random(seed)
     z = Z80(sym, patch)
-    t_span = t_plain = 0
+    t_span = 0
     for (size, kind), c in cases(L, rnd, n):
-        spt = sym[f"SPT_{size.upper()}"] + (0 if kind == "ring" else c[4] // 8)
+        s = smap[f"{kind}_{size}_nw"]
         cam = rnd.randrange(0, 1024) * 2
         scr = bytearray(rnd.randbytes(0x4000))
         want = bytearray(scr)
-        model(want, z.b6, cam, c)
-        for path in (("span", spt),) + ((("plain", 0),) if plain else ()):
-            got, t = z.blit(c, cam, path[1], scr)
-            if got is None:
-                return f"{kind}_{size} fl {c[5]} {path[0]}: κόλλησε ({c})", 0, 0
-            if got != want:
-                bad = [i for i in range(0x4000) if got[i] != want[i]]
-                return (f"{kind}_{size} fl {c[5]} {path[0]}: {len(bad)} bytes, πρώτο "
-                        f"#{0xC000 + bad[0]:04X} — x {c[1]} y {c[2]} clip {c[6]} cam {cam}"), 0, 0
-            if path[0] == "span":
-                t_span += t
-            else:
-                t_plain += t
-    return None, t_span, t_plain
+        model(want, blob, cam, c, base=s.off)
+        got, t = z.blit(c, cam, c[0], scr)
+        if got is None:
+            return f"{kind}_{size} fl {c[5]}: κόλλησε ({c})", 0
+        if got != want:
+            bad = [i for i in range(0x4000) if got[i] != want[i]]
+            return (f"{kind}_{size} fl {c[5]}: {len(bad)} bytes, πρώτο "
+                    f"#{0xC000 + bad[0]:04X} — x {c[1]} y {c[2]} clip {c[6]} cam {cam}"), 0
+        t_span += t
+    return None, t_span
 
 
 def others(sym, L, rnd, n=40):
@@ -203,15 +215,19 @@ def others(sym, L, rnd, n=40):
     return None
 
 
+T109 = 922_920                 # us, οι ίδιες 144 περιπτώσεις στο βήμα 109
+
+
 def main():
     sym = build()
     L = layout()
-    why, ts, tp = run(sym, L)
+    why, ts = run(sym, L)
     n = len(SIZES) * 2 * 4 * 6
-    check(why is None, f"{n} τεταρτημόρια, με και χωρίς διαστήματα, = το μοντέλο"
-          + (f" — {why}" if why else ""))
+    check(why is None, f"{n} τεταρτημόρια από τα διαστήματα της τράπεζας 6 = το "
+          f"μοντέλο από το sprites.bin" + (f" — {why}" if why else ""))
     if why is None:
-        check(ts < tp, f"με τα διαστήματα {ts} us, χωρίς {tp} us ({100 * ts // max(tp, 1)}%)")
+        check(ts <= T109, f"σε {ts} us (ταβάνι {T109}, το βήμα 109 με τα ολόκληρα "
+                          f"τεταρτημόρια· 1.216.860 χωρίς διαστήματα)")
     why = others(sym, L, random.Random(1080))
     check(why is None, "40 άλλα sprites, με μάσκα σε κάθε προσανατολισμό και αδιαφανή, = το μοντέλο"
           + (f" — {why}" if why else ""))
@@ -224,26 +240,25 @@ def main():
         return sym[at] + i
 
     w = lambda a: [a & 255, a >> 8]
-    tbl = sym["SPT_L"]
+    b6 = Z80(sym).b6
+    hdr = L["G_RING_L_NW"]                    # τα διαστήματα του δακτυλίου L
     neg = [("ο πίνακας μία στήλη πιο δεξιά",
-            [(tbl + k, m.peek(tbl + k) + 0x10 - 1) for k in range(1, 16) if m.peek(tbl + k)]),
-           ("οι ομάδες ανάποδα στο κάθετο καθρέφτισμα", [(find("SP_FIRST", [0x06, 0xFF]) + 1, 1)]),
+            [(("b6", hdr + k), b6[hdr + k - 0x4000] + 0x10) for k in range(8)
+             if b6[hdr + k - 0x4000]]),
+           ("οι ομάδες ανάποδα στο κάθετο καθρέφτισμα",
+            [(find("SP_FIRST", [0x01, 0x07, 0xFF]) + 2, 1)]),
            ("το DE χωρίς scr_addr σε κάθε ομάδα",
             [(find("SPG_YY", [0xC3] + w(sym["SCR_ADDR"])), 0xC9)]),
-           ("η πηγή που δεν ακολουθεί το διάστημα",
-            [(find("SPG_O", [0x22] + w(sym["OBL_P"] + 1)) + i, 0) for i in range(3)]),
+           ("η στήλη της πηγής χωρίς το x 2 του ζεύγους", [(sym["SPG_CC"], 0)]),
+           ("η γραμμή μέσα στην ομάδα που ξεχνιέται",
+            [(find("SPG_R", [0x32] + w(sym["SPG_RO"] + 1)) + i, 0) for i in range(3)]),
+           ("το βήμα χωρίς το πρόσημο του κάθετου καθρεφτίσματος",
+            [(find("SP_FIRST", [0x32] + w(sym["SPG_SG"] + 1)) + i, 0) for i in range(3)]),
            ("το κομμάτι ως το τέλος της ομάδας, όχι του blit",
             [(find("SP_GRP", [0x38]), 0x18)])]
     for label, patch in neg:
-        why, _, _ = run(sym, L, patch, n=4, plain=False)
+        why, _ = run(sym, L, patch, n=4)
         check(why is not None, f"ΑΡΝΗΤΙΚΟ: με {label} αποτυγχάνει" + (f" ({why[:100]})" if why else ""))
-    # Η ΑΔΕΙΑ ΟΜΑΔΑ ΔΕΝ ΦΑΙΝΕΤΑΙ ΣΤΗΝ ΕΙΚΟΝΑ: αν ζωγράφιζε, θα έγραφε ζεύγη
-    # (#FF, 0), που δεν αλλάζουν τίποτα. Φαίνεται μόνο στον χρόνο.
-    _, t0, _ = run(sym, L, n=4, plain=False)
-    why, t1, _ = run(sym, L, [(find("SPG_NONE", [0x22] + w(sym["OBL_K"] + 1)) + i, 0)
-                              for i in range(3)], n=4, plain=False)
-    check(why is None and t1 > t0, f"ΑΡΝΗΤΙΚΟ: με την άδεια ομάδα να ζωγραφίζει, η ίδια "
-                                   f"εικόνα σε {t1} us αντί για {t0}")
     return 1 if FAIL else 0
 
 

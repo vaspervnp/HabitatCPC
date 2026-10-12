@@ -271,7 +271,6 @@ mla_pok:
         include "haul.asm"              ; βήμα 95: η μεταφορά
         include "carry.asm"             ; βήμα 98: τα αγαθά του εμπόρου
         include "stock.asm"              ; κοινό με το fit.asm (βήμα 46)
-        include "needs.asm"
         include "lines.asm"             ; βήμα 91: η γραμμή του πλοίου (93: και το εμπόριο)
         include "wheel.asm"
         ; (fdc.asm και newgame.asm: στην τράπεζα 2 από το βήμα 33, πιο κάτω)
@@ -364,8 +363,8 @@ zz_page2_code:                          ; για το tools/mkdsk.py: πού φ�
         include "install.asm"           ; βήμα 99: οι μηχανές κουβαλιούνται και στήνονται (στην 2 από το 108)
         include "figure.asm"            ; βήμα 89: οι άποικοι έξω
         include "suit.asm"              ; βήμα 90: οι στολές
+        include "b6out.asm"             ; βήμα 110: ό,τι του b6code θέλει άλλη τράπεζα
         include "sound.asm"
-        include "meteor.asm"            ; βήμα 38: ζει στον τροχό, σπάνια τρέχει
         include "objindex.asm"          ; βήμα 41: το χτίσιμο του ευρετηρίου
         include "info.asm"              ; βήμα 79: τι έχει κάτω ο κέρσορας (I)
         include "demolish.asm"          ; βήμα 101: η κατεδάφιση
@@ -447,6 +446,12 @@ zz_b5code_end:
         include "crew.asm"              ; βήμα 93: ποιοι έρχονται, από την τράπεζα 0
         include "flow.asm"              ; βήμα 93: η θέση 12, από την τράπεζα 0
         include "joint.asm"             ; βήμα 96: οι αρμοί, με την 6 στο παράθυρο
+        ; ΚΑΙ ΑΠΟ ΤΟ ΒΗΜΑ 110, στα 3.584 bytes που άφησαν τα κελύφη (src/span.asm):
+        ; οι ανάγκες από την τράπεζα 0 και οι μετεωρίτες από την 2. Τρέχουν μόνο
+        ; στον τροχό· οι δύο είσοδοί τους απ' έξω, το rooms_rebuild και το
+        ; mt_rec / mt_scan, έρχονται με την 6 μέσα (dm_ovl: asc_b6, info: ob_b6).
+        include "needs.asm"             ; από την τράπεζα 0 (βήμα 110)
+        include "meteor.asm"            ; από την τράπεζα 2 (βήμα 110)
 zz_b6code_end:
         assert  zz_b6code_end <= G_b6code + B6C_MAX
         assert  G_b6code + B6C_MAX == G_agent_fields   ; = η δέσμευση του pack.py

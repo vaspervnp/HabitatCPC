@@ -236,25 +236,8 @@ mt_ground:
         add     a,b
         add     a,64 + MT_REACH         ; το B είναι x - MT_REACH
         ld      l,a
-        push    bc
-        ld      bc,GA_PORT + PAGE_B4
-        out     (c),c
-        ld      a,(hl)
-        and     W_OCC_MASK | 7          ; κατοχή και έδαφος
-        cp      W_MOUNTAIN
-        jr      c,mtg_yes               ; ελεύθερο έδαφος, σκόνη, βράχος
-        cp      W_FOUNDATION
-        jr      nz,mtg_back             ; διάδρομος, βουνό, νερό, ήδη κρατήρας
-mtg_yes:
-        ld      a,(hl)
-        and     #C0                     ; το decor μένει
-        or      W_CRATER
-        ld      (hl),a
-        xor     a                       ; Z: ο χάρτης άλλαξε
+        call    mt_crater               ; src/b6out.asm: η 4 δεν διαβάζεται από εδώ
 mtg_back:
-        ld      bc,GA_PORT + PAGE_B6
-        out     (c),c
-        pop     bc
         ret     nz                      ; δεν άλλαξε τίποτα στον χάρτη
         ld      a,b
         add     a,MT_REACH
@@ -398,4 +381,3 @@ mtb_lp:
         ld      a,l
         ret
 
-mt_boom:    db 0                        ; έπεσε μετεωρίτης· ο ήχος από το main

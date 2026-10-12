@@ -7,7 +7,7 @@
 ; Εδώ σχεδιάζεται μια σκηνή που αγγίζει και τις τρεις περιοχές:
 ;
 ;   σελίδα 2 (&8000)  έδαφος μέσω tile_ptr, εικονίδιο μέσω icon_m_ptr
-;   τράπεζα 6 (&C6)   δακτύλιος + θόλος + flip_mode0 + φιγούρα σε θέση
+;   τράπεζα 6 (&C6)   φιγούρα σε θέση (ως το βήμα 110 και δακτύλιος + θόλος)
 ;   τράπεζα 7 (&C7)   εξωτερική δομή
 ;
 ; Δύο σελιδοποιήσεις μέσα στην ίδια σκηνή, που είναι ακριβώς ό,τι θα κάνει ο
@@ -43,23 +43,14 @@ start:
 
         call    draw_terrain            ; σελίδα 2
 
-        ; --- τράπεζα 6: δακτύλιος, θόλος, φιγούρα ---
+        ; --- τράπεζα 6: η φιγούρα ---
+        ; Ο ΔΑΚΤΥΛΙΟΣ ΚΑΙ Ο ΘΟΛΟΣ ΕΦΥΓΑΝ ΣΤΟ ΒΗΜΑ 110: από τότε είναι στην
+        ; τράπεζα 6 μόνο τα διαστήματά τους (tools/pack.py, shell), και το
+        ; blit_quads ζωγραφίζει ολόκληρα nw. Τα ελέγχουν το tests/test_pack.py
+        ; (ξαναχτίζει το nw από την εικόνα) και το tests/test_span.py (ο Z80
+        ; απέναντι στο sprites.bin).
         ld      bc,GA_PORT + PAGE_B6
         out     (c),c
-        ld      hl,frametab
-        ld      b,2
-p6_loop:
-        push    bc
-        push    hl
-        ld      de,qf_src
-        ld      bc,6
-        ldir
-        call    blit_quads
-        pop     hl
-        ld      bc,6
-        add     hl,bc
-        pop     bc
-        djnz    p6_loop
 
         ; φιγούρα 1 (άποικος) στη θέση 0 του μικρού θόλου.
         ; corr_slots + size*CORR_SLOTS*2 + slot*2 -> (x σε bytes, y) στο πλαίσιο
@@ -117,12 +108,6 @@ p6_loop:
         ld      a,#5A
         ld      (done_flag),a
 hang:   jr      hang
-
-frametab:
-        dw      G_ring_s_nw
-        db      DOME_X, DOME_Y, DOME_S_W, DOME_S_H
-        dw      G_dome_s_nw
-        db      DOME_X, DOME_Y, DOME_S_W, DOME_S_H
 
 ; ---------------------------------------------------------------------------
 ; draw_terrain — 20x10 tiles στο κάδρο, από τη σελίδα 2.

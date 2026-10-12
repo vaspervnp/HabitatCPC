@@ -33,6 +33,7 @@ sys.path.insert(0, "/home/vasilhs/cpcemu")
 
 import econ as EC                                                  # noqa: E402
 import test_reveal as R                                            # noqa: E402
+import codeat                                                      # noqa: E402
 import world as W                                                  # noqa: E402
 from test_route import hud_row                                     # noqa: E402
 
@@ -128,24 +129,20 @@ def shower(sym, g, cut_push=False, no_half=False, cut_mark=False):
         sys.exit("κανένας σπόρος δεν χτυπά πίστα, θόλο και έδαφος")
     if cut_push:
         # JP wh_push -> RET, στο τέλος του mt_ground
+        # Στο b6code από το βήμα 110: codeat, όχι peek/poke (τράπεζα 6).
         at, wp = sym["MTG_BACK"], sym["WH_PUSH"]          # βήμα 76: ήταν mtg_no
-        for k in range(32):
-            if (G.m.peek(at + k) == 0xC3 and G.m.peek(at + k + 1) == wp & 0xFF
-                    and G.m.peek(at + k + 2) == wp >> 8):
-                G.m.poke(at + k, 0xC9)
-                break
-        else:
+        a = codeat.find(G.m, at, [0xC3, wp & 0xFF, wp >> 8], 32)
+        if a is None:
             sys.exit("δεν βρέθηκε το JP wh_push στο mt_ground")
+        codeat.poke(G.m, a, 0xC9)
     if cut_mark:
         # CALL st_redraw -> τρία NOP, στο mth_struct
         at, sr = sym["MTH_STRUCT"], sym["ST_REDRAW"]
-        for k in range(48):
-            if (G.m.peek(at + k) == 0xCD and G.m.peek(at + k + 1) == sr & 0xFF
-                    and G.m.peek(at + k + 2) == sr >> 8):
-                G.m.write_ram(at + k, bytes(3))
-                break
-        else:
+        a = codeat.find(G.m, at, [0xCD, sr & 0xFF, sr >> 8], 48)
+        if a is None:
             sys.exit("δεν βρέθηκε το CALL st_redraw στο mth_struct")
+        for k in range(3):
+            codeat.poke(G.m, a + k, 0)
     world0 = bytes(G.bank(4)[:W.SIZE])
     pic0 = G.play()
     # Το κανάρινι μακριά από κάθε κρατήρα και τον 3x3 γύρω του.

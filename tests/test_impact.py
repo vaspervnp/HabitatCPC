@@ -47,6 +47,7 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 sys.path.insert(0, "/home/vasilhs/cpcemu")
 import test_game as TG                                   # noqa: E402
+import codeat                                            # noqa: E402
 import cpc                                               # noqa: E402
 import econ as EC                                        # noqa: E402
 
@@ -96,7 +97,7 @@ class Rig:
         assert m.quickload(TG.COLONY, start=False), "quickload απέτυχε"
         m.run_frames(400)
         for at, v in patch:
-            m.poke(at, v)
+            codeat.poke(m, at, v)               # το mt_tick στο b6code (βήμα 110)
         self.ptr = [cpc._lib.cpcemu_ram_ptr(m._h, n) for n in range(8)]
         self.keep = [self.bank(n) for n in range(8)]
 
@@ -367,12 +368,13 @@ def main():
     assert m.quickload(TG.COLONY, start=False)
 
     def find(at, pat, span=400):
-        i = m.read_ram(sym[at], span).find(bytes(pat))
-        assert i >= 0, f"δεν βρέθηκε το {pat}"
-        return sym[at] + i
+        a = codeat.find(m, sym[at], pat, span)  # στην τράπεζα 6 αν είναι στο b6code
+        assert a is not None, f"δεν βρέθηκε το {pat}"
+        return a
 
     mr1 = sym["EC_MRND"] + 1 if "EC_MRND" in sym else layout()["G_econ_state"] + 90
-    neg = [("κρατήρα και πάνω σε διάδρομο", [(find("MT_TICK", [0xE6, 0x37]) + 1, 0x07)]),
+    # το and W_OCC_MASK | 7 είναι στο mt_crater (src/b6out.asm) από το βήμα 110
+    neg = [("κρατήρα και πάνω σε διάδρομο", [(find("MT_CRATER", [0xE6, 0x37]) + 1, 0x07)]),
            ("κρούση έξω από τον κόσμο που δεν γυρίζει",
             [(find("MT_TICK", [0xB5, 0xF8]) + 1, 0x00)]),
            ("θόλους με πλευρά 2 + 2*μέγεθος", [(find("MSC_NEAR", [0x87, 0xC6, 0x04]) + 2, 2)]),

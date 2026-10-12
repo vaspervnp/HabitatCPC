@@ -64,6 +64,13 @@ ob_bspan:
         ld      de,(clip_x0)
         call    ob_clip
         ret     z
+        ; ΤΑ ΚΕΛΥΦΗ ΦΕΥΓΟΥΝ ΕΔΩ (βήμα 110). Από το 110 είναι αποθηκευμένα μόνο ως
+        ; διαστήματα (tools/pack.py, shell), και πηγή, βήμα, πυρήνα και οθόνη
+        ; τα στήνει το sp_grp ανά ομάδα· ό,τι υπολογίζεται πιο κάτω θα πεταγόταν.
+        ld      hl,(ob_spt)
+        inc     h
+        dec     h
+        jp      nz,sp_first             ; src/span.asm· γυρίζει στο ob_line
 
         ; --- βήμα πηγής ανά γραμμή: W αδιαφανές, 2W με μάσκα ---
         ld      a,(ob_fl)
@@ -148,12 +155,8 @@ ob_sdn:
         call    scr_addr
         ; ΤΑ ΚΟΜΜΑΤΙΑ. Ο βρόχος μετρά γραμμές ως το τέλος του κομματιού
         ; (obl_c), και το ob_nl όσες μένουν μετά από αυτό. Χωρίς διαστήματα
-        ; ένα κομμάτι, όλες οι γραμμές· με διαστήματα ένα ανά οκτώ γραμμές
-        ; πηγής (src/span.asm).
-        ld      hl,(ob_spt)
-        inc     h
-        dec     h
-        jp      nz,sp_first             ; γυρίζει στο ob_line
+        ; ένα κομμάτι, όλες οι γραμμές· τα κελύφη, ένα ανά οκτώ γραμμές πηγής,
+        ; έφυγαν πιο πάνω (src/span.asm).
         ld      hl,ob_nl
         ld      a,(hl)
         ld      (hl),0
@@ -575,14 +578,8 @@ ob_shell:
         call    ob_getdome
         call    ob_vis
         ret     z
-        ; ΠΟΥ ΕΧΕΙ ΚΑΤΙ ΚΑΘΕ ΟΚΤΩ ΓΡΑΜΜΕΣ (βήμα 108, src/span.asm): ο πίνακας
-        ; του δακτυλίου, και ο θόλος ακολουθεί.
-        ld      a,(d_rec+D_SIZE)
-        add     a,sp_ring & 255
-        ld      l,a
-        ld      h,sp_ring >> 8
-        ld      l,(hl)
-        ld      (ob_spt),hl
+        ; ΠΟΥ ΕΧΕΙ ΚΑΤΙ ΚΑΘΕ ΟΚΤΩ ΓΡΑΜΜΕΣ (βήμα 108, src/span.asm): από το
+        ; βήμα 110 στην κεφαλίδα του ίδιου του κελύφους, στην τράπεζα 6.
         ld      hl,(d_geo)
         inc     hl
         inc     hl                      ; -> dome_nw
@@ -595,19 +592,14 @@ ob_shell:
         inc     hl
         ld      d,(hl)
         call    ob_quads                ; πρώτα ο δακτύλιος
-        ld      a,(d_qh)
-        rrca
-        rrca
-        rrca                            ; QH / 8: οι ομάδες του δακτυλίου
-        ld      hl,ob_spt
-        add     a,(hl)
-        ld      (hl),a
         pop     de
         ; fall through — μετά ο θόλος, στο ίδιο πλαίσιο
 
-; ob_quads — DE = αρχή του nw· τέσσερα τεταρτημόρια στο πλαίσιο (d_fx,d_fy).
+; ob_quads — DE = το κέλυφος (η κεφαλίδα του, tools/pack.py)· τέσσερα
+; τεταρτημόρια στο πλαίσιο (d_fx,d_fy).
 ob_quads:
         ld      (ob_src),de
+        ld      (ob_spt),de             ; και τα διαστήματα: ΠΑΝΤΑ (βήμα 110)
         ld      hl,(d_qw)               ; QW, QH -> ob_w, ob_h: το ob_blit
         ld      (ob_w),hl               ; δεν τα πειράζει
         xor     a

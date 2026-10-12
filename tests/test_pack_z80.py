@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.join(ROOT, "tools"))
 sys.path.insert(0, "/home/vasilhs/cpcemu")
 
 from sprites import load_map, load_bin                                  # noqa: E402
-from refrender import Canvas, draw_quads, SCR_W, SCR_H                  # noqa: E402
+from refrender import Canvas, SCR_W, SCR_H                              # noqa: E402
 
 RASM = os.path.expanduser("~/rasm/rasm.exe")
 SNA = os.path.join(ROOT, "build", "packtest.sna")
@@ -74,9 +74,8 @@ def reference():
             var = (tx * 3 + ty) & (variants[cls] - 1)
             c.opaque(rows(f"tile_{TERRAIN[cls]}_{var}"), tx * 4, ty * 16)
 
-    # 2. δακτύλιος και θόλος από το αποθηκευμένο nw
-    draw_quads(c, blob, smap, "ring", "s", DOME_X, DOME_Y)
-    draw_quads(c, blob, smap, "dome", "s", DOME_X, DOME_Y)
+    # 2. δακτύλιος και θόλος: ΟΧΙ από το βήμα 110 (βλ. το packtest.asm) — η
+    #    τράπεζα 6 έχει μόνο τα διαστήματά τους.
 
     # 3. φιγούρα 1 στη θέση 0 του μικρού θόλου
     slots = raw("corr_slots")
@@ -115,13 +114,13 @@ def main():
     if not bad:
         print("OK — σελίδα 2 + τράπεζα 6 + τράπεζα 7, 16000 bytes ταυτόσημα")
         print("     (έδαφος μέσω tile_ptr, εικονίδιο μέσω icon_m_ptr, "
-              "τεταρτημόρια, φιγούρα, δομή με μάσκα)")
+              "φιγούρα, δομή με μάσκα)")
         return 0
 
     print(f"ΑΠΟΤΥΧΙΑ — {len(bad)} bytes διαφέρουν")
     zones = {
         "έδαφος (σελίδα 2)": (0, 0, TILES_X * 4, TILES_Y * 16),
-        "θόλος/δακτύλιος (τράπεζα 6)": (DOME_X, DOME_Y, 16, 64),
+        "φιγούρα (τράπεζα 6)": (DOME_X, DOME_Y, 16, 64),
         "δομή (τράπεζα 7)": (STRUCT_X, STRUCT_Y, 8, 32),
         "εικονίδιο (σελίδα 2)": (ICON_X, ICON_Y, 8, 16),
     }

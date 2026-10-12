@@ -505,7 +505,8 @@ def solar(sym, g, cut=None):
                  [0xCD, gr & 255, gr >> 8])
         G.m.write_ram(at + k, bytes(3))
     elif cut:
-        G.m.poke(sym["ST_MARK" if cut == "mark" else "ST_REDRAW"], 0xC9)
+        import codeat                        # το st_redraw στο b6code (βήμα 110)
+        codeat.poke(G.m, sym["ST_MARK" if cut == "mark" else "ST_REDRAW"], 0xC9)
     c = G.canary()
     G.run(40_000)
     G.iters = []

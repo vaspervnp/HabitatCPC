@@ -19,7 +19,11 @@
   3β. Ο κώδικας του τροχού (βήμα 92): το B6CODE.BIN κάθεται στη δέσμευση
      b6code της τράπεζας 6, byte προς byte όπως βγήκε από το build. Το
      BANK6.BIN την έχει άδεια, οπότε ένας φορτωτής που ξεχνά το αρχείο αφήνει
-     μηδενικά εκεί που πηδά το πρώτο ρομπότ.
+     μηδενικά εκεί που πηδά το πρώτο ρομπότ. Από το βήμα 110 εκτός από τα
+     τέσσερα bytes που γράφουν οι ανάγκες όσο τρέχει το παιχνίδι.
+  3δ. Κανένα out (c),c στα αρχεία του b6code (βήμα 110): τρέχουν από το
+     παράθυρο, και μια άλλη τράπεζα εκεί θα έφερνε την επόμενη εντολή από
+     αυτήν. Αρνητικό: το mt_ground του βήματος 109.
   4. Ο κόσμος είναι ΠΑΡΑΓΜΕΝΟΣ: η γεννήτρια έτρεξε ως ξεχωριστό φόρτωμα και
      γέμισε την τράπεζα 4. Το snapshot φορτώνει έτοιμο επίπεδο· ο δίσκος δεν
      έχει τέτοιο αρχείο.
@@ -276,9 +280,43 @@ def main():
                                       encoding="utf-8")) if len(p) >= 3 and p[1] == "equ"}
     at = lay["G_b6code"]
     got = ctypes.string_at(ctypes.addressof(b6.contents) + at - 0x4000, len(code))
-    check(len(code) > 64 and got == code and sym["BOT_TICK"] == at,
+    # ΟΣΑ ΓΡΑΦΕΙ ΤΟ ΠΑΙΧΝΙΔΙ ΟΣΟ ΤΡΕΧΕΙ (βήμα 110): οι ανάγκες ζουν από τότε
+    # εδώ, με δύο μεταβλητές και τον τελεστή του ens_call (src/needs.asm). Το
+    # δείγμα παίρνεται αφού τρέξει ο τροχός, οπότε αυτά δεν είναι πια του build.
+    live = {sym["ND_I"], sym["ND_ROOM"], sym["ENS_CALL"] + 1, sym["ENS_CALL"] + 2}
+    labs = sorted((v, k) for k, v in sym.items() if at <= v < at + len(code))
+    bad = [at + i for i, (x, y) in enumerate(zip(got, code)) if x != y and at + i not in live]
+    where = [next(k for v, k in reversed(labs) if v <= a) + f"+{a - next(v for v, k in reversed(labs) if v <= a)}"
+             for a in bad[:4]]
+    check(len(code) > 64 and not bad and sym["BOT_TICK"] == at,
           f"ο κώδικας του τροχού ήρθε από τον δίσκο στην τράπεζα 6: {len(code)} bytes στο "
-          f"#{at:04X}, {sum(x != y for x, y in zip(got, code))} διαφορετικά")
+          f"#{at:04X}, {len(bad)} διαφορετικά {where} (έξω από τα {len(live)} που γράφει όσο τρέχει)")
+
+    # --- 3δ. κανένα out (c),c στον κώδικα της τράπεζας 6 (βήμα 110) ----------
+    # Ο,τι τρέχει από το b6code τρέχει από το παράθυρο &4000-&7FFF· μια άλλη
+    # τράπεζα εκεί και η επόμενη εντολή έρχεται από αυτήν. Η πρώτη σουίτα του
+    # βήματος 110 το βρήκε: το mt_ground σελιδοποιούσε τον κόσμο και το
+    # nd_nearest το DIST, και το test_needs έβρισκε το PC στο &DAF6. Τα αρχεία
+    # του b6code βγαίνουν από το src/main.asm, και κανένα δεν γράφει στη Gate
+    # Array· ό,τι το χρειάζεται ζει στο src/b6out.asm.
+    import re
+    main_src = open(os.path.join(ROOT, "src", "main.asm"), encoding="utf-8").read()
+    block = main_src[main_src.index("org     G_b6code"):main_src.index("zz_b6code_end:")]
+    b6files = re.findall(r'^\s+include\s+"([^"]+)"', block, re.M)
+
+    def pages(text):
+        return [n + 1 for n, line in enumerate(text.splitlines())
+                if re.match(r"\s+out\s+\(c\),c", line)]
+    hits = [(f, pages(open(os.path.join(ROOT, "src", f), encoding="utf-8").read()))
+            for f in b6files]
+    hits = [(f, n) for f, n in hits if n]
+    check(len(b6files) >= 7 and not hits,
+          f"κανένα out (c),c στα {len(b6files)} αρχεία του b6code ({', '.join(b6files)})"
+          + (f" — {hits}" if hits else ""))
+    # ΑΡΝΗΤΙΚΟ: το mt_ground όπως ήταν ως το βήμα 109
+    old = ("        push    bc\n        ld      bc,GA_PORT + PAGE_B4\n"
+           "        out     (c),c\n        ld      a,(hl)\n")
+    check(pages(old) == [3], "ΑΡΝΗΤΙΚΟ: το mt_ground του βήματος 109 θα πιανόταν")
 
     # --- 3γ. ο κώδικας της κατεδάφισης στις τρύπες του DIST (βήματα 101-102) -
     # Τον φέρνει η BANK1.BIN στο OV_LOAD, κάτω από τα εικονίδια, και το

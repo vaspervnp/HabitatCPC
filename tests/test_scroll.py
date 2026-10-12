@@ -12,8 +12,10 @@
 
 Ο ΧΡΟΝΟΣ ΣΕ us (βήμα 108): η πλήρης σχεδίαση στο BASE και ένα βήμα προς κάθε
 κατεύθυνση ως εκεί, με ταβάνια. Οι θόλοι και οι δακτύλιοι ζωγραφίζουν από το
-108 μόνο τα διαστήματα που έχουν κάτι (src/span.asm). Αρνητικό: το ob_shell
-χωρίς τον πίνακα ξεπερνά τα ταβάνια.
+108 μόνο τα διαστήματα που έχουν κάτι (src/span.asm), και από το 110 είναι
+αποθηκευμένοι μόνο ως αυτά. Αρνητικό: ως το 109 το ob_shell χωρίς τον πίνακα,
+από το 110 ο καθρεφτισμένος πυρήνας σε κάθε τεταρτημόριο — ξεπερνούν τα
+ταβάνια.
 """
 import os, sys
 
@@ -174,18 +176,22 @@ def main():
         print(f"{'OK' if ok else 'ΑΠΟΤΥΧΙΑ'} {k}: {v} us (ταβάνι {EXACT_CEIL[k]}, "
               f"{EXACT_WAS[k]} στο βήμα 107)")
         fails += not ok
-    # ΑΡΝΗΤΙΚΟ: το ob_shell χωρίς τον πίνακα — κάθε τεταρτημόριο ολόκληρο.
-    at = sym["OB_SHELL"]
+    # ΑΡΝΗΤΙΚΟ. Ως το βήμα 109: το ob_shell χωρίς τον πίνακα, κάθε τεταρτημόριο
+    # ολόκληρο (607.440, 89.580, 79.920). Από το 110 τα κελύφη ΕΙΝΑΙ μόνο τα
+    # διαστήματά τους, και ολόκληρα δεν υπάρχουν· εδώ ο καθρεφτισμένος πυρήνας
+    # σε κάθε τεταρτημόριο (32 us το byte αντί για 18): μόνο ο χρόνος μετρά.
+    at = sym["SP_FIRST"]
     m = CPC()
     m.run_frames(60)
     assert m.quickload(SNA, start=False)
-    body = m.read_ram(at, 80)
-    i = body.find(bytes([0x22, sym["OB_SPT"] & 255, sym["OB_SPT"] >> 8]))
-    assert i >= 0, "δεν βρέθηκε το ld (ob_spt),hl στο ob_shell"
-    bad = exact([(at + i + k, 0) for k in range(3)])
+    body = m.read_ram(at, 40)
+    ml, mf = sym["BLT_MASK_LINE"], sym["BLT_MASK_FLIP"]
+    i = body.find(bytes([0x21, ml & 255, ml >> 8]))
+    assert i >= 0, "δεν βρέθηκε το ld hl,blt_mask_line στο sp_first"
+    bad = exact([(at + i + 1, mf & 255), (at + i + 2, mf >> 8)])
     over = [k for k, v in bad.items() if v > EXACT_CEIL[k]]
-    print(f"{'OK' if over else 'ΑΠΟΤΥΧΙΑ'} ΑΡΝΗΤΙΚΟ: χωρίς τα διαστήματα ξεπερνούν το ταβάνι "
-          f"{', '.join(f'{k} {bad[k]}' for k in over) or 'κανένα'}")
+    print(f"{'OK' if over else 'ΑΠΟΤΥΧΙΑ'} ΑΡΝΗΤΙΚΟ: με τον καθρεφτισμένο πυρήνα παντού "
+          f"ξεπερνούν το ταβάνι {', '.join(f'{k} {bad[k]}' for k in over) or 'κανένα'}")
     fails += not over
     return 1 if fails else 0
 

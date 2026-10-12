@@ -21,7 +21,7 @@ from sprites import load_map, load_bin, ROOT
 import buttons
 
 TEXT_MAX = 2138                 # = TEXT_MAX του src/uitext.asm (assert εκεί)
-B6C_MAX = 1554                  # = B6C_MAX του src/bots.asm (assert στο main.asm)· 256 ως το 92, 1.280 ως το 93, 1.298 ως το 95
+B6C_MAX = 5138                  # = B6C_MAX του src/bots.asm (assert στο main.asm)· 256 ως το 92, 1.280 ως το 93, 1.298 ως το 95, 1.554 ως το 109 (τα κελύφη, βήμα 110)
 B1C_MAX = 160                   # = B1C_MAX του src/commit.asm (assert στο main.asm), βήμα 94
 B5C_MAX = 248                   # = B5C_MAX του src/bend.asm (assert στο main.asm), βήμα 97· 272 ως το 99
 
@@ -600,9 +600,14 @@ def build_runs(smap, blob):
     bank6.append(Run("flip_mode0", 256, blob[smap["flip_mode0"].off:
                                              smap["flip_mode0"].off + 256],
                      align=256, note="ΠΡΕΠΕΙ σε σελίδα"))
-    for stem in ("dome", "ring"):
-        for size in ("s", "m", "l"):
-            bank6.append(spr(f"{stem}_{size}_nw"))
+    # ΤΑ ΚΕΛΥΦΗ ΜΟΝΟ ΜΕ ΤΑ ΔΙΑΣΤΗΜΑΤΑ ΤΟΥΣ (βήμα 110, shell() πιο κάτω): 7.424
+    # bytes -> 3.840. Ο,τι ελευθερώνεται το παίρνει ο κώδικας του τροχού.
+    # Σε αυτή τη σειρά καμία κεφαλίδα δεν περνά σελίδα (page) και τα έξι
+    # τελειώνουν ακριβώς στο #5000, όπου οι φιγούρες θέλουν αρχή σελίδας:
+    # με τη σειρά των μεγεθών ο l θα πήγαινε 16 bytes πιο πέρα, και οι
+    # φιγούρες μία σελίδα.
+    for name in ("dome_s", "dome_l", "dome_m", "ring_s", "ring_m", "ring_l"):
+        bank6.append(shell(name + "_nw", smap, blob))
     # ΟΙ ΦΙΓΟΥΡΕΣ, ΧΩΡΙΣΤΑ ΑΠΟ ΤΙΣ ΘΕΣΕΙΣ (βήμα 89). Ως τότε εδώ καθόταν το
     # corr_slot_gfx, 3.456 bytes: κάθε φιγούρα ψημένη σε κάθε μία από τις 24
     # θέσεις δακτυλίου, αδιαφανής. Τώρα είναι η κενή θέση (384) και από πάνω
@@ -732,47 +737,79 @@ def build_runs(smap, blob):
 
 
 # ---------------------------------------------------------------------------
-# build/span_tables.asm — ΠΟΥ ΕΧΕΙ ΚΑΤΙ ΚΑΘΕ ΤΕΤΑΡΤΗΜΟΡΙΟ θόλου και δακτυλίου,
-# ανά οκτώ γραμμές (βήμα 108, src/span.asm, DESIGN §8.4). Εδώ και όχι στο
-# tools/mkgentables.py: κάθε build του παιχνιδιού και των δοκιμών τρέχει το
-# pack.py, και το src/object.asm θέλει τον πίνακα.
+# ΤΑ ΚΕΛΥΦΗ ΩΣ ΔΙΑΣΤΗΜΑΤΑ (βήμα 108 οι πίνακες, βήμα 110 η αποθήκευση· src/span.asm,
+# DESIGN §8.4).
 #
-# Ενα ζεύγος (μάσκα #FF, χρώμα 0) αφήνει την οθόνη όπως ήταν: το blit του
-# πληρώνει 18 us (32 καθρεφτισμένο) για τίποτα. Στους θόλους είναι το 40% των
-# ζευγών, στους δακτυλίους το 75% — το εσωτερικό τους, που ο θόλος καλύπτει.
-# Κάθε γραμμή κάθε τεταρτημορίου έχει ΕΝΑ διάστημα με κάτι, και ό,τι είναι έξω
-# του είναι τέτοιο ζεύγος· ανά οκτώ γραμμές: το byte (a << 4) | n, με a το
-# πρώτο ζεύγος της ομάδας που δεν είναι διάφανο και n πόσα ως το τελευταίο.
-# Μια ομάδα χωρίς τίποτα είναι 0 (οι οκτώ πρώτες γραμμές κάθε θόλου).
-# Συντηρητικό: ένα διάφανο ζεύγος μέσα στο διάστημα κοστίζει όσο πριν, ένα
-# αδιάφανο έξω θα έλειπε από την οθόνη — αυτό το αρνείται το assert εδώ.
+# Ενα ζεύγος (μάσκα #FF, χρώμα 0) αφήνει την οθόνη όπως ήταν. Στους θόλους
+# είναι το 40% των ζευγών, στους δακτυλίους το 75% — το εσωτερικό τους, που ο
+# θόλος καλύπτει. Κάθε γραμμή κάθε τεταρτημορίου έχει ΕΝΑ διάστημα με κάτι, και
+# ό,τι είναι έξω του είναι τέτοιο ζεύγος· ανά οκτώ γραμμές (μία ΟΜΑΔΑ): το byte
+# (a << 4) | n, με a το πρώτο ζεύγος της ομάδας που δεν είναι διάφανο και n πόσα
+# ως το τελευταίο. Μια ομάδα χωρίς τίποτα είναι 0 (οι οκτώ πρώτες γραμμές κάθε
+# θόλου). Συντηρητικό: ένα διάφανο ζεύγος μέσα στο διάστημα κοστίζει όσο πριν,
+# ένα αδιάφανο έξω θα έλειπε από την οθόνη — αυτό το αρνείται το assert εδώ.
+#
+# ΩΣ ΤΟ ΒΗΜΑ 109 ο πίνακας ήταν στην τράπεζα 0 (build/span_tables.asm, 36 bytes)
+# και τα τεταρτημόρια ολόκληρα στην 6: 7.424 bytes, τα μισά από αυτά ζεύγη που
+# δεν ζωγραφίζονται ποτέ. ΤΩΡΑ κάθε κέλυφος είναι:
+#
+#   +0  .. +7    το διάστημα κάθε ομάδας (0 = άδεια· μετά την τελευταία, 0)
+#   +8  .. +23   η διεύθυνση των δεδομένων κάθε ομάδας (0 για την άδεια)
+#   +24 ..       κάθε ομάδα που έχει κάτι: οκτώ γραμμές των 2n bytes, μόνο τα
+#                ζεύγη a .. a+n-1 του nw
+#
+# Η κεφαλίδα σε μία σελίδα (page): το sp_grp προσθέτει μόνο στο L. Οι
+# διευθύνσεις μπαίνουν στο δεύτερο πέρασμα του pack(), όταν το κέλυφος έχει θέση.
 # ---------------------------------------------------------------------------
 SPAN_G = 8
+SHELL_HDR = 3 * SPAN_G          # 8 διαστήματα + 8 διευθύνσεις
+
+
+def shell_spans(s, blob):
+    """[(a, n) ή None] ανά ομάδα των SPAN_G γραμμών του sprite s."""
+    assert s.masked and s.h % SPAN_G == 0 and s.h // SPAN_G <= SPAN_G, s
+    out = []
+    for g0 in range(0, s.h, SPAN_G):
+        cols = [x for y in range(g0, g0 + SPAN_G) for x in range(s.w)
+                if blob[s.off + y * s.stride + 2 * x] != 0xFF
+                or blob[s.off + y * s.stride + 2 * x + 1] != 0]
+        if not cols:
+            out.append(None)
+            continue
+        a, n = min(cols), max(cols) + 1 - min(cols)
+        assert a < 16 and 0 < n < 16, (s, g0, a, n)
+        out.append((a, n))
+    return out
+
+
+def shell(name, smap, blob):
+    """Το κέλυφος name ως κεφαλίδα και διαστήματα (βλ. πάνω)."""
+    s = smap[name]
+    sp = shell_spans(s, blob)
+    data, groups = bytearray(), []
+    for g, x in enumerate(sp):
+        if x is None:
+            groups.append(None)
+            continue
+        a, n = x
+        groups.append(SHELL_HDR + len(data))
+        for y in range(g * SPAN_G, (g + 1) * SPAN_G):
+            row = s.off + y * s.stride
+            data += blob[row + 2 * a:row + 2 * (a + n)]
+    hdr = bytes(0 if x is None else x[0] << 4 | x[1] for x in sp)
+    hdr += bytes(SHELL_HDR - len(hdr))
+    r = Run(name, SHELL_HDR + len(data), hdr + bytes(data), page=SHELL_HDR,
+            note=f"διαστήματα ({s.h * s.stride} ολόκληρο)")
+    r.groups = groups
+    return r
 
 
 def spans(out):
-    smap, sblob = load_map(), load_bin()
+    """build/span_tables.asm: οι σταθερές του src/span.asm."""
     with open(os.path.join(out, "span_tables.asm"), "w", encoding="utf-8") as f:
         f.write("; ΠΑΡΑΓΕΤΑΙ από tools/pack.py — μην το επεξεργάζεσαι.\n")
         f.write(f"SPAN_G      equ {SPAN_G}\n")
-        f.write("; ανά μέγεθος, ο δακτύλιος και ΑΜΕΣΩΣ ΜΕΤΑ ο θόλος (+QH/8)\n")
-        for size in "sml":
-            f.write(f"spt_{size}:\n")
-            for kind in ("ring", "dome"):
-                s = smap[f"{kind}_{size}_nw"]
-                assert s.masked and s.h % SPAN_G == 0, s
-                row = []
-                for g0 in range(0, s.h, SPAN_G):
-                    cols = [x for y in range(g0, g0 + SPAN_G) for x in range(s.w)
-                            if sblob[s.off + y * s.stride + 2 * x] != 0xFF
-                            or sblob[s.off + y * s.stride + 2 * x + 1] != 0]
-                    if not cols:
-                        row.append(0)
-                        continue
-                    a, n = min(cols), max(cols) + 1 - min(cols)
-                    assert a < 16 and 0 < n < 16, (s, g0, a, n)
-                    row.append(a << 4 | n)
-                f.write(f"        db {','.join(f'#{v:02X}' for v in row)}   ; {kind}\n")
+        f.write(f"SHELL_HDR   equ {SHELL_HDR}\n")
 
 
 def pack():
@@ -796,6 +833,14 @@ def pack():
         for n in names:
             data += (0 if n is None else by_name[n].addr).to_bytes(2, "little")
         r.data = bytes(data)
+    # και οι διευθύνσεις των ομάδων κάθε κελύφους (βήμα 110)
+    for r in bank6:
+        if getattr(r, "groups", None) is not None:
+            d = bytearray(r.data)
+            for g, rel in enumerate(r.groups):
+                if rel is not None:
+                    d[SPAN_G + 2 * g:SPAN_G + 2 * g + 2] = (r.addr + rel).to_bytes(2, "little")
+            r.data = bytes(d)
 
     # --- εικόνες ------------------------------------------------------------
     out = os.path.join(ROOT, "build")

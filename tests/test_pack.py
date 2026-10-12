@@ -77,7 +77,7 @@ def main():
     checked = 0
     for name, s in smap.items():
         r = by_name.get(name)
-        if r is None or r.data is None:
+        if r is None or r.data is None or getattr(r, "groups", None) is not None:
             continue
         img, base = image_of(r)
         got = img[r.addr - base:r.addr - base + s.size]
@@ -99,6 +99,42 @@ def main():
                   f"{r.name}: το μέλος {name} στη μετατόπιση {off} (#{a:04X}) "
                   f"δεν ταιριάζει")
             checked += 1
+
+    # 5γ. ΤΑ ΚΕΛΥΦΗ (βήμα 110): μόνο τα διαστήματά τους. Από την ΕΙΚΟΝΑ της
+    #     τράπεζας 6, με την κεφαλίδα και τις διευθύνσεις της, ξαναχτίζεται
+    #     ολόκληρο το nw — με (#FF, 0) έξω από τα διαστήματα — και πρέπει να
+    #     είναι τα bytes του sprites.bin. Και η κεφαλίδα σε μία σελίδα, και οι
+    #     ομάδες η μία μετά την άλλη μέσα στο κομμάτι.
+    img6 = images["bank6"]
+    shells = 0
+    for r in bank6:
+        if getattr(r, "groups", None) is None:
+            continue
+        s = smap[r.name]
+        o = r.addr - pack.WINDOW_BASE
+        hdr = img6[o:o + pack.SHELL_HDR]
+        check((r.addr & 255) + pack.SHELL_HDR <= 256,
+              f"{r.name}: η κεφαλίδα στο #{r.addr:04X} περνά σελίδα")
+        full = bytearray(b"\xff\x00" * (s.w * s.h))
+        at = r.addr + pack.SHELL_HDR
+        for g in range(s.h // pack.SPAN_G):
+            a, n = hdr[g] >> 4, hdr[g] & 15
+            addr = hdr[pack.SPAN_G + 2 * g] | hdr[pack.SPAN_G + 2 * g + 1] << 8
+            if n == 0:
+                check(addr == 0, f"{r.name}: η άδεια ομάδα {g} έχει διεύθυνση #{addr:04X}")
+                continue
+            check(addr == at, f"{r.name}: η ομάδα {g} στο #{addr:04X}, περίμενα #{at:04X}")
+            for y in range(pack.SPAN_G):
+                row = img6[addr - pack.WINDOW_BASE + y * 2 * n:][:2 * n]
+                k = ((g * pack.SPAN_G + y) * s.w + a) * 2
+                full[k:k + 2 * n] = row
+            at += pack.SPAN_G * 2 * n
+        check(at == r.addr + r.size, f"{r.name}: οι ομάδες τελειώνουν στο #{at:04X}, "
+                                     f"το κομμάτι στο #{r.addr + r.size:04X}")
+        check(bytes(full) == blob[s.off:s.off + s.size],
+              f"{r.name}: από τα διαστήματα δεν ξαναβγαίνει το sprite του sprites.bin")
+        shells += 1
+    check(shells == 6, f"{shells} κελύφη ως διαστήματα, περίμενα 6")
 
     # 6. οι παραγόμενοι πίνακες δείχνουν στα σωστά
     # Το None είναι θέση που ΔΕΝ υπάρχει — το struct_ptr κρατά τέσσερις ανά

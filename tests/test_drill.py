@@ -552,8 +552,8 @@ def negatives(sym, g):
     # entity: call op_ptr · dec (hl) -> nop
     at0("η αναχώρηση δεν μετρά", "ENT_MOVE_SLICE", 400, [0x3A] + w(sym["EM_NODE"]) + [0xCD]
         + w(sym["OP_PTR"]) + [0x35], [(6, 0)], "leave")
-    # nd_die: call op_ptr · dec (hl) -> nop
-    at0("ο θάνατος δεν μετρά", "ND_DIE", 40, [0xCD] + w(sym["OP_PTR"]) + [0x35],
+    # nd_die: call op_ptr · dec (hl) -> nop (στο b6code από το βήμα 110)
+    at6("ο θάνατος δεν μετρά", "ND_DIE", 40, [0xCD] + w(sym["OP_PTR"]) + [0x35],
         [(3, 0)], "death")
     # opp_st: add a,ST_OPS -> add a,ST_OWED
     at0("το μέτρημα στο όγδοο byte", "OP_PTR", 30, [0xC6, ST_OPS, 0x6F], [(1, 7)], "arrive")

@@ -70,6 +70,7 @@ import cpc                                               # noqa: E402
 import econ as EC                                        # noqa: E402
 import entity as E                                       # noqa: E402
 import test_impact as TI                                 # noqa: E402
+import codeat                                            # noqa: E402
 
 UNIT = 128                  # frames του τροχού ανά μονάδα στολής
 MIN = 3000                  # frames σε ένα λεπτό (50 το δευτερόλεπτο)
@@ -558,8 +559,9 @@ def main():
     m = B.boot(sym, TG.SNA)
 
     def find(at, pat, n=64):
+        # codeat: το rooms_rebuild στο b6code από το βήμα 110 (τράπεζα 6)
         return next((at + k for k in range(n)
-                     if list(m.read_ram(at + k, len(pat))) == pat), None)
+                     if list(codeat.read(m, at + k, len(pat))) == pat), None)
     w = lambda a: [a & 255, a >> 8]
     ag7 = (TO.layout()["G_agent_fields"] >> 8) + 7
     hd = find(sym["HUD_ALERT"], [0x3A] + w(sym["SU_ALARM"]), 160)  # ld a,(su_alarm)
