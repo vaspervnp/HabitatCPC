@@ -41,11 +41,13 @@ SP_PRIO     equ 4                   ; κάτω από το Build (5): ο μηχ�
         assert  G_struct_tbl == G_dome_tbl + MAX_DOME * DOME_REC
         assert  NO_JOB == 255 && J_BUILD == 0 && JOB_REC < 256
         assert  J_PRIO == 3 && J_SITE == 4
+        assert  J_KIND == 0 && J_AGENT == 2 && G_job_tbl >= #100
 
 ; ---------------------------------------------------------------------------
 ; jb_post_build — A = κόμβος. Μία εργασία Build στην πρώτη ελεύθερη θέση· αν
-; δεν υπάρχει, καμία. Κρατά το A. Out: B = 0 αν ο πίνακας ήταν γεμάτος, αλλιώς
-; HL -> το J_SITE της νέας.
+; δεν υπάρχει, στη θέση μιας Operate ή Repair που δεν την πήρε κανείς (βήμα
+; 115)· αν ούτε αυτή, καμία, και το jb_lost. Κρατά τα A, C. Out: B = 0 αν δεν
+; μπήκε, αλλιώς HL -> το J_SITE της νέας.
 ;
 ; Από το src/jobpost.asm (βήματα 38-87), ίδιο byte προς byte εκτός από το
 ; τελευταίο, που είναι πια ο κόμβος (J_SITE) και όχι 0. Εδώ, στην τράπεζα 2,
@@ -66,6 +68,51 @@ jpb_lp:
         dec     (hl)                    ; πιασμένη: όπως ήταν
         add     hl,de
         djnz    jpb_lp
+        ; ΓΕΜΑΤΟΣ (βήμα 115). Ως τότε τίποτα, και ένα εργοτάξιο τοποθετημένο
+        ; εκείνη τη στιγμή δεν χτιζόταν ποτέ: τίποτα δεν ξαναδημοσιεύει τις
+        ; εργασίες του. Μια Operate ή Repair που δεν την πήρε κανείς δίνει τη
+        ; θέση της — αυτές τις ξαναδημοσιεύει το jp_one μόλις βρει θέση, και
+        ; ένας πίνακας γεμάτος από αυτές είναι μια αποικία με λίγους ανθρώπους,
+        ; δηλαδή κάθε αποικία που μεγαλώνει. Η χαμηλότερη προτεραιότητα, και
+        ; στην ισοπαλία η πρώτη. Αν δεν υπάρχει καμία, το jb_lost: το σάρωμα
+        ; του κύκλου ροής (sp_sweep, src/repost.asm) τις ξαναβρίσκει.
+        push    ix
+        push    bc                      ; το C του sp_post: το είδος
+        push    af
+        ld      ix,G_job_tbl
+        ld      bc,MAX_JOB * 256 + 255  ; C = η χαμηλότερη ως τώρα
+        ld      hl,0                    ; καμία ακόμη
+jpe_lp:
+        ld      a,(ix+J_KIND)
+        cp      J_OPERATE
+        jr      z,jpe_k
+        cp      J_REPAIR
+        jr      nz,jpe_n
+jpe_k:
+        ld      a,(ix+J_AGENT)
+        inc     a
+        jr      nz,jpe_n                ; κάποιος την έχει
+        ld      a,(ix+J_PRIO)
+        cp      c
+        jr      nc,jpe_n                ; όχι χαμηλότερη
+        ld      c,a
+        push    ix
+        pop     hl
+jpe_n:
+        add     ix,de
+        djnz    jpe_lp
+        pop     af
+        pop     bc
+        pop     ix
+        ld      b,h                     ; ο πίνακας είναι πάνω από το #00FF
+        inc     b
+        dec     b
+        jr      z,jpe_lost
+        ld      (hl),J_BUILD
+        jr      jpb_got
+jpe_lost:
+        ld      hl,jb_lost
+        ld      (hl),h                  ; ≠ 0
         ret
 jpb_got:
         inc     hl                      ; το είδος είναι ήδη J_BUILD
@@ -433,6 +480,7 @@ spn_yes:
         ret
 
 sp_mat:     db 0                    ; 0 μέταλλο, 1 βιοπλαστικό
+jb_lost:    db 0                    ; ≠ 0: μια εργασία εργοταξίου δεν μπήκε (βήμα 115)
 sp_m:       db 0                    ; φορτία μετάλλου, και δίπλα του
 sp_b:       db 0                    ; βιοπλαστικού (bd_commit, sp_jobs)
         assert  sp_b == sp_m + 1

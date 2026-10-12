@@ -133,7 +133,7 @@ sv_after:
         ld      bc,B5_BASE - #4001      ; ως τις μηχανές (βήμα 85)
         call    ng_zero
         call    dt_end
-        call    wheel_reset
+        call    wheel_load              ; και το σάρωμα των εργασιών (βήμα 115)
         call    rt_mark
         call    dirty_reset
         call    gh_reset

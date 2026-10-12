@@ -209,6 +209,9 @@ class Econ:
         self.mines = 0              # έτοιμα ορυχεία, από τον κύκλο ροής (βήμα 94)
         self.lands = 0              # EC_LANDS: προσγειώσεις από τους τελευταίους εισβολείς (βήμα 111)
         self.air_out = 255          # airlock που ξανάγινε εργοτάξιο (βήμα 90)
+        # jb_lost (βήμα 115, src/supply.asm): μια εργασία εργοταξίου δεν χώρεσε.
+        # Το σηκώνει και κάθε φόρτωση (wheel_load), όχι το νέο παιχνίδι.
+        self.lost = False
         self.dist = None            # ο πίνακας αποστάσεων, δίνεται απ' έξω
 
 
@@ -406,6 +409,8 @@ def flow_cycle(e):
             if n < MINE_OPS and post_drill(e, MAX_DOME + i):
                 e.struct[st + ST_OPS] |= 0x80
             haul_pile(e, i)
+    if e.lost:                              # βήμα 115: src/repost.asm
+        sweep(e)
 
     e.power_prod, e.power_cap, e.power_use = prod, cap, use
     if prod >= use:
@@ -648,6 +653,7 @@ def _impact(e):
     else:
         rec[base + ST_STATE] = DS_BUILDING  # ξανά εργοτάξιο
         rec[base + ST_INTEG] = 0
+        rec[base + ST_OWED] = 0             # ο σωρός ενός ορυχείου σκορπίζει (βήμα 115)
         e.flow_div = 1
         # Ενα airlock χωρίς αέρα: όσοι στέκονταν μέσα του βγαίνουν (βήμα 90,
         # lk_air_out). Οι πράκτορες δεν είναι εδώ: το κάνει το Sim.tick.
@@ -667,14 +673,25 @@ def indoor_node(e, n):
 
 
 def post_build(e, node):
-    """Μία εργασία Build στην πρώτη ελεύθερη θέση (src/jobs.asm, jb_post_build)."""
-    for j in range(MAX_JOB):
-        b = j * JOB_REC
-        if e.job[b + J_KIND] == NO_JOB:
-            e.job[b:b + JOB_REC] = bytes([J_BUILD, node, 255, 5, node])
-            e.nbuild += 1                       # EC_NBUILD (βήμα 88, sp_build)
-            return b
-    return None
+    """Μία εργασία Build στην πρώτη ελεύθερη θέση (src/supply.asm, jb_post_build).
+    Με τον πίνακα γεμάτο (βήμα 115), στη θέση της αδιάθετης Operate ή Repair
+    με τη χαμηλότερη προτεραιότητα (την πρώτη στην ισοπαλία)· αν δεν υπάρχει,
+    τίποτα, και το jb_lost."""
+    at = next((j * JOB_REC for j in range(MAX_JOB)
+               if e.job[j * JOB_REC + J_KIND] == NO_JOB), None)
+    if at is None:
+        best = 255
+        for j in range(MAX_JOB):
+            b = j * JOB_REC
+            if e.job[b + J_KIND] in (J_OPERATE, J_REPAIR) and e.job[b + J_AGENT] == 255 \
+                    and e.job[b + J_PRIO] < best:
+                best, at = e.job[b + J_PRIO], b
+    if at is None:
+        e.lost = True
+        return None
+    e.job[at:at + JOB_REC] = bytes([J_BUILD, node, 255, 5, node])
+    e.nbuild += 1                           # EC_NBUILD (βήμα 88, sp_build)
+    return at
 
 
 SP_PRIO = 4                 # src/supply.asm: κάτω από το Build
@@ -687,6 +704,47 @@ def post_supply(e, node, kind):
         e.job[b + J_KIND] = kind
         e.job[b + J_PRIO] = SP_PRIO
         e.nbuild -= 1                           # δεν είναι Build
+    return b
+
+
+def want(e, n):
+    """Το sp_want (βήμα 115, src/repost.asm): οι εργασίες που ζητά η κατάσταση
+    του κόμβου — bit 0 Supply μετάλλου, 1 βιοπλαστικού, 2 Build."""
+    if n >= MAX_DOME:
+        b = (n - MAX_DOME) * STRUCT_REC
+        if e.struct[b + ST_STATE] != DS_BUILDING:
+            return 0
+        o = e.struct[b + ST_OWED]
+        return (1 if o >= 0x10 else 0) | (2 if o & 15 else 0) if o else 4
+    b = n * DOME_REC
+    st = e.dome[b + D_STATE]
+    if not st:
+        return 0
+    w = 0
+    for s in range(MACHINE_COUNT[e.dome[b + D_SIZE]]):
+        h = e.dome[b + D_HEALTH + s]
+        if h and not h & 0x80:
+            w |= h & 3 if h & 3 else 4
+    if st != DS_BUILDING:
+        return w
+    w &= 3                                  # τις έτοιμες τις στήνει ο χτίστης του
+    p, o = e.dome[b + D_POWER], e.dome[b + D_OPS]
+    if not p | o:
+        return w | 4
+    return w | (1 if p else 0) | (2 if o else 0)
+
+
+def sweep(e):
+    """Το sp_sweep (βήμα 115): για κάθε κόμβο, όποια εργασία ζητά η κατάστασή
+    του και λείπει από τον πίνακα· στην πρώτη που δεν χωρά, τέλος."""
+    e.lost = False
+    for n in range(MAX_DOME + MAX_STRUCT):
+        w = want(e, n)
+        for bit, kind in ((1, J_SUPPLY), (2, J_SUPPLY + 1), (4, J_BUILD)):
+            if w & bit and not find_job(e, kind, n):
+                b = post_build(e, n) if kind == J_BUILD else post_supply(e, n, kind)
+                if b is None:
+                    return
 
 
 def owed(e, node, mat):

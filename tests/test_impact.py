@@ -20,7 +20,10 @@ tile, γεμάτος πίνακας εργασιών, σπόρος που θα �
                   γεμάτη, σηκώνεται η σημαία
   και ακόμα       mt_boom = 1 σε κάθε κρούση, ec_fdiv = 1 όταν μια δομή ξαναγίνει
                   εργοτάξιο, eb_d/eb_s όταν σταματά μηχανή θόλου, και η τράπεζα 6
-                  στο παράθυρο όταν γυρίζει
+                  στο παράθυρο όταν γυρίζει· από το βήμα 115 το jb_lost (το
+                  πάνω byte της διεύθυνσής του) όταν η Build δεν βρίσκει θέση ούτε
+                  δίνοντας μια αδιάθετη Operate ή Repair, και ο σωρός ενός
+                  ορυχείου που ξαναγίνεται εργοτάξιο 0 (από την αναφορά)
 
 — και τίποτε άλλο: ούτε ένα byte εκτός από τη στοίβα.
 
@@ -249,6 +252,7 @@ def expect(R, before, r1):
     e.nbuild = raw[91]                       # EC_NBUILD (βήμα 88)
     e.frame = raw[52] | (raw[53] << 8)
     e.flow_div = 255
+    e.lost = False                           # βήμα 115: σηκώνεται μόνο αν δεν χώρεσε
     impact = e.meteor > 0
     if impact:
         f = copy.copy(e)
@@ -284,6 +288,8 @@ def expect(R, before, r1):
 
     if e.flow_div == 1:
         poke("EC_FDIV", 1)
+    if e.lost:
+        poke("JB_LOST", sym["JB_LOST"] >> 8)  # ld hl,jb_lost · ld (hl),h
     if not impact:
         return b, "αρχή" if started else "ήσυχο"
     poke("MT_BOOM", 1)
