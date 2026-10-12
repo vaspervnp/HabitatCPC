@@ -8,8 +8,37 @@
                        το αποτύπωμα, στις στήλες cx-1, cx, cx-2, cx+1· οι 1,
                        5, 3, 7 στη σειρά ακριβώς από πάνω του
   ΠΕΡΠΑΤΑ έξω          από το μπροστινό σημείο του ενός κόμβου (cx, cy + μισό
-                       ύψος) ως του άλλου, a + (b - a) * progress / 256, στη
-                       στήλη της θέσης 0
+                       ύψος) ως του άλλου, στη στήλη x - 1 (της θέσης 0) —
+                       πάνω στα σκέλη του μονοπατιού, παρακάτω, στη στήλη x
+                       (βήμα 118). Με τα δύο σημεία στην ίδια
+                       στήλη ή σειρά, η ευθεία a + (b - a) * progress / 256,
+                       όπως ως το βήμα 117. Αλλιώς ένα Γ (βήμα 118), πρώτα
+                       κατά x — εκτός αν και οι δύο είναι δομές και η μία
+                       κρέμεται από την άλλη (το LK_OWN της χωρίς τα bits 7
+                       και 5 είναι η άλλη): τότε το Γ που κράτησε εκείνη, με
+                       το bit 7 «πρώτα κατά y», περπατημένο από τη δική της
+                       άκρη, ή ανάποδα από την άλλη. Στο πρώτο μισό του
+                       progress το πρώτο σκέλος, a + (b - a) * 2p / 256, στο
+                       δεύτερο το δεύτερο, με 2p - 256. ΠΟΙΟ Γ: δύο δομές,
+                       και η γωνία του μονοπατιού — η στήλη του ενός κέντρου
+                       και η σειρά του κέντρου του άλλου (πρώτα κατά x, του
+                       από πού, cy = μπροστινό - μισό ύψος) — έξω και από τα
+                       δύο αποτυπώματα (στήλες cx - w ως cx + w - 1, σειρές
+                       cy - h ως cy + h - 1, w το μισό πλάτος, h το μισό
+                       ύψος): με progress 0 στο μπροστινό σημείο, και μετά
+                       το κομμάτι του Γ έξω από τα αποτυπώματα, από το
+                       πρώτο κελί δίπλα στο αποτύπωμα από όπου φεύγει (ή,
+                       πρώτα κατά y με τη γωνία πάνω του, το κελί από
+                       πάνω του) ως τη γωνία, και από τη γωνία ως το κελί
+                       δίπλα στο αποτύπωμα όπου φτάνει (ή, πρώτα κατά x, το
+                       μπροστινό του σημείο αν φτάνει από κάτω, το κελί
+                       πάνω του αν από πάνω). Με τη γωνία στη σειρά ενός
+                       από τα δύο αποτυπώματα (πρώτα κατά x του πού, πρώτα
+                       κατά y του από πού), μόνο το x, a + (b - a) *
+                       progress / 256, στη σειρά ay· αλλιώς με τη γωνία στη
+                       στήλη του άλλου, μόνο το y, στη στήλη ax. Με έναν
+                       θόλο στη μία άκρη, ένα Γ πρώτα κατά x με γωνία τη
+                       στήλη bx και τη σειρά ay
   αλλιώς               πουθενά: σε θόλο (ο δακτύλιος), στον σωλήνα, νεκρός
 
 Το μοντέλο εδώ είναι γραμμένο από αυτή την πρόζα, όχι από τον κώδικα.
@@ -24,6 +53,19 @@
             μηχανής την κάνει, ώστε η λίστα της κανονικής να μην ξαναχτίζεται
             ποτέ: ό,τι μαζεύεται βήμα με βήμα, μένει). Τουλάχιστον τέσσερα
             διαφορετικά κελιά στον δρόμο.
+  ΓΩΝΙΑ     (βήμα 118) σε αντίγραφο με το ηλιακό του ΔΡΟΜΟΥ χτισμένο: ένας
+            πράκτορας που δεν υπάρχει (ο 127) σε μια ακμή, και το fg_want για
+            ΚΑΘΕ progress 0-255 = το μοντέλο. Σκάφος προς ηλιακό και ανάποδα,
+            με το Γ όπως χτίστηκε, κρατημένο πρώτα κατά x, πρώτα κατά y, ως
+            σύνδεση εδάφους, από την άλλη πλευρά (το σκάφος κρέμεται από το
+            ηλιακό), από έναν τρίτο, από κανέναν· σκάφος και θόλος (ένας θόλος
+            0 μόνο στον πίνακα, όσο τον διαβάζει το fw_xy), με το LK_OWN του
+            σκάφους «0, πρώτα κατά y». Ολα σε πέντε θέσεις του ηλιακού — εκεί
+            που χτίστηκε, βορειοδυτικά (αρνητικές διαφορές), μία και δύο
+            στήλες δίπλα στο σκάφος νότια, μία σειρά κάτω από το κέντρο του —
+            και η ευθεία, με το ηλιακό και τον θόλο στη στήλη και στη σειρά
+            του σκάφους: 102 ακμές. Και οι δομές είναι τετράγωνες (το fw_leg
+            διαβάζει το μισό ύψος ως μισό πλάτος).
   ΘΟΛΟΣ     ο πρώτος θόλος: στο εργοτάξιο οι φιγούρες φεύγουν από τη λίστα και
             μπαίνουν στον δακτύλιο, στο τέλος όλοι βγαίνουν στο σκάφος (lk_out)
             — με τους ίδιους ελέγχους σε κάθε δείγμα.
@@ -79,7 +121,14 @@ fg_paint (το νέο κελί άδειο), χωρίς το fg_build στο view
 φλέβα σε λάθος τέταρτο (το ΚΕΛΙ)· το τελευταίο βήμα του πολλαπλασιασμού του fg_want
 χωρίς rra (ο ΔΡΟΜΟΣ)· η φλέβα που δεν χρεώνεται (τα ΜΕΡΗ)· χωρίς τη χρέωση όσων
 έχουν το ίδιο ux, και πάντα το γενικό πέρασμα σε ελεύθερο έδαφος (το ΚΟΣΤΟΣ και
-τα ταβάνια του).
+τα ταβάνια του). Από το βήμα 118, η ΓΩΝΙΑ: χωρίς το cpl (το Γ από την άλλη
+άκρη), πάντα πρώτα κατά x, και με θόλο στη μία άκρη, το bit του εδάφους να
+μετρά, χωρίς την ευθεία σε ίδια στήλη, χωρίς την ευθεία σε ίδια σειρά, και το
+δεύτερο μισό του «πρώτα κατά x» χωρίς τη στήλη bx· η γωνία στη σειρά του
+μπροστινού σημείου, χωρίς τον έλεγχο της στήλης, χωρίς τον έλεγχο της σειράς,
+το πρώτο σκέλος από το κέντρο, με progress 0 ήδη στο μονοπάτι, πρώτα κατά y
+πάνω από το P χωρίς το cpl, πρώτα κατά y ως τη στήλη του κέντρου του Q, το
+σκέλος στη στήλη της θέσης 0, και η σειρά μέσα στο Q που κινεί μόνο το y.
 """
 import ctypes, os, sys
 
@@ -130,8 +179,11 @@ class G:
     def __init__(self, sym, g, patch=(), m=None):
         self.sym, self.g, self.L = sym, g, TO.layout()
         self.m = m or B.boot(sym, TG.SNA)
-        for at, v in patch:
-            self.m.poke(at, v)
+        for at, v, *bk in patch:
+            if bk:                       # (at, v, 6): ο κώδικας του τροχού (b6code)
+                self.bank(bk[0])[at - 0x4000] = v
+            else:
+                self.m.poke(at, v)
 
     def bank(self, n):
         p = cpc._lib.cpcemu_ram_ptr(self.m._h, n)
@@ -178,10 +230,71 @@ class G:
         if f & 2:
             return None
         to = self.m.peek(self.L["G_node_adj"] + 8 * node + edge)
-        p = self.ag(i, 768)
-        ax, ay, _ = self.front(node)
-        bx, by, _ = self.front(to)
-        return (self.lerp(ax, bx, p) - 1, self.lerp(ay, by, p), fig)
+        x, y = self.walk(node, to, self.ag(i, 768))
+        return (x, y, fig)                       # η στήλη: το walk
+
+    def dims(self, n):
+        """(μισό πλάτος, μισό ύψος) σε μισά tiles."""
+        if n < 64:
+            h = 4 + 2 * self.b6(self.L["G_dome_tbl"] + 24 * n + 2)
+            return h, h
+        r = self.L["G_struct_tbl"] + 8 * (n - 64)
+        at = self.L["G_struct_dims"] + (self.b6(r + 2) * 4 + self.b6(r + 3)) * 2
+        return self.m.peek(at) // 4, self.m.peek(at + 1) // 16
+
+    def inside(self, n, x, y):
+        (cx, fy, h), (w, _) = self.front(n), self.dims(n)
+        return cx - w <= x < cx + w and fy - 2 * h <= y < fy
+
+    def own(self, n):
+        """LK_OWN + δομή (βήμα 102): η άκρη της σύνδεσής της, το bit 5 αν είναι
+        σύνδεση εδάφους, το bit 7 «πρώτα κατά y»."""
+        return self.m.peek(self.L["G_rt_nodes"] + 32 + n)
+
+    def yfirst(self, a, b):
+        if a >= 64 and b >= 64:
+            if (self.own(b) & 0x5F) == a:
+                return not (self.own(b) & 0x80)
+            if (self.own(a) & 0x5F) == b:
+                return bool(self.own(a) & 0x80)
+        return False
+
+    def walk(self, a, b, p):
+        """Το κελί όποιου περπατά από το a στο b με αυτό το progress: στη στήλη
+        της θέσης 0 (x - 1), εκτός από τα σκέλη του μονοπατιού."""
+        x, y, on_path = self.walk_c(a, b, p)
+        return (x if on_path else x - 1), y
+
+    def walk_c(self, a, b, p):
+        """Το σημείο (x, y), και αν είναι πάνω σε σκέλος του μονοπατιού."""
+        ax, ay, ha = self.front(a)
+        bx, by, hb = self.front(b)
+        if ax == bx or ay == by:
+            return self.lerp(ax, bx, p), self.lerp(ay, by, p), False
+        q, lerp = 2 * p, self.lerp
+        both = a >= 64 and b >= 64
+        yf = both and self.yfirst(a, b)
+        kx, ky = (ax, by - hb) if yf else (bx, ay - ha)        # η γωνία του μονοπατιού
+        if both:
+            # η γωνία στη σειρά ενός αποτυπώματος (ελέγχεται πρώτα: του πού
+            # πρώτα κατά x, του από πού πρώτα κατά y): μόνο το x· στη στήλη του:
+            # μόνο το y
+            row, col = (a, b) if yf else (b, a)
+            if self.inside(row, kx, ky):
+                return lerp(ax, bx, p), ay, False
+            if self.inside(col, kx, ky):
+                return ax, lerp(ay, by, p), False
+            if p == 0:
+                return ax, ay, False
+            wa, wb = self.dims(a)[0], self.dims(b)[0]
+            if not yf:
+                x0 = ax + wa if bx > ax else ax - wa - 1
+                end = by if ky >= by else by - 2 * hb - 1
+                return ((lerp(x0, bx, q), ky) if q < 256 else (bx, lerp(ky, end, q - 256))) + (True,)
+            y0 = ay if ky >= ay else ay - 2 * ha - 1
+            x1 = bx - wb - 1 if bx > ax else bx + wb
+            return ((ax, lerp(y0, ky, q)) if q < 256 else (lerp(ax, x1, q - 256), ky)) + (True,)
+        return ((lerp(ax, bx, q), ay) if q < 256 else (bx, lerp(ay, by, q - 256))) + (False,)
 
     def model(self):
         return {i: w for i in range(128) if (w := self.want(i)) is not None}
@@ -255,10 +368,10 @@ class G:
             ctypes.memmove(ctypes.addressof(dst.contents), ctypes.addressof(src.contents), 0x4000)
         return G(self.sym, self.g, m=c)
 
-    def probe(self, body):
+    def probe(self, body, step=2):
         """di, δική του στοίβα, Mode 0 χωρίς ROM (hw_mode0 — το αντίγραφο
         ξεκινά από την κεφαλίδα του snapshot), το body, σημαία. -> us από την
-        αρχή του body ως τη σημαία."""
+        αρχή του body ως τη σημαία, σε βήματα των `step` us."""
         m = self.m
         code = [0xF3, 0x31, STACK & 255, STACK >> 8] + self.call("HW_MODE0") + body + \
                [0x3E, 0x5A, 0x32, FLAG & 255, FLAG >> 8, 0x18, 0xFE]
@@ -267,8 +380,8 @@ class G:
         m.set_pc(PROBE)
         us = 0
         while m.peek(FLAG) != 0x5A:
-            m.run_us(2)
-            us += 2
+            m.run_us(step)
+            us += step
             assert us < 5_000_000, "η probe δεν τελείωσε"
         return us
 
@@ -362,6 +475,110 @@ def scenario(sym, g, patch=(), quiet=False):
         return f"ΔΡΟΜΟΣ: μόνο {sorted(road)} στον δρόμο — η κίνηση δεν φάνηκε"
     say(f"ΔΡΟΜΟΣ: 36 δείγματα, λίστα = μοντέλο και οθόνη = πλήρης σχεδίαση σε όλα· "
         f"κελιά στον δρόμο {sorted(road)}")
+    return None
+
+
+AG = 127                                                 # κανείς δεν είναι ο 127
+K_SHIP = 7                                               # src/const.asm: το τελευταίο είδος δομής
+
+
+def corner(w, patch=(), quiet=False):
+    """ΓΩΝΙΑ, σε αντίγραφο του w (το ηλιακό του ΔΡΟΜΟΥ χτισμένο), με το patch
+    στην τράπεζα 6. Η πρώτη διαφορά από την πρόζα, ή None."""
+    c = w.clone()
+    b6, L, m = c.bank(6), c.L, c.m
+    for at, v in patch:
+        b6[at - 0x4000] = v
+    st = lambda n, k: L["G_struct_tbl"] + 8 * (n - 64) + k - 0x4000
+    home = (b6[st(65, 0)], b6[st(65, 1)])
+    sx, sy = sb(b6[st(64, 0)]), sb(b6[st(64, 1)])
+    d0 = L["G_dome_tbl"] - 0x4000                        # ο θόλος 0: cx, cy, μέγεθος
+    b6[d0], b6[d0 + 1], b6[d0 + 2] = (sx + 9) & 255, (sy + 13) & 255, 1
+    f = L["G_agent_fields"] - 0x4000
+    b6[f + AG], b6[f + 128 + AG], b6[f + 640 + AG] = 1, 0, 7   # ζωντανός, έξω, ακμή 7
+    adj, own = L["G_node_adj"], lambda n: L["G_rt_nodes"] + 32 + n
+    built = (m.peek(own(64)), m.peek(own(65)))
+    if (built[1] & 0x5F) != 64:
+        return f"ΓΩΝΙΑ: το ηλιακό δεν κρέμεται από το σκάφος (LK_OWN {built[1]:#x})"
+    # ΟΙ ΔΟΜΕΣ ΕΙΝΑΙ ΤΕΤΡΑΓΩΝΕΣ: το fw_leg διαβάζει το μισό ύψος ως μισό πλάτος
+    d = L["G_struct_dims"]
+    odd = [(k, z) for k in range(K_SHIP + 1) for z in range(4)
+           if m.peek(d + (k * 4 + z) * 2) // 4 != m.peek(d + (k * 4 + z) * 2 + 1) // 16]
+    if odd:
+        return f"ΓΩΝΙΑ: δομές που δεν είναι τετράγωνες (είδος, μέγεθος): {odd}"
+    pw = c.sym["FG_WANT"]
+    pg = L["G_agent_fields"] + 768 + AG
+    # p = 0..255, και για καθένα A, D, E του fg_want στην οθόνη (#C000, τράπεζα 3)
+    body = [0x01, 0xC6, 0x7F, 0xED, 0x49,                   # ld bc,#7FC6 / out (c),c
+            0x21, 0x00, 0xC0, 0x22, 0xF0, 0x3E, 0xAF,       # ld hl,#C000 / ld (#3EF0),hl / xor a
+            0x32, pg & 255, pg >> 8, 0x2E, AG,              # lp: ld (progress),a / ld l,AG
+            0xCD, pw & 255, pw >> 8,                        # call fg_want
+            0x2A, 0xF0, 0x3E, 0x77, 0x23, 0x72, 0x23, 0x73, 0x23,  # ld hl,(#3EF0) / A, D, E
+            0x22, 0xF0, 0x3E, 0x3A, pg & 255, pg >> 8, 0x3C, 0x20, 0x100 - 26]
+    assert body[-1] == 0x100 - (len(body) - 12)
+    n = 0
+
+    def case(label, a, b, o64, o65):
+        nonlocal n
+        m.poke(own(64), o64)
+        m.poke(own(65), o65)
+        m.poke(adj + 8 * a + 7, b)
+        b6[f + 256 + AG] = a
+        c.probe(body, step=500)
+        scr = c.bank(3)
+        for p in range(256):
+            b6[f + 768 + AG] = p
+            want = c.want(AG)
+            got = (sb(scr[3 * p + 1] ^ 128), sb(scr[3 * p + 2] ^ 128), scr[3 * p])
+            if got != want:
+                return f"ΓΩΝΙΑ: {label}, {a} -> {b}, p = {p}: fg_want {got}, η πρόζα {want}"
+        n += 1
+        return None
+
+    def both(label, o64, o65):
+        return case(label, 64, 65, o64, o65) or case(label, 65, 64, o64, o65)
+
+    places = (("όπου χτίστηκε", home), ("βορειοδυτικά", ((sx - 11) & 255, (sy - 9) & 255)),
+              ("μία στήλη δίπλα, νότια", ((sx + 1) & 255, (sy + 9) & 255)),
+              ("δύο στήλες δίπλα, νότια", ((sx + 2) & 255, (sy + 9) & 255)),
+              ("σχεδόν στη σειρά", (home[0], (sy + 1) & 255)))
+    for where, (x, y) in places:
+        b6[st(65, 0)], b6[st(65, 1)] = x, y
+        a, b = c.front(64), c.front(65)
+        if a[0] == b[0] or a[1] == b[1]:
+            return f"ΓΩΝΙΑ: {where}, το ηλιακό στη στήλη ή στη σειρά του σκάφους — κανένα Γ"
+        why = (both(f"{where}, όπως χτίστηκε", *built)
+               or both(f"{where}, πρώτα κατά x", 0, 64)
+               or both(f"{where}, πρώτα κατά y", 0, 64 | 0x80)
+               or both(f"{where}, σύνδεση εδάφους", 0, 64 | 0x20)
+               or both(f"{where}, εδάφους πρώτα κατά y", 0, 64 | 0xA0)
+               or both(f"{where}, το σκάφος από το ηλιακό", 65 | 0x80, 0)
+               or both(f"{where}, από έναν τρίτο", 0, 66 | 0x80)
+               or both(f"{where}, από κανέναν", 0, 0)
+               or case(f"{where}, θόλος", 64, 0, 0x80, 0)
+               or case(f"{where}, θόλος", 0, 64, 0x80, 0))
+        if why:
+            return why
+    b6[st(65, 0)], b6[st(65, 1)] = home
+    hy = sb(home[1]) + c.front(64)[1] - c.front(65)[1]       # το cy όπου τα μπροστινά συμπίπτουν
+    # ο θόλος κι αυτός στη στήλη ή στη σειρά του σκάφους: ανάμεσα σε δύο δομές η
+    # ευθεία είναι και αυτό που δίνει η γωνία μέσα σε αποτύπωμα, στον θόλο όχι
+    hd = 4 + 2 * b6[d0 + 2]                               # το μισό του θόλου 0
+    for where, (x, y), (dx, dy) in (
+            ("στη στήλη του σκάφους", (sx & 255, home[1]), (sx, sy + 13)),
+            ("στη σειρά του σκάφους", (home[0], hy & 255), (sx + 9, sy + 2 - hd))):
+        b6[st(65, 0)], b6[st(65, 1)] = x, y
+        b6[d0], b6[d0 + 1] = dx & 255, dy & 255
+        a, b, d = c.front(64), c.front(65), c.front(0)
+        if (a[0] == b[0]) == (a[1] == b[1]) or (a[0] == d[0]) == (a[1] == d[1]):
+            return f"ΓΩΝΙΑ: {where}: τα μπροστινά σημεία {a[:2]}, {b[:2]}, {d[:2]}"
+        why = (both(f"{where}, η ευθεία", 0, 64) or both(f"{where}, η ευθεία", 0, 64 | 0x80)
+               or case(f"{where}, θόλος", 64, 0, 0, 0) or case(f"{where}, θόλος", 0, 64, 0, 0))
+        if why:
+            return why
+    if not quiet:
+        print(f"    ΓΩΝΙΑ: {n} ακμές x 256 τιμές του progress, fg_want = μοντέλο σε όλες "
+              f"(το Γ όπως χτίστηκε: LK_OWN {built[1]:#04x})")
     return None
 
 
@@ -784,6 +1001,11 @@ def main():
     sym, g = TG.build()
     why = scenario(sym, g)
     check(why is None, why or "ΑΡΧΗ και ΔΡΟΜΟΣ: όπως λέει η πρόζα")
+    base = G(sym, g)
+    B.build(base.m, sym, 4, g + 6, at=SOLAR_AT, fit=False)
+    look(base.m)
+    why = corner(base)
+    check(why is None, why or "ΓΩΝΙΑ: όπως λέει η πρόζα")
     why = dome(sym, g)
     check(why is None, why or "ΘΟΛΟΣ: όπως λέει η πρόζα")
     why = meteor(sym, g)
@@ -887,6 +1109,55 @@ def main():
             fn(sym, g, patch, out=lambda ok, msg: bad.append(not ok))
         check(patch and any(bad), f"ΑΡΝΗΤΙΚΟ: με «{label}» το {'ΜΕΡΗ' if fn is parts else 'ΚΟΣΤΟΣ'} "
                                   f"αποτυγχάνει ({sum(bad)} από {len(bad)} έλεγχοι)")
+
+    # βήμα 118: το Γ (src/walk6.asm, b6code)
+    b6 = base.bank(6)
+    fl = sym["FW_LEG"]
+
+    def find6(at, pat, n=96):
+        return next((at + k for k in range(n)
+                     if list(b6[at + k - 0x4000:at + k - 0x4000 + len(pat)]) == pat), None)
+
+    cl = sym["FWL_OWN"] - 1
+    a64 = find6(fl, [0xE6, 0x40, 0x28])                           # and 64 / jr z,fwl_x
+    g1 = find6(fl, [0xE6, 0x5F])
+    g2 = g1 and find6(g1 + 2, [0xE6, 0x5F])
+    ly = find6(fl, [0x7A, 0xBC, 0x28])                            # ld a,d / cp h / jr z,fwl_ly
+    lx = find6(fl, [0x7B, 0xBD, 0x28])                            # ld a,e / cp l / jr z,fwl_lx
+    dh = find6(sym["FWL_X"], [0x30], 8)                           # jr nc,fwl_mx / ld d,h
+    pr = find6(sym["FWL_PX"], [0x7B, 0x90, 0x4F], 4)              # ld a,e / sub b / ld c,a
+    pc = find6(sym["FPX_C"], [0x7C, 0x90, 0xFA], 16)              # ld a,h / sub b / jp m,fwl_xr
+    ps = find6(sym["FWL_PX"], [0x6F, 0x91, 0xFA], 24)             # ld l,a / sub c / jp m,fwl_xr
+    po, pg = sym["FPX_C"], sym["FPX_GO"]                          # ... add a,b; ... jp z,fw_out
+    yc = find6(sym["FWL_PY"], [0x78, 0x87, 0x2F, 0x83], 24)       # ld a,b / add a,a / cpl / add a,e
+    yx = find6(sym["FPY_E"], [0x91, 0x3D], 4)                     # sub c / dec a
+    fa = sym["FW_AXIS"]
+    ia = find6(sym["FPX_GO"], [0xCD, fa & 255, fa >> 8, 0x3C], 24)  # call fw_axis / inc a
+    for label, patch in (
+            ("χωρίς το cpl", b6[cl - 0x4000] == 0x2F and [(cl, 0)]),
+            ("πάντα πρώτα κατά x", b6[cl + 1 - 0x4000] == 0x17 and [(cl + 1, 0xB7)]),   # rla -> or a
+            ("και με θόλο στη μία άκρη", a64 and [(a64 + 2, 0), (a64 + 3, 0)]),
+            ("το bit του εδάφους μετρά", g2 and [(g1 + 1, 0x7F), (g2 + 1, 0x7F)]),
+            ("χωρίς την ευθεία σε ίδια στήλη", ly and [(ly + 2, 0), (ly + 3, 0)]),
+            ("χωρίς την ευθεία σε ίδια σειρά", lx and [(lx + 2, 0), (lx + 3, 0)]),
+            ("το δεύτερο μισό του «πρώτα κατά x» χωρίς τη στήλη bx",
+             dh and b6[dh + 2 - 0x4000] == 0x54 and [(dh + 2, 0)]),
+            ("η γωνία στη σειρά του μπροστινού σημείου", pr and [(pr + 1, 0)]),
+            ("χωρίς τον έλεγχο της στήλης", pc and [(pc + 2, 0), (pc + 3, 0), (pc + 4, 0)]),
+            ("χωρίς τον έλεγχο της σειράς", ps and [(ps + 2, 0), (ps + 3, 0), (ps + 4, 0)]),
+            ("το πρώτο σκέλος από το κέντρο", b6[po + 6 - 0x4000] == 0x80 and [(po + 6, 0)]),
+            ("με progress 0 ήδη στο μονοπάτι",
+             b6[pg + 6 - 0x4000] == 0xCA and [(pg + 6, 0), (pg + 7, 0), (pg + 8, 0)]),
+            ("πρώτα κατά y, πάνω από το P χωρίς το cpl", yc and [(yc + 2, 0)]),
+            ("πρώτα κατά y, ως τη στήλη του κέντρου του Q", yx and [(yx, 0), (yx + 1, 0)]),
+            ("το σκέλος στη στήλη της θέσης 0", ia and [(ia + 3, 0)]),
+            ("η σειρά μέσα στο Q, μόνο το y", ps and [(ps + 3, sym["FWL_LYR"] & 255),
+                                                       (ps + 4, sym["FWL_LYR"] >> 8)])):
+        if not patch:
+            check(False, f"δεν βρέθηκε πού να πειραχτεί για «{label}»")
+            continue
+        why = corner(base, patch, quiet=True)
+        check(why is not None, f"ΑΡΝΗΤΙΚΟ: με «{label}» η ΓΩΝΙΑ αποτυγχάνει ({(why or '')[:110]})")
 
     if FAIL:
         print(f"\nΑΠΟΤΥΧΙΑ — {len(FAIL)}")

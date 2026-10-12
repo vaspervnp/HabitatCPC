@@ -257,6 +257,9 @@ done_flag:  db 0
         include "../src/objindex.asm"
         include "../src/span.asm"           ; βήμα 108: στην τράπεζα 0, όπως στο παιχνίδι
         include "../src/span6.asm"          ; βήμα 114: στο παιχνίδι στο b6code
+LKO_GROUND equ #20                          ; src/link.asm και src/graph.asm, που εδώ
+NODEPG  equ G_rt_nodes >> 8                 ; δεν υπάρχουν (το walk6.asm τα διαβάζει)
+        include "../src/walk6.asm"          ; βήμα 118: στο παιχνίδι στο b6code
 ; τα DK_RSIZE και DK_RECT της κατεδάφισης (βήμα 101) ζουν στις τρύπες του
 ; DIST (src/dm_ovl.asm), που εδώ δεν υπάρχουν· κανείς δεν τα σπρώχνει.
 DH_RSIZE    equ 0

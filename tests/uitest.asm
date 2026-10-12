@@ -278,6 +278,7 @@ snoop_buf:  defs 96
         ; χτίσιμο του ευρετηρίου, που στο παιχνίδι ζει στην τράπεζα 2.
         include "../src/span.asm"
         include "../src/span6.asm"          ; βήμα 114: στο παιχνίδι στο b6code
+        include "../src/walk6.asm"          ; βήμα 118: στο παιχνίδι στο b6code
         include "../src/objindex.asm"
         assert  $ <= #C000
         org     #7000

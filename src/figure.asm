@@ -8,9 +8,11 @@
 ;   ΣΤΕΚΕΤΑΙ σε δομή      στη θέση του (slot) γύρω της: οι 0, 4, 2, 6 σε μια
 ;                         σειρά ακριβώς κάτω από το αποτύπωμα, οι 1, 5, 3, 7
 ;                         από πάνω του (fw_dx)
-;   ΠΕΡΠΑΤΑ έξω           στην ευθεία από το μπροστινό σημείο του ενός
-;                         κόμβου ως του άλλου (fw_xy), όσο λέει το progress:
-;                         ένα βήμα ανά βήμα κίνησης (§6.3)
+;   ΠΕΡΠΑΤΑ έξω           από το μπροστινό σημείο του ενός κόμβου ως του
+;                         άλλου (fw_xy), όσο λέει το progress, στη στήλη της
+;                         θέσης 0 — και από το βήμα 118 στο Γ του μονοπατιού,
+;                         στη στήλη του κέντρου πάνω στα σκέλη του (fw_leg,
+;                         src/walk6.asm): ένα βήμα ανά βήμα κίνησης (§6.3)
 ;   οτιδήποτε άλλο        τίποτα — θόλος (ο δακτύλιος), σωλήνας, νεκρός
 ;
 ; ΜΙΑ ΛΙΣΤΑ ΜΕ Ο,ΤΙ ΖΩΓΡΑΦΙΣΤΗΚΕ, ΟΧΙ Ο,ΤΙ ΙΣΧΥΕΙ. Η λίστα (τράπεζα 6, ως 64)
@@ -737,23 +739,18 @@ fw_walk:
         add     a,c
         ld      l,a
         ld      a,(hl)
+        ld      (fw_q),a
         call    fw_xy
+        dec     d                       ; η στήλη της θέσης 0 (fw_dx)
         ld      (fw_b),de               ; by, bx
+        ld      a,b
+        ld      (fw_hb),a               ; το μισό του
         pop     af
-        call    fw_xy                   ; D = ax, E = ay
-        ld      a,(fw_p)
         ld      c,a
-        ld      a,(fw_b)
-        call    fw_axis
-        push    af
-        ld      e,d
-        ld      a,(fw_b + 1)
-        call    fw_axis
-        dec     a                       ; η στήλη της θέσης 0 (fw_dx)
-        ld      d,a
-        pop     af
-        ld      e,a
-        jr      fw_out
+        call    fw_xy                   ; D = ax, E = ay, B = ha· κρατά το C
+        dec     d
+        jp      fw_leg                  ; πάνω στο Γ (βήμα 118, src/walk6.asm),
+                                        ; και από εκεί στο fw_out
 
 ; fw_axis — A = b, E = a (προσημασμένα), C = p -> A = a + (b - a) * p / 256.
 ; Η διαφορά είναι ως ±255, εννέα bits: το πρόσημο στο CY, και ο
@@ -798,13 +795,13 @@ fw_xy:
         cp      MAX_DOME
         jr      nc,fwx_st
         call    ob_domeadr
-        inc     hl
-        inc     hl
+        inc     l                       ; μια εγγραφή θόλου δεν περνά σελίδα
+        inc     l                       ; στα 8 πρώτα της (assert στο τέλος)
         ld      a,(hl)                  ; D_SIZE: πλευρά 4 + 2 x μέγεθος tiles
         add     a,a
         add     a,4
-        dec     hl
-        dec     hl
+        dec     l
+        dec     l
         jr      fwx_go
 fwx_st:
         add     a,a
@@ -812,13 +809,13 @@ fwx_st:
         add     a,a                     ; (64 + δομή) x 8 = δομή x 8 σε 8 bits
         ld      l,a
         ld      h,G_struct_tbl >> 8     ; μία σελίδα (assert στο τέλος)
-        push    hl
-        inc     hl
-        inc     hl
+        ld      b,l                     ; (βήμα 118: όχι push / pop, 3 us)
+        inc     l
+        inc     l
         ld      a,(hl)                  ; ST_KIND
         add     a,a
         add     a,a
-        inc     hl
+        inc     l
         add     a,(hl)                  ; + ST_SIZE
         add     a,a
         inc     a                       ; struct_dims[είδος*4 + μέγεθος].h
@@ -831,11 +828,12 @@ fwx_st:
         rrca
         rrca
         and     #0F                     ; γραμμές / 16 = μισό ύψος σε μισά tiles
-        pop     hl
+        ld      l,b
+        ld      h,G_struct_tbl >> 8
 fwx_go:
         ld      b,a
         ld      d,(hl)                  ; cx
-        inc     hl
+        inc     l
         ld      a,(hl)                  ; cy
         add     a,b
         ld      e,a
@@ -1172,3 +1170,4 @@ fw_b:       dw 0                        ; by, bx
         assert  (G_struct_dims & 255) + 64 <= 256          ; 64 bytes (build/layout.txt)
         assert  obf_n == obf_k + 1 && (G_slot_empty >> 8) != 0
         assert  (G_struct_tbl & 255) == 0 && MAX_STRUCT * STRUCT_REC == 256 && MAX_DOME == 64
+        assert  (G_dome_tbl & 7) == 0 && (DOME_REC & 7) == 0 && D_SIZE < 8  ; τα inc l του fw_xy
