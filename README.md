@@ -11,9 +11,9 @@ in a Z80 and 128 KB.
 
 > **Status: it runs.** `RUN"HABITAT` on a 6128 generates a world, builds the starting
 > colony and hands it over — with a title screen, a dot per file and a progress bar
-> through the thirteen seconds of world generation; the player builds, the colonists
+> through the five seconds of world generation; the player builds, the colonists
 > work, `S` / `L` save and load the game, and it makes noises at you.
-> Three save slots, all reachable, and a tune through the thirteen seconds of world
+> Three save slots, all reachable, and a tune through the five seconds of world
 > generation. **The numbers are measured now**: `tools/balance.py` runs the real
 > binary at ×4 for eight sols and prints the colony's curve, and what it found was
 > not mis-tuned rates but an economy with no clock, power that counted consumption
@@ -53,7 +53,7 @@ Two decisions shape everything else:
 - **The world is a pure function of its seed.** Terrain is generated once, into a
   dedicated 16 KB bank, by a program that is loaded, run and then overwritten by the
   game itself. Saves keep the whole 16 KB rather than the seed: regenerating costs
-  13.5 seconds and reading it back costs one.
+  five seconds and reading it back about one.
 - **Nothing runs all at once.** Agents, production, routing, rendering and even world
   generation are sliced across a 16-frame wheel with a fixed per-frame budget. The
   simulation is allowed to think more slowly as the colony grows; the frame rate is

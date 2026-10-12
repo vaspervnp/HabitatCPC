@@ -43,19 +43,21 @@ STUB = ('10 MEMORY &8FFF\r\n'
         '20 LOAD"LOADER.BIN",&9000\r\n'
         '30 CALL &9000\r\n\x1a')
 
+# ΜΕ ΤΗ ΣΕΙΡΑ ΠΟΥ ΤΑ ΦΟΡΤΩΝΕΙ Ο ΦΟΡΤΩΤΗΣ (βήμα 113): ο δικός του αναγνώστης
+# τομέων προχωρά track προς track, και η κεφαλή δεν πηγαινοέρχεται.
 FILES = [
     ("LOADER.BIN",  "boot.bin",  0x9000, 0x9000),
-    ("GAME.BIN",    "game.bin",  0x0100, 0x0000),
-    ("GAME2.BIN",   "game2.bin", 0,      0x0000),   # από το σύμβολο
-    ("GEN.BIN",     "gen.bin",   0x8000, 0x8000),
-    ("PAGE2.BIN",   "page2.bin", 0x8000, 0x0000),
-    ("BANK5.BIN",   "bank5c.bin", 0x7400, 0x0000),  # οι μηχανές (βήμα 85), με τον κώδικα του b5code (βήμα 97)
-    ("BANK1.BIN",   "bank1c.bin", 0,      0x0000),  # από το OV_LOAD: ο κώδικας των τρυπών (βήμα 102),
-                                                    # τα εικονίδια, ο κώδικας του b1code (βήμα 94)
     ("BANK6.BIN",   "bank6.bin", 0x4000, 0x0000),
     ("BANK7.BIN",   "bank7.bin", 0x4000, 0x0000),
     ("TEXT.BIN",    "text.bin",  0,      0x0000),   # από το layout: G_text
     ("B6CODE.BIN",  "b6code.bin", 0,     0x0000),   # από το layout: G_b6code (βήμα 92)
+    ("BANK1.BIN",   "bank1c.bin", 0,      0x0000),  # από το OV_LOAD: ο κώδικας των τρυπών (βήμα 102),
+                                                    # τα εικονίδια, ο κώδικας του b1code (βήμα 94)
+    ("PAGE2.BIN",   "page2.bin", 0x8000, 0x0000),
+    ("BANK5.BIN",   "bank5c.bin", 0x7400, 0x0000),  # οι μηχανές (βήμα 85), με τον κώδικα του b5code (βήμα 97)
+    ("GAME2.BIN",   "game2.bin", 0,      0x0000),   # από το σύμβολο
+    ("GAME.BIN",    "game.bin",  0x0100, 0x0000),
+    ("GEN.BIN",     "gen.bin",   0x8000, 0x8000),
 ]
 
 
@@ -74,7 +76,10 @@ def assemble():
     # Το main.asm γράφει ΚΑΙ το game.bin ΚΑΙ το game2.bin με save.
     run([RASM, "main.asm", "-oi", os.path.join(BUILD, "main.sna"), "-v2", "-s"], cwd=src)
     run([RASM, "gen.asm",  "-oi", os.path.join(BUILD, "gen.sna"),  "-v2"], cwd=src)
-    run([RASM, "boot.asm", "-oi", os.path.join(BUILD, "boot.sna"), "-v2"], cwd=src)
+    # Τα σύμβολα του φορτωτή χωριστά (βήμα 113): το tests/test_disc.py δοκιμάζει
+    # τις ρουτίνες του αναγνώστη τομέων μία μία.
+    run([RASM, "boot.asm", "-oi", os.path.join(BUILD, "boot.sna"), "-v2",
+         "-s", "-os", os.path.join(BUILD, "boot.sym")], cwd=src)
 
 
 # Ο κώδικας της τράπεζας 0 δεν επιτρέπεται να φτάσει εδώ: στο #3F80 ο φορτωτής

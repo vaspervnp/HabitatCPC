@@ -37,6 +37,19 @@
      κώδικα σε αυτά. Από το βήμα 102 η BANK1.BIN αρχίζει στο OV_LOAD, με τον
      κώδικα των τρυπών του DIST κάτω από τα εικονίδια, και το DIST σβήνεται ως
      εκεί.
+  6. Ο ΔΙΚΟΣ ΜΑΣ ΑΝΑΓΝΩΣΤΗΣ (βήμα 113). Ο φορτωτής διαβάζει τον κατάλογο και
+     τους τομείς με τον ελεγκτή, όχι με το AMSDOS: κανένα αρχείο δεν πήγε στο
+     AMSDOS (fl_off), η εκκίνηση κρατά ως 600 frames, και τη στιγμή της
+     παράδοσης ΟΛΑ τα αρχεία είναι στη θέση τους byte προς byte — και οι δύο
+     εκτάσεις της BANK6.BIN και της BANK7.BIN. Αρνητικά: η κεφαλίδα ένα byte
+     λάθος, η δεύτερη έκταση από την πρώτη εγγραφή.
+  7. Η ΕΦΕΔΡΕΙΑ. Ενας δίσκος όπου η PAGE2.BIN είναι τύπου 0 (BASIC, με σωστό
+     άθροισμα): ο αναγνώστης την αρνείται, το AMSDOS τη φορτώνει, και η
+     εκκίνηση φτάνει ίδια. Αρνητικό: χωρίς την επιστροφή της κεφαλής στο
+     track 0 πριν από το AMSDOS.
+  8. Το «εντάξει» του ελεγκτή: IC = 01 με EN είναι επιτυχία στο CPC (το TC
+     δεν είναι συνδεδεμένο), για τον φορτωτή (fl_ok) και για το σώσιμο
+     (fd_ok). Αρνητικά: ο έλεγχος ως το βήμα 112, και ένας που δέχεται το ND.
 """
 import os, subprocess, sys
 
@@ -83,6 +96,57 @@ def build():
     return sym, g
 
 
+def boot_syms():
+    """Τα σύμβολα του φορτωτή (build/boot.sym, από το tools/mkdsk.py)."""
+    bs = {}
+    for line in open(os.path.join(ROOT, "build", "boot.sym"),
+                     encoding="utf-8", errors="replace"):
+        p = line.split()
+        if len(p) >= 2 and p[1].startswith("#"):
+            bs[p[0].upper()] = int(p[1][1:], 16)
+    return bs
+
+
+def sector_at(dsk, track, sid):
+    """Πού αρχίζει μέσα στην εικόνα ο τομέας sid του track (τυπικό .dsk, μία
+    όψη): οι τομείς ενός track είναι με τη ΣΕΙΡΑ ΤΟΥ ΔΙΣΚΟΥ, πλεγμένοι."""
+    size = int.from_bytes(dsk[0x32:0x34], "little")
+    t = 0x100 + track * size
+    off = t + 0x100
+    for i in range(dsk[t + 0x15]):
+        e = t + 0x18 + i * 8
+        if dsk[e + 2] == sid:
+            return off
+        off += 128 << dsk[e + 3]
+    return None
+
+
+def file_sector(dsk, name, k=0):
+    """Ο τομέας k ενός αρχείου, από τον κατάλογο: θέση μέσα στην εικόνα."""
+    want = name.ljust(8).encode() + b"BIN"
+    for si in range(4):
+        d = sector_at(dsk, 0, 0xC1 + si)
+        for e in range(d, d + 512, 32):
+            if dsk[e] == 0 and bytes(b & 0x7F for b in dsk[e + 1:e + 12]) == want \
+                    and dsk[e + 12] == k // 32:
+                s = 2 * dsk[e + 16 + (k % 32) // 2] + (k & 1)
+                return sector_at(dsk, s // 9, 0xC1 + s % 9)
+    return None
+
+
+def patch(dsk, pat, new):
+    """Αλλάζει το ΜΟΝΑΔΙΚΟ σημείο της εικόνας με τα bytes pat. Γυρίζει πόσα
+    βρέθηκαν· αλλάζει μόνο αν ήταν ένα."""
+    n, at = 0, -1
+    i = dsk.find(pat)
+    while i >= 0:
+        n, at = n + 1, i
+        i = dsk.find(pat, i + 1)
+    if n == 1:
+        dsk[at:at + len(new)] = new
+    return n
+
+
 # Αντιγράφει όλη την τράπεζα 5 στην οθόνη, για να διαβαστεί με read_ram: το
 # read_ram βλέπει μόνο τη βασική RAM. Σκοτώνει το παιχνίδι (jr $).
 DUMP_B5 = bytes([0xF3,                      # di
@@ -108,6 +172,9 @@ def endgame(code):
     return boot[a:b + 3] if a >= 0 and b >= 0 else b""
 
 
+HANDOVER = {}                                   # ό,τι είδε το τελευταίο handover
+
+
 def handover(m, disc, eg):
     """Από το BASIC ως το ΠΡΩΤΟ μισό χιλιοστό του παιχνιδιού: τη μνήμη όπως
     την παραδίδει το επίμετρο, πριν γράψει το παιχνίδι οτιδήποτε στις
@@ -128,9 +195,16 @@ def handover(m, disc, eg):
     def inside():
         return (ENDGAME <= m.pc < ENDGAME + len(eg)
                 and m.read_ram(ENDGAME, len(eg)) == eg)
-    for _ in range(3000):
+    # Το fl_off του φορτωτή όσο τρέχει η γεννήτρια (βήμα 113): το επίμετρο
+    # γράφει μετά πάνω του τα δεδομένα της τράπεζας 2.
+    flo = boot_syms()["FL_OFF"]
+    HANDOVER["fl_off"] = None
+    for f in range(3000):
         m.run_frames(1)
+        if HANDOVER["fl_off"] is None and 0x8000 <= m.pc < 0x8E00:
+            HANDOVER["fl_off"] = m.peek(flo)
         if inside():
+            HANDOVER["frames"] = f + 1
             break
     else:
         return None
@@ -141,12 +215,16 @@ def handover(m, disc, eg):
     else:
         return None
     ram = m.read_ram(0, 0x10000)
+    import ctypes, cpc
+    b67 = [ctypes.string_at(ctypes.addressof(cpc._lib.cpcemu_ram_ptr(m._h, b).contents),
+                            0x4000) for b in (6, 7)]
     m.run_code(0x3EC0, DUMP_B5, frames=8)        # 16 KB ldir = 86 ms
-    return ram, m.read_ram(0xC000, 0x4000)
+    return ram, m.read_ram(0xC000, 0x4000), b67[0], b67[1]
 
 
 def main():
     sym, g = build()
+    bs = boot_syms()
     from cpc import CPC
     m = CPC()
     m.run_frames(300)                    # το BASIC θέλει τον χρόνο του
@@ -187,6 +265,7 @@ def main():
         return n
 
     running, frames, bars, seen_title, tones = False, 0, [], None, []
+    fl_seen = None
     # ΑΝΑ 10 FRAMES από το βήμα 112: η γεννήτρια κρατά πια ~5 s, και ανά 30 τα
     # δείγματα της μουσικής ήταν δεκαπέντε — τέσσερις νότες, όχι πέντε.
     for _ in range(360):
@@ -202,6 +281,10 @@ def main():
         # έσπασε μόλις μπήκε ένα ένατο αρχείο στον δίσκο (§4.2).
         if frames >= 300 and not started:
             bars.append(bar_bytes(scr()))
+        # Ο φορτωτής ζει ακόμη όσο τρέχει η γεννήτρια (τον σβήνει το επίμετρο):
+        # τότε λέει αν κάποιο αρχείο πήγε στο AMSDOS (βήμα 113).
+        if fl_seen is None and not started and 0x8000 <= m.pc < 0x8E00:
+            fl_seen = m.peek(bs["FL_OFF"])
         # Και ο ΗΧΟΣ της αναμονής (§9.5): η γεννήτρια έχει δικό της παίκτη,
         # γιατί ο ήχος του παιχνιδιού ζει στην τράπεζα 2 που δεν υπάρχει ακόμη.
         # Δειγματοληψία ανά 10 frames· μια νότα κρατά ~30, οπότε περνούν όλες
@@ -214,6 +297,17 @@ def main():
             break
     check(running, f"το RUN\"HABITAT έφτασε στο game_new "
                    f"(PC=#{m.pc:04X}, τροφή {w16(g + 2)})")
+
+    # --- 1δ. ο δικός μας αναγνώστης (βήμα 113) ----------------------------
+    # Ως το βήμα 112 όλα τα αρχεία περνούσαν από το AMSDOS: 1.460 frames, τα
+    # 1.180 τα αρχεία. Το ΤΑΒΑΝΙ είναι ο έλεγχος ότι δεν ξαναγύρισαν εκεί
+    # σιωπηλά — η εφεδρεία φορτώνει σωστά, άρα μόνο ο χρόνος θα το έδειχνε.
+    check(fl_seen == 0,
+          f"κανένα αρχείο δεν πήγε στο AMSDOS: fl_off = {fl_seen} όσο τρέχει η "
+          f"γεννήτρια")
+    check(frames <= 600,
+          f"εκκίνηση {frames} frames από το ENTER ως την αποικία, ταβάνι 600 "
+          f"(1.460 ως το βήμα 112)")
 
     # --- 1β. η οθόνη φόρτωσης --------------------------------------------
     title, basic = seen_title
@@ -413,27 +507,47 @@ def main():
     def diff(got, want):
         return sum(x != y for x, y in zip(got, want)) + abs(len(got) - len(want))
 
+    # Οι τράπεζες 6 και 7 όπως πρέπει να είναι στην παράδοση (βήμα 113): η
+    # BANK6.BIN με τον κώδικα του τροχού από πάνω, η BANK7.BIN με τα κείμενα.
+    # Μόνο τα τέσσερα bytes του worldinfo τα γράφει η γεννήτρια, και μένουν έξω.
+    want6, want7 = bytearray(img("bank6.bin")), bytearray(img("bank7.bin"))
+    code6, text7 = img("b6code.bin"), img("text.bin")
+    want6[lay["G_b6code"] - 0x4000:lay["G_b6code"] - 0x4000 + len(code6)] = code6
+    want7[lay["G_text"] - 0x4000:lay["G_text"] - 0x4000 + len(text7)] = text7
+    wi6 = lay["G_worldinfo"] - 0x4000
+    game = img("game.bin")
+
     def scratch_state(disc, eg):
         """(διαφορές τράπεζας 2, μηχανών, εικονιδίων, μη μηδενικά του DIST
-        και του NEXTHOP) τη στιγμή της παράδοσης, ή None."""
+        και του NEXTHOP, διαφορές τράπεζας 6, τράπεζας 7, κώδικα της τράπεζας
+        0) τη στιγμή της παράδοσης, ή None."""
         h = CPC()
         got = handover(h, disc, eg)
         del h
         if got is None:
             return None
-        ram, b5 = got
+        ram, b5, b6, b7 = got
+        b6 = bytearray(b6)
+        b6[wi6:wi6 + 4] = want6[wi6:wi6 + 4]
         return (diff(ram[0x8000:0x8000 + len(page2)], page2),
                 diff(ram[code:code + len(game2)], game2),
                 diff(b5[b5base - 0x4000:b5base - 0x4000 + len(mach)], mach),
                 diff(ram[ov:ov + len(icons)], icons),
                 sum(1 for x in ram[0x4000:ov] if x),
-                sum(1 for x in b5[:b5base - 0x4000] if x))
+                sum(1 for x in b5[:b5base - 0x4000] if x),
+                diff(bytes(b6), want6), diff(b7, want7),
+                diff(ram[0x100:0x100 + len(game)], game))
 
     st = scratch_state(DSK, eg) if eg else None
     check(st is not None, f"το επίμετρο ({len(eg)} bytes) πιάστηκε τη στιγμή "
                           f"που πηδά στο #0100")
     if st:
-        d2, dg, dm, di, z1, z5 = st
+        d2, dg, dm, di, z1, z5, d6, d7, d0 = st
+        check(d6 == 0 and d7 == 0 and d0 == 0 and HANDOVER["fl_off"] == 0,
+              f"από τον αναγνώστη τομέων, byte προς byte: η τράπεζα 6 με τον "
+              f"κώδικα του τροχού ({d6} διαφορετικά), η 7 με τα κείμενα ({d7}), "
+              f"ο κώδικας της τράπεζας 0 στο #0100 ({len(game)} bytes, {d0}) — "
+              f"fl_off {HANDOVER['fl_off']}, παράδοση στο frame {HANDOVER['frames']}")
         check(d2 == 0 and dg == 0,
               f"η τράπεζα 2 όπως βγήκε από το build: {len(page2)} bytes "
               f"δεδομένων ({d2} διαφορετικά), {len(game2)} κώδικα στο "
@@ -479,8 +593,150 @@ def main():
     left = sum(1 for b in m.read_ram(0xC000, 0x4000) if b)
     check(left == 0, f"το hw_clear σβήνει και τα 16 KB της οθόνης ({left} bytes "
                      f"έμειναν)")
+
+    # --- 6β. ο αναγνώστης τομέων με φυτεμένο σφάλμα (βήμα 113) -----------
+    # Μέσα στο LOADER.BIN του δίσκου, όπως το αρνητικό του επιμέτρου. Ο
+    # έλεγχος είναι ο ίδιος με πάνω: η μνήμη τη στιγμή της παράδοσης.
+    def planted(pat, new):
+        d = bytearray(open(DSK, "rb").read())
+        n = patch(d, pat, new)
+        return (scratch_state(bytes(d), eg) if n == 1 else None), n
+    import re
+    sb = int(re.search(r"^SECT_BUF\s+equ\s+#([0-9A-Fa-f]+)",
+                       open(os.path.join(ROOT, "src", "boot.asm"), encoding="utf-8").read(),
+                       re.M).group(1), 16)
+    # η κεφαλίδα ένα byte πιο κοντά: όλα τα αρχεία μετατοπισμένα κατά ένα
+    st, n = planted(bytes([0x21, 0x80, (sb + 128) >> 8]),
+                    bytes([0x21, 0x7F, (sb + 128) >> 8]))
+    check(st is None or st[6] > 1000 or st[8] > 1000,
+          f"ΑΡΝΗΤΙΚΟ: η κεφαλίδα 127 bytes αντί για 128 ({n} σημείο) — "
+          + (f"τράπεζα 6 {st[6]} διαφορετικά, κώδικας {st[8]}" if st else
+             "η εκκίνηση δεν φτάνει στην παράδοση"))
+    # η δεύτερη έκταση (BANK6.BIN, BANK7.BIN) από την εγγραφή της πρώτης
+    ff = bs["FL_FIND"]
+    st, n = planted(bytes([0x07, 0x07, 0x07, 0xE6, 0x07, 0xCD, ff & 0xFF, ff >> 8]),
+                    bytes([0x07, 0x07, 0x07, 0xE6, 0x00]))
+    check(n == 1 and (st is None or (st[6] > 0 and st[7] > 0)),
+          f"ΑΡΝΗΤΙΚΟ: η δεύτερη έκταση από την πρώτη εγγραφή ({n} σημείο) — "
+          + (f"τράπεζα 6 {st[6]} και 7 {st[7]} διαφορετικά" if st else
+             "η εκκίνηση δεν φτάνει στην παράδοση"))
+
+    # --- 7. η εφεδρεία: το AMSDOS (βήμα 113) ----------------------------
+    # Η PAGE2.BIN γίνεται τύπου 0 (BASIC), με σωστό άθροισμα. Για το AMSDOS
+    # είναι αρχείο σαν όλα, και το CAS IN DIRECT το φορτώνει. Ο αναγνώστης
+    # δέχεται μόνο δυαδικά: την αρνείται ΑΦΟΥ έχει διαβάσει πέντε αρχεία και η
+    # κεφαλή του είναι στο track 11. Από εκεί όλα με το AMSDOS.
+    fb = bytearray(open(DSK, "rb").read())
+    h = file_sector(fb, "PAGE2")
+    if h is not None:
+        fb[h + 18] = 0
+        ck = sum(fb[h:h + 67]) & 0xFFFF
+        fb[h + 67:h + 69] = ck.to_bytes(2, "little")
+    st = scratch_state(bytes(fb), eg) if h is not None else None
+    ok = st is not None and not any(st[:4]) and not any(st[4:6]) and not any(st[6:])
+    check(ok and HANDOVER["fl_off"] == 1,
+          f"η PAGE2.BIN τύπου 0 φορτώνει από το AMSDOS: fl_off "
+          f"{HANDOVER.get('fl_off')}, όλα τα αρχεία στη θέση τους "
+          f"({st if st else 'καμία παράδοση'}), παράδοση στο frame "
+          f"{HANDOVER.get('frames') if st else '-'}")
+    fb_frames = HANDOVER.get("frames") if st else None
+    # ΑΡΝΗΤΙΚΟ: χωρίς το SEEK στο track 0 του fl_quit. Το AMSDOS πιστεύει ότι η
+    # κεφαλή είναι εκεί που την άφησε (στον φορτωτή, track 0), δεν την κινεί,
+    # διαβάζει «κατάλογο» από το track 11 και γράφει «PAGE2   .BIN not found».
+    q = bs["FL_QUIT"]
+    sk = bs["FL_SEEK"]
+    n = patch(fb, bytes([0xAF, 0xCD, sk & 0xFF, sk >> 8, 0xFB, 0xC9]),
+              bytes([0xAF, 0, 0, 0, 0xFB, 0xC9]))
+    st = scratch_state(bytes(fb), eg) if n == 1 else None
+    bad = st is None or any(st[:4]) or any(st[6:])
+    check(n == 1 and bad,
+          f"ΑΡΝΗΤΙΚΟ: χωρίς την επιστροφή στο track 0 ({n} σημείο, fl_quit "
+          f"#{q:04X}) " + ("η εκκίνηση δεν φτάνει στην παράδοση" if st is None
+                           else f"φτάνει με {st}"))
+
+    # --- 8. το «εντάξει» του ελεγκτή (βήμα 113) --------------------------
+    # Στο CPC το TC του μPD765 δεν είναι συνδεδεμένο: κάθε διάβασμα και
+    # γράψιμο φτάνει στο EOT και τελειώνει με IC = 01 (ST0 #40) και EN (ST1
+    # #80). Ο ελεγκτής του εξομοιωτή δίνει IC = 00, οπότε ο έλεγχος γίνεται
+    # εδώ με τα ίδια τα bytes: ο φορτωτής (fl_ok) και το σώσιμο (fd_ok).
+    CASES = [((0x00, 0x00, 0x00), True, "εξομοιωτής"),
+             ((0x40, 0x80, 0x00), True, "CPC: EN"),
+             ((0x40, 0x84, 0x00), False, "ND"),
+             ((0x40, 0xA0, 0x20), False, "CRC"),
+             ((0x40, 0x81, 0x00), False, "MA"),
+             ((0x40, 0x80, 0x40), False, "CM"),
+             ((0x48, 0x00, 0x00), False, "NR"),
+             ((0x80, 0x00, 0x00), False, "άκυρη"),
+             ((0xC0, 0x00, 0x00), False, "IC 11")]
+
+    def verdicts(run, at, res, code):
+        """Ο κώδικας του ελέγχου στο at, τα ST0-ST2 στο res: A = 0 σημαίνει
+        εντάξει. Γυρίζει τις περιπτώσεις που κρίθηκαν λάθος."""
+        wrong = []
+        for st3, good, name in CASES:
+            got = run(at, res, code, st3)
+            if (got == 0) != good:
+                wrong.append(name)
+        return wrong
+
+    # ο φορτωτής: σε ένα 6128 με BASIC, με το boot.bin στο #9000
+    boot = img("boot.bin")
+    k = CPC()
+    k.run_frames(200)
+
+    def run_boot(at, res, code, st3):
+        k.write_ram(0x9000, code)
+        k.write_ram(res, bytes(st3))
+        k.write_ram(0xA3F0, b"\xEE")
+        k.run_code(0xA300, bytes([0xF3, 0xCD, at & 0xFF, at >> 8,
+                                  0x32, 0xF0, 0xA3, 0x18, 0xFE]))
+        return k.read_ram(0xA3F0, 1)[0]
+
+    fo, fs = bs["FL_OK"], bs["FL_ST"]
+    w = verdicts(run_boot, fo, fs, boot)
+    check(not w, f"το fl_ok του φορτωτή κρίνει σωστά {len(CASES)} περιπτώσεις "
+                 f"ST0/ST1/ST2" + (f" — λάθος: {w}" if w else ""))
+
+    def fault(code, at, old, new):
+        """Το code με το ΠΡΩΤΟ old μετά το at (σχετικό) αλλαγμένο σε new."""
+        c = bytearray(code)
+        i = c.find(bytes(old), at)
+        if i >= 0:
+            c[i:i + len(old)] = bytes(new)
+        return bytes(c), i >= 0
+    for old, new, what in (([0xE6, 0x88], [0xE6, 0xC8], "ο έλεγχος ως το βήμα 112 (IC = 00 μόνο)"),
+                           ([0xE6, 0x7F], [0xE6, 0x7B], "ένας που δέχεται το ND")):
+        bad, found = fault(boot, fo - 0x9000, old, new)
+        w = verdicts(run_boot, fo, fs, bad) if found else []
+        check(found and w, f"ΑΡΝΗΤΙΚΟ fl_ok: {what} — λάθος στα {w}")
+    del k
+
+    # το σώσιμο: το fd_ok του δεύτερου κομματιού (src/fdc.asm), στη θέση όπου
+    # τρέχει (SV_ORG), μέσα στο παιχνίδι που ξεκίνησε από τον δίσκο
+    ov2 = img("ovl2.bin")
+
+    def run_game(at, res, code, st3):
+        m.write_ram(sym["ZZ_OV2"], code)
+        m.write_ram(res, bytes(st3))
+        m.write_ram(0x3F00, b"\xEE")
+        m.run_code(0x3EC0, bytes([0xF3, 0xCD, at & 0xFF, at >> 8,
+                                  0x32, 0x00, 0x3F, 0x18, 0xFE]))
+        return m.read_ram(0x3F00, 1)[0]
+
+    do, dr = sym["FD_OK"], sym["FD_RES"]
+    w = verdicts(run_game, do, dr, ov2)
+    check(not w, f"το fd_ok του σωσίματος κρίνει σωστά τις ίδιες {len(CASES)}"
+                 + (f" — λάθος: {w}" if w else ""))
+    for old, new, what in (([0xE6, 0x88], [0xE6, 0xC0], "ο έλεγχος ως το βήμα 112"),
+                           ([0xE6, 0x7F], [0xE6, 0x7B], "ένας που δέχεται το ND")):
+        bad, found = fault(ov2, do - sym["ZZ_OV2"], old, new)
+        w = verdicts(run_game, do, dr, bad) if found else []
+        check(found and w, f"ΑΡΝΗΤΙΚΟ fd_ok: {what} — λάθος στα {w}")
+
     print(f"\nεκκίνηση: {frames} frames = {frames / 50:.0f} s από το ENTER ως "
-          f"την αποικία (τα 5 είναι η γεννήτρια· 13,5 ως το βήμα 111)")
+          f"την αποικία (1.460 = 29 s ως το βήμα 112· τα 5 s είναι η γεννήτρια)")
+    if fb_frames:
+        print(f"με την εφεδρεία από την PAGE2.BIN: παράδοση στο frame {fb_frames}")
     print(f"build/habitat.dsk: {os.path.getsize(DSK)} bytes, "
           f"build/disc.png γράφτηκε")
     if FAIL:

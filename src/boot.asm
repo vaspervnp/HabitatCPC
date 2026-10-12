@@ -7,16 +7,19 @@
 ; αρχείο «φορτώνεται» κανονικά — αλλά ο επεξεργαστής διαβάζει ROM. Ο φορτωτής
 ; πήδηξε μέσα στο λειτουργικό και το μηχάνημα κατέληξε να ζητά κασέτα.
 ;
-; Μένει η RAM #4000-#A6FF (πάνω από το #A700 ο χώρος εργασίας του AMSDOS). Από
+; Μένει η RAM #4000-#A67B (πάνω από το HIMEM ο χώρος εργασίας του AMSDOS). Από
 ; αυτήν, το #4000-#7FFF είναι το παράθυρο που αλλάζει τράπεζα και το #8000 και
 ; πάνω το χρειάζεται μόνο η ΤΕΛΕΥΤΑΙΑ πράξη. Ετσι:
 ;
-;   #8000-#8BFF   η γεννήτρια (φορτώνεται, τρέχει, ξεχνιέται)
-;   #9000-#93FF   ο φορτωτής (589 bytes στο βήμα 112· το #91FF που έγραφε εδώ
-;                 το είχε περάσει χωρίς να το πει κανείς)
-;   #9400-#94FF   η σελίδα εργασίας της γεννήτριας (GEN_WORK, βήμα 112)
-;   #9800-#9FFF   ο buffer 2 KB του AMSDOS
-;   #3F80         το επίμετρο — ΑΦΟΥ σβήσουν τα ROM
+;   #8000-#8DFF   η γεννήτρια (φορτώνεται, τρέχει, ξεχνιέται)
+;   #9000-#97FF   ο φορτωτής (589 bytes στο βήμα 112, με τον δικό του
+;                 αναγνώστη τομέων από το 113· το boot_end ελέγχεται)
+;   #9800-#9FFF   ο κατάλογος του δίσκου (βήμα 113)· ο buffer 2 KB του
+;                 AMSDOS αν χρειαστεί
+;   #A000-#A1FF   ένας τομέας (SECT_BUF, βήμα 113)
+;   #A200-#A2FF   η σελίδα εργασίας της γεννήτριας (GEN_WORK)
+;   ως το #A67B   το HIMEM του 6128 με δίσκο: από πάνω ο χώρος του AMSDOS
+;   #3FC0         το επίμετρο — ΑΦΟΥ σβήσουν τα ROM
 ;
 ; Η ΣΕΙΡΑ ΕΙΝΑΙ ΔΕΣΜΕΥΤΙΚΗ. Δύο κομμάτια πατάνε πάνω στο AMSDOS: τα δεδομένα
 ; της τράπεζας 2 (#8000-#ABFF) και ο κώδικας της τράπεζας 2 (#B440). Και τα δύο
@@ -101,6 +104,7 @@ boot:
         call    pr_at
         ld      a,2
         call    bd_border
+        call    fl_init                 ; ο κατάλογος του δίσκου (βήμα 113)
         ld      hl,n_bank6
         ld      b,n_bank6_e - n_bank6
         ld      de,SCRATCH
@@ -157,6 +161,17 @@ boot:
         call    ld_bank
         ld      hl,(lf_len)
         ld      (bt_ng2),hl
+        ; --- ο κώδικας του παιχνιδιού, κάτω από την κάτω ROM ---
+        ; ΠΡΙΝ ΑΠΟ ΤΗ ΓΕΝΝΗΤΡΙΑ από το βήμα 113, ώστε ο δίσκος να τελειώνει μαζί
+        ; και το μοτέρ να σβήνει πριν από τα 5 δευτερόλεπτα της γένεσης. Η
+        ; γεννήτρια δεν αγγίζει τίποτα κάτω από το #4000, και το firmware μόνο
+        ; το #0000-#003F.
+        ld      a,26
+        call    bd_border
+        ld      hl,n_game
+        ld      b,n_game_e - n_game
+        ld      de,#0100
+        call    ld_file
         ; --- η γεννήτρια: φορτώνεται, τρέχει, και ξεχνιέται ---
         ld      a,15
         call    bd_border
@@ -164,6 +179,9 @@ boot:
         ld      b,n_gen_e - n_gen
         ld      de,GEN_ORG
         call    ld_file
+        ld      bc,FDC_MOTOR            ; ο δίσκος τελείωσε
+        xor     a
+        out     (c),a
         ld      a,3
         call    bd_border
         ; Η γένεση κρατά 5 δευτερόλεπτα (13,5 ως το βήμα 111). Το λέει, και δείχνει και μπάρα: το
@@ -177,13 +195,6 @@ boot:
         ld      c,8
         ld      hl,t_ready
         call    pr_at
-        ; --- ο κώδικας του παιχνιδιού, κάτω από την κάτω ROM ---
-        ld      a,26
-        call    bd_border
-        ld      hl,n_game
-        ld      b,n_game_e - n_game
-        ld      de,#0100
-        call    ld_file
         ; --- το επίμετρο ---
         ld      hl,eg_code
         ld      de,ENDGAME
@@ -250,8 +261,9 @@ eg_end:
 ; ld_bank — σαν το ld_file, με την τράπεζα C στο παράθυρο.
 ;
 ; Το AMSDOS δουλεύει κανονικά με σελιδοποιημένο παράθυρο: ο κώδικάς του είναι
-; σε ROM, ο χώρος εργασίας του πάνω από το #A700 και ο buffer του εδώ στο
-; #9800 — τίποτε δικό του δεν περνά από το #4000-#7FFF.
+; σε ROM, ο χώρος εργασίας του πάνω από το HIMEM και ο buffer του εδώ στο
+; #9800 — τίποτε δικό του δεν περνά από το #4000-#7FFF. Το ίδιο ο αναγνώστης
+; τομέων (βήμα 113): κατάλογος, τομέας και μεταβλητές από το #9000 και πάνω.
 ld_bank:
         push    bc
         ld      b,GA_PORT/256
@@ -265,8 +277,14 @@ ld_bank:
 ; ---------------------------------------------------------------------------
 ; ld_file — HL = όνομα, B = μήκος, DE = πού. Κολλάει με κόκκινο αν αποτύχει.
 ;
-; Το CAS IN OPEN γυρίζει στο BC το ΜΗΚΟΣ του αρχείου· φυλάγεται, γιατί οι δύο
-; αντιγραφές του επιμέτρου το χρειάζονται και ο φορτωτής δεν ξέρει τα μεγέθη.
+; Το μήκος του αρχείου μένει στο lf_len: οι δύο αντιγραφές του επιμέτρου το
+; χρειάζονται, και ο φορτωτής δεν ξέρει τα μεγέθη. Το δίνει η κεφαλίδα AMSDOS
+; του αρχείου, είτε τη διαβάσει το fl_raw είτε το CAS IN OPEN.
+;
+; ΠΡΩΤΑ Ο ΔΙΚΟΣ ΜΑΣ ΑΝΑΓΝΩΣΤΗΣ (βήμα 113). Το AMSDOS ήθελε ~1,8 s ανά αρχείο
+; στον εξομοιωτή όποιο κι αν ήταν το μέγεθος: 23,6 από τα 29 s της εκκίνησης
+; ήταν τα αρχεία. Αν το fl_raw αποτύχει, το ίδιο αρχείο και όλα τα επόμενα
+; πάνε στο AMSDOS, όπως ως το βήμα 112.
 ; ---------------------------------------------------------------------------
 ld_file:
         ld      (lf_dest),de
@@ -278,6 +296,22 @@ ld_file:
         pop     hl
         pop     de
         pop     bc
+        ld      a,(fl_off)
+        or      a
+        jr      nz,lf_amsdos
+        push    bc
+        push    hl
+        call    fl_mkname
+        di                              ; ο ελεγκτής δεν περιμένει διακοπές
+        call    fl_raw
+        ei
+        call    c,fl_quit               ; από εδώ και πέρα το AMSDOS
+        pop     hl
+        pop     bc
+        ld      a,(fl_off)
+        or      a
+        ret     z
+lf_amsdos:
         ld      de,LF_BUF
         call    CAS_IN_OPEN
         jr      nc,lf_fail
@@ -293,6 +327,469 @@ lf_fail:
         call    bd_border
 lf_hang:
         jr      lf_hang
+
+; ===========================================================================
+; Ο ΑΝΑΓΝΩΣΤΗΣ ΤΟΜΕΩΝ (βήμα 113)
+;
+; Ο δίσκος είναι μορφής DATA: tracks των 9 τομέων με id #C1-#C9, 512 bytes ο
+; καθένας, blocks του 1 KB (δύο τομείς), και ο κατάλογος στα blocks 0-1, τους
+; τέσσερις πρώτους τομείς του track 0. Ο λογικός τομέας s είναι το track s/9
+; και το id #C1 + s mod 9. Μία εγγραφή του καταλόγου κρατά ως 16 blocks (16
+; KB, μία «έκταση»)· η BANK6.BIN και η BANK7.BIN, 16 KB συν την κεφαλίδα,
+; έχουν δύο.
+;
+; Ο κατάλογος διαβάζεται ΜΙΑ φορά, στην αρχή. Κάθε αρχείο: οι εγγραφές του με
+; το όνομά του, έκταση 0, 1, ... · από αυτές τα blocks του· από αυτά οι
+; τομείς. Ο πρώτος τομέας έχει την κεφαλίδα AMSDOS (128 bytes): ελέγχεται το
+; άθροισμά της και ο τύπος, και δίνει το μήκος. Οι επόμενοι πάνε κατευθείαν
+; στον προορισμό όσο χωρούν ολόκληροι· ο τελευταίος, μισός, από τον SECT_BUF.
+;
+; ΕΝΑΣ ΤΟΜΕΑΣ ΑΝΑ ΕΝΤΟΛΗ, με αύξοντα id. Στον δίσκο τα id είναι πλεγμένα (C1,
+; C6, C2, C7, ...), οπότε δύο στροφές ανά track στο πραγματικό μηχάνημα, όπως
+; και στο AMSDOS. Ο ελεγκτής του εξομοιωτή δεν διαβάζει παραπάνω από έναν
+; τομέα ανά εντολή, άρα ένα διάβασμα ολόκληρου track δεν θα ελεγχόταν πουθενά.
+;
+; Τι κερδίζεται, αφού ο ρυθμός του δίσκου είναι ο ίδιος: όσα κάνει το AMSDOS
+; ΓΥΡΩ από κάθε αρχείο — ο κατάλογος από την αρχή σε κάθε άνοιγμα, οι
+; αναμονές του, και το CAS IN DIRECT που περνά κάθε τομέα από τον buffer του.
+; ===========================================================================
+
+SECT_BUF        equ #A000               ; ένας τομέας, κάτω από το HIMEM (#A67B)
+FDC_MOTOR       equ #FA7E
+FL_TRIES        equ 16                  ; προσπάθειες ανά τομέα πριν το AMSDOS
+FL_SETTLE       equ #0900               ; ~15 ms: η κεφαλή μετά το βήμα (AMSDOS: 15)
+FL_PAUSE        equ #3C00               ; ~100 ms ανάμεσα σε δύο προσπάθειες
+
+; ---------------------------------------------------------------------------
+; fl_init — το μοτέρ, και ο κατάλογος στο LF_BUF.
+;
+; ΤΟ ΜΟΤΕΡ ΓΥΡΙΖΕΙ ΗΔΗ: το BASIC μόλις φόρτωσε τον φορτωτή, και το AMSDOS το
+; σβήνει μόνο του 5 s αργότερα (με το ρολόι των διακοπών, που μένουν κλειστές
+; όσο διαβάζουμε). Αν το βρει σβηστό κάποια προσπάθεια, το ανάβει και
+; περιμένει: δεκαέξι προσπάθειες των 100 ms καλύπτουν το ξεκίνημα του δίσκου.
+; ---------------------------------------------------------------------------
+fl_init:
+        di
+        ld      bc,FDC_MOTOR
+        ld      a,1
+        out     (c),a
+        ld      a,#C1
+fli_lp:
+        push    af
+        sub     #C1
+        add     a,a
+        add     a,LF_BUF >> 8           ; LF_BUF + 512 x (id - #C1)
+        ld      h,a
+        ld      l,0
+        pop     af
+        push    af
+        ld      c,0                     ; track 0
+        call    fl_rd
+        jr      c,fli_bad
+        pop     af
+        inc     a
+        cp      #C5                     ; τέσσερις τομείς: 64 εγγραφές
+        jr      nz,fli_lp
+        ei
+        ret
+fli_bad:
+        pop     af
+        ei
+; fl_quit — το AMSDOS παίρνει τον δίσκο. Η κεφαλή ξαναπάει στο track 0: εκεί
+; την άφησε το ίδιο (ο φορτωτής είναι στο πρώτο track), και αν πιστεύει ότι
+; είναι ακόμη εκεί, δεν θα κινηθεί για να διαβάσει τον κατάλογό του.
+fl_quit:
+        ld      a,1
+        ld      (fl_off),a
+        di
+        xor     a
+        call    fl_seek
+        ei
+        ret
+
+; ---------------------------------------------------------------------------
+; fl_mkname — HL = όνομα με τελεία, B = μήκος → fl_name, 8 + 3 με κενά, όπως
+; στον κατάλογο. Κρατά HL, BC.
+; ---------------------------------------------------------------------------
+fl_mkname:
+        push    bc
+        push    hl
+        ld      de,fl_name
+        ld      a,' '
+        ld      c,11
+flm_sp:
+        ld      (de),a
+        inc     de
+        dec     c
+        jr      nz,flm_sp
+        ld      de,fl_name
+flm_lp:
+        ld      a,(hl)
+        inc     hl
+        cp      '.'
+        jr      nz,flm_ch
+        ld      de,fl_name + 8          ; η κατάληξη
+        jr      flm_nx
+flm_ch:
+        ld      (de),a
+        inc     de
+flm_nx:
+        djnz    flm_lp
+        pop     hl
+        pop     bc
+        ret
+
+; ---------------------------------------------------------------------------
+; fl_find — A = έκταση. Out: HL = η εγγραφή του fl_name, ή carry.
+;
+; Χρήστης 0 (το #E5 είναι σβησμένη εγγραφή). Το bit 7 των χαρακτήρων είναι
+; σημαία του AMSDOS (μόνο ανάγνωση, σύστημα) και δεν μετρά.
+; ---------------------------------------------------------------------------
+fl_find:
+        ld      c,a
+        ld      hl,LF_BUF
+        ld      b,64
+ffd_lp:
+        push    hl
+        ld      a,(hl)
+        or      a
+        jr      nz,ffd_no
+        push    bc
+        ld      de,fl_name
+        ld      b,11
+ffd_ch:
+        inc     hl
+        ld      a,(hl)
+        and     #7F
+        ex      de,hl
+        cp      (hl)
+        ex      de,hl
+        inc     de
+        jr      nz,ffd_nb
+        djnz    ffd_ch
+        pop     bc
+        inc     hl
+        ld      a,(hl)                  ; η έκταση
+        cp      c
+        jr      nz,ffd_no
+        pop     hl
+        ret                             ; NC: ίσα
+ffd_nb:
+        pop     bc
+ffd_no:
+        pop     hl
+        ld      de,32
+        add     hl,de
+        djnz    ffd_lp
+        scf
+        ret
+
+; ---------------------------------------------------------------------------
+; fl_raw — το αρχείο του fl_name στο (lf_dest). NC = φορτώθηκε, carry = όχι.
+; Με τις διακοπές κλειστές.
+; ---------------------------------------------------------------------------
+fl_raw:
+        ld      hl,(lf_dest)
+        ld      (fl_dst),hl
+        xor     a
+        ld      (fl_n),a
+fr_sec:
+        ; --- ο τομέας n: block n >> 1 του αρχείου, μισό n & 1 ---
+        ld      a,(fl_n)
+        and     #1F
+        jr      nz,fr_ent
+        ld      a,(fl_n)
+        rlca
+        rlca
+        rlca
+        and     7                       ; η έκταση: 32 τομείς η καθεμία
+        call    fl_find
+        ret     c
+        ld      (fl_ent),hl
+fr_ent:
+        ld      a,(fl_n)
+        and     #1F
+        rra                             ; A = θέση στην εγγραφή, carry = μισό
+        push    af
+        add     a,16
+        ld      e,a
+        ld      d,0
+        ld      hl,(fl_ent)
+        add     hl,de
+        ld      l,(hl)
+        ld      h,d
+        ld      a,l
+        or      a
+        jr      z,fr_none               ; τα blocks τελείωσαν πριν από το μήκος
+        pop     af
+        adc     hl,hl                   ; 2 x block + μισό: ο λογικός τομέας
+        ld      c,-1
+        ld      de,-9
+fr_div:
+        inc     c
+        add     hl,de
+        jr      c,fr_div
+        ld      a,l
+        add     a,#C1 + 9               ; A = id, C = track
+        ; --- πού: η κεφαλίδα και το τέλος στον SECT_BUF, τα άλλα κατευθείαν ---
+        ld      hl,SECT_BUF
+        ld      b,a
+        ld      a,(fl_n)
+        or      a
+        jr      z,fr_buf
+        ld      a,(fl_left + 1)
+        cp      2                       ; τουλάχιστον 512 ακόμη;
+        jr      c,fr_buf
+        ld      hl,(fl_dst)
+fr_buf:
+        ld      a,b
+        push    hl
+        call    fl_rd
+        pop     de                      ; πού πήγε
+        ret     c
+        ld      hl,fl_n
+        ld      a,(hl)
+        inc     (hl)
+        or      a
+        jr      nz,fr_body
+        ; --- η κεφαλίδα AMSDOS ---
+        call    fl_hdr
+        scf
+        ret     nz                      ; δεν είναι κεφαλίδα: AMSDOS
+        ld      hl,(SECT_BUF + 24)      ; το μήκος, όπως το δίνει το CAS IN OPEN
+        ld      (fl_left),hl
+        ld      (lf_len),hl
+        ld      hl,SECT_BUF + 128
+        ld      bc,384
+        jr      fr_copy
+fr_none:
+        pop     af
+        scf
+        ret
+fr_body:
+        ex      de,hl
+        ld      bc,512
+; fr_copy — HL = από πού, BC = όσα έχει ο τομέας. Μετακινεί min(BC, fl_left)
+; στο fl_dst — εκτός αν ο τομέας διαβάστηκε ήδη εκεί (HL = fl_dst).
+fr_copy:
+        push    hl
+        ld      hl,(fl_left)
+        or      a
+        sbc     hl,bc
+        jr      nc,fr_cnt               ; μένουν κι άλλα
+        add     hl,bc
+        ld      b,h
+        ld      c,l                     ; ο τελευταίος: όσα έμειναν
+        ld      hl,0
+fr_cnt:
+        ld      (fl_left),hl
+        pop     hl
+        ld      de,(fl_dst)
+        ld      a,b
+        or      c
+        jr      z,fr_moved              ; αρχείο 0 bytes: το ldir θα έκανε 64 KB
+        or      a
+        sbc     hl,de
+        add     hl,de
+        jr      z,fr_here
+        ldir
+        jr      fr_moved
+fr_here:
+        ex      de,hl
+        add     hl,bc
+        ex      de,hl
+fr_moved:
+        ld      (fl_dst),de
+        ld      hl,(fl_left)
+        ld      a,h
+        or      l
+        jp      nz,fr_sec
+        ret                             ; NC από το or
+
+; fl_hdr — Z αν ο SECT_BUF ξεκινά με κεφαλίδα AMSDOS δυαδικού αρχείου: τύπος
+; 2, και τα bytes 67-68 το άθροισμα των 0-66. Ο τύπος πιάνει και τον τομέα
+; με μηδενικά, που το άθροισμά του είναι σωστό.
+fl_hdr:
+        ld      a,(SECT_BUF + 18)
+        cp      2
+        ret     nz
+        ld      hl,SECT_BUF
+        ld      de,0
+        ld      b,67
+flh_lp:
+        ld      a,(hl)
+        add     a,e
+        ld      e,a
+        jr      nc,flh_nc
+        inc     d
+flh_nc:
+        inc     hl
+        djnz    flh_lp
+        ld      a,(hl)
+        cp      e
+        ret     nz
+        inc     hl
+        ld      a,(hl)
+        cp      d
+        ret
+
+; ---------------------------------------------------------------------------
+; fl_rd — ένας τομέας στο HL. A = id, C = track.
+; Out: NC = διαβάστηκε, carry = όχι, μετά από FL_TRIES προσπάθειες.
+;
+; Κάθε αποτυχία ανάβει ξανά το μοτέρ, περιμένει 100 ms και ξαναβρίσκει το
+; track 0 (RECALIBRATE) πριν πάει ξανά: έτσι κάνει και το AMSDOS όταν κάτι δεν
+; διαβάζεται.
+; ---------------------------------------------------------------------------
+fl_rd:
+        ld      (fl_ptr),hl
+        ld      (fl_rcmd + 4),a         ; R
+        ld      (fl_rcmd + 6),a         ; EOT = R: ένας τομέας
+        ld      a,c
+        ld      (fl_rcmd + 2),a         ; C
+        ld      a,FL_TRIES
+        ld      (fl_try),a
+flr_go:
+        ld      a,(fl_rcmd + 2)
+        ld      hl,fl_cur
+        cp      (hl)
+        call    nz,fl_seek
+        ld      hl,fl_rcmd
+        ld      e,9
+flr_cmd:
+        ld      a,(hl)
+        call    fl_out
+        inc     hl
+        dec     e
+        jr      nz,flr_cmd
+        ; Η μεταφορά: ένα byte κάθε 32 us από τον δίσκο, και ο βρόχος θέλει 20.
+        ld      hl,(fl_ptr)
+        ld      bc,#FB7E
+flr_x:
+        in      a,(c)
+        jp      p,flr_x                 ; RQM
+        and     #20                     ; EXM: η εκτέλεση συνεχίζεται
+        jr      z,flr_end
+        inc     c
+        in      a,(c)
+        ld      (hl),a
+        dec     c
+        inc     hl
+        jr      flr_x
+flr_end:
+        ld      hl,fl_st
+        ld      e,7
+flr_res:
+        call    fl_in
+        ld      (hl),a
+        inc     hl
+        dec     e
+        jr      nz,flr_res
+        call    fl_ok
+        ret     z                       ; και NC
+        ld      hl,fl_try
+        dec     (hl)
+        scf
+        ret     z
+        ld      bc,FDC_MOTOR
+        ld      a,1
+        out     (c),a
+        ld      de,FL_PAUSE
+        call    fl_wait
+        ld      a,#07                   ; RECALIBRATE
+        call    fl_out
+        xor     a
+        call    fl_out                  ; drive 0
+        call    fl_sense
+        xor     a
+        ld      (fl_cur),a
+        jr      flr_go
+
+; ---------------------------------------------------------------------------
+; fl_ok — Z αν το διάβασμα πέτυχε, από τα ST0, ST1, ST2 του fl_st.
+;
+; ΣΤΟ CPC ΚΑΘΕ ΔΙΑΒΑΣΜΑ ΤΕΛΕΙΩΝΕΙ «ΑΝΩΜΑΛΑ». Το σήμα TC του μPD765 δεν είναι
+; συνδεδεμένο, οπότε ο ελεγκτής δεν μαθαίνει ποτέ ότι τελειώσαμε: φτάνει στο
+; EOT και αναφέρει IC = 01 (ST0 #40) με EN (ST1 bit 7, «τέλος κυλίνδρου»).
+; Αυτό είναι το «εντάξει» του πραγματικού μηχανήματος. Ο ελεγκτής του
+; εξομοιωτή δίνει IC = 00. Λάθος είναι: IC = 10 ή 11, NR (ST0 bit 3), και
+; οποιοδήποτε άλλο bit του ST1 ή του ST2.
+; ---------------------------------------------------------------------------
+fl_ok:
+        ld      a,(fl_st)
+        and     #88                     ; IC = 1x, ή NR
+        ret     nz
+        ld      a,(fl_st + 1)
+        and     #7F                     ; όλα εκτός από το EN
+        ld      b,a
+        ld      a,(fl_st + 2)
+        or      b
+        ret
+
+; ---------------------------------------------------------------------------
+; fl_seek — A = track. fl_sense — περιμένει το τέλος μιας κίνησης.
+;
+; Το SENSE INTERRUPT STATUS απαντά #80 (ένα byte) όσο η κεφαλή κινείται, και
+; ST0 με SE (bit 5) και το track όταν σταματήσει. Ο εξομοιωτής απαντά πάντα
+; δύο bytes και η κίνηση είναι στιγμιαία. Μετά, 15 ms για να ησυχάσει η
+; κεφαλή, όπως περιμένει και το AMSDOS.
+; ---------------------------------------------------------------------------
+fl_seek:
+        ld      (fl_cur),a
+        push    af
+        ld      a,#0F                   ; SEEK
+        call    fl_out
+        xor     a
+        call    fl_out                  ; drive 0, head 0
+        pop     af
+        call    fl_out
+        call    fl_sense
+        ld      de,FL_SETTLE
+fl_wait:
+        dec     de
+        ld      a,d
+        or      e
+        jr      nz,fl_wait
+        ret
+
+fl_sense:
+        ld      a,#08                   ; SENSE INTERRUPT STATUS
+        call    fl_out
+        call    fl_in
+        cp      #80
+        jr      z,fl_sense              ; κινείται ακόμη: ένα byte μόνο
+        ld      d,a
+        call    fl_in                   ; το track
+        bit     5,d
+        jr      z,fl_sense
+        ret
+
+; fl_out — A στον ελεγκτή. fl_in — ένα byte του ελεγκτή στο A. Χαλάνε BC.
+fl_out:
+        push    af
+        ld      bc,#FB7E
+flo_w:
+        in      a,(c)
+        add     a,a
+        jr      nc,flo_w                ; RQM
+        add     a,a
+        jr      c,flo_w                 ; DIO: έχει κάτι να πει
+        pop     af
+        inc     c
+        out     (c),a
+        ret
+
+fl_in:
+        ld      bc,#FB7E
+fli_w:
+        in      a,(c)
+        add     a,a
+        jr      nc,fli_w
+        add     a,a
+        jr      nc,fli_w
+        inc     c
+        in      a,(c)
+        ret
 
 ; ---------------------------------------------------------------------------
 ; pr_at — B = γραμμή, C = στήλη (1-25 / 1-40), HL = κείμενο με τερματικό 0.
@@ -358,8 +855,24 @@ lf_dest:    dw 0
 lf_len:     dw 0
 bt_n2:      dw 0
 bt_ng2:     dw 0
+; ο αναγνώστης τομέων (βήμα 113)
+fl_off:     db 0                        ; 1 = AMSDOS από εδώ και πέρα
+fl_cur:     db #FF                      ; το track της κεφαλής· #FF = άγνωστο
+fl_name:    ds 11
+fl_n:       db 0                        ; ο τομέας μέσα στο αρχείο
+fl_ent:     dw 0                        ; η εγγραφή καταλόγου της έκτασης
+fl_dst:     dw 0
+fl_left:    dw 0
+fl_ptr:     dw 0
+fl_try:     db 0
+fl_st:      ds 7                        ; ST0, ST1, ST2, C, H, R, N
+; READ DATA (MFM), drive 0 / head 0, C, H, R, N = 2 (512 bytes), EOT, GPL, DTL
+fl_rcmd:    db #46,0,0,0,#C1,2,#C1,#2A,#FF
 boot_end:
-        assert  boot_end <= GEN_WORK    ; η σελίδα εργασίας της γεννήτριας (βήμα 112)
-        assert  GEN_WORK + 256 <= LF_BUF
+        assert  boot_end <= LF_BUF      ; ο κατάλογος
+        assert  (LF_BUF & #FF) == 0     ; το fl_init τον γράφει ανά 512
+        assert  SECT_BUF >= LF_BUF + #800
+        assert  GEN_WORK >= SECT_BUF + 512 ; η γεννήτρια τρέχει μετά τον δίσκο
+        assert  GEN_WORK + 256 <= #A67C ; το HIMEM: από εκεί και πάνω το AMSDOS
 
         save    "../build/boot.bin", #9000, boot_end - #9000
