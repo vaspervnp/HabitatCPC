@@ -10,7 +10,7 @@
                που η ταυτότητα μπορεί να μην την πιάσει, αν τύχει.
   ΠΑΙΞΙΜΟΤΗΤΑ  κάθε seed έχει νερό ΚΑΙ φλέβα μέσα σε 30 tiles.
 """
-import collections, os, subprocess, sys
+import collections, os, re, subprocess, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -24,6 +24,8 @@ RASM = os.path.expanduser("~/rasm/rasm.exe")
 SNA = os.path.join(ROOT, "build", "gentest.sna")
 SEEDS = [0x1234, 0xACE1, 0x0001, 0xFFFF]
 SWEEP = 64        # πλήρης σάρωση χιλιάδων seeds: χωριστά, πριν από έκδοση
+MORE = [(0x0BAD, 0), (0x9C3A, 0), (0x5EED, 1), (0xD00D, 1),
+        (0x2B67, 2), (0x4242, 2), (0x7F01, 3), (0xBEEF, 3)]
 
 
 def build():
@@ -45,12 +47,15 @@ def build():
     return sym
 
 
-def run_z80(sym, seed, planet=0):
-    """Ψυχρή εκκίνηση, γέννηση, και το επίπεδο πίσω από τη βασική τράπεζα 1."""
+def run_z80(sym, seed, planet=0, patch=()):
+    """Ψυχρή εκκίνηση, γέννηση, και το επίπεδο πίσω από τη βασική τράπεζα 1.
+    Το patch: (διεύθυνση, byte) πάνω στον κώδικα, για τα αρνητικά."""
     from cpc import CPC
     m = CPC()
     m.run_frames(60)
     assert m.quickload(SNA, start=False), "quickload απέτυχε"
+    for at, v in patch:
+        m.poke(at, v)
     m.poke(sym["GEN_SEED"], seed & 0xFF)
     m.poke(sym["GEN_SEED"] + 1, (seed >> 8) & 0xFF)
     m.poke(sym["GEN_PLANET"], planet)
@@ -127,7 +132,40 @@ def main():
                   f"νερό {cls[4] + cls[5]:>5}  βουνό {cls[3]:>5}  "
                   f"γόνιμο {sum(1 for b in got if b & 7 == 0 and b & 8):>5}")
 
+    # --- και άλλα οκτώ seeds, δύο σε κάθε πλανήτη (βήμα 112) ---
+    # Η γέννηση ξαναγράφτηκε για ταχύτητα: τα πλάτη των αγκυρών ανά γραμμή, τα
+    # κομμάτια της γραμμής, τα βάρη από πίνακα. Τέσσερα seeds στον πλανήτη 0 και
+    # ένα στους άλλους ήταν λίγα για τόσες άκρες.
+    for seed, planet in MORE:
+        got, _ = run_z80(sym, seed, planet)
+        want = bytes(G.generate(seed, planet).buf)
+        if got != want:
+            diff_report(got, want, seed)
+            fails += 1
+    if not fails:
+        print(f"OK άλλα {len(MORE)} seeds, δύο ανά πλανήτη: ταυτόσημα με την αναφορά")
+
+    # --- η σελίδα εργασίας χωράει (βήμα 112, src/worldgen.asm) ---
+    # Οι λίστες των αγκυρών πιάνουν 56 bytes και οι πίνακες βάρους από ένα byte
+    # ανά μονάδα ακτίνας: το μέγιστο rad κάθε άγκυρας είναι lo + mask του
+    # gen_spec, και όλα μαζί πρέπει να χωρούν στα 200 που μένουν.
+    spec = re.findall(r"^\s*db\s+(\d+),\s*(\d+),\s*(\d+)", open(os.path.join(
+        ROOT, "build", "gen_tables.asm"), encoding="utf-8").read().split("gen_spec:")[1]
+        .split("\n\n")[0], re.M)
+    rads = [int(lo) + int(mask) for _, lo, mask in spec]
+    if len(rads) != 6 or sum(rads) > 256 - 56:
+        print(f"ΑΠΟΤΥΧΙΑ: οι πίνακες βάρους θέλουν {sum(rads)} bytes ({rads}), "
+              f"χωρούν {256 - 56}")
+        fails += 1
+    else:
+        print(f"OK οι πίνακες βάρους: {sum(rads)} bytes από τα {256 - 56} ({rads})")
+
     if fails:
+        return 1
+
+    # --- ΑΡΝΗΤΙΚΑ: ο κώδικας του βήματος 112 πειραγμένος — ο κόσμος αλλάζει ---
+    bad = negatives(sym)
+    if bad:
         return 1
 
     # --- ντετερμινισμός από ψυχρή εκκίνηση ---
@@ -151,15 +189,67 @@ def main():
 
     sec = frames * 19968 / 1e6
     print(f"\nκόστος: {frames} frames = {sec:.2f} s για έναν κόσμο")
-    # Το §5.9 καταγράφει 13,5 s μετρημένα, και το §5.10 στηρίζεται πάνω του: με
-    # αυτόν τον αριθμό η αναγέννηση στη φόρτωση δεν στέκει. Αν πέσει, το §5.10
-    # ξανασυζητιέται· αν ανέβει, χειροτερεύει. Και στις δύο περιπτώσεις, όχι σιωπή.
-    if not 12.5 <= sec <= 14.5:
-        print(f"  ΑΠΟΤΥΧΙΑ: το DESIGN §5.9 λέει 13,5 s, μετρήθηκαν {sec:.2f}."
+    # Το §5.9 καταγράφει 5,3 s μετρημένα (13,5 ως το βήμα 111), μαζί με την
+    # αντιγραφή του επιπέδου που κάνει μόνο η σκαλωσιά (~0,2 s). Αν ανέβει,
+    # χειροτερεύει· αν πέσει, το §5.9 και το §5.10 θέλουν τον καινούργιο
+    # αριθμό. Και στις δύο περιπτώσεις, όχι σιωπή.
+    if not 5.0 <= sec <= 5.5:
+        print(f"  ΑΠΟΤΥΧΙΑ: το DESIGN §5.9 λέει 5,3 s, μετρήθηκαν {sec:.2f}."
               f"\n  Ενημέρωσε το §5.9, ξανακοίτα το §5.10, και διόρθωσε αυτό το όριο.")
         return 1
-    print("  (το DESIGN §5.9 καταγράφει 13,5 s — συμφωνεί)")
+    print("  (το DESIGN §5.9 καταγράφει 5,3 s — συμφωνεί· 13,5 ως το βήμα 111)")
     return 0
+
+
+# ---------------------------------------------------------------------------
+# ΑΡΝΗΤΙΚΑ (βήμα 112). Κάθε σφάλμα πάνω στον νέο κώδικα πρέπει να αλλάζει τον
+# κόσμο — αλλιώς η σύγκριση με την αναφορά δεν τον βλέπει, και το «ταυτόσημα»
+# δεν λέει όσα νομίζουμε.
+# ---------------------------------------------------------------------------
+def find_at(m, sym, label, pat, span=96):
+    base = sym[label]
+    code = m.read_ram(base, span)
+    i = code.find(bytes(pat))
+    assert i >= 0, f"δεν βρέθηκε το {bytes(pat).hex()} μετά το {label}"
+    return base + i
+
+
+def negatives(sym):
+    from cpc import CPC
+    m = CPC()
+    m.run_frames(60)
+    m.quickload(SNA, start=False)
+    cases = (
+        ("τα πλάτη των αγκυρών ένα tile στενότερα (χωρίς το inc του uhi)",
+         [(find_at(m, sym, "GPA_HI", [0x3C]), 0x00)]),
+        ("το χείλος από το u 7 και όχι από το 8",
+         [(find_at(m, sym, "GPL_MID", [0x3E, 8]) + 1, 7)]),
+        ("η μέση τιμή των οκταβών 22 αντί για 23",
+         [(find_at(m, sym, "GPE_H1", [0xD6, 23]) + 1, 22)]),
+        ("οι ράχες χωρίς φλέβα",
+         [(find_at(m, sym, "GK_D", [0xFD, 0x2E, 1]) + 2, 0)]),
+        ("ο πολλαπλασιασμός χωρίς το πρώτο βήμα",
+         [(find_at(m, sym, "MUL8", [0x29]), 0x00)]),
+        ("χωρίς το ξεκαθάρισμα (το ld (hl),a του μοναχικού)",
+         [(find_at(m, sym, "GD_COL", [0xAE, 0x77]) + 1, 0x00)]),
+    )
+    fails = 0
+    for name, patch in cases:
+        caught = None
+        for seed in (0x1234, 0xACE1):
+            got, _ = run_z80(sym, seed, 0, patch)
+            want = bytes(G.generate(seed).buf)
+            n = sum(1 for a, b in zip(got, want) if a != b)
+            if n:
+                caught = (seed, n)
+                break
+        if caught:
+            print(f"OK ΑΡΝΗΤΙΚΟ: με «{name}» ο κόσμος αλλάζει "
+                  f"(seed {caught[0]:04X}: {caught[1]} bytes)")
+        else:
+            print(f"ΑΠΟΤΥΧΙΑ ΑΡΝΗΤΙΚΟ: με «{name}» ο κόσμος βγαίνει ίδιος")
+            fails += 1
+    return fails
 
 
 if __name__ == "__main__":

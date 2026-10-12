@@ -187,9 +187,11 @@ def main():
         return n
 
     running, frames, bars, seen_title, tones = False, 0, [], None, []
-    for _ in range(120):          # η γεννήτρια μόνη της θέλει 13,5 s
-        m.run_frames(30)
-        frames += 30
+    # ΑΝΑ 10 FRAMES από το βήμα 112: η γεννήτρια κρατά πια ~5 s, και ανά 30 τα
+    # δείγματα της μουσικής ήταν δεκαπέντε — τέσσερις νότες, όχι πέντε.
+    for _ in range(360):
+        m.run_frames(10)
+        frames += 10
         started = w16(g + 2) == 40 and m.peek(g + 58) == 4
         if seen_title is None and frames >= 300:
             ram = scr()
@@ -202,7 +204,7 @@ def main():
             bars.append(bar_bytes(scr()))
         # Και ο ΗΧΟΣ της αναμονής (§9.5): η γεννήτρια έχει δικό της παίκτη,
         # γιατί ο ήχος του παιχνιδιού ζει στην τράπεζα 2 που δεν υπάρχει ακόμη.
-        # Δειγματοληψία ανά 30 frames· μια νότα κρατά ~25, οπότε περνούν όλες
+        # Δειγματοληψία ανά 10 frames· μια νότα κρατά ~30, οπότε περνούν όλες
         # από μπροστά μας έστω μία φορά.
         if not started:
             r = m.psg_regs()
@@ -218,7 +220,7 @@ def main():
     check(title > 0 and basic == 0,
           f"η οθόνη φόρτωσης έσβησε το BASIC: {title} bytes τίτλου, "
           f"{basic} στις δύο πρώτες σειρές (εκεί έγραφε το «Amstrad 128K»)")
-    # Η μπάρα είναι το ΜΟΝΟ πράγμα που κινείται επί 13,5 δευτερόλεπτα: πρέπει
+    # Η μπάρα είναι το ΜΟΝΟ πράγμα που κινείται επί 5 δευτερόλεπτα (13,5 ως το βήμα 111): πρέπει
     # να ξεκινά άδεια, να μη γυρίζει ποτέ πίσω, και να φτάνει ως το τέρμα.
     # Η ΔΕΙΓΜΑΤΟΛΗΨΙΑ ΕΙΝΑΙ ΑΝΑ 30 FRAMES ΚΑΙ Η ΦΑΣΗ ΤΗΣ ΑΛΛΑΖΕΙ ΜΕ ΚΑΘΕ
     # ΑΛΛΑΓΗ ΜΕΓΕΘΟΥΣ ΤΟΥ ΚΩΔΙΚΑ. Το «bars[0] == 0 και max == 64» έπεφτε σε
@@ -355,6 +357,31 @@ def main():
     ref = open(os.path.join(ROOT, "build", "world_new.bin"), "rb").read()
     check(sample != bytes(ref[i] for i in range(0, 16384, 64)),
           "ο κόσμος ΔΕΝ είναι το έτοιμο επίπεδο του snapshot — τρέχει η γεννήτρια")
+    # ΚΑΙ ΕΙΝΑΙ Ο ΚΟΣΜΟΣ ΤΟΥ SEED ΤΟΥ (βήμα 112). Η γεννήτρια του δίσκου είναι
+    # το gen.asm, με τη μπάρα και τη μουσική της· το tests/test_worldgen.py
+    # ελέγχει το ίδιο worldgen.asm μέσα στη σκαλωσιά του. Εδώ: το seed και ο
+    # πλανήτης από το worldinfo της τράπεζας 6, και όλο το επίπεδο της 4
+    # απέναντι στο tools/worldgen_ref.py.
+    import worldgen_ref
+    b4 = cpc._lib.cpcemu_ram_ptr(m._h, 4)
+    b6 = cpc._lib.cpcemu_ram_ptr(m._h, 6)
+    wi = int(open(os.path.join(ROOT, "build", "layout.asm"), encoding="utf-8").read()
+             .split("G_worldinfo")[1].split("#")[1].split()[0], 16) - 0x4000
+    seed, planet = b6[wi] | (b6[wi + 1] << 8), b6[wi + 2]
+    plane = bytes(b4[k] for k in range(16384))
+    # Ο πλανήτης ΒΓΑΙΝΕΙ από το seed (src/gen.asm, §5.7): (hi ^ lo) & 3. Ως το
+    # βήμα 111 το byte του worldinfo ήταν #C6 σε κάθε εκκίνηση από δίσκο.
+    nd = -1
+    if planet == ((seed >> 8) ^ seed) & 3:
+        want = bytes(worldgen_ref.generate(seed, planet).buf)
+        # Τα bits 4-5 είναι η κατοχή (tools/world.py), και το game_new έχει ήδη
+        # γράψει εκεί το σκάφος, 2 x 2 στο κέντρο: η σύγκριση τα αφήνει έξω. Το
+        # ότι η γεννήτρια τα αφήνει μηδέν το ελέγχει το tests/test_worldgen.py.
+        nd = sum(1 for x, y in zip(plane, want) if (x ^ y) & 0xCF)
+    check(nd == 0, f"το επίπεδο του δίσκου είναι ο κόσμος του seed {seed:04X}, "
+                   f"πλανήτης {planet} όπως τον γράφει το worldinfo, byte προς byte: "
+                   + (f"{nd} διαφορετικά" if nd >= 0 else
+                      f"ο πλανήτης του seed είναι {((seed >> 8) ^ seed) & 3}"))
 
     m.screenshot(os.path.join(ROOT, "build", "disc.png"), aspect=True)
 
@@ -453,7 +480,7 @@ def main():
     check(left == 0, f"το hw_clear σβήνει και τα 16 KB της οθόνης ({left} bytes "
                      f"έμειναν)")
     print(f"\nεκκίνηση: {frames} frames = {frames / 50:.0f} s από το ENTER ως "
-          f"την αποικία (τα 13,5 είναι η γεννήτρια)")
+          f"την αποικία (τα 5 είναι η γεννήτρια· 13,5 ως το βήμα 111)")
     print(f"build/habitat.dsk: {os.path.getsize(DSK)} bytes, "
           f"build/disc.png γράφτηκε")
     if FAIL:

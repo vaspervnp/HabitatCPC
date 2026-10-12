@@ -1430,11 +1430,18 @@ zero**, and when it finally did, it read the thresholds from `planet*4` instead 
 `planet*6`: the comment said `*6`, the code said `*4`, and at planet 0 the two agree.
 The reference comparison caught it on the first run.
 
+**And from the disc, the colours were always the storm's, until milestone 112.** The
+world was the right planet's, but the `worldinfo` byte said `&C6` on every boot from
+disc, and the palette took its low two bits: 2. Only the snapshot path, which every
+test used, wrote a real planet. The comparison of a disc boot's plane with the
+reference found it ([§5.9](#five-seconds-at-milestone-112)). Every planet's look now
+reaches the disc game.
+
 ### 5.8 Cleanup and the landing zone
 
 A single 4-neighbour majority pass over the plane removes isolated specks (a lone
 water tile inside a mountain, a one-tile island) and enforces a minimum feature size of
-four tiles. One pass, 16,384 tiles at ≈ 60 µs ≈ 1 second.
+four tiles. One pass, 16,384 tiles at ≈ 60 µs ≈ 1 second, estimated: measured 0.73 s, and 0.36 since milestone 112 ([§5.9](#five-seconds-at-milestone-112)).
 
 Then the landing zone is carved unconditionally: every tile with `r ≤ 4` becomes
 **ground**, occupancy free, with the decor the noise gave it, whatever the noise said.
@@ -1457,10 +1464,11 @@ Every world's centre changed with it, so `GEN_VERSION` is 2.
 timed by `tests/test_worldgen.py` on the emulator. The per-tile pass dominates at
 541 µs per tile, which is ~2,200 T-states: three hash lookups, about thirty
 `ld a,(nn)` round-trips at 16 T-states each, and four calls. The identified win
-is holding `u`, `v` and the world pointer in registers across `gen_tile` and
-inlining the hash — worth perhaps 2×, and not taken yet.
+was holding `u`, `v` and the world pointer in registers across `gen_tile` and
+inlining the hash, worth perhaps 2×. **Milestone 112 took it, and more: 5.1 s on
+the disc** ([below](#five-seconds-at-milestone-112)).
 
-13.5 s is tolerable for a new game. **It is not tolerable on load** — see
+13.5 s was tolerable for a new game. **It was not tolerable on load**: see
 [§5.10](#510-player-modification).
 
 The generator was going to run in slices behind a `GENERATING` progress bar. It
@@ -1471,6 +1479,100 @@ generator pokes a 64-byte bar straight into screen memory, one byte per two rows
 `wg_plane` ([§13.2](#132-the-loading-screen)). Thirty bytes of code. The slice
 structure is still unused, and the border codes are still there underneath.
 
+#### Five seconds, at milestone 112
+
+The win identified above was taken, and more with it. **The world takes 5.1 s on the
+disc instead of 12.5, and 5.3 s instead of 13.7 in `tests/gentest.asm`**, which also
+copies bank 4 out (0.2 s). The planes are the same byte for byte. Measured by
+sampling the program counter every 4 µs over a whole generation:
+
+| Pass | Until milestone 111 | Milestone 112 |
+|---|---|---|
+| Row fields, 2 × 128 rows | 1.1 s | 0.80 s |
+| Tiles: height, anchors, shape, classify, write | 11.7 s | 3.86 s |
+| Despeckle | 0.73 s | 0.36 s |
+| The test's copy of bank 4 | 0.20 s | 0.20 s |
+| **Total, `tests/gentest.asm`** | **13.7 s** | **5.3 s** |
+
+The tiles were 541 µs each and are now about 240 µs. The changes, in `src/worldgen.asm`:
+
+- **The height per row** (`gp_epass`). The two octaves change every 4 and every
+  2 tiles, so they are hashed once for the row, and the sum is written into `erow`
+  in place.
+- **The planet's thresholds go into the instructions** (`gt_planet`). Each class test
+  is a `cp n`, not three memory reads. The row's |y|, v and v + 7 are written the
+  same way, once per row.
+- **Pieces of a row instead of a test per tile.** r = max(|x|, |y|) matters only
+  at the rim (r ≥ 57) and in the centre (r ≤ 10). The row is cut into pieces known
+  from |y|. Only the tiles in those pieces (`gtG`) work out r; the others (`gtN`)
+  go straight to the classes.
+- **The anchors know their span** (`gp_active`). The distance max + min/2 grows with
+  dx, so for each active anchor the row knows which u are inside. It is
+  |dx| ≤ t, with t in closed form:
+  - if some dx > dy is inside, that is rad − (dy >> 1) − 1;
+  - otherwise it is min(dy, 2(rad − dy) − 1).
+
+  The closed form was checked against the definition for every rad < 40 and
+  dy < rad. Three more savings:
+  - **One list per kind.** Lakes, ridges and the basin each have their own list,
+    so each list keeps its maximum in a register and never asks the kind.
+  - **Weights from a table.** min(255, (rad − d) · scale) is a table per anchor,
+    built once per world (`wg_wtab`).
+  - **Most tiles skip the anchors.** A tile outside the union of the spans leaves
+    in three instructions.
+
+  All of it costs 1.97 s, the largest share left.
+- **The multiplication is unrolled** (`mul8`, about 56 µs; the loop was about 115).
+  The blend ring's own weighting no longer adds in a loop of up to 255 steps.
+- **The row fields** (`gen_row`) keep their pointers in registers. The bottom row
+  of the grid is the top one + 16 in the same page, so the wrap from row 15 to
+  row 0 is the wrap of L.
+- **The despeckle** walks three pointers together, north, tile and south. It
+  compares classes with `xor (hl) / and 7`, and most tiles leave at the first test.
+
+**Where the bytes went.** The generator grew 256 bytes. Its code passed `&8900` by
+171 bytes, so the page-aligned tables moved up a page, and `GEN.BIN` ends at `&8E00`,
+256 bytes under the BASIC stack. The new working page has the active anchors and
+the weight tables, 218 of its bytes. It is **`GEN_WORK` at `&9400`**
+(`src/const.asm`), between the loader and the AMSDOS buffer. The generation runs
+between two loads, so nothing else uses that RAM at the time. `src/boot.asm` asserts
+the loader stays under it. The loader was 589 bytes, not the 512 its own memory map
+claimed. Nothing of the generator uses `AF'` or `BC'`, which the firmware keeps.
+
+**The music beats twice a row** (`wg_beat` at u = 0 and u = 64). A row takes about
+40 ms now, so a beat is about 20, close to the 17 ms one beat per 32 tiles used to
+take ([§9.5](#95-sound)).
+
+**And the planet was wrong on every disc start.** `gen_entry` kept the planet in `C`
+and then loaded `BC` with the gate array's port: `G_worldinfo + 2` was `&C6` on every
+boot from disc. `pal_planet` keeps the low two bits, so every disc game had planet
+2's colours, whatever world the seed made. The snapshot path never ran this code, and
+nothing read the byte against the seed. The new check in `tests/test_disc.py` failed
+on it first: it compares the whole plane after a disc boot with
+`tools/worldgen_ref.py`, for the seed and planet in `G_worldinfo`. The planet now
+waits in `E`.
+
+**Against milestone 111's logs**, the rest of the suite measured the same.
+There were two exceptions:
+- **The boot:** 1,830 frames down to 1,460.
+- **`tests/test_save.py`:** save and load took 36 and 54 frames instead of 35 and 52.
+  The same binary with milestone 111's disc image takes 35 and 52, and the two
+  images differ only in the directory and in track 6, the generator's. So the extra
+  frames come from the emulator's drive and the image, not the save's code, which did
+  not change.
+
+**The tests.**
+- **`tests/test_worldgen.py`** compares eight more seeds against the reference, two
+  per planet: sixteen worlds in all. It checks that the weight tables fit the working
+  page. It catches six planted faults: an anchor's span one tile short, the rim
+  starting at u = 7, the octaves' mean 22 for 23, ridges without veins, the multiply
+  missing its first step, and the despeckle without its write. The cost window is
+  5.0–5.5 s, for the 5.3 measured.
+- **`tests/test_disc.py`** samples the load every 10 frames, not 30. With the
+  shorter generation, 30 caught only four of the tune's pitches. It also compares
+  the whole plane of a disc boot with the reference, with the occupancy bits left
+  out, because the ship is already on them.
+
 ### 5.10 Player modification
 
 Terrain changes during play — a mined-out mountain becomes rock, a meteor leaves a
@@ -1478,9 +1580,14 @@ crater, a dome site becomes foundation. These are **not** regenerable from the s
 
 Earlier revisions logged them to a 1.5 KB delta list and **regenerated the world from
 the seed on load**, replaying the deltas over it. That was a good trade against a
-3.5 s generator. Against the measured 13.5 s ([§5.9](#59-cost--measured)) it is not: it buys
-about 15 KB of disc space at the price of a quarter-minute stare on every single
-load.
+3.5 s generator. Against the measured 13.5 s ([§5.9](#59-cost--measured)) it was not: it
+bought about 15 KB of disc space at the price of a quarter-minute stare on every
+single load.
+
+Since milestone 112 the generator takes 5.1 s, and the answer is still no. The
+whole save, 23 KB, loads in 0.7 s in the emulator ([§11](#11-save-and-load)). A
+real drive is several times slower than that, and regenerating would still lose,
+and would need the delta list back.
 
 **So the plane is saved.** All 16 KB of it, verbatim, in the save file
 ([§11](#11-save-and-load)). Loading becomes a disc read — an estimated 4 s for
@@ -5762,7 +5869,7 @@ Four more things are sliced, for the same reason:
 
 | Work | Slicing | Total |
 |---|---|---|
-| World generation | one pyramid level or one classify chunk per frame | **13.5 s measured**, with a real progress bar — new game only ([§5.9](#59-cost--measured)) |
+| World generation | one pyramid level or one classify chunk per frame | **5.1 s measured** (13.5 until milestone 112), with a real progress bar — new game only ([§5.9](#59-cost--measured)) |
 | Routing rebuild | 15 node expansions per frame (12 until milestone 63), **not** a wheel slot | 3.4 s at 48 nodes, ~22 s at 128 ([§6.4](#64-routing)) |
 | Dome construction blit | one quadrant per frame | ≈ 8 frames |
 | Camera redraw after a jump | one tile column per frame | ≈ 20 frames |
@@ -10332,6 +10439,13 @@ box winding down, which for this particular thirteen seconds is not the worst th
 The fix, if it ever matters, is to let the generator run with interrupts on and hang
 the player off the firmware's ticker.
 
+**Since milestone 112 the rows keep it**, twice each, at u = 0 and u = 64
+([§5.9](#five-seconds-at-milestone-112)). A tile costs about 240 µs instead of 541,
+so 32 tiles would have been a beat every 8 ms and the tune would have run at double
+speed. A row is about 40 ms, so a beat is about 20. It still wobbles, for the same
+reasons. In five seconds the tune plays about 255 beats instead of about 790, so less
+of its score is heard.
+
 **The volume is software, not the AY's envelope generator.** The hardware envelope is
 two register writes a note and would have been cheaper — but then `R8` says only *"use
 the envelope"* and the actual loudness is invisible to anything reading the registers.
@@ -10815,7 +10929,7 @@ and `L` open a slot chooser, both only from `LOOK`.
 | | **Total** | **23,552** |
 
 The world plane **is** saved, in full. Regenerating it from the seed would cost
-13.5 s on every load ([§5.10](#510-player-modification)); the 46 sectors cost
+5.1 s on every load (13.5 until milestone 112) ([§5.10](#510-player-modification)); the 46 sectors cost
 **0.7 s measured in the emulator** (`tests/test_save.py`) — real hardware will be
 several times that, because the emulator has no rotational latency and a real
 drive waits for each sector to come round.
@@ -11017,7 +11131,7 @@ game lives in seven places at once — see [§13.1](#131-three-ways-a-loader-doe
 | File | Goes to | Bytes | |
 |---|---|---|---|
 | `HABITAT.BAS` | — | 3 lines | `MEMORY &8FFF` · `LOAD"LOADER.BIN",&9000` · `CALL &9000` |
-| `LOADER.BIN` | `&9000` | 533 | the loader, plus the 53-byte endgame it copies to `&3FC0` |
+| `LOADER.BIN` | `&9000` | 589 | the loader, plus the 53-byte endgame it copies to `&3FC0` |
 | `BANK6.BIN` | bank 6 | 16,384 | quadrants, figures, entity tables |
 | `BANK7.BIN` | bank 7 | 16,384 | structures, plants, and the reserved holes |
 | `TEXT.BIN` | bank 7, over the hole | 1,017 | every string the game prints ([§4.2](#42-the-eight-banks)) |
@@ -11025,11 +11139,14 @@ game lives in seven places at once — see [§13.1](#131-three-ways-a-loader-doe
 | `PAGE2.BIN` | base bank 1 at `&4000` (bank 5 until milestone 86), then `&8000` | 7,288 (8,056 until milestone 87) | bank 2's graphics and tables |
 | `BANK5.BIN` | `&7400` in bank 5 | 2,448 | the twelve machine sprites (milestone 85) and, since milestone 87, the small room icons: straight into place since milestone 86; at 85 they waited in bank 5's scratch between the data and the code ([§4.3](#43-bank-2-flat-again)) |
 | `GAME2.BIN` | bank 5 at `&4000`, then `PAGE2_CODE` | 7,329 | bank 2's code — the address comes from the symbol table, not from a constant in the build script, because it moved once and the script did not |
-| `GEN.BIN` | `&8000` | 3,072 | the world generator: runs once, returns |
+| `GEN.BIN` | `&8000` | 3,584 | the world generator: runs once, returns. Its working page is `GEN_WORK` at `&9400`, outside the file (milestone 112, [§5.9](#five-seconds-at-milestone-112)) |
 | `GAME.BIN` | `&0100` | 15,330 | the game (sizes as of milestone 45 — `ls build/`, not this table, is the authority) |
 
-**Measured: 31 s from `ENTER` to the colony** — 13.5 s of that is the generator
-([§5.9](#59-cost--measured)), the rest is 68 KB off the floppy. The border changes
+**Measured: 29 s from `ENTER` to the colony** (36 until milestone 112, 31 when
+this paragraph was first written). 5.1 s of it is the generator
+([§5.9](#59-cost--measured)), and 23.6 s is the files: 81 KB off the floppy through
+AMSDOS, about 3.4 KB/s. The game's own disc driver reads its 23 KB save in 0.7 s
+([§11](#11-save-and-load)), so the files are the next thing to make faster. The border changes
 colour at each file, which is the only progress indicator there can be while the
 firmware still owns the screen.
 
@@ -11047,6 +11164,7 @@ tests in this document runnable rather than aspirational:
 | Test | Method |
 |---|---|
 | Generator determinism | generate a seed twice from cold boot, diff bank 4 ([§5.11](#511-testing-determinism)) |
+| Generator identity | the Z80 against `tools/worldgen_ref.py` byte for byte: four seeds on planet 0, one on each other planet, and since milestone 112 eight more, two per planet; the working page's weight tables fit; six planted faults in the milestone's code each change the world; the cost 5.0–5.5 s for the 5.3 measured (13.5 until milestone 112) (`test_worldgen.py`). And since milestone 112 the plane of a real disc boot against the reference for the seed and planet in `G_worldinfo`, occupancy bits aside — which found every disc game's planet written as `&C6` (`test_disc.py`, [§5.9](#five-seconds-at-milestone-112)) |
 | Generator regression | golden bank-4 dumps per version, checked in |
 | Map quality | render each golden seed to PNG, review by eye |
 | Frame budget | instrument the ISR with a frame counter; assert no slot exceeds its budget |
@@ -11190,7 +11308,7 @@ three different programs:
   which file is loading if the screen is ever wrong.
 - **The generator** (`gen.asm`, firmware alive but no calls to it) draws a progress
   bar **straight into screen memory**. It is the only part of the boot that takes
-  real time — 13.5 s, [§5.9](#59-cost--measured) — and the only one with something
+  real time — 5.1 s since milestone 112 (13.5 until then), [§5.9](#59-cost--measured) — and the only one with something
   to count: `wg_plane` walks 128 rows, the bar is 64 bytes wide, so one byte per two
   rows. `wg_prog` is 30 bytes and preserves every register; `worldgen.asm` calls it
   once per row and defines an empty default, so `tests/gentest.asm`, which has no
@@ -11205,7 +11323,9 @@ was) while the title rows are not; the bar is sampled every 30 frames through th
 whole generation and must start at zero, never go backwards, and reach all 64; and
 `hw_clear` is run against a screen filled with `#AA`. Negative controls: without
 `SCR SET MODE` the BASIC text is still there (292 bytes in the top two rows), and
-without the per-row call the bar stays at zero for the whole 13.5 seconds.
+without the per-row call the bar stays at zero for the whole generation. Since
+milestone 112 the load is sampled every 10 frames, because the generation is
+shorter.
 
 **And it has sound.** The tune is the generator's own, clocked by its own tile loop,
 in 420 of the 768 spare bytes it had — [§9.5](#95-sound) has the reasons for both the
@@ -11256,8 +11376,8 @@ through the machine's own floppy controller ([§11](#11-save-and-load)). That is
 milestone 10's delivery and save/load halves. **The four planets are built**
 ([§5.7](#57-planets)), **and so is the sound** ([§9.5](#95-sound)): eight effects on
 the AY, checked against the chip's own registers. What is left of milestone 10 is
-tuning. **Music is written too** — for the one place it belongs, the thirteen seconds
-of world generation ([§9.5](#95-sound)); in-game music is a decision against, not a
+tuning. **Music is written too** — for the one place it belongs, the five seconds
+of world generation (thirteen until milestone 112) ([§9.5](#95-sound)); in-game music is a decision against, not a
 gap.
 
 ---
@@ -11273,7 +11393,7 @@ gap.
 | **The interrupt costs 5.9 % of every frame** (1,177 µs), estimated at 3.8 % | Medium | The waits are fixed by `R7 = 33`. `R7 = 34` would save ~500 µs a frame with the picture eight lines higher; the top wait could host `snd_tick` ([§8.1](#two-modes-and-two-palettes-the-raster-splits-at-milestone-83)). |
 | Memory map slack: 1,536 contiguous in bank 2, **288 in bank 6**, 440 in bank 7 | Medium | Bank 6 is the tight one now and the entity tables grew into it. The next thing that needs space there moves `plants` out of bank 7 first, or takes the `s` room-icon set (864 B) as [§4.2](#42-the-eight-banks) names. |
 | Routing rebuild latency of ≈ 4 s after a network change | Low | Stale routes are inefficient, never invalid ([§6.4](#64-routing)). If it grates: cache paths for the 16 busiest pairs and rebuild those first. |
-| **13.5 s** world generation feels long even on a cassette-era machine, and it is 3.9× the original estimate | Medium | New game only — loads read the plane off disc ([§5.10](#510-player-modification)). **Both halves are built**: the progress bar of [§13.2](#132-the-loading-screen) — title, a dot per file, a bar that moves once per two world rows — and, since milestone 24, **music** ([§9.5](#95-sound)), played by the generator's own player and clocked by its own tile loop, because interrupts are off down there. The identified 2× win ([§5.9](#59-cost--measured)) is held in reserve. |
+| ~~**13.5 s** world generation feels long even on a cassette-era machine, and it is 3.9× the original estimate~~ | ~~Medium~~ | **5.1 s since milestone 112** ([§5.9](#five-seconds-at-milestone-112)), the same worlds byte for byte. New game only, since loads read the plane off disc ([§5.10](#510-player-modification)). Both halves of the wait are built: the progress bar of [§13.2](#132-the-loading-screen), with a title, a dot per file and a bar that moves once per two world rows; and, since milestone 24, **music** ([§9.5](#95-sound)), played by the generator's own player and clocked by its own rows, because interrupts are off down there. What is left of the boot's 29 s is the files: 23.6 s through AMSDOS ([§13](#13-build-and-test)). |
 | A seed produces a technically valid but miserable map | Low | Feature anchors guarantee the necessities; the headless seed sweep ([§13](#13-build-and-test)) finds the rest. |
 | A full-colony routing rebuild is ~22 s of stale routes at the current budget | Medium | Only at 128 nodes; 48 nodes is 3.4 s ([§6.4](#64-routing)). It was 27.7 s until milestone 62 made `rt_node` 22 % cheaper and milestone 63 made a lone source's opening 0.13 ms instead of 1.6 ([§6.4](#a-cheaper-opening-and-a-budget-of-15-at-milestone-63)). Together they let the budget go from 12 to 15 with no frame worse than before: the worst slice measured went from 13.5 ms to 10.4. One lever is left untaken: raise the per-frame budget while the camera is still. A lone source's largest cost is now its closing, two 128-byte copies, 1.7 ms. |
 | ~~Slots 11, 12, 13 and 15 of the wheel are unwritten~~ | ~~Medium~~ | **Written and measured.** Four of six budgets were low, by 1.5× to 5× ([§7.2](#72-the-wheel)). The worst frame is a third of a frame, so the design holds. Remaining passes should be budgeted pessimistically. |
