@@ -157,4 +157,127 @@ ovi_lp:
         jr      nz,ovi_lp
         ret
 
+; ---------------------------------------------------------------------------
+; ΟΣΑ ΑΦΗΝΕ ΠΙΣΩ ΤΗΣ Η ΚΑΤΕΔΑΦΙΣΗ (βήμα 116, DESIGN §9.3). Εδώ και όχι στο
+; overlay (src/dm_ovl.asm), που έχει 25 bytes: από εκεί τρεις κλήσεις.
+; ---------------------------------------------------------------------------
+
+; dm_sites — ΕΝΑ ΕΡΓΟΤΑΞΙΟ ΘΟΛΟΥ ΧΩΡΙΣ ΑΚΜΗ. Η μόνη ακμή ενός θόλου που χτίζεται
+; είναι η σύνδεση εδάφους του ως το κοντινότερο airlock ή το σκάφος (lk_ground):
+; οι διάδρομοί του γίνονται ακμές όταν τελειώσει. Γκρεμίστηκε εκείνο το airlock,
+; και κανείς δεν τον έφτανε πια για να τον χτίσει. Παίρνει σύνδεση εδάφους
+; ξανά, όπως στην τοποθέτηση, από το κέντρο του (το lk_anchor ψάχνει από τον
+; κέρσορα, που μένει όπως ήταν). Τίποτα δεν κρέμεται από εργοτάξιο θόλου, άρα
+; κανένας κύκλος. Μετά το dm_relink, με το εργοτάξιο που γκρεμίστηκε ήδη άδειο.
+; Γυρίζει με την 1, όπως το dm_relink πριν από αυτό.
+dm_sites:
+        call    asc_b6
+        ld      ix,G_dome_tbl
+        ld      c,0                     ; ο θόλος
+dms_lp:
+        ld      a,(ix+D_STATE)
+        dec     a                       ; DS_BUILDING
+        jr      nz,dms_nx
+        ld      l,c
+        ld      h,NODEPG
+        or      (hl)                    ; ο βαθμός του
+        jr      nz,dms_nx
+        push    bc
+        push    ix
+        ld      hl,(cur_hx)             ; cur_hx, cur_hy διπλανά
+        push    hl
+        ld      l,(ix+D_CX)
+        ld      h,(ix+D_CY)
+        ld      (cur_hx),hl
+        ld      b,c
+        call    lk_ground               ; src/link.asm· γυρίζει με την 1
+        pop     hl
+        ld      (cur_hx),hl
+        call    asc_b6
+        pop     ix
+        pop     bc
+dms_nx:
+        ld      de,DOME_REC
+        add     ix,de
+        inc     c
+        bit     6,c                     ; MAX_DOME
+        jr      z,dms_lp
+        jp      asc_b1
+
+; dm_up — A = ο γονιός του γκρεμισμένου (dm_par, 255 κανένας) -> CY και A = από
+; πού κρέμονται τα ορφανά του· NC (A = 255) από πουθενά. Ο ίδιος αν έχει θέση για ακμή·
+; αλλιώς ο δικός του γονιός (LK_OWN), και πάει λέγοντας: ένας πρόγονος του
+; γκρεμισμένου δεν κρέμεται από ορφανό του, άρα κανένας κύκλος. Χωρίς γονιό (ένα
+; σώσιμο πριν από το βήμα 102), το σκάφος, η ρίζα όλων — αν η δομή 0 είναι
+; σκάφος· στην αποικία δοκιμών δεν είναι. Ως το 115 και τα δύο έμεναν χωρίς
+; σύνδεση. Το πολύ MAX_STRUCT βήματα, κι ας έλεγε ψέματα ένα LK_OWN. Χαλάει
+; B, HL. Τράπεζα 1 μέσα και έξω.
+dm_up:
+        ld      b,MAX_STRUCT
+        cp      255
+        jr      nz,dmu_lp
+        call    asc_b6
+        ld      a,(G_struct_tbl + ST_KIND)
+        call    asc_b1
+        cp      K_SHIP
+        ld      a,MAX_DOME              ; το σκάφος, η δομή 0
+        jr      z,dmu_lp
+        jr      dmu_no
+dmu_lp:
+        ld      l,a
+        ld      h,NODEPG
+        ld      a,(hl)                  ; ο βαθμός του
+        cp      MAX_DEGREE
+        ld      a,l
+        ret     c                       ; έχει θέση: CY
+        set     5,l                     ; LK_OWN + δομή
+        ld      a,(hl)
+        and     #FF - #80 - LKO_GROUND  ; ο γονιός του, 0 κανένας
+        jr      z,dmu_no
+        djnz    dmu_lp
+dmu_no:
+        ld      a,255
+        or      a                       ; NC: το cp K_SHIP μπορεί να το άφησε
+        ret
+
+; dm_haul — HL -> J_KIND μιας εργασίας, από το dmj_lp του dm_do. ΜΙΑ HAUL ΜΕ ΤΟ
+; ΦΟΡΤΙΟ ΤΗΣ (J_NODE ≠ J_SITE: φορτώθηκε, ή αφέθηκε στη μέση, src/haul.asm) της
+; οποίας ο προορισμός ή το ορυχείο γκρεμίζεται, το παραδίδει στα αποθέματα,
+; όπως ένα φορτίο που δεν έχει πού να πάει (hla_drop). Ως το 115 χανόταν:
+; τα 10 μεταλλεύματα είχαν ήδη φύγει από τον σωρό. Κρατά BC, DE, HL.
+dm_haul:
+        ld      a,(hl)
+        cp      J_HAUL
+        ret     nz
+        push    hl
+        push    de
+        push    bc
+        inc     hl
+        ld      a,(dm_n)
+        ld      b,a
+        ld      c,(hl)                  ; J_NODE
+        inc     hl
+        inc     hl
+        inc     hl
+        ld      a,(hl)                  ; J_SITE
+        cp      c
+        jr      z,dmh_out               ; στο ορυχείο ακόμη: άδεια χέρια
+        cp      b
+        jr      z,dmh_go                ; το ορυχείο γκρεμίζεται
+        ld      a,c
+        cp      b
+        jr      nz,dmh_out              ; ούτε ο προορισμός
+dmh_go:
+        ld      a,S_ORE
+        ld      de,HAUL_LOAD
+        call    ec_make                 ; src/stock.asm
+dmh_out:
+        pop     bc
+        pop     de
+        pop     hl
+        ret
+
+        assert  J_NODE == 1 && J_SITE == 4 && DS_BUILDING == 1 && MAX_DOME == 64
+        assert  D_CY == D_CX + 1 && ST_KIND == 2
+
 dm_n:       db 0

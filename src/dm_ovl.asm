@@ -196,6 +196,7 @@ dmj_lp:
         jr      z,dmj_nx
         inc     a
         jr      z,dmj_nx                ; NO_JOB
+        call    dm_haul                 ; το φορτίο μιας Haul (src/demolish.asm)
         inc     hl
         inc     hl                      ; J_AGENT
         ld      e,(hl)
@@ -361,6 +362,7 @@ dmv_lp:
         cp      l
         jr      nz,dmv_lp
         call    dm_relink               ; όποιος έχασε τη σύνδεσή του (βήμα 102)
+        call    dm_sites                ; ένα εργοτάξιο θόλου χωρίς ακμή (src/demolish.asm)
         jp      dt_end
 
 ; ---------------------------------------------------------------------------
@@ -479,13 +481,8 @@ dml_lp:
         jr      nz,dml_nx
         ld      (hl),a                  ; 0, ώσπου να γράψει το lk_keep
         ld      a,(dm_par)
-        ld      l,a
-        inc     a
-        jr      z,dml_nx                ; ο γκρεμισμένος δεν κρεμόταν από πουθενά
-        ld      a,(hl)                  ; ο βαθμός του γονιού
-        cp      MAX_DEGREE
-        jr      nc,dml_nx
-        ld      a,l
+        call    dm_up                   ; ο γονιός, ή πρόγονος, ή το σκάφος
+        jr      nc,dml_nx               ; κανένας
         ld      (al_pt),a               ; η άκρη, για το lk_draw
         push    bc
         ld      b,c
