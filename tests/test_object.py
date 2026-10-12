@@ -152,7 +152,20 @@ def negatives(sym, refs):
     south = [(jt + 3 * (8 * z + d) + 2, m.peek(jt + 3 * (8 * z + d) + 2) & 0x7F)
              for z in range(3) for d in (3, 4, 5)]
     east = [(jt + 3 * (8 * z + 2), m.peek(jt + 3 * (8 * z + 2)) + 1) for z in range(3)]
-    for label, patch in (("ο νότιος διάδρομος από τον άξονα (το 95)", [(cd + 4 * 9 + 6, 0)]),
+    # ΤΟ ΑΔΙΑΦΑΝΕΣ ΤΕΛΟΣ ΤΩΝ ΚΕΛΥΦΩΝ (βήμα 114, src/span6.asm): το sp2_fl χωρίς
+    # το dec hl (τα ζεύγη ένα byte μετατοπισμένα), το blt_op_flip προς τα
+    # εμπρός (inc ix), και το βήμα της γραμμής 2n αντί για 2n - k (sp_grp).
+    def at(name, pat):
+        i = bytes(m.read_ram(sym[name], 160)).find(bytes(pat))
+        assert i >= 0, f"δεν βρέθηκε το {pat} στο {name}"
+        return sym[name] + i
+    k1 = at("SP2_FL", [0xDD, 0xE5, 0xE1, 0x2B]) + 3
+    k2 = at("BOF_RUN", [0xDD, 0x2B]) + 1
+    k3 = at("SP_GRP", [0x78, 0x87, 0x92, 0x5F]) + 2
+    for label, patch in (("το sp2_fl χωρίς το dec hl (το βήμα 114)", [(k1, 0)]),
+                         ("το blt_op_flip προς τα εμπρός (inc ix)", [(k2, 0x23)]),
+                         ("η γραμμή 2n αντί για 2n - k (sp_grp)", [(k3, 0)]),
+                         ("ο νότιος διάδρομος από τον άξονα (το 95)", [(cd + 4 * 9 + 6, 0)]),
                          ("ο ανατολικός από τον άξονα (το 95)", [(cd + 2 * 9 + 7, 0)]),
                          ("χωρίς αρμούς (το ob_fittings δεν καλεί το jt_dome)",
                           [(of + ic + k, 0) for k in range(3)]),

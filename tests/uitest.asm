@@ -277,6 +277,7 @@ snoop_buf:  defs 96
         ; αυτά εδώ, κατά 38, από το ob_blit που μεγάλωσε. Γι' αυτό ήρθε και το
         ; χτίσιμο του ευρετηρίου, που στο παιχνίδι ζει στην τράπεζα 2.
         include "../src/span.asm"
+        include "../src/span6.asm"          ; βήμα 114: στο παιχνίδι στο b6code
         include "../src/objindex.asm"
         assert  $ <= #C000
         org     #7000

@@ -18,15 +18,21 @@
 ; τα δίνει στον κώδικα του τροχού. Ως το 109 ο πίνακας ήταν εδώ, στην τράπεζα 0,
 ; και τα τεταρτημόρια ολόκληρα: η πηγή μετακινούνταν μόνο όσο το διάστημα.
 ;
+; ΚΑΙ ΑΠΟ ΤΟ ΒΗΜΑ 114 ΤΟ ΑΔΙΑΦΑΝΕΣ ΤΕΛΟΣ: ανά ομάδα και ένα k στο +24 της
+; κεφαλίδας, πόσες στήλες στο τέλος του διαστήματος έχουν μάσκα 0 και στις
+; οκτώ γραμμές. Αποθηκεύονται χωρίς τη μάσκα τους, η γραμμή είναι 2n - k bytes,
+; και ζωγραφίζονται με αντιγραφή (src/span6.asm, στο b6code). Στους θόλους
+; είναι τα 53-80% των ζευγών· οι δακτύλιοι έχουν k = 0.
+;
 ; Ο βρόχος του ob_blit (src/object.asm) τρέχει σε ΚΟΜΜΑΤΙΑ: όσες γραμμές έχει η
 ; ομάδα, ή όσες μένουν. Για κάθε κομμάτι, εδώ: το obl_n (πόσα), το obl_k (ο
 ; πυρήνας, ή ret όταν η ομάδα δεν έχει τίποτα), το obl_p (η πηγή: η ομάδα, η
-; γραμμή της, η στήλη), το obl_s (±2n) και το DE, από το scr_addr. Το ob_bspan
+; γραμμή της, η στήλη), το obl_s (±(2n - k)) και το DE, από το scr_addr. Το ob_bspan
 ; έρχεται εδώ αμέσως μετά το κόψιμο: τίποτα από όσα στήνει για τα άλλα sprites
 ; δεν ισχύει για κέλυφος.
 
         include "../build/span_tables.asm"      ; SPAN_G, SHELL_HDR (tools/pack.py)
-        assert  SPAN_G == 8 && SHELL_HDR == 3 * SPAN_G
+        assert  SPAN_G == 8 && SHELL_HDR == 4 * SPAN_G
 
 ; ---------------------------------------------------------------------------
 ; sp_first — HL = το κέλυφος (ob_spt), από το ob_bspan· γυρίζει στο ob_line.
@@ -128,19 +134,30 @@ spg_t:  ld      hl,0
         and     15
         jp      z,spg_none
         ld      b,a                     ; n
+        ; --- το k (βήμα 114): τα αδιαφανή ζεύγη στο τέλος, χωρίς μάσκα ---
         ld      a,l
-        add     a,e
-        add     a,SPAN_G
+        add     a,3 * SPAN_G
+        ld      l,a
+        ld      a,(hl)
+        ld      (spk_k+1),a
+        ld      d,a
+        ld      a,b
+        sub     d
+        ld      (spk_m+1),a             ; m = n - k: τα ζεύγη με μάσκα
+        ld      a,l
+        sub     2 * SPAN_G
+        add     a,e                     ; +8 + 2g
         ld      l,a
         ld      a,(hl)
         inc     l
         ld      h,(hl)
         ld      l,a
         ld      (spg_da+1),hl           ; οι οκτώ γραμμές της ομάδας
-        ; --- το βήμα, ±2n, και η γραμμή μέσα στην ομάδα ---
+        ; --- το βήμα, ±(2n - k), και η γραμμή μέσα στην ομάδα ---
         ld      a,b
         add     a,a
-        ld      e,a                     ; 2n
+        sub     d
+        ld      e,a                     ; 2n - k: μία γραμμή
 spg_sg: jr      spg_pos                 ; το sp_first: 0 όταν πάει πάνω
         neg
         ld      l,a
@@ -156,8 +173,7 @@ spg_j:  ld      a,0                     ; η γραμμή
         jr      z,spg_r
         cp      SPAN_G - 1
         jr      nz,spg_rm
-        ld      a,b                     ; η τελευταία: 14n = 16n - 2n
-        add     a,a
+        ld      a,e                     ; η τελευταία: 7 γραμμές = 8 - 1
         add     a,a
         add     a,a
         add     a,a
@@ -214,6 +230,10 @@ spf_lo:
         ld      (obl_n+1),a
         ld      a,d
         sub     c                       ; w-1-a - s
+spk_k:  ld      d,0                     ; το k της ομάδας
+        inc     d
+        dec     d
+        jp      nz,spk_fl
         jr      spg_pt
 
 spg_nf:
@@ -243,17 +263,23 @@ spg_lo:
         ld      (obl_n+1),a
         ld      a,c
         sub     d                       ; s - a
+        ld      d,a
+        ld      a,(spk_k+1)
+        or      a
+        ld      a,d
+        jp      nz,spk_nf
 spg_pt:
         ; --- η πηγή: ομάδα + γραμμή + 2 x τη στήλη ---
 spg_cc: add     a,a                     ; δύο bytes το ζεύγος
+spg_k:  ld      hl,0                    ; ο πυρήνας του blit (sp_first)
+spg_pk:                                 ; ή από το spk_*: A = bytes, HL = πυρήνας
+        ld      (obl_k+1),hl
 spg_ro: add     a,0                     ; + η γραμμή
         ld      l,a
         ld      h,0
 spg_da: ld      bc,0
         add     hl,bc
         ld      (obl_p+1),hl
-spg_k:  ld      hl,0
-        ld      (obl_k+1),hl
         ld      a,(cl_start)
         add     a,e
         ld      c,a                     ; το x

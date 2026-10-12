@@ -105,8 +105,12 @@ def main():
     #     ολόκληρο το nw — με (#FF, 0) έξω από τα διαστήματα — και πρέπει να
     #     είναι τα bytes του sprites.bin. Και η κεφαλίδα σε μία σελίδα, και οι
     #     ομάδες η μία μετά την άλλη μέσα στο κομμάτι.
+    #     ΚΑΙ ΤΟ ΑΔΙΑΦΑΝΕΣ ΤΕΛΟΣ (βήμα 114): οι k τελευταίες στήλες κάθε ομάδας
+    #     είναι μόνο χρώμα, και ξαναχτίζονται με μάσκα 0· αν μία από αυτές δεν
+    #     είχε μάσκα 0 σε κάποια γραμμή, το sprite δεν ξαναβγαίνει. Και κάθε
+    #     ομάδα που θα μπορούσε να έχει k >= K_MIN το έχει.
     img6 = images["bank6"]
-    shells = 0
+    shells, opaque = 0, 0
     for r in bank6:
         if getattr(r, "groups", None) is None:
             continue
@@ -120,21 +124,66 @@ def main():
         for g in range(s.h // pack.SPAN_G):
             a, n = hdr[g] >> 4, hdr[g] & 15
             addr = hdr[pack.SPAN_G + 2 * g] | hdr[pack.SPAN_G + 2 * g + 1] << 8
+            ko = hdr[3 * pack.SPAN_G + g]
             if n == 0:
-                check(addr == 0, f"{r.name}: η άδεια ομάδα {g} έχει διεύθυνση #{addr:04X}")
+                check(addr == 0 and ko == 0,
+                      f"{r.name}: η άδεια ομάδα {g} έχει διεύθυνση #{addr:04X}, k {ko}")
                 continue
             check(addr == at, f"{r.name}: η ομάδα {g} στο #{addr:04X}, περίμενα #{at:04X}")
+            check(ko == 0 or pack.K_MIN <= ko <= n,
+                  f"{r.name}: η ομάδα {g} έχει k {ko} (n {n}, K_MIN {pack.K_MIN})")
+            check(ko == pack.shell_opaque(s, blob, g, a, n),
+                  f"{r.name}: η ομάδα {g} έχει k {ko}, οι στήλες της λένε "
+                  f"{pack.shell_opaque(s, blob, g, a, n)}")
+            m, ln = n - ko, 2 * n - ko
             for y in range(pack.SPAN_G):
-                row = img6[addr - pack.WINDOW_BASE + y * 2 * n:][:2 * n]
+                row = img6[addr - pack.WINDOW_BASE + y * ln:][:ln]
                 k = ((g * pack.SPAN_G + y) * s.w + a) * 2
-                full[k:k + 2 * n] = row
-            at += pack.SPAN_G * 2 * n
+                full[k:k + 2 * m] = row[:2 * m]
+                for c in range(ko):
+                    full[k + 2 * (m + c):k + 2 * (m + c) + 2] = bytes([0, row[2 * m + c]])
+            opaque += pack.SPAN_G * ko
+            at += pack.SPAN_G * ln
         check(at == r.addr + r.size, f"{r.name}: οι ομάδες τελειώνουν στο #{at:04X}, "
                                      f"το κομμάτι στο #{r.addr + r.size:04X}")
         check(bytes(full) == blob[s.off:s.off + s.size],
               f"{r.name}: από τα διαστήματα δεν ξαναβγαίνει το sprite του sprites.bin")
         shells += 1
     check(shells == 6, f"{shells} κελύφη ως διαστήματα, περίμενα 6")
+    check(opaque > 800, f"το αδιαφανές τέλος των κελυφών: {opaque} στήλες χωρίς μάσκα "
+                        f"(βήμα 114), όσα bytes γλίτωσε η τράπεζα 6")
+
+    # ΑΡΝΗΤΙΚΟ (βήμα 114): ένα k μία στήλη μεγαλύτερο σε κάθε ομάδα που έχει.
+    # Η στήλη πριν από το αδιαφανές τέλος έχει κάπου μάσκα, και αποθηκευμένη
+    # χωρίς αυτήν το sprite δεν ξαναβγαίνει. Η ανασύνθεση εδώ είναι από τα
+    # δεδομένα του κομματιού, με τις ομάδες τη μία μετά την άλλη.
+    def unshell(s, data):
+        full = bytearray(b"\xff\x00" * (s.w * s.h))
+        at = pack.SHELL_HDR
+        for g in range(s.h // pack.SPAN_G):
+            a, n, ko = data[g] >> 4, data[g] & 15, data[3 * pack.SPAN_G + g]
+            if n == 0:
+                continue
+            m, ln = n - ko, 2 * n - ko
+            for y in range(pack.SPAN_G):
+                row = data[at + y * ln:at + (y + 1) * ln]
+                k = ((g * pack.SPAN_G + y) * s.w + a) * 2
+                full[k:k + 2 * m] = row[:2 * m]
+                for c in range(ko):
+                    full[k + 2 * (m + c):k + 2 * (m + c) + 2] = bytes([0, row[2 * m + c]])
+            at += pack.SPAN_G * ln
+        return bytes(full)
+    good = [unshell(smap[n], pack.shell(n, smap, blob).data) == blob[smap[n].off:smap[n].off + smap[n].size]
+            for n in ("dome_s_nw", "dome_m_nw", "dome_l_nw")]
+    orig = pack.shell_opaque
+    pack.shell_opaque = lambda s, b, g, a, n: min(n, orig(s, b, g, a, n) + 1) if orig(s, b, g, a, n) else 0
+    try:
+        bad = [unshell(smap[n], pack.shell(n, smap, blob).data) == blob[smap[n].off:smap[n].off + smap[n].size]
+               for n in ("dome_s_nw", "dome_m_nw", "dome_l_nw")]
+    finally:
+        pack.shell_opaque = orig
+    check(all(good) and not any(bad),
+          f"ΑΡΝΗΤΙΚΟ: με k + 1 οι θόλοι δεν ξαναβγαίνουν ({good} σωστά, {bad} με το λάθος)")
 
     # 6. οι παραγόμενοι πίνακες δείχνουν στα σωστά
     # Το None είναι θέση που ΔΕΝ υπάρχει — το struct_ptr κρατά τέσσερις ανά
