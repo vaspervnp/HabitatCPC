@@ -89,6 +89,7 @@ DS_EMPTY    equ 0
 DS_BUILDING equ 1
 DS_ACTIVE   equ 2
 NO_MACH     equ 255
+FT_CLS      equ 250             ; 250..253 φυτά: άμυλο, λαχανικά, βότανα, δέντρο (src/fit.asm· εδώ από το βήμα 119, για το ec_break_d όπου δεν υπάρχει το fit.asm)
 MACH_HP     equ 200             ; υγεία: δουλεύει (bit 7· όπως στο newgame)
 MACH_OWED   equ 7               ; καινούργια: χρωστά μέταλλο (bit 0), βιοπλαστικό (bit 1), περιμένει χτίστη (βήμα 99, src/install.asm)
 MACH_READY  equ 4               ; τα υλικά ήρθαν: τη στήνει μια Build

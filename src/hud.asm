@@ -635,13 +635,44 @@ hud_to:
         ld      b,a
         ; fall through
 ; hud_blank — B στήλες κενές· B = 0, καμία.
+;
+; ΟΣΑ ΕΙΝΑΙ ΗΔΗ ΚΕΝΑ, ΜΟΝΟ ΠΡΟΧΩΡΗΜΑ (βήμα 119). Το hud_char κάνει το ίδιο για
+; ένα κελί που δεν άλλαξε, αλλά μέσα από push, call, το hud_space και pop:
+; ~144 T-states το κελί. Εδώ ένα cp (hl) πάνω στην κρυφή μνήμη, 33 το κελί, με
+; το A να κρατά τον κωδικό του κενού· όποιο διαφέρει γράφεται στην κρυφή μνήμη
+; και πάει κατευθείαν στο hc_draw, όσο ακριβώς και πριν (+2 T-states). Το βήμα
+; 119 έβαλε τα ονόματα των δωματίων χωρίς κενά και τα γεμίζει με hud_to
+; (src/ui.asm): χωρίς αυτό, ένα βήμα κέρσορα με θόλο κόστιζε 31 µs περισσότερα.
+; H = 0 (hp_go, η βοήθεια): χωρίς κρυφή μνήμη, όλα στο hud_space όπως πριν.
 hud_blank:
         inc     b
-        jr      hbl_t
-hbl_lp: push    bc
+        dec     b
+        ret     z
+        ld      hl,(hud_sp)
+        inc     h
+        dec     h
+        jr      z,hbl_sl                ; η βοήθεια: πάντα
+        ld      a,HUD_CELL0
+hbl_lp: cp      (hl)
+        jr      nz,hbl_new
+        inc     hl                      ; ήδη κενό
+        djnz    hbl_lp
+        ld      (hud_sp),hl
+        ret
+hbl_new:
+        ld      (hl),a                  ; όπως το hud_char: η κρυφή μνήμη, και
+        ld      (hud_sp),hl             ; ο γλύφος από το hc_draw, που προχωρά
+        push    bc                      ; και το hud_sp
+        call    hc_draw
+        pop     bc
+        ld      hl,(hud_sp)
+        ld      a,HUD_CELL0
+        djnz    hbl_lp
+        ret
+hbl_sl: push    bc
         call    hud_space
         pop     bc
-hbl_t:  djnz    hbl_lp
+        djnz    hbl_sl
         ret
 
 ; ---------------------------------------------------------------------------
@@ -739,7 +770,7 @@ hud_alert:
         ld      hl,txt_lost
         ld      a,(EC_GAMEOVER)
         or      a
-        jr      nz,hd_say
+        jp      nz,hd_say
         ; ΤΡΕΙΣ ΣΤΑΘΜΕΣ, ΔΥΟ ΜΗΝΥΜΑΤΑ (§6.5). Το μπλακάουτ είναι «NO POWER»·
         ; το P_ESS είναι «LOW POWER», και πρέπει να λέγεται: οι μηχανές
         ; σταμάτησαν και ο παίκτης δεν θα το δει αλλού — η μόνη ορατή διαφορά
@@ -800,9 +831,33 @@ hud_alert:
         ; ΕΝΑ ΚΤΙΡΙΟ ΠΕΡΙΜΕΝΕΙ ΧΤΙΣΤΗ ΠΟΥ ΔΕΝ ΥΠΑΡΧΕΙ (βήμα 88): μόνο μηχανικός ή
         ; ρομπότ κατασκευής χτίζει, και χωρίς αυτό ο παίκτης βλέπει ένα
         ; εργοτάξιο που απλώς δεν προχωρά (src/supply.asm).
+        ; ΚΑΙ ΤΙ ΠΕΡΙΜΕΝΕΙ (βήμα 119, src/alert6.asm): μια μηχανή να στηθεί ή
+        ; ένα κτίριο, η πρώτη Build του πίνακα. Χωρίς τίποτα να ονομάσει, το
+        ; NO ENGINEER μόνο του.
         call    sp_noeng
-        ld      hl,txt_noeng
-        jr      c,hd_say
+        jr      nc,hd_brk
+        ld      hl,al_wait
+        call    hd_b6                   ; A = 0, 2 ή 7, HL = το όνομα
+        ld      de,txt_noeng
+        or      a
+        jr      nz,hd_named
+        ex      de,hl
+        jr      hd_say
+        ; ΜΙΑ ΜΗΧΑΝΗ ΧΑΛΑΣΜΕΝΗ (βήμα 119): ως τότε μόνο το κόκκινο σημάδι πάνω
+        ; στον θόλο την έλεγε, αν ήταν στο κάδρο. Μετά το NO ENGINEER, όπως το
+        ; διάλεξε ο παίκτης: μια βλάβη περιμένει, ένα εργοτάξιο σταματά.
+        ; Στην τράπεζα 0 πρώτα, χωρίς την 6: καμία κρατημένη, τίποτα να ψάξει,
+        ; και η συνηθισμένη γραμμή πληρώνει μόνο αυτό (8 µs).
+hd_brk:
+        ld      a,(al_brk + 1)
+        inc     a
+        jr      z,hd_storm
+        ld      hl,al_broken
+        call    hd_b6
+        ld      de,txt_brk
+        or      a
+        jr      nz,hd_named
+hd_storm:
         ld      hl,txt_storm
         ld      a,(EC_STORM)
         or      a
@@ -820,8 +875,47 @@ hd_say:
         ; της τράπεζας 7. Ενα κενό του hud_to είναι 10 T-states φθηνότερο από ένα
         ; γράμμα του hud_text.
         call    hud_text7
+hd_pad:
         ld      b,3 * 40                ; ως το τέλος της σειράς 2 (hud_sp = σειρά*40 + στήλη)
         jp      hud_to
+
+; hd_named — DE = το κείμενο (τράπεζα 7), HL = το όνομα, A = 7 αν είναι στην
+; τράπεζα 7 (μηχανή: επτά γράμματα και το 0), 2 αν είναι στην τράπεζα 2
+; (κτίριο, γεμισμένο με κενά: τα πρώτα επτά). Το κείμενο, ένα κενό, το όνομα:
+; ως 11 + 1 + 7 = 19 στήλες, όσο η γραμμή.
+hd_named:
+        push    af
+        push    hl
+        ex      de,hl
+        call    hud_text7
+        call    hud_space
+        pop     hl
+        pop     af
+        cp      7
+        jr      nz,hdn_b2
+        call    hud_text7
+        jr      hd_pad
+hdn_b2:
+        ld      b,7
+hdn_lp:
+        ld      a,(hl)
+        inc     hl
+        push    hl
+        push    bc
+        call    hud_char
+        pop     bc
+        pop     hl
+        djnz    hdn_lp
+        jr      hd_pad
+
+; hd_b6 — HL = μια ρουτίνα του b6code (src/alert6.asm): με την 6 μέσα, και
+; μετά πάλι η 1. Κρατά ό,τι γυρίζει στο A και στο HL.
+hd_b6:
+        call    asc_b6
+        call    hdb_jp
+        jp      asc_b1
+hdb_jp:
+        jp      (hl)
 
 ; mer_here — Z: ο έμπορος είναι προσγειωμένος (βήμα 93). Χαλάει A, HL. Το
 ; διαβάζουν η γραμμή του (src/lines.asm), η μπάρα και το hud_alert.
@@ -876,6 +970,10 @@ hud_pg:     dw GA_PORT + PAGE_B1        ; πού γυρίζει ο γλύφος
 hud_dd:     dw 0                        ; οθόνη - hud_sp, ανά σειρά (hud_scr)
 hud_sp:     dw 0     ; στο G_hud_shadow ή στο hud_s34· H = 0: χωρίς (hp_go)
 hud_tb:     db 0     ; το L της αρχής της σειράς 3 ή 4, αλλιώς 0 (hud_to)
+; Η ΤΕΛΕΥΤΑΙΑ ΜΗΧΑΝΗ ΠΟΥ ΧΑΛΑΣΕ (βήμα 119, src/alert6.asm): η υποδοχή και ο
+; θόλος, 255 = καμία. Τα γράφει το ec_break_d, τα ελέγχει το al_broken.
+; Οταν πάψει, τα ξαναγράφει το jp_one (src/jobs.asm) με όποια βρει.
+al_brk:     db 0, 255
 ; ΟΙ ΣΕΙΡΕΣ 3-4 ΣΤΗΝ ΚΡΥΦΗ ΜΝΗΜΗ ΤΟΥΣ (βήμα 107). Ενας κωδικός ανά κελί, όπως
 ; το G_hud_shadow, και το hud_inval τα σβήνει μαζί.
 hud_s34:    defs (HUD_ROWS - HUD_CACHED) * 40, HUD_CELL0

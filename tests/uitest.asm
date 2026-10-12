@@ -279,6 +279,7 @@ snoop_buf:  defs 96
         include "../src/span.asm"
         include "../src/span6.asm"          ; βήμα 114: στο παιχνίδι στο b6code
         include "../src/walk6.asm"          ; βήμα 118: στο παιχνίδι στο b6code
+        include "../src/alert6.asm"         ; βήμα 119: στο παιχνίδι στο b6code
         include "../src/objindex.asm"
         assert  $ <= #C000
         org     #7000

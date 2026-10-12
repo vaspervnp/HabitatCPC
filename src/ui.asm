@@ -1269,7 +1269,8 @@ uipi_go:
         jr      nz,uipi_nm
         call    rm_name
         call    hud_text7
-        call    hud_space
+        ld      b,13                    ; «< » και δέκα στήλες: το γράμμα στη 13η
+        call    hud_to                  ; (βήμα 119: τα ονόματα χωρίς κενά)
         ld      a,(bd_param)
         ld      hl,uip_szc
         call    ob_addu

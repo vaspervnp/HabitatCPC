@@ -44,7 +44,12 @@ x_txt_noeng:  db "NO ENGINEER",0   ; βήμα 88
 x_txt_suit:   db "SUIT AIR LOW",0   ; βήμα 90
 x_txt_mer:    db "MERCHANT LANDED",0   ; βήμα 93: χωρίς κενά στο τέλος, όπως όλα από το 93 (hd_say)
 x_txt_foe:    db "INTRUDERS",0         ; βήμα 111
+x_txt_brk:    db "BROKEN",0            ; βήμα 119: και το όνομα της μηχανής (hd_named)
 x_t_saving:   db "SAVING TO DISC...",0
+        ; Το κείμενο, ένα κενό και επτά γράμματα χωρούν στις 19 στήλες: ένα 20ό
+        ; θα έπεφτε στο δεξί μισό της T1, και το hud_to μετά θα έγραφε 254 κενά.
+        assert  (x_txt_suit - 1 - x_txt_noeng) + 1 + 7 <= 19
+        assert  (x_t_saving - 1 - x_txt_brk) + 1 + 7 <= 19
 x_t_saved:    db "SAVED TO SLOT 1",0
 x_t_loading:  db "LOADING FROM DISC...",0
 x_t_loaded:   db "LOADED FROM SLOT 1",0
@@ -72,18 +77,10 @@ x_t_noore:    db "NEEDS AN ORE VEIN",0
 x_t_fe:       db "FE",0
 x_t_bi:       db "BI",0
 
-; Τα δωμάτια του καταλόγου (§6.1). Δέκα χαρακτήρες το καθένα, γεμισμένα με
-; κενά: το γράμμα μεγέθους μπαίνει αμέσως μετά, στην ίδια σειρά του HUD.
-x_t_r_oxy:    db "OXYGEN    ",0
-x_t_r_can:    db "CANTEEN   ",0
-x_t_r_qrt:    db "QUARTERS  ",0
-x_t_r_grn:    db "GREENHOUSE",0
-x_t_r_fac:    db "FACTORY   ",0
-x_t_r_lab:    db "LAB       ",0
-x_t_r_med:    db "MEDBAY    ",0
-x_t_r_ctl:    db "CONTROL   ",0
-x_t_r_sto:    db "STORAGE   ",0
-x_t_r_lng:    db "LOUNGE    ",0
+; (Τα δωμάτια του καταλόγου ζούσαν εδώ ως το βήμα 118, δέκα χαρακτήρες το
+; καθένα με κενά: το γράμμα μεγέθους μπαίνει μετά. Είναι οι ίδιες λέξεις με τα
+; κουμπιά της βοήθειας, πιο κάτω, και δείχνουν πια εκεί· τη στήλη του γράμματος
+; τη βρίσκει το hud_to (src/ui.asm). 110 bytes, για το BROKEN και ό,τι έρθει.)
 x_t_keysr:    db "FIRE=PLACE  UP/DN=ROOM",0
 x_t_ship:     db "COLONIST SHIP CALLED",0
 x_t_shipno:   db "A SHIP IS ALREADY DUE",0
@@ -134,16 +131,26 @@ x_t_help:     db "DOMES",0, "LIVE AND WORK INSIDE",0
               db "SMALL DOME",0, "4X4, ANY ROOM",0
               db "MEDIUM DOME",0, "6X6, NO OXYGEN",0
               db "LARGE DOME",0, "8X8, NO OXYGEN",0
-              db "OXYGEN",0, "AIR FOR THE COLONY",0
-              db "CANTEEN",0, "COOKS MEALS",0
-              db "QUARTERS",0, "BEDS TO SLEEP IN",0
-              db "GREENHOUSE",0, "GROWS PLANTS",0
-              db "FACTORY",0, "METAL AND PARTS",0
-              db "LAB",0, "MEAT AND CHIPS",0
-              db "MEDBAY",0, "HEALS THE SICK",0
-              db "CONTROL",0, "MORE COLONISTS",0
-              db "STORAGE",0, "ROOM FOR MORE GOODS",0
-              db "LOUNGE",0, "KEEPS MORALE UP",0
+x_t_r_oxy:    db "OXYGEN",0
+              db "AIR FOR THE COLONY",0
+x_t_r_can:    db "CANTEEN",0
+              db "COOKS MEALS",0
+x_t_r_qrt:    db "QUARTERS",0
+              db "BEDS TO SLEEP IN",0
+x_t_r_grn:    db "GREENHOUSE",0
+              db "GROWS PLANTS",0
+x_t_r_fac:    db "FACTORY",0
+              db "METAL AND PARTS",0
+x_t_r_lab:    db "LAB",0
+              db "MEAT AND CHIPS",0
+x_t_r_med:    db "MEDBAY",0
+              db "HEALS THE SICK",0
+x_t_r_ctl:    db "CONTROL",0
+              db "MORE COLONISTS",0
+x_t_r_sto:    db "STORAGE",0
+              db "ROOM FOR MORE GOODS",0
+x_t_r_lng:    db "LOUNGE",0
+              db "KEEPS MORALE UP",0
               db "CORRIDOR",0, "LINKS TWO DOMES",0
               db "POWER",0, "MAKE AND STORE POWER",0
               db "SOLAR PANEL",0, "POWER BY DAY",0
@@ -249,6 +256,7 @@ t_a_keys  equ x_t_a_keys - TEXT_IMG + G_text
 t_hfoot   equ x_t_hfoot - TEXT_IMG + G_text
 txt_mer   equ x_txt_mer - TEXT_IMG + G_text
 txt_foe   equ x_txt_foe - TEXT_IMG + G_text
+txt_brk   equ x_txt_brk - TEXT_IMG + G_text
 t_tr_take equ x_t_tr_take - TEXT_IMG + G_text
 t_tr_give equ x_t_tr_give - TEXT_IMG + G_text
 t_tr_fire equ x_t_tr_fire - TEXT_IMG + G_text

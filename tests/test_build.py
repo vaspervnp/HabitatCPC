@@ -329,9 +329,11 @@ def main():
         print("ΑΠΟΤΥΧΙΑ: το SPACE δεν άνοιξε το μενού")
         fails += 1
     # Ο ΘΟΛΟΣ ΔΕΝ ΕΧΕΙ ΟΝΟΜΑ, ΕΧΕΙ ΔΩΜΑΤΙΟ (§6.1). Ο κατάλογος δείχνει το
-    # δωμάτιο και το μέγεθος ως γράμμα: «OXYGEN     S».
+    # δωμάτιο και το μέγεθος ως γράμμα: «OXYGEN     S», το γράμμα πάντα στη
+    # στήλη 13. Από το βήμα 119 τα ονόματα δεν έχουν κενά (είναι αυτά της
+    # βοήθειας) και το hud_to γεμίζει ως εκεί.
     row3 = hud(m3, 3)
-    if "OXYGEN" not in row3 or " S " not in row3:
+    if not row3.replace("0", "O").startswith("< OXYGEN     S >"):
         print(f"ΑΠΟΤΥΧΙΑ μενού: σειρά 3 = |{row3}|")
         fails += 1
     else:
@@ -344,7 +346,7 @@ def main():
         print(f"OK η σειρά 4 λέει πώς: |{row4.rstrip()}|")
     tap(m3, KEY_DOWN)                   # -> CANTEEN
     m3.run_frames(20)                   # ο πίνακας γράφεται στο ρολόι του HUD
-    if "CANTEEN" not in hud(m3, 3):
+    if not hud(m3, 3).replace("0", "O").startswith("< CANTEEN    S >"):
         print(f"ΑΠΟΤΥΧΙΑ: το κάτω δεν άλλαξε δωμάτιο: |{hud(m3, 3)}|")
         fails += 1
     else:

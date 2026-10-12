@@ -628,7 +628,8 @@ ec_break:
 ; θόλο που χτύπησε ο μετεωρίτης τον ξέρουμε, δεν τον βγάζουμε από ζαριά.
 ec_break_d:
         ld      a,(eb_d)
-        call    jb_dome_ptr
+        ld      b,a                     ; ο θόλος, για το τέλος: το jb_dome_ptr
+        call    jb_dome_ptr             ; κρατά το B (βήμα 119)
         push    hl
         pop     ix
         ld      a,(ix+D_STATE)
@@ -652,10 +653,15 @@ ec_break_d:
         ret     z
         ld      (ix+D_HEALTH),0
         ; ΚΑΙ ΦΑΙΝΕΤΑΙ (βήμα 100): η υποδοχή ξαναζωγραφίζεται με το σήμα της.
-        ld      c,e                     ; η υποδοχή
-        ld      a,(eb_d)
-        ld      b,a
-        jp      jb_mpush                ; src/jobs.asm
+        ld      c,e                     ; η υποδοχή, B = ο θόλος
+        ; ΚΑΙ ΛΕΓΕΤΑΙ (βήμα 119): BROKEN και το όνομα, η πιο πρόσφατη
+        ; (src/alert6.asm). Οχι ένα φυτό που μαράθηκε: δεν είναι «χαλασμένο»,
+        ; και θα έσβηνε από τη γραμμή μια μηχανή που περιμένει ακόμη.
+        ld      a,(ix+D_MACH)
+        cp      FT_CLS
+        jp      nc,jb_mpush             ; src/jobs.asm
+        ld      (al_brk),bc
+        jp      jb_mpush
 
 ev_newday:  db 0
 ev_r1:      dw 0

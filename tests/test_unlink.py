@@ -155,8 +155,19 @@ def dups(G):
 
 def shot(G, name):
     """build/name, με τις λωρίδες της διακοπής ανοιχτές: το probe του truth
-    αφήνει di, και το HUD βγαίνει στο mode του κάδρου."""
-    G.probe(["IS_ON"])
+    αφήνει di, και το HUD βγαίνει στο mode του κάδρου.
+
+    Οπως το G.probe(["IS_ON"]) ως το βήμα 119, χωρίς τον έλεγχο του PC στο
+    τέλος: με τις διακοπές ανοιχτές το PC πέφτει κάποτε μέσα στη διακοπή, όσο
+    ~6 % του χρόνου, και το βήμα 119, που άλλαξε τη φάση, το βρήκε (pc=#0138)."""
+    m, top, io = G.m, G.top, G.sym["IS_ON"]
+    for _ in range(40000):
+        if top <= m.pc < top + 13:
+            break
+        m.run_us(50)
+    m.run_code(D.R.PROBE, bytes([0xF3, 0xCD, io & 255, io >> 8, 0x18, 0xFE]), frames=100)
+    m.set_pc(top)
+    G.last, G.inw = None, False
     G.m.run_frames(3)
     G.m.screenshot(os.path.join(ROOT, "build", name), aspect=True)
 

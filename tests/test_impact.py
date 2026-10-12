@@ -57,6 +57,7 @@ import econ as EC                                        # noqa: E402
 PROBE = 0x3E00
 DK_MACH, DK_TILE, DIRTY_N = 1, 4, 32
 K_SHIP = 7                               # src/const.asm: δεν είναι κτίριο (βήμα 87)
+FT_CLS = 250                             # src/const.asm: τα φυτά δεν είναι «χαλασμένα» (βήμα 119)
 # µs ανά κλήση, μαζί με τη σκαλωσιά του probe· βήμα 76, και στο 75
 CEIL = {
     "ήσυχο": 41,        # καμία βροχή, καμία αρχή                         41
@@ -233,6 +234,11 @@ def scene(R, rnd, case):
     m.poke(sym["DIRTY_HEAD"], rnd.randrange(DIRTY_N))
     for v in ("EB_D", "EB_S", "EC_FDIV", "MT_BOOM", "DIRTY_OVER"):
         m.poke(sym[v], rnd.randrange(256) if v != "MT_BOOM" else 0)
+    # η χαλασμένη της γραμμής ειδοποιήσεων (βήμα 119): ένας «θόλος» που δεν
+    # υπάρχει, για να φανεί αν γράφτηκε· χωρίς το rnd, ώστε οι 400 περιπτώσεις
+    # να μένουν όσες ήταν
+    m.poke(sym["AL_BRK"], case & 7)
+    m.poke(sym["AL_BRK"] + 1, 200 + (case & 31))
     return kind, r1
 
 
@@ -304,6 +310,9 @@ def expect(R, before, r1):
             h = d + EC.D_HEALTH + s
             if dome0[h] & 0x80 and e.dome[h] == 0:
                 push(DK_MACH, node, s)       # σταμάτησε: το σήμα (βήμα 100)
+                if dome0[d + EC.D_MACH + s] < FT_CLS:
+                    poke("AL_BRK", s)        # και η γραμμή το λέει (βήμα 119),
+                    b[0][sym["AL_BRK"] + 1] = node   # όχι για φυτό
         if node >= EC.MAX_DOME:
             r = (node - EC.MAX_DOME) * EC.STRUCT_REC
             if struct0[r + 4] == EC.DS_ACTIVE and struct0[r + 2] != K_SHIP:

@@ -276,6 +276,12 @@ mc_tail:
 jb_dome_ptr:                            ; το mc_live του src/supply.asm (βήμα 100) — εδώ δεν το καλεί κανείς,
 nd_load:                                ; το su_tick γυρίζει εκεί (src/needs.asm),
 nd_die: ret                             ; και εδώ δεν το καλεί κανείς
+asc_b6:                                 ; src/link.asm, που εδώ δεν υπάρχει (το hd_b6
+asc_b1: ret                             ; του hud.asm, βήμα 119)
+al_wait:                                ; src/alert6.asm (βήμα 119): εδώ ούτε πίνακας
+al_broken:                              ; εργασιών ούτε μηχανές, και η γραμμή μένει
+        xor     a                       ; όπως ως το βήμα 118
+        ret
         ; Το jtb_cc (src/bend.asm) διαβάζει τη διαδρομή του cr_plan, που εδώ
         ; δεν υπάρχει (src/route.asm): ποτέ δεν καλείται.
 bit_tab: db 1,2,4,8,16,32,64,128        ; src/entity.asm, που εδώ δεν υπάρχει

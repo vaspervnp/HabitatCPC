@@ -18,7 +18,8 @@
             όσοι έφεραν τα υλικά.
   ΧΩΡΙΣ     μηχανικό (ο μηχανικός της αρχής γίνεται εργάτης): το ηλιακό
             τροφοδοτείται, η Build περιμένει αδιάθετη — κανείς άλλος δεν την
-            παίρνει — και η σειρά 2 του HUD λέει NO ENGINEER· όσο ακόμη
+            παίρνει — και η σειρά 2 του HUD λέει NO ENGINEER SOLAR (από το
+            βήμα 119 και τι περιμένει, tests/test_alertname.py)· όσο ακόμη
             κουβαλιούνται υλικά, όχι. Μόλις ξαναϋπάρξει μηχανικός, τη χτίζει
             και το μήνυμα φεύγει.
 
@@ -180,8 +181,8 @@ def no_engineer(sym, g, patch=(), quiet=False):
     jobs, row = w.jobs(), hudread.text(m, sym, 2)
     if jobs != [[J_BUILD, SOLAR, 255, 5, SOLAR]] or w.struct(1)[4] != DS_BUILDING:
         return f"χωρίς μηχανικό: εργασίες {jobs}, εγγραφή {w.struct(1)} — η Build περιμένει αδιάθετη"
-    if "NO ENGINEER" not in row:
-        return f"χωρίς μηχανικό η σειρά 2 λέει |{row}|"
+    if row[21:].rstrip().replace("O", "0") != "N0 ENGINEER S0LAR":
+        return f"χωρίς μηχανικό η σειρά 2 λέει |{row}| — «NO ENGINEER SOLAR»"
     w.put6(role, [1])                                    # ξανά μηχανικός
     if w.wait(lambda: w.struct(1)[4] == DS_ACTIVE, 20000) is None:
         return f"με μηχανικό ξανά, το ηλιακό δεν τελείωσε: {w.struct(1)}, {w.jobs()}"
