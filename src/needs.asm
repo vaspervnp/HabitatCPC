@@ -606,6 +606,18 @@ stc_k = stc_k + 1
 stc_full:
         inc     a
 stc_set:
+        ; ΚΑΙ ΤΟ ΑΠΟΘΕΜΑ ΜΕΤΑΛΛΟΥ (βήμα 127): ec_keep = μέταλλο < KEEP_METAL.
+        ; Εδώ, μία φορά ανά κύκλο ροής — όσο τρέχει κάθε μηχανή μία φορά — και
+        ; όχι σε κάθε μηχανή της θέσης 11: μέσα σε έναν γύρο το μέταλλο πέφτει
+        ; ως όσα τρώνε μαζί οι μηχανές του, λίγο κάτω από τα 30.
+        ld      c,a
+        ld      hl,(EC_STOCK + 2 * S_METAL)
+        ld      de,-KEEP_METAL
+        add     hl,de                   ; CY αν φτάνει
+        sbc     a,a
+        inc     a                       ; 0 αν φτάνει, 1 αν όχι
+        ld      (ec_keep),a
+        ld      a,c
         jp      ec_setfull              ; src/econ.asm, τράπεζα 0
 stc_caps:    dw 100, 300, 600
         assert  (stc_caps & 255) <= 256 - 6 && S_WATER == 0 && S_MEAT == 13 && DOME_REC == 24 && EC_CAP * 13 < 65536

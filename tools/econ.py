@@ -96,6 +96,13 @@ def _adds(r):
 
 RECIPE = [r[:9] + (r[9] | (MF_ADDS if _adds(r) else 0),) for r in RECIPE]
 
+# ΤΟ ΑΠΟΘΕΜΑ ΜΕΤΑΛΛΟΥ (βήμα 127, src/econ.asm, erm_ink): όσες τρώνε μέταλλο
+# σταματούν όταν πέσει κάτω από KEEP_METAL. Ο Z80 κοιτάζει μόνο την ΠΡΩΤΗ
+# είσοδο, οπότε όποια το τρώει πρέπει να το έχει πρώτο.
+KEEP_METAL = 30
+assert all(r[0] == S_METAL for r in RECIPE
+           if S_METAL in (r[0], r[2], r[4])), "το μέταλλο όχι πρώτη είσοδος"
+
 # --- θόλοι ----------------------------------------------------------------
 DOME_REC = 24
 MAX_DOME = 64
@@ -218,6 +225,8 @@ class Econ:
         self.lev = [0, 0]
         # ΓΕΜΑΤΗ ΑΠΟΘΗΚΗ (βήμα 122): το ec_full του Z80, στην τράπεζα 0 (src/stock.asm).
         self.full = 0
+        # ΤΟ ΑΠΟΘΕΜΑ ΜΕΤΑΛΛΟΥ (βήμα 127): το ec_keep, δίπλα του.
+        self.keep = 0
         self.amenity = 0            # δέντρα και σαλόνια — παρηγοριά (§6.6)
         # Το μήκος του sol είναι ΔΕΔΟΜΕΝΟ και όχι σταθερά: μια δοκιμή που
         # θέλει να δει πέντε sols δεν μπορεί να περιμένει 60.000 frames.
@@ -355,6 +364,8 @@ def run_dome(e, d, plant_class=None):
             k += 1
             if k > ops:
                 continue
+        if e.keep and r[0] == S_METAL:              # βήμα 127: το μέταλλο κάτω από
+            continue                                # KEEP_METAL, ούτε τρώει ούτε ζητά
         ins = ((r[0], r[1]), (r[2], r[3]), (r[4], r[5]))
         if any(st != NO_STOCK and e.stock[st] < q for st, q in ins):
             continue                                # λείπει είσοδος: δεν καίει
@@ -531,6 +542,7 @@ def store_check(e):
         d = e.room_list[R_STORAGE * ROOM_MAX + k]
         cap += STORE_SIZE[e.dome[d * DOME_REC + D_SIZE]]
     e.full = 1 if sum(e.stock[1:]) >= cap else 0
+    e.keep = 1 if e.stock[S_METAL] < KEEP_METAL else 0     # βήμα 127
 
 
 def break_one(e, x):

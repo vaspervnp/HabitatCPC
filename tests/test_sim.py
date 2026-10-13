@@ -81,7 +81,8 @@ def z80_read(m, sym, frames):
             m.read_ram(STAGE_DOME, 1536), m.read_ram(STAGE_STR, 32 * 8),
             m.read_ram(sym["G_ECON_STATE"], EC.ECON_BYTES) +
             m.read_ram(STAGE_OCC + EC.X_OFF, EC.X_N) +  # EC_X (βήμα 121)
-            bytes([m.peek(sym["EC_FULL"])]),            # η αποθήκη (βήμα 122)
+            bytes([m.peek(sym["EC_FULL"]),              # η αποθήκη (βήμα 122)
+                   m.peek(sym["EC_KEEP"])]),            # το μέταλλο (βήμα 127)
             m.read_ram(sym["G_JOB_TBL"], EC.MAX_JOB * EC.JOB_REC),
             m.read_ram(sym["G_ROOM_N"], 12) +
             m.read_ram(sym["G_ROOM_LIST"], 96))
@@ -129,6 +130,7 @@ def z80_load(sym, g, sim, rt_n=None, patch=()):
     m.write_ram(sym["G_ROOM_LIST"], bytes(sim.e.room_list))
     m.poke(sym["EC_FULL"], sim.e.full)      # τράπεζα 0· το LOAD_STATE βάζει και
                                             # τον κώδικά του (ec_setfull, βήμα 122)
+    m.poke(sym["EC_KEEP"], sim.e.keep)      # και του μετάλλου (βήμα 127)
     enter(m, sym, "LOAD_STATE")
 
     for at, v in patch:                     # τα αρνητικά: κώδικας αλλαγμένος
@@ -171,8 +173,8 @@ def check_occ(blob, occ, g):
 def econ_bytes(e):
     """Η οικονομία όπως τη διαβάζει το run_z80: τα ECON_BYTES της τράπεζας 2,
     από το βήμα 121 τα έξι του EC_X (η ησυχία) στην τράπεζα 6, και από το 122
-    το ec_full της τράπεζας 0."""
-    return EC.to_bytes(e) + EC.x_bytes(e) + bytes([e.full])
+    το ec_full της τράπεζας 0, από το 127 και το ec_keep."""
+    return EC.to_bytes(e) + EC.x_bytes(e) + bytes([e.full, e.keep])
 
 
 def fresh(g, nexthop, src):
@@ -197,7 +199,7 @@ def fresh(g, nexthop, src):
               "ship_eta", "pop_cap", "pad_node", "milestones", "deaths_sol",
               "no_death_sols", "green_sols", "no_trade_sols", "traded",
               "meteor", "mcx", "mcy", "mrnd", "nbuild", "markup", "lands",
-              "ldis", "lev", "full"):
+              "ldis", "lev", "full", "keep"):
         setattr(s.e, f, getattr(src.e, f))
     return s
 
@@ -308,7 +310,7 @@ def main():
                            "no_trade_sols", "traded", "pad_node"]),
                   (108, 1, ["ldis_sol"]), (109, 2, ["ldis_frame"]),   # βήμα 121
                   (111, 1, ["lev_sol"]), (112, 2, ["lev_frame"]),
-                  (114, 1, ["full"])]                               # βήμα 122
+                  (114, 1, ["full", "keep"])]                       # βήματα 122, 127
         print("ΑΠΟΤΥΧΙΑ οικονομία:")
         for base, width, names in groups:
             for j, n in enumerate(names):
@@ -577,6 +579,10 @@ def main():
 
     # --- η χωρητικότητα των αποθηκών (βήμα 122) ---
     if store_branches(sym, g, nexthop, sim0):
+        return 1
+
+    # --- το απόθεμα μετάλλου (βήμα 127) ---
+    if keep_branches(sym, g, nexthop, sim0):
         return 1
 
     # --- οι ανάγκες στα όριά τους (βήμα 53) ---
@@ -1057,7 +1063,15 @@ def calm_branches(sym, g, nexthop, sim0):
 # Βήμα 126: ο δεύτερος και ο τρίτος χαμηλά — το dr_post διαλέγει προτεραιότητα
 # και bits, και το hl_pile κοιτάζει για άδειο ορυχείο με τη Drill του
 # χαμηλά: 8.630 -> 8.670, 9.000 -> 9.050.
-STORE_FLOW_US, STORE_FLOW8_US = 8680, 9060
+# Βήμα 127: το απόθεμα μετάλλου — το ec_keep στο st_check και η πρώτη
+# κλήση εισόδου στο ec_setfull: 8.670 -> 8.710, 9.050 -> 9.090.
+STORE_FLOW_US, STORE_FLOW8_US = 8720, 9100
+# Οι βαριές επισκέψεις της θέσης 11 με το απόθεμα μετάλλου ενεργό (βήμα 127):
+# το erm_ink περνά 5 us σε κάθε μηχανή που δεν τρώει μέταλλο, και οι τέσσερις
+# που το τρώνε σταματούν. Εδώ 7.090 και 12.160 us, χωρίς το απόθεμα 8.390 και
+# 12.520: φθηνότερο. Μια ομάδα θόλων χωρίς καμία τέτοια μηχανή θα πλήρωνε 5 us
+# ανά μηχανή (DESIGN §6.5).
+KEEP_SWEEP_US = 12170
 
 
 def store_branches(sym, g, nexthop, sim0):
@@ -1200,7 +1214,7 @@ def store_branches(sym, g, nexthop, sim0):
           f"σε «ένα λιγότερο»: ίδια bytes με την αναφορά· οι σωροί {pile0} -> {dug} "
           f"όταν χωρά, ίδιοι όταν γεμίσει· γεμάτη, κήποι και VITROMEAT σταματούν και οι "
           f"μετατροπές τρέχουν (βήμα 124: το σύνολο πέφτει {conv} σε ένα σάρωμα)")
-    print(f"              ο κύκλος ροής {us1} us με τον θόλο M (8360 στο 121, 8610 στο 122, 8630 στο 123, ταβάνι "
+    print(f"              ο κύκλος ροής {us1} us με τον θόλο M (8360 στο 121, 8610 στο 122, 8630 στο 123, 8670 στο 126, ταβάνι "
           f"{STORE_FLOW_US}), {us8} με οκτώ θόλους Storage ({STORE_FLOW8_US})")
 
     # ΑΡΝΗΤΙΚΑ: ο Z80 πειραγμένος, η αναφορά όχι.
@@ -1239,6 +1253,129 @@ def store_branches(sym, g, nexthop, sim0):
             return 1
     print(f"OK αποθήκη:  ΑΡΝΗΤΙΚΑ — {', '.join(n for n, _, _ in negs)}: ο Z80 "
           f"διαφέρει από την αναφορά")
+    return 0
+
+
+# ΟΣΕΣ ΤΡΩΝΕ ΜΕΤΑΛΛΟ (βήμα 127): οι συνταγές με πρώτη είσοδο το μέταλλο, και
+# τα προϊόντα τους.
+EATERS = [m for m, r in enumerate(EC.RECIPE) if r[0] == EC.S_METAL]
+EATEN = sorted({EC.RECIPE[m][6] for m in EATERS})
+
+
+def keep_branches(sym, g, nexthop, sim0):
+    """ΤΟ ΑΠΟΘΕΜΑ ΜΕΤΑΛΛΟΥ (βήμα 127): ο κύκλος ροής (θέση 12) με το μέταλλο στα
+    όρια — 29, 30 — και πολύ πάνω (200), που ανάβει ή σβήνει το ec_keep, και
+    μετά ένα ολόκληρο σάρωμα της παραγωγής (θέση 11, 64 κλήσεις) στον ίδιο Z80,
+    με τον κώδικα που άφησε το ec_setfull. Ολα τα bytes ίδια με την αναφορά.
+    Με 29: κανένα προϊόν τους δεν φτιάχνεται και το μέταλλο δεν πέφτει. Με 30
+    και 200 φτιάχνονται — αλλιώς η δοκιμή δεν δοκιμάζει τίποτα. Και ανάποδα: από
+    το ec_keep του LOAD_STATE ένας κύκλος με 200 το σβήνει. Το κόστος: οι δύο
+    βαριές επισκέψεις της θέσης 11 με το απόθεμα ενεργό, απέναντι σε αυτές με
+    μέταλλο."""
+    base = fresh(g, nexthop, sim0)
+    EC.rooms_rebuild(base.e, base.pc)
+    keys = lambda z: (z.a.to_bytes(), bytes(z.e.dome), bytes(z.e.struct),
+                      econ_bytes(z.e), bytes(z.e.job), bytes(z.occ[:128]))
+    SWEEP = 4 * EC.ECON_DIV
+
+    def metal(n):
+        def set_(e):
+            e.stock[EC.S_METAL] = n
+        return set_
+    cases = (("29", metal(29), 1), ("30", metal(30), 0), ("200", metal(200), 0))
+
+    def chain(st, patch=()):
+        m = z80_load(sym, g, fresh(g, nexthop, st), EC.MAX_DOME + EC.MAX_STRUCT, patch)
+        for pin, n in ((12, 1), (11, SWEEP)):
+            m.poke(sym["PIN_SLOT"], pin)
+            m.poke(sym["TICK_COUNT"], n & 0xFF)
+            m.poke(sym["TICK_COUNT"] + 1, n >> 8)
+            enter(m, sym, "RUN_TICKS")
+        got = z80_read(m, sym, 0)
+        return (got[0], got[3], got[4], got[5], got[6], got[1])
+
+    starts, made = {}, {}
+    for name, setup, keep in cases:
+        st = fresh(g, nexthop, base)
+        setup(st.e)
+        st.e.flow_div = 1
+        want = fresh(g, nexthop, st)
+        slot12(want)
+        if want.e.keep != keep or want.e.full:
+            print(f"ΑΠΟΤΥΧΙΑ μέταλλο: «{name}» — η αναφορά: ec_keep {want.e.keep}, γεμάτη "
+                  f"{want.e.full}· η πρόζα λέει {keep}, όχι γεμάτη")
+            return 1
+        before = list(want.e.stock)
+        for _ in range(SWEEP):
+            EC.production_slice(want.e, plant_class=want.pc)
+        after = want.e.stock
+        made[name] = sum(after[k] - before[k] for k in EATEN)
+        if keep and (made[name] or after[EC.S_METAL] < before[EC.S_METAL]):
+            print(f"ΑΠΟΤΥΧΙΑ μέταλλο: «{name}» — με το απόθεμα φτιάχτηκαν {made[name]} "
+                  f"από όσα τρώνε μέταλλο, μέταλλο {before[EC.S_METAL]} -> {after[EC.S_METAL]}")
+            return 1
+        if not keep and made[name] <= 0:
+            print(f"ΑΠΟΤΥΧΙΑ μέταλλο: «{name}» — καμία μηχανή που τρώει μέταλλο δεν "
+                  f"έτρεξε: η δοκιμή δεν δοκιμάζει τίποτα")
+            return 1
+        if chain(st) != keys(want):
+            print(f"ΑΠΟΤΥΧΙΑ μέταλλο: «{name}» — ο Z80 διαφέρει από την αναφορά")
+            return 1
+        starts[name] = (st, keys(want))
+    st = fresh(g, nexthop, starts["200"][0])
+    st.e.keep = 1
+    if chain(st) != starts["200"][1]:
+        print("ΑΠΟΤΥΧΙΑ μέταλλο: από το ec_keep σε 200 ο Z80 διαφέρει από την αναφορά")
+        return 1
+
+    # ΤΟ ΚΟΣΤΟΣ: οι κλήσεις της θέσης 11 που σαρώνουν (οι άλλες είναι 160 us).
+    def visits(st, keep):
+        s = fresh(g, nexthop, st)
+        s.e.keep = keep
+        m = z80_load(sym, g, s, EC.MAX_DOME + EC.MAX_STRUCT)
+        m.poke(sym["PIN_SLOT"], 11)
+        us = [tick_us(m, sym) for _ in range(SWEEP)]
+        return sorted(u for u in us if u > 200)[-2:]
+    hi = visits(starts["29"][0], 0)
+    lo = visits(starts["29"][0], 1)
+    if max(lo) > KEEP_SWEEP_US:
+        print(f"ΑΠΟΤΥΧΙΑ μέταλλο: οι βαριές επισκέψεις με το απόθεμα {lo} us, ταβάνι "
+              f"{KEEP_SWEEP_US} (χωρίς {hi})")
+        return 1
+
+    # ΑΡΝΗΤΙΚΑ: ο Z80 πειραγμένος, η αναφορά όχι.
+    def code_at(name, pat, span=160):
+        a = sym[name]
+        code = run_peek(sym, a, span)
+        k = next((k for k in range(span - len(pat) + 1)
+                  if code[k:k + len(pat)] == pat), None)
+        return None if k is None else a + k
+    negs = []
+    a = code_at("ERM_INK", [0xFE, EC.S_METAL, 0xC2], 8)
+    negs.append(("όλες περνούν", "29", a and [(a + 1, 0xFE)]))
+    k = sym["ERM_INK"]
+    a = code_at("EC_SETFULL", [0x21, k & 255, k >> 8], 40)
+    negs.append(("η πρώτη κλήση μένει erm_in", "29",
+                 a and [(a + 1, sym["ERM_IN"] & 255), (a + 2, sym["ERM_IN"] >> 8)]))
+    a = code_at("STC_SET", [0x11, (-EC.KEEP_METAL) & 255, 0xFF], 12)
+    negs.append(("το όριο 31", "30", a and [(a + 1, (-31) & 255)]))
+    a = code_at("STC_SET", [0x11, (-EC.KEEP_METAL) & 255, 0xFF], 12)
+    negs.append(("το όριο 29", "29", a and [(a + 1, (-29) & 255)]))
+    for what, case, patch in negs:
+        st, want = starts[case]
+        if not patch or chain(st, patch) == want:
+            print(f"ΑΠΟΤΥΧΙΑ μέταλλο: ΑΡΝΗΤΙΚΟ «{what}» — "
+                  f"{'το μοτίβο δεν βρέθηκε' if not patch else 'ο Z80 βγαίνει ίδιος'}")
+            return 1
+    print(f"OK μέταλλο:  {len(cases)} κύκλοι ροής — μέταλλο 29, 30, 200 — και μετά από τον "
+          f"καθένα ένα σάρωμα της παραγωγής στον ίδιο Z80, και ένα από το ec_keep σε 200: "
+          f"ίδια bytes με την αναφορά· με 29 οι {len(EATERS)} που τρώνε μέταλλο σταματούν "
+          f"(0 προϊόντα, το μέταλλο δεν πέφτει), με 30 και 200 φτιάχνουν "
+          f"{made['30']} και {made['200']}")
+    print(f"              οι βαριές επισκέψεις της θέσης 11 με το απόθεμα {lo} us, χωρίς {hi} "
+          f"(ταβάνι {KEEP_SWEEP_US})")
+    print(f"OK μέταλλο:  ΑΡΝΗΤΙΚΑ — " + ", ".join(w for w, _, _ in negs) +
+          ": ο Z80 διαφέρει από την αναφορά")
     return 0
 
 
@@ -2409,13 +2546,17 @@ def meteors(sym, g, nexthop, sim0):
     r_at = find(wr, [0xAF, 0x32], 4)                         # xor a · ld (wh_slot),a
     sf = sym["EC_SETFULL"]
     f_at = find(wr, [0xCD, sf & 255, sf >> 8], 16)           # call ec_setfull
+    ek = sym["EC_KEEP"]
+    k_at = find(wr, [0x32, ek & 255, ek >> 8], 16)           # ld (ec_keep),a (βήμα 127)
     for label, patch in (("προϋπολογισμός ένα λιγότερο", b_at and [(b_at + 1, WH_RT_B - 1)]),
                          ("η 6 μένει στο παράθυρο", w_at and [(w_at + 1, 0xC6)]),
                          ("οι σβηστές θέσεις τρέχουν", o_at and [(o_at + 1, 0x00)]),
                          ("το wheel_reset κρατά τη θέση", r_at and [(r_at + 1, 0), (r_at + 2, 0),
                                                                   (r_at + 3, 0)]),
                          ("το wheel_reset κρατά τη γεμάτη αποθήκη",
-                          f_at and [(f_at, 0), (f_at + 1, 0), (f_at + 2, 0)])):
+                          f_at and [(f_at, 0), (f_at + 1, 0), (f_at + 2, 0)]),
+                         ("το wheel_reset κρατά το απόθεμα μετάλλου",
+                          k_at and [(k_at, 0), (k_at + 1, 0), (k_at + 2, 0)])):
         if not patch or wheel_check(sym, g, nexthop, base, patch) is None:
             print(f"ΑΠΟΤΥΧΙΑ ΑΡΝΗΤΙΚΟ τροχού: με «{label}» ο έλεγχος πέρασε")
             return 1
@@ -2819,6 +2960,11 @@ def wheel_check(sym, g, nexthop, base, patch=()):
                     m.peek(c3) | m.peek(c3 + 1) << 8)
     for at, v in ((sym["EC_FULL"], 1), (sym["ERP_FULL"], 0xAF), (c3, inf & 255), (c3 + 1, inf >> 8)):
         m.poke(at, v)
+    # και το απόθεμα μετάλλου (βήμα 127): το ec_keep και η πρώτη κλήση
+    ink, c1 = sym["ERM_INK"], sym["ERM_C1"] + 1
+    keep = lambda: (m.peek(sym["EC_KEEP"]), m.peek(c1) | m.peek(c1 + 1) << 8)
+    for at, v in ((sym["EC_KEEP"], 1), (c1, ink & 255), (c1 + 1, ink >> 8)):
+        m.poke(at, v)
     run("WHEEL_RESET")
     if (m.peek(sym["WH_SLOT"]), m.peek(sym["RT_DIRTY"])) != (0, 0):
         return f"μετά το wheel_reset wh_slot {m.peek(sym['WH_SLOT'])}, rt_dirty " \
@@ -2826,6 +2972,9 @@ def wheel_check(sym, g, nexthop, base, patch=()):
     if full() != (0, 0xB7, sym["ERM_IN"]):
         return "μετά το wheel_reset η αποθήκη μένει γεμάτη: ec_full, κήπος, τρίτη κλήση " \
                + ", ".join(f"#{v:02X}" for v in full())
+    if keep() != (0, sym["ERM_IN"]):
+        return "μετά το wheel_reset μένει το απόθεμα μετάλλου: ec_keep, πρώτη κλήση " \
+               + ", ".join(f"#{v:02X}" for v in keep())
     return None
 
 

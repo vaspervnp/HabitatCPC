@@ -37,6 +37,7 @@ OPEN = 2                           # εργοτάξια ταυτόχρονα, τ
 STOCKS = ["νερό", "τροφή", "μετάλλ", "μέταλ", "βιοπλ", "επεξ", "ανταλ", "φάρμ",
           "όπλα", "ρομπ", "άμυλο", "λαχαν", "βότ", "κρέας"]
 S_WATER, S_FOOD, S_ORE, S_METAL, S_BIOPL = 0, 1, 2, 3, 4
+O2_PER_COL = 2                     # tools/econ.py O2_PER_COLONIST
 ROOM = dict(oxygen=0, canteen=1, quarters=2, green=3, factory=4, lab=5, medbay=6,
             control=7, storage=8, lounge=9)
 OXYGEN, METAL, PLASTIC, WEAPONS, CHIPS, ROBOTS, MEALS, SPARES, DRUGS, MEAT = range(10)
@@ -444,6 +445,21 @@ def room_free(G, upto=80):
     return r["ship"] == 0 and r["alive"] + 4 <= min(r["popcap"], upto)
 
 
+def ship_ok(G):
+    """Ενα πλοίο αποίκων (τέσσερις) μόνο όταν το οξυγόνο που ΒΓΑΙΝΕΙ — όχι οι
+    θόλοι του — φτάνει σε όλο το τελευταίο sol για όλους μαζί με τους τέσσερις,
+    και η τροφή φτάνει για πέντε sol και δεν πέφτει (βήμα 127). Ως τότε το
+    room_free(G, 10 * G.oxy()) μετρούσε θόλους οξυγόνου: στο ACE1 3 ο ένας από
+    τους δύο έμενε συχνά χωρίς χειριστή, 20 από τα 32, και πέθαναν 33."""
+    rows = G.rows[-8:]                      # ένα sol: ένα δείγμα ανά όγδοο
+    if len(rows) < 8 or not room_free(G):
+        return False
+    want = rows[-1]["alive"] + 4
+    food = [r["stock"][S_FOOD] for r in rows]
+    return (min(r["o2p"] for r in rows) >= O2_PER_COL * want
+            and food[-1] >= 5 * want and food[-1] >= food[0])
+
+
 def plan_base():
     """Ενα άνοιγμα όπως του Planetbase: αέρας, πόρτα, νερό, κυλικείο, ρεύμα,
     μέταλλο από το αρχικό μετάλλευμα (60 -> 30), και η αλυσίδα της τροφής
@@ -616,7 +632,7 @@ def plan_long():
     plan = [s for s in plan_store() if s["item"] != "ship"]
     plan += [
         step("πλοίο", "ship", None, after=["πίστα", "έλεγχος"],
-             when=lambda G: room_free(G, 10 * G.oxy()), again=True),
+             when=ship_ok, again=True),
         step("οξυγόνο 2", DOME_S, (6, 2), "oxygen", [OXYGEN], after=["οξυγόνο"], when=n(7)),
         step("κοιτώνες 2", DOME_S, (30, 2), "quarters", after=["κοιτώνες"], when=n(8)),
         step("θερμοκήπιο 2", DOME_S, (20, 14), "green", [STARCH], after=["άμυλο"], when=n(9)),
