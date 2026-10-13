@@ -2803,8 +2803,9 @@ machine that wants an operator runs when the dome has k**, whatever slot it sits
 (`ed_k` in `src/econ.asm`, `k` in `tools/econ.py`). The two tables still earn their
 place — `rm_pref`'s machine heads the fitting list and is its default, and
 `rm_plants` is the greenhouse's MIXED crop. `tests/test_sim.py` checks the rule on the
-reference: two iron machines in slots 3 and 6 make 0 / 1 / 2 / 2 Metal with 0–3
-operators, where the old rule makes 0 / 0 / 0 / 0. Z80 against reference over sparse
+reference: two iron machines in slots 3 and 6 make 0 / 2 / 4 / 4 Metal with 0–3
+operators (0 / 1 / 2 / 2 until milestone 125, when a machine made 1; the test now reads
+the recipe), where the old rule makes 0 / 0 / 0 / 0. Z80 against reference over sparse
 slots is the shared run's job — the populated colony leaves one slot in five empty,
 with random operator counts.
 
@@ -2826,7 +2827,7 @@ which is 11.7 times a sol (one sol = 4 real minutes):
 | `collector` s/m/l | stores 40 / 160 / 360 Power | | fills at the day's surplus |
 | `extractor` s/m/l | 1 / 2 / 5 Water | 1 / 3 / 6 Power | 12 / 23 / 58 Water |
 | `mine` | 2 / 3 / 4 Ore with 1 / 2 / 3 at work, nothing with none (milestone 94), into a pile of up to 30 at the mine that is carried away in tens (milestone 95); away from a vein half, 1 / 2 / 2, and the colony's first free (milestone 123, [§6.5](#a-mine-anywhere-at-milestone-123)) | 8 Power; a worker or driller bot each | 23 Ore with one |
-| `mach_iron` | 1 Metal | 2 Ore, 3 Power | 12 Metal from 23 Ore |
+| `mach_iron` | **2** Metal (1 until milestone 125, [§10.1](#twice-the-metal-at-milestone-125)) | 2 Ore, 3 Power | 23 Metal from 23 Ore |
 | Greenhouse slot | 3 Starch / 2 Vegetables / 2 Medicinal, by `plant_class` | 1 Water, 1 Power | ×11.7 |
 | `mach_vitromeat` | **2** Meat | 2 Water, 4 Power | a staffed lab: 6–7 Meat a sol |
 | `mach_food` | 1 Meal | 1 Starch + 1 Vegetables + 1 Meat, 4 Power | one canteen feeds about six |
@@ -3246,8 +3247,8 @@ that one**: a machine stops only when the storage is full.
   - The gardens.
   - The mines' digging: the pile does not grow, and the drillers keep their places.
 - **What does not stop:**
-  - Since milestone 124, the converters, which eat more units than they make: Metal,
-    Plastic, Spares, Meals and the rest.
+  - Since milestone 124, the converters, which eat at least as many units as they
+    make: Metal (two for two since milestone 125), Plastic, Spares, Meals and the rest.
   - `mach_oxygen`, which makes a flow, and the beds.
   - The water pumps.
   - The carriers, the merchant's goods, and the payments and refunds of building and
@@ -3284,8 +3285,8 @@ for 45 bytes more of `b6code`. The dome loop keeps its list pointer in `HL'`, 52
 dome instead of 100; the ISR uses no `exx` ([§4.2](#42-the-eight-banks)).
 
 **What it does not limit.** Every machine but `VITROMEAT` turns two or more units into
-one: Ore into Metal, Metal and Bioplastic into Spares, three foods into a Meal. Making
-things frees room, so only the mines, the gardens, Vitromeat and trade fill the
+one: Ore into Metal (two into two since milestone 125), Metal and Bioplastic into
+Spares, three foods into a Meal. Making things frees room, so only the mines, the gardens, Vitromeat and trade fill the
 storage. A `SPARES` with Metal to eat therefore still eats all of it, as the scripted
 player saw at milestone 120 ([§15](#15-open-risks)). And when the storage is full,
 `IRON` stops too, though it would free room. The player chose this. What it costs a
@@ -3392,8 +3393,9 @@ things together:
 
 `tools/econ.py` works this out from the recipes and `tools/pack.py` writes it as
 `MF_ADDS`, bit 2 of the recipe's flags, beside `MF_OPERATOR` and `MF_FLOW`. Today only
-`VITROMEAT` has it: 2 Water into 2 Meat. Every converter eats two or three units for
-one, so it keeps going and empties the store. The gardens and the mines' digging still
+`VITROMEAT` has it: 2 Water into 2 Meat. Every other converter eats two or three units
+for one, so it keeps going and empties the store. Since milestone 125 `METAL` eats two
+Ore for two Metal: it neither adds nor frees room, and it keeps going too. The gardens and the mines' digging still
 stop.
 
 `erm_inf` reads the flag instead of the output: `ld a,(ix+9) · and MF_ADDS · ret z ·
@@ -11841,9 +11843,35 @@ was found never to pass the calm
   rolls of the disasters.
 - **Not changed:** the METAL machine's output. The measurement offers it to the user:
   with 2, three colonies of twelve reach twenty colonists by sol 40. With 1, none
-  grows.
+  grows. **The user chose 2, at milestone 125** ([below](#twice-the-metal-at-milestone-125)).
 - **Still open** ([§15](#15-open-risks)): operators bind before Ore does, and a
   `SPARES` machine with Metal to eat still eats all of it.
+
+#### Twice the Metal, at milestone 125
+
+The user chose the lever that milestone 124 measured. `mach_iron` makes **2 Metal from
+2 Ore**, where it made 1. The change is one number in `tools/econ.py`'s `RECIPE`, which
+`tools/pack.py` writes into the recipe table, so it costs no byte and no µs.
+
+The machine still needs its operator. Two Ore for two Metal neither adds to the store
+nor frees room, so it is not `MF_ADDS`, and it keeps going when the storage is full
+([§6.5](#only-what-adds-to-the-store-stops-at-milestone-124)).
+
+**Measured on the game as built, not with the tweak.** These are the same twelve
+worlds and plan as above, 40 sols, from snapshots made by the milestone 125 binary:
+
+| METAL makes | Alive at sol 40 | Largest colony | Worlds with ships | Deaths |
+|---|---|---|---|---|
+| 1 (milestone 124) | 9 of 12 | 6 everywhere | none | 18, hunger |
+| 2 (`--tweak iron=2` on milestone 124) | 9 of 12 | 18–20 in three worlds | 3 | 64: 38 hunger, 26 air |
+| 2 (milestone 125) | 9 of 12 | 18–20 in three worlds | 3 | 64: 38 hunger, 26 air |
+
+**The same game as the tweak.** Every event (buildings, ships, faults and deaths) is the same in all twelve worlds. In three worlds a few samples fall a frame or two apart, and one sample has stocks 2–4 apart. A colony of six whose mine is off a vein (`ACE1` 0) builds its pad at sol 35.4 and grows to 18 by sol 40. Two others (`ACE1` 3, `BEEF` 3) have their first ship at sol 22. The other six survivors stay at six or fewer: their Metal still goes on domes and corridors before it reaches the pad's 45. The three that starve at sol 19–20 are the three without greenhouses, as before.
+
+The deaths of the colonies that grow are the scripted player's: it counts oxygen domes
+rather than working generators, and its food plan lags its ships. Three colonies of
+six reach the landing pad now, and none did at milestone 124. That is what the lever
+was for.
 
 ### 10.2 Milestones
 
@@ -12619,9 +12647,9 @@ gap.
 | ~~Nothing the player does exists: no build mode, no input, no HUD, nothing drawn since milestone 5~~ | ~~High~~ | **Resolved.** The colony is drawn, the camera scrolls, the dirty list keeps it honest, the HUD reports — and the player now moves a cursor, opens a menu, places a dome and routes a corridor between two of them ([§9.1](#91-controls), [§9.3](#93-build-flow), [§9.4](#94-corridor-routing), [§6.9](#69-construction)). |
 | ~~The two halves have never been assembled into one binary~~ | ~~Medium~~ | **Assembled, and it did not fit: 20,571 bytes wanted 16,128.** Resolved by moving the generator out, cutting `MAX_NODES` to 96 and putting code in bank 2 ([§4.2](#42-the-eight-banks)). It also turned up duplicate constants in three files and, worse, [§7.4](#74-one-convention-per-half-and-they-disagreed)'s paging disagreement. |
 | ~~**The colony's Metal can run out for good**~~ (milestone 120) | ~~High~~ | **Closed at milestone 123** ([§6.5](#a-mine-anywhere-at-milestone-123)), by the player's choice: a mine anywhere, at half its yield away from a vein, and free when the colony has no other. Left: a colony with no METAL machine and no Metal to fit one. Until then: found by the scripted player ([§10.1](#the-scripted-player-at-milestone-120)): with the cargo's 60 Ore turned into 30 Metal and less than 30 Metal in store, nothing buys a mine any more, and without Metal nothing makes a Spare — the colony waits for its oxygen generator's next break. Only the merchant can get a colony out, and that needs a pad (45). A human sees it coming; the game does not warn. Options: a cheaper mine, Ore in the cargo, or a line on the HUD |
-| **Production has no limit but the storage** (milestone 120; the storage since 122) | Medium | **Since milestone 122 a machine stops when the storage is full** ([§6.5](#storage-at-milestone-122)), the user's choice over a limit per good. Since milestone 124 that is only the gardens, the mines and `VITROMEAT`: stopping the converters too starved 10 of 12 colonies beside a full store ([§6.5](#only-what-adds-to-the-store-stops-at-milestone-124)). It does not stop this: every machine but `VITROMEAT` turns two or more units into one, so making things frees room. Until milestone 122 a machine ran while its inputs lasted: the scripted player's `SPARES` made 47 Spares and kept the Metal at 3 for eight sols, and `PLASTIC` will compete with `MEALS` for Starch the same way. The player's only control is taking the machine out. The user chose a crew of six over a limit at milestone 120; Planetbase's answer is a production limit per good |
+| **Production has no limit but the storage** (milestone 120; the storage since 122) | Medium | **Since milestone 122 a machine stops when the storage is full** ([§6.5](#storage-at-milestone-122)), the user's choice over a limit per good. Since milestone 124 that is only the gardens, the mines and `VITROMEAT`: stopping the converters too starved 10 of 12 colonies beside a full store ([§6.5](#only-what-adds-to-the-store-stops-at-milestone-124)). It does not stop this: every machine but `VITROMEAT` turns two or more units into one (`METAL` two into two since milestone 125), so making things frees room. Until milestone 122 a machine ran while its inputs lasted: the scripted player's `SPARES` made 47 Spares and kept the Metal at 3 for eight sols, and `PLASTIC` will compete with `MEALS` for Starch the same way. The player's only control is taking the machine out. The user chose a crew of six over a limit at milestone 120; Planetbase's answer is a production limit per good |
 | ~~**Disasters come in bursts**~~ (milestone 120) | ~~Medium~~ | **Closed at milestone 121** ([§6.10](#sparse-and-not-before-twenty-colonists-at-milestone-121)): a disaster starts only with 20 colonists, two sols after the last one and 64 revolutions after any event, and a malfunction 64 revolutions after any event — two timestamps asked only when a roll falls, so slot 15 costs what it did. The draws are still consecutive steps of one generator; the calm is what keeps them apart. **And the calm kept every storm out**: a small `r2` always follows a malfunction roll, so from milestone 121 to 123 no storm came. Milestone 124 reads the storm and the flare from high values ([§6.10](#the-storms-that-never-came-found-at-milestone-124)): measured at twenty colonists, a disaster every ~4 sols, 45% of them storms |
-| **A colony of six does not grow** (milestone 124) | Medium | The scripted player's colonies lived 40 sols and none built a landing pad: Metal stayed under 10 for a quarter to four fifths of the time, because the METAL machine waits for an operator while the four who may `Operate` dig, haul, build and run three other machines ([§10.1](#the-balance-measured-at-milestone-124)). With METAL making 2 instead of 1, three of twelve grew to 18–20 by sol 40. Not changed: the user's choice. The scripted player also grows badly — it counts oxygen domes, not working generators — so a better player may need less |
+| ~~**A colony of six does not grow**~~ (milestone 124) | ~~Medium~~ | **Eased at milestone 125**, the user's choice: METAL makes 2 ([§10.1](#twice-the-metal-at-milestone-125)), and three of twelve scripted colonies grow to 18–20 by sol 40, the first ship at sol 22. At milestone 124 the scripted player's colonies lived 40 sols and none built a landing pad: Metal stayed under 10 for a quarter to four fifths of the time, because the METAL machine waits for an operator while the four who may `Operate` dig, haul, build and run three other machines ([§10.1](#the-balance-measured-at-milestone-124)). The operators still bind first. The scripted player also grows badly — it counts oxygen domes, not working generators — so a better player may need less |
 | ~~Every game has the same disasters~~ | ~~Medium~~ | **Closed at milestone 120**: `EC_RND` comes from the world's seed ([§6.10](#the-same-disasters-in-every-game-until-milestone-120)). Until then every disc broke the first dome at sol 4.44 and dropped a meteor shower at 10.5 |
 | ~~A need without its room freezes the colony~~ | ~~High~~ | **Closed at milestone 120** ([§6.6](#a-need-without-its-room-at-milestone-120)): without Quarters the whole start crew held `T_NEED` in the canteen from sol 2, and without a Medbay an injured colonist never ate again |
 | **§6.5 promises two things the game does not have** (found at milestone 120; three until 122) | Low | ~~Stocks "capped by storage-dome capacity"~~: **built at milestone 122** ([§6.5](#storage-at-milestone-122)); until then the cap was `EC_CAP`, 600, whatever was built, and Storage domes only received hauled Ore ([§6.7](#hauling-at-milestone-95)); "lighting at night" draws no power; oxygen "leaks" are not modelled. The [§6.8](#68-rooms-machines-plants) table's "stock capacity 100 / 300 / 600" for a Storage dome was the same promise |

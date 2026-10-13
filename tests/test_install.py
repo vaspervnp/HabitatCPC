@@ -266,8 +266,9 @@ def stopped(sym, patch=(), patch6=(), quiet=False):
         G.m.poke(G.X["EC_PDOME"], D)
         G.call("EC_RUN_DOME")
         made[h] = G.stock(S_METAL) - 50
-    if made != {OWED: 0, 5: 0, READY: 0, 36: 0, 100: 0, HP: 1}:
-        return f"ΠΑΡΑΓΩΓΗ: μέταλλο ανά υγεία {made} — η πρόζα λέει μόνο το 200 (+1)"
+    q = EC.RECIPE[1][7]                     # ό,τι βγάζει ένα σίδερο: 2 από το βήμα 125
+    if made != {OWED: 0, 5: 0, READY: 0, 36: 0, 100: 0, HP: q}:
+        return f"ΠΑΡΑΓΩΓΗ: μέταλλο ανά υγεία {made} — η πρόζα λέει μόνο το 200 (+{q})"
     posted = {}
     for ops in (1, 0):
         G = Game(sym, patch, patch6)
@@ -291,7 +292,7 @@ def stopped(sym, patch=(), patch6=(), quiet=False):
         broke[h] = G.hp(2)[1]
     if broke != {OWED: OWED, READY: READY, 36: 36, 100: 100, HP: 0}:
         return f"ΒΛΑΒΗ: η υγεία μετά το ec_break_d {broke} — η πρόζα λέει μόνο το 200 -> 0"
-    say("ΣΤΑΜΑΤΗΜΕΝΗ: παράγει μόνο το 200 (+1 μέταλλο)· με έναν χειριστή καμία Operate "
+    say(f"ΣΤΑΜΑΤΗΜΕΝΗ: παράγει μόνο το 200 (+{q} μέταλλο)· με έναν χειριστή καμία Operate "
         "(θέλει μόνο η 200), με κανέναν μία, και ποτέ Repair· η βλάβη μηδενίζει μόνο το 200")
     return None
 

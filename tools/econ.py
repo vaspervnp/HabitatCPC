@@ -53,7 +53,12 @@ MF_FLOW = 2             # η έξοδος είναι ροή, όχι απόθεμ
 # in1,q1, in2,q2, in3,q3, out,q, power, flags
 RECIPE = [
     (S_WATER, 1, NO_STOCK, 0, NO_STOCK, 0, NO_STOCK, 20, 4, MF_FLOW),   # oxygen
-    (S_ORE, 2, NO_STOCK, 0, NO_STOCK, 0, S_METAL, 1, 3, MF_OPERATOR),   # iron
+    # ΔΥΟ ΜΕΤΑΛΛΑ ΑΠΟ ΔΥΟ ΜΕΤΑΛΛΕΥΜΑΤΑ (βήμα 125), όχι ένα: με 1 καμία αποικία
+    # των έξι δεν μεγάλωνε σε 40 sol — η μηχανή περιμένει χειριστή, και το
+    # μετάλλευμα στη φλέβα έφτανε τα 140 με το μέταλλο κάτω από 25. Με 2 τρεις
+    # από τους δώδεκα κόσμους του tools/play.py φτάνουν τους 18-20 (DESIGN §10.1).
+    # Δεν προσθέτει στην αποθήκη (2 -> 2, όχι MF_ADDS): δουλεύει και γεμάτη.
+    (S_ORE, 2, NO_STOCK, 0, NO_STOCK, 0, S_METAL, 2, 3, MF_OPERATOR),   # iron
     (S_STARCH, 2, NO_STOCK, 0, NO_STOCK, 0, S_BIOPL, 1, 3, MF_OPERATOR),
     (S_METAL, 2, S_PROC, 1, NO_STOCK, 0, S_GUN, 1, 5, MF_OPERATOR),     # weapons
     (S_METAL, 2, NO_STOCK, 0, NO_STOCK, 0, S_PROC, 1, 5, MF_OPERATOR),
