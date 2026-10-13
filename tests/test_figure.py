@@ -43,9 +43,10 @@
 
 Το μοντέλο εδώ είναι γραμμένο από αυτή την πρόζα, όχι από τον κώδικα.
 
-  ΑΡΧΗ      η λίστα είναι οι τέσσερις άποικοι, στη σειρά κάτω από το σκάφος,
-            με τη φιγούρα του ρόλου τους· και στην οθόνη: κάθε αδιαφανές
-            pixel της φιγούρας (fig_gfx) είναι εκεί.
+  ΑΡΧΗ      η λίστα είναι οι έξι άποικοι (τέσσερις ως το βήμα 120), στις
+            θέσεις τους γύρω από το σκάφος — οι ζυγές στη σειρά από κάτω, οι
+            μονές από πάνω — με τη φιγούρα του ρόλου τους· και στην οθόνη:
+            κάθε αδιαφανές pixel της φιγούρας (fig_gfx) είναι εκεί.
   ΔΡΟΜΟΣ    ένα ηλιακό τέσσερα tiles ανατολικά: οι μεταφορείς πάνε και
             έρχονται. Σε κάθε δείγμα, με τη λίστα αλλαγών άδεια: η λίστα είναι
             το μοντέλο για ΟΛΟΥΣ τους πράκτορες, κάθε φιγούρα φαίνεται, και η
@@ -450,17 +451,19 @@ def scenario(sym, g, patch=(), quiet=False):
     # --- ΑΡΧΗ
     figs = w.figs()
     want = {a: (x, y, f) for a, (x, y, f) in w.model().items()}
-    roles = [w.ag(i, 128) for i in range(4)]
+    roles = [w.ag(i, 128) for i in range(6)]
     exp = {}
-    for i in range(4):
+    for i in range(6):
         slot = w.ag(i, 384)
-        exp[i] = (DX[slot >> 1], 2, w.m.peek(sym["ROLE_FIG"] + roles[i]))
+        exp[i] = (DX[slot >> 1], 2 if slot % 2 == 0 else -3,
+                  w.m.peek(sym["ROLE_FIG"] + roles[i]))
     if {a: (x, y, f) for a, x, y, f in figs} != exp or want != exp:
         return f"ΑΡΧΗ: λίστα {figs}, μοντέλο {want}, η πρόζα λέει {exp}"
     n, bad = w.shown(figs, w.play())
-    if n != 4 or bad:
-        return f"ΑΡΧΗ: στην οθόνη {n} από 4 ολόκληρες, λείπουν {bad}"
-    say(f"ΑΡΧΗ: {sorted((x, f) for a, x, y, f in figs)} στη σειρά y = 2, στην οθόνη")
+    if n != 6 or bad:
+        return f"ΑΡΧΗ: στην οθόνη {n} από 6 ολόκληρες, λείπουν {bad}"
+    say(f"ΑΡΧΗ: {sorted((x, y, f) for a, x, y, f in figs)} κάτω (y = 2) και πάνω "
+        f"(y = -3) από το σκάφος, στην οθόνη")
     # --- ΔΡΟΜΟΣ
     B.build(w.m, sym, 4, g + 6, at=SOLAR_AT, fit=False)
     look(w.m)

@@ -172,7 +172,7 @@ def main():
 
     for _ in range(120):
         m.run_frames(30)
-        if w16(g + 2) == 40 and m.peek(g + 58) == 4:
+        if w16(g + 2) == 100 and m.peek(g + 58) == 6:        # §10.1 (βήμα 120)
             break
     else:
         sys.exit("το παιχνίδι δεν ξεκίνησε από τον δίσκο")
@@ -437,7 +437,7 @@ def main():
     m.type_text('run"habitat\n', hold_frames=4, gap_frames=8)
     for _ in range(120):
         m.run_frames(30)
-        if w16(g + 2) == 40 and m.peek(g + 58) == 4:
+        if w16(g + 2) == 100 and m.peek(g + 58) == 6:        # §10.1 (βήμα 120)
             break
     else:
         sys.exit("το παιχνίδι δεν ξαναξεκίνησε μετά το reset")

@@ -193,7 +193,7 @@ class Econ:
         self.ship_state = 0         # 0 κανένα · 1 έρχεται · 2 προσγειωμένο
         self.ship_kind = 0          # 0 άποικοι · 1 έμπορος · 2 επισκέπτες
         self.ship_eta = 0           # περιστροφές ως την άφιξη
-        self.pop_cap = 4            # το Control ανεβάζει το ταβάνι
+        self.pop_cap = POP_BASE     # το Control ανεβάζει το ταβάνι
         self.pad_node = 255         # η πλατφόρμα προσγείωσης, ως κόμβος
         # --- ορόσημα (§10.2) ---
         self.prod_mask = 0          # ποια αποθέματα φτιάχτηκαν ΕΔΩ
@@ -527,7 +527,9 @@ def events(e):
     elif (r2 >> 7) == 0:                    # τα ΨΗΛΑ bits του δεύτερου, 1/512
         e.storm = STORM_LEN
 
-    if (r3 & 0x7F) == 0:                    # απλή βλάβη: τα χαμηλά του τρίτου
+    # 1/256 από το βήμα 120: και το bit 0 του r1, που δεν είναι μέρος του r3
+    # (src/econ.asm, ev_fault).
+    if (r3 & 0x7F) == 0 and not r1 & 1:     # απλή βλάβη: τα χαμηλά του τρίτου
         # Ο ΔΕΙΚΤΗΣ ΑΠΟ ΤΑ BITS ΠΟΥ ΠΕΡΙΣΣΕΨΑΝ, και από ΚΑΝΕΝΑ άλλο νούμερο:
         # το r2 είναι η προηγούμενη ρίψη του ίδιου Galois, και ο πολλαπλασιαστής
         # #B400 δεν αγγίζει το χαμηλό byte — άρα με μηδενικά τα χαμηλά του r3
@@ -1371,7 +1373,7 @@ def rooms_rebuild(e, plant_class=None):
     # Το ταβάνι πληθυσμού είναι δουλειά του Control (§6.8), και η πλατφόρμα
     # είναι ο κόμβος όπου κατεβαίνει ο κόσμος (§6.11). Και τα δύο βγαίνουν
     # από περάσματα που γίνονται ούτως ή άλλως.
-    e.pop_cap = min(AG_BOT0, 4 + POP_PER_CONTROL * e.room_n[R_CONTROL])
+    e.pop_cap = min(AG_BOT0, POP_BASE + POP_PER_CONTROL * e.room_n[R_CONTROL])
     e.pad_node = 255
     for i in range(MAX_STRUCT):
         b = i * STRUCT_REC
@@ -1429,6 +1431,7 @@ VISITOR_MORALE = 24
 # αποικία των ενενήντα δεν χωρούσε ούτε τον εαυτό της και κανένα πλοίο
 # αποίκων δεν είχε νόημα.
 POP_PER_CONTROL = 48
+POP_BASE = 6                # το πλήρωμα του σκάφους (βήμα 120· ως τότε 4)
 
 M_FOOTHOLD, M_INDUSTRY, M_INDEPENDENCE, M_AUTOMATION, M_HABITAT = (
     1, 2, 4, 8, 16)

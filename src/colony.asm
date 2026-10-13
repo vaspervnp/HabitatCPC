@@ -211,4 +211,5 @@ ng_roles:
         db 0, 1
         db 1, 0
         db 2, 2
+        db 255                          ; το τέλος (ng_people, βήμα 120)
         assert  ng_corrs == ng_sites + 20

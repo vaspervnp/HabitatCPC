@@ -271,7 +271,7 @@ def main():
     for _ in range(360):
         m.run_frames(10)
         frames += 10
-        started = w16(g + 2) == 40 and m.peek(g + 58) == 4
+        started = w16(g + 2) == 100 and m.peek(g + 58) == 6      # §10.1 (βήμα 120)
         if seen_title is None and frames >= 300:
             ram = scr()
             # ο φορτωτής μετράει σειρές από το 1 (firmware), η μνήμη από το 0
@@ -352,16 +352,17 @@ def main():
     stock = [w16(g + i * 2) for i in range(7)]
     pop = m.peek(g + 58)
     # Από το βήμα 87 δίπλα στο σκάφος, με τα υλικά της παλιάς αποικίας στο
-    # φορτίο: μέταλλο 189 και βιοπλαστικό 107 αντί για 75 και 45.
-    check(50 <= stock[0] <= 60 and stock[1] == 40 and stock[2] == 60
-          and stock[3] == 189 and stock[4] == 107 and stock[6] == 4 and pop == 4,
+    # φορτίο: μέταλλο 189 και βιοπλαστικό 107 αντί για 75 και 45. Από το 120
+    # 100 τρόφιμα, 12 ανταλλακτικά και έξι άποικοι (40, 4 και τέσσερις ως τότε).
+    check(50 <= stock[0] <= 60 and stock[1] == 100 and stock[2] == 60
+          and stock[3] == 189 and stock[4] == 107 and stock[6] == 12 and pop == 6,
           f"§10.1 από τον δίσκο: {stock} πληθυσμός {pop}")
 
     # --- 3. το HUD είναι γραμμένο ----------------------------------------
     sys.path.insert(0, HERE)
     import hudread
     row2 = hudread.text(m, sym, 2)
-    check(row2.startswith("POP  4/"), f"το HUD σχεδιάστηκε: |{row2}|")
+    check(row2.startswith("POP  6/"), f"το HUD σχεδιάστηκε: |{row2}|")
 
     # --- 3β. ο κώδικας του τροχού στην τράπεζα 6 (βήμα 92) ----------------
     # Το BANK6.BIN του pack.py έχει τη δέσμευση b6code ΑΔΕΙΑ· τον κώδικα (τα
@@ -377,9 +378,10 @@ def main():
     at = lay["G_b6code"]
     got = ctypes.string_at(ctypes.addressof(b6.contents) + at - 0x4000, len(code))
     # ΟΣΑ ΓΡΑΦΕΙ ΤΟ ΠΑΙΧΝΙΔΙ ΟΣΟ ΤΡΕΧΕΙ (βήμα 110): οι ανάγκες ζουν από τότε
-    # εδώ, με δύο μεταβλητές και τον τελεστή του ens_call (src/needs.asm). Το
-    # δείγμα παίρνεται αφού τρέξει ο τροχός, οπότε αυτά δεν είναι πια του build.
-    live = {sym["ND_I"], sym["ND_ROOM"], sym["ENS_CALL"] + 1, sym["ENS_CALL"] + 2}
+    # εδώ, με μία μεταβλητή και τον τελεστή του ens_call (src/needs.asm· το
+    # nd_room έφυγε στο βήμα 120, το δωμάτιο μένει στον B). Το δείγμα
+    # παίρνεται αφού τρέξει ο τροχός, οπότε αυτά δεν είναι πια του build.
+    live = {sym["ND_I"], sym["ENS_CALL"] + 1, sym["ENS_CALL"] + 2}
     labs = sorted((v, k) for k, v in sym.items() if at <= v < at + len(code))
     bad = [at + i for i, (x, y) in enumerate(zip(got, code)) if x != y and at + i not in live]
     where = [next(k for v, k in reversed(labs) if v <= a) + f"+{a - next(v for v, k in reversed(labs) if v <= a)}"

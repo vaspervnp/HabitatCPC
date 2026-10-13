@@ -103,7 +103,9 @@ ng_ship:
         ld      de,ng_crew
         ld      a,F_ALIVE               ; έξω, δίπλα στο σκάφος
 
-        ; --- τέσσερις άποικοι: δύο εργάτες, ένας μηχανικός, μία βιολόγος ---
+        ; --- έξι άποικοι: τέσσερις εργάτες, ένας μηχανικός, μία βιολόγος
+        ; (βήμα 120· ως τότε τέσσερις). DE = ζευγάρια (ρόλος, κόμβος) ως το
+        ; 255, ώστε η αποικία δοκιμών να κρατά τους τέσσερις της. ---
 ng_people:
         ld      (ng_r),a                ; οι σημαίες τους
         ld      c,0                     ; ο πράκτορας
@@ -146,9 +148,22 @@ ngp_n:
         res     7,l
         ld      (hl),SUIT_START         ; δέκα λεπτά αέρα στην αρχή (βήμα 90)
         inc     c
-        ld      a,c
-        cp      4
+        ld      a,(de)
+        inc     a
         jr      nz,ngp_lp
+        ; ΤΑ ΣΥΜΒΑΝΤΑ ΑΠΟ ΤΟΝ ΣΠΟΡΟ ΤΟΥ ΚΟΣΜΟΥ (βήμα 120· ως τότε πάντα #ACE1).
+        ; Ο παίκτης του tools/play.py είδε την ίδια βλάβη του θόλου 0 στο sol
+        ; 4,44 και την ίδια βροχή μετεωριτών στο 10,5 σε κάθε κόσμο: κάθε
+        ; παιχνίδι από τον δίσκο είχε το ίδιο σενάριο καταστροφών. Το seed
+        ; μένει στην τράπεζα 6 από τη γεννήτρια (src/gen.asm)· το main.sna και
+        ; οι δοκιμές δεν την τρέχουν, βρίσκουν μηδέν, και κρατούν το #ACE1.
+        ld      hl,(G_worldinfo)
+        ld      a,h
+        or      l
+        jr      nz,ngp_seed
+        ld      hl,NG_SEED              ; το μηδέν είναι απορροφητικό στο LFSR
+ngp_seed:
+        ld      (EC_RND),hl
         ld      bc,GA_PORT + PAGE_B1
         out     (c),c
 
@@ -200,6 +215,9 @@ ng_crew:
         db 0, MAX_DOME
         db 1, MAX_DOME
         db 2, MAX_DOME
+        db 0, MAX_DOME                  ; και δύο εργάτες ακόμη (βήμα 120): ο
+        db 0, MAX_DOME                  ; χρήστης, αντί για όριο στην παραγωγή
+        db 255
 ; το σκάφος: cx, cy, είδος, μέγεθος (ngc_rec)
 ng_shiprec:
         db 0, 0, K_SHIP, 0
@@ -245,29 +263,33 @@ mend
 ; (45) όχι: χτίζεται όταν ο παίκτης θέλει πλοία. Αυτό το διάλεξε ο χρήστης.
 ng_econ:
         NG_BYTE EC_STOCK + 2 * S_WATER, 60
-        NG_BYTE EC_STOCK + 2 * S_FOOD, 40
+        NG_BYTE EC_STOCK + 2 * S_FOOD, 100      ; 40 ως το βήμα 120 (§10.1)
         NG_BYTE EC_STOCK + 2 * S_ORE, 60
         NG_BYTE EC_STOCK + 2 * S_METAL, 189
         NG_BYTE EC_STOCK + 2 * S_BIOPL, 107
-        NG_BYTE EC_STOCK + 2 * S_SPARE, 4
+        NG_BYTE EC_STOCK + 2 * S_SPARE, 12      ; 4 ως το βήμα 120 (§10.1)
         NG_WORD EC_SOLLEN, 12000
         NG_WORD EC_DAYLEN, 7200
-        NG_WORD EC_RND, NG_SEED
         NG_BYTE EC_DAY, 1
         NG_BYTE EC_POK, 1
         NG_BYTE EC_O2OK, 1
-        NG_BYTE EC_ALIVE, 4
-        NG_BYTE EC_POPCAP, 4            ; κανένα Control: η βάση των τεσσάρων
+        NG_BYTE EC_ALIVE, 6
+        NG_BYTE EC_POPCAP, POP_BASE     ; κανένα Control: η βάση του πληρώματος
         NG_BYTE EC_LAND + 0, 2          ; 20% κάθε ειδικότητα (βήμα 91)
         NG_BYTE EC_LAND + 1, 2
         NG_BYTE EC_LAND + 2, 2
         NG_BYTE EC_LAND + 3, 2
         NG_BYTE EC_LAND + 4, 2
 ng_econ_end:
-; η αποικία δοκιμών: τα 75 και 45 των βημάτων 31-86, και οι τρεις θόλοι της
+; η αποικία δοκιμών: τα 75 και 45 των βημάτων 31-86, και οι τρεις θόλοι της·
+; και από το βήμα 120 οι τέσσερις της, με τα 40 τρόφιμα και τα 4 ανταλλακτικά
+; τους, ώστε οι δοκιμές που ξεκινούν από αυτήν να μη μάθουν τίποτα
         NG_BYTE EC_STOCK + 2 * S_METAL, 75
         NG_BYTE EC_STOCK + 2 * S_BIOPL, 45
         NG_BYTE EC_POPCAP, 8
+        NG_BYTE EC_STOCK + 2 * S_FOOD, 40
+        NG_BYTE EC_STOCK + 2 * S_SPARE, 4
+        NG_BYTE EC_ALIVE, 4
 ng_econ_col_end:
 
         assert  G_node_occ == G_agent_fields + 8 * 256

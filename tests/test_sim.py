@@ -309,7 +309,9 @@ def main():
     # Τετραπλάσιο παράθυρο: η βλάβη ρίχνεται μία στις 32 περιστροφές και η
     # έκλαμψη μία στις 256, οπότε σαράντα περιστροφές τις χάνουν συχνά. Ο
     # κώδικας είναι ο ίδιος που μόλις αποδείχθηκε ταυτόσημος με τον Z80.
-    HAZ = TICKS * 4
+    # ΟΚΤΑΠΛΑΣΙΟ από το βήμα 120: η βλάβη είναι 1/256 (η απόφαση του χρήστη),
+    # και στις 160 περιστροφές του τετραπλάσιου δεν έπεφτε καμία.
+    HAZ = TICKS * 8
     broke = repaired = storm_revs = 0
     landings = crew_landed = 0
     was_landed = False
@@ -735,7 +737,8 @@ def flow_branches(sym, g, nexthop, sim0, patch=(), quiet=False):
 
 def event_branches(sym, g, nexthop, sim0):
     """Η γεννήτρια στημένη ώστε η ΠΡΩΤΗ ζαριά της θέσης 15 να ρίξει ό,τι
-    σπάνια ρίχνει: έκλαμψη (1/2048 ανά περιστροφή), βλάβη (1/128), θύελλα,
+    σπάνια ρίχνει: έκλαμψη (1/2048 ανά περιστροφή), βλάβη (1/256 από το
+    βήμα 120· 1/128 ως τότε), θύελλα,
     επισκέπτες. Το κοινό τρέξιμο είναι 40 περιστροφές και τα βλέπει, αν τα
     δει, από τύχη — και το βήμα 46 έκανε την έκλαμψη βρόχο από πίνακα."""
     base = fresh(g, nexthop, sim0)
@@ -757,17 +760,30 @@ def event_branches(sym, g, nexthop, sim0):
             EC.break_one(e, v)
         return before - sum(1 for v in e.dome if v)
 
+    def faulted(x):
+        """Πόσες γερές μηχανές θα σταματούσε η βλάβη του r3, αν έπεφτε."""
+        e = fresh(g, nexthop, base).e
+        before = sum(1 for v in e.dome if v)
+        EC.break_one(e, rolls(x)[2] >> 7)
+        return before - sum(1 for v in e.dome if v)
+
+    # Η ΒΛΑΒΗ ΔΥΟ ΦΟΡΕΣ από το βήμα 120: 1/256, τα χαμηλά επτά του r3 ΚΑΙ το
+    # bit 0 του r1. Η δεύτερη έχει τα επτά μηδέν και το r1 περιττό, και θα
+    # σταματούσε μια γερή μηχανή αν το bit δεν κοιταζόταν (το αρνητικό).
     cases = (
         ("έκλαμψη", lambda r1, r2, r3: r3 >> 8 == 0 and r3 & 0xC0 == 0),
-        ("βλάβη", lambda r1, r2, r3: r3 & 0x7F == 0 and r3 >> 8),
+        ("βλάβη", lambda r1, r2, r3: r3 & 0x7F == 0 and r3 >> 8 and not r1 & 1),
+        ("βλάβη που κόβει το r1", lambda r1, r2, r3: r3 & 0x7F == 0 and r3 >> 8 and r1 & 1),
         ("θύελλα", lambda r1, r2, r3: r2 >> 8 == 0 and r2 & 0x80 == 0),
         ("επισκέπτες", lambda r1, r2, r3: r2 & 0x7FF == 0),
     )
-    flare_x = None
+    flare_x = cut_x = None
     for name, hit in cases:
         xs = [x for x in range(1, 65536) if hit(*rolls(x))]
         if name == "έκλαμψη":
             x = flare_x = max(xs, key=broken_by)
+        elif name == "βλάβη που κόβει το r1":
+            x = cut_x = max(xs, key=faulted)
         else:
             x = xs[0]
         st = fresh(g, nexthop, base)
@@ -783,9 +799,23 @@ def event_branches(sym, g, nexthop, sim0):
         print(f"ΑΠΟΤΥΧΙΑ ζαριά: η έκλαμψη σταμάτησε {n} μηχανές, και με "
               f"πειραγμένο πίνακα ο Z80 βγαίνει ακόμη ίδιος")
         return 1
-    print(f"OK ζαριές:   έκλαμψη ({n} μηχανές σταμάτησαν), βλάβη, θύελλα, "
-          f"επισκέπτες — ίδια bytes στον Z80 και στην αναφορά. ΑΡΝΗΤΙΚΟ: με "
-          f"37 -> 38 στον πίνακα της έκλαμψης διαφέρουν")
+    # ΑΡΝΗΤΙΚΟ (βήμα 120): το jr c μετά το rra του r1 γίνεται nop nop — η
+    # βλάβη 1/128 όπως ως το 119.
+    at = sym["EV_FAULT"]
+    code = run_peek(sym, at, 32)
+    k = next(j for j in range(28) if code[j] == 0x3A and code[j + 3] == 0x1F
+             and code[j + 4] == 0x38)
+    st = fresh(g, nexthop, base)
+    st.e.rnd = cut_x
+    if faulted(cut_x) == 0 or same(sym, g, nexthop, st, 20, "", quiet=True,
+                                   patch=[(at + k + 4, 0), (at + k + 5, 0)]) is not None:
+        print(f"ΑΠΟΤΥΧΙΑ ζαριά: χωρίς το bit του r1 η βλάβη ({faulted(cut_x)} "
+              f"μηχανές) βγαίνει ακόμη ίδια με την αναφορά")
+        return 1
+    print(f"OK ζαριές:   έκλαμψη ({n} μηχανές σταμάτησαν), βλάβη, βλάβη που κόβει το "
+          f"r1, θύελλα, επισκέπτες — ίδια bytes στον Z80 και στην αναφορά. ΑΡΝΗΤΙΚΑ: "
+          f"με 37 -> 38 στον πίνακα της έκλαμψης, και χωρίς το bit του r1 στη "
+          f"βλάβη, διαφέρουν")
     return 0
 
 

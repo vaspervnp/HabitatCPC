@@ -466,33 +466,41 @@ def seek(a, e, i):
     του, στο μάζεμα — και ΚΡΑΤΑΕΙ το T_NEED ώσπου να χορτάσει, αλλιώς η
     ανάθεση τον ξαναπαίρνει στον επόμενο κόμβο και δεν φτάνει ποτέ στο
     κυλικείο (βλ. tests/test_needs.py).
+
+    Από το βήμα 120, μια ανάγκη που το δωμάτιό της δεν υπάρχει (room_n 0)
+    περνά στην επόμενη, και αν δεν μένει καμία, ό,τι ο χορτάτος· ένα δωμάτιο
+    που υπάρχει αλλά δεν φτάνει εκεί, ό,τι ο χορτάτος (src/needs.asm, nd_far).
+    Ως τότε έμενε όπως ήταν: χωρίς κοιτώνα ο άποικος που είχε πάει για νερό
+    κρατούσε το T_NEED για πάντα, και χωρίς ιατρείο ένας τραυματίας δεν
+    ξαναπήγαινε για φαγητό.
     """
-    if a.health[i] < NEED_LOW:
-        room = EC.R_MEDBAY
-    elif a.food[i] < NEED_LOW:
-        room = EC.R_CANTEEN
-    elif a.water[i] < NEED_LOW:
-        room = EC.R_CANTEEN
-    elif a.sleep[i] < NEED_LOW:
-        room = EC.R_QUARTERS
-    else:
-        # Χορτάτος: ξαναγίνεται διαθέσιμος — μέσα. Εξω το T_NEED τον πηγαίνει
-        # μέσα (η στολή), και αν το έσβηνε ο πίνακας εργασιών θα τον ξανάστελνε
-        # στη δουλειά, η στολή πίσω, ως να αδειάσει (βήμα 90).
-        if a.task[i] == T_NEED and a.flags[i] & F_INDOORS:
-            a.task[i] = NO_TASK
+    for low, room in ((a.health[i] < NEED_LOW, EC.R_MEDBAY),
+                      (a.food[i] < NEED_LOW, EC.R_CANTEEN),
+                      (a.water[i] < NEED_LOW, EC.R_CANTEEN),
+                      (a.sleep[i] < NEED_LOW, EC.R_QUARTERS)):
+        if not low or not e.room_n[room]:
+            continue
+        # Ηδη πάει (ή είναι) σε τέτοιο δωμάτιο; Τότε τίποτα. Χωρίς αυτόν τον
+        # έλεγχο κάθε άποικος ξαναέψαχνε το κοντινότερο δωμάτιο σε ΚΑΘΕ
+        # επίσκεψη, μαζί με τη σελιδοποίηση και τις οκτώ αναγνώσεις του DIST.
+        d = a.dest[i]
+        if d < EC.MAX_DOME and e.dome[d * EC.DOME_REC + EC.D_ROOM] == room:
+            return
+        d = EC.nearest_room(e, room, a.node[i])
+        if d == 255:
+            break                           # υπάρχει, αλλά δεν φτάνει εκεί
+        a.task[i] = T_NEED
+        a.dest[i] = d
         return
-    # Ηδη πάει (ή είναι) σε τέτοιο δωμάτιο; Τότε τίποτα. Χωρίς αυτόν τον
-    # έλεγχο κάθε άποικος ξαναέψαχνε το κοντινότερο δωμάτιο σε ΚΑΘΕ επίσκεψη,
-    # μαζί με τη σελιδοποίηση και τις οκτώ αναγνώσεις του DIST που αυτό θέλει.
-    d = a.dest[i]
-    if d < EC.MAX_DOME and e.dome[d * EC.DOME_REC + EC.D_ROOM] == room:
-        return
-    d = EC.nearest_room(e, room, a.node[i])
-    if d == 255:
-        return                              # δεν υπάρχει τέτοιο δωμάτιο
-    a.task[i] = T_NEED
-    a.dest[i] = d
+    sated(a, i)
+
+
+def sated(a, i):
+    """Χορτάτος: ξαναγίνεται διαθέσιμος — μέσα. Εξω το T_NEED τον πηγαίνει
+    μέσα (η στολή), και αν το έσβηνε ο πίνακας εργασιών θα τον ξανάστελνε στη
+    δουλειά, η στολή πίσω, ως να αδειάσει (βήμα 90)."""
+    if a.task[i] == T_NEED and a.flags[i] & F_INDOORS:
+        a.task[i] = NO_TASK
 
 
 # --- ο τροχός (§7.2) ------------------------------------------------------

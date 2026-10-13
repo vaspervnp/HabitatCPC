@@ -302,22 +302,41 @@ nd_seek0:
         res     7,l
 
         ; --- 7. πού πρέπει να πάει ---
+        ; ΜΙΑ ΑΝΑΓΚΗ ΧΩΡΙΣ ΤΟ ΔΩΜΑΤΙΟ ΤΗΣ ΠΕΡΝΑ ΣΤΗΝ ΕΠΟΜΕΝΗ (βήμα 120). Ως
+        ; τότε ο άποικος πήγαινε στο nd_want, το ψάξιμο δεν έβρισκε τίποτα, και
+        ; έμενε όπως ήταν: χωρίς κοιτώνα, όποιος είχε πάει για νερό με τον ύπνο
+        ; κάτω από το κατώφλι κρατούσε το T_NEED για πάντα — ο tools/play.py
+        ; βρήκε και τους τέσσερις της αρχής στο κυλικείο από το sol 2, με τα
+        ; εργοτάξια άδεια — και χωρίς ιατρείο ένας τραυματίας δεν ξαναπήγαινε
+        ; ποτέ για φαγητό. Το G_room_n το λέει χωρίς ψάξιμο, και ο χορτάτος
+        ; γλιτώνει 13 T-states: jr nc που πηδά αντί για ld a,n και jr c που όχι.
         ld      a,(hl)                  ; υγεία
         cp      NEED_LOW
+        jr      nc,nd_fed
+        ld      a,(G_room_n + R_MEDBAY)
+        or      a
         ld      a,R_MEDBAY
-        jr      c,nd_want
+        jr      nz,nd_want
+nd_fed:
         ld      a,d                     ; τροφή
         cp      NEED_LOW
-        ld      a,R_CANTEEN
-        jr      c,nd_want
+        jr      c,nd_eat
         ld      a,c                     ; νερό
         cp      NEED_LOW
+        jr      nc,nd_drunk
+nd_eat:
+        ld      a,(G_room_n + R_CANTEEN)
+        or      a
         ld      a,R_CANTEEN
-        jr      c,nd_want
+        jr      nz,nd_want
+nd_drunk:
         ld      a,e                     ; ύπνος
         cp      NEED_LOW
+        jr      nc,nd_sated
+        ld      a,(G_room_n + R_QUARTERS)
+        or      a
         ld      a,R_QUARTERS
-        jr      c,nd_want
+        jr      nz,nd_want
         ; Χορτάτος: αν κρατούσε το «πάω για φαγητό», το αφήνει και ξαναγίνεται
         ; διαθέσιμος για τον πίνακα εργασιών — ΜΕΣΑ. Εξω το T_NEED τον πηγαίνει
         ; μέσα (βήμα 90: η στολή, su_tick), και αν το έσβηνε εδώ ο πίνακας
@@ -338,7 +357,11 @@ nd_sated:
         ld      (hl),NO_TASK
         ret
 nd_want:
-        ld      (nd_room),a
+        ; ΤΟ ΔΩΜΑΤΙΟ ΣΤΟΝ B, ΟΧΙ ΣΕ ΜΕΤΑΒΛΗΤΗ (βήμα 120): το οξυγόνο του δεν
+        ; χρειάζεται πια, και το jb_dome_ptr κρατά το B. 22 T-states λιγότερα
+        ; για όποιον πάει ήδη εκεί, 31 για όποιον ψάχνει — όσα πληρώνει
+        ; παραπάνω η αλυσίδα από πάνω για τον έλεγχο του G_room_n.
+        ld      b,a
 
         ; Πάει ήδη σε τέτοιο δωμάτιο; Τότε τελειώσαμε.
         ld      h,AG_PG + 2
@@ -346,20 +369,18 @@ nd_want:
         cp      MAX_DOME
         jr      nc,nd_search
         call    nd_droom
-        ld      hl,nd_room
-        cp      (hl)
+        cp      b
         ret     z
 nd_search:
         ld      a,(nd_i)
         ld      l,a
         ld      h,AG_PG + 1
         ld      d,(hl)                  ; D = ο κόμβος του
-        ld      a,(nd_room)
+        ld      a,b
         call    nd_nearest
-        inc     a
-        ret     z                       ; δεν υπάρχει τέτοιο δωμάτιο
-        dec     a
         ld      c,a
+        inc     a
+        jr      z,nd_far                ; υπάρχει, αλλά δεν φτάνει εκεί
         ld      a,(nd_i)                ; αφήνει τη δουλειά του (§6.7)
         ld      l,a
         ld      h,AG_PG + 3
@@ -369,6 +390,12 @@ nd_search:
         dec     h
         ld      (hl),c                  ; dest = ο θόλος
         ret
+nd_far:
+        ; Ο,ΤΙ Ο ΧΟΡΤΑΤΟΣ (βήμα 120): ένα «πάω για φαγητό» που δεν πάει
+        ; πουθενά δεν κρατά κανέναν μακριά από τη δουλειά. Ως τότε έμενε.
+        ld      a,(nd_i)
+        ld      l,a
+        jr      nd_sated
 
 ; nd_droom — A = θόλος -> A = το είδος του δωματίου. Χαλάει DE, HL.
 nd_droom:
@@ -568,7 +595,7 @@ rr_next:
         ; από ένα πέρασμα που γίνεται ούτως ή άλλως.
         ld      a,(G_room_n + R_CONTROL)
         ld      b,a
-        ld      a,4
+        ld      a,POP_BASE
         inc     b
         jr      rr_cap_t
 rr_cap:
@@ -648,4 +675,3 @@ rr_am_one:
         ret
 
 nd_i:       db 0
-nd_room:    db 0

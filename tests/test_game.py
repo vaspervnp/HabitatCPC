@@ -386,7 +386,9 @@ def main():
     for k, v in ((0, 400), (1, 400)):
         m.poke(g + k * 2, v & 255)
         m.poke(g + k * 2 + 1, v >> 8)
-    check(m.peek(g + 74) == 4 and m.peek(g + 58) == 4,
+    # ΤΑΒΑΝΙ 6 από το βήμα 120: η βάση είναι το πλήρωμα του σκάφους (POP_BASE,
+    # src/ship.asm)· η αποικία δοκιμών κρατά τους τέσσερις της.
+    check(m.peek(g + 74) == 6 and m.peek(g + 58) == 4,
           f"ταβάνι πληθυσμού πριν: {m.peek(g + 74)}, ζωντανοί "
           f"{m.peek(g + 58)}")
 
@@ -444,7 +446,7 @@ def main():
     got = 0
     for _ in range(80):
         m.run_frames(50)
-        if m.peek(g + 74) > 4:
+        if m.peek(g + 74) > 6:
             got = 1
             break
     check(got, f"ο θόλος τελείωσε και το ταβάνι πληθυσμού ανέβηκε: "

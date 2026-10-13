@@ -21,6 +21,7 @@ SHIP_NCREW  equ 4
 VIS_FOOD    equ 6
 VIS_MORALE  equ 24
 POP_PER_CTL equ 48
+POP_BASE    equ 6                       ; το πλήρωμα του σκάφους (βήμα 120· ως τότε 4)
 ; το R_CONTROL είναι στο const.asm
 
 ; τα πέντε ορόσημα του §10.2: το bit μέσα στο EC_MILE

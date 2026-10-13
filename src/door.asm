@@ -295,7 +295,8 @@ lks_out:
         ld      h,AG_PG + 7
         ld      (hl),SUIT_TRIP
         jp      fg_mark                 ; φαίνεται, στο εργοτάξιο
-; lko_one — A = πράκτορας στον θόλο (lk_n): στο (lk_t), έξω.
+; lko_one — A = πράκτορας στον θόλο (lk_n): στο (lk_t), έξω — ή μέσα, αν το
+; (lk_t) είναι έτοιμο airlock (βήμα 120).
 lko_one:
         ld      (em_id),a
         ld      a,(lk_n)
@@ -308,6 +309,18 @@ lko_one:
         ld      l,a
         ld      h,AG_PG
         res     1,(hl)                  ; F_INDOORS
+        ; ΣΕ ΕΤΟΙΜΟ AIRLOCK, ΜΕΣΑ (βήμα 120). Ως τότε στέκονταν έξω, στον κόμβο
+        ; του airlock και με προορισμό εκεί: η στολή τους, όταν έπεφτε, τους
+        ; έστελνε στο κοντινότερο airlock — αυτό που ήδη πατούσαν — και καμία
+        ; άφιξη δεν τους έβαζε ποτέ μέσα. Ο παίκτης του tools/play.py έχασε
+        ; έτσι τον μηχανικό του, και μετά όλους, όταν χάλασε το OXYGEN.
+        push    hl
+        ld      a,(lk_t)
+        call    en_in                   ; κρατά BC (C = η θέση στον δακτύλιο)
+        pop     hl
+        jr      nc,lko_out
+        set     1,(hl)
+lko_out:
         inc     h
         ld      a,(lk_t)
         ld      (hl),a                  ; node

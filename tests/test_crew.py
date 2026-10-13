@@ -339,12 +339,13 @@ def voyage(sym, quiet=False):
     G = Game(sym)
     m = G.m
     # Μία αληθινή αίθουσα ελέγχου: ο θόλος 2 γίνεται Control, και το
-    # rooms_rebuild τη μετρά — πλοίο που καλείται κανονικά, ταβάνι 4 + 48.
+    # rooms_rebuild τη μετρά — πλοίο που καλείται κανονικά, ταβάνι 6 + 48
+    # (4 + 48 ως το βήμα 120: η βάση είναι το πλήρωμα του σκάφους, POP_BASE).
     G.b6[TO.layout()["G_dome_tbl"] - 0x4000 + 24 * VOY_DOME + 3] = R_CONTROL
     m.poke(sym["UI_SPD"], 1)
     m.run_frames(100)
     m.poke(sym["UI_SPD"], 0)
-    if m.peek(G.E["CTL"]) != 1 or m.peek(G.EC["EC_POPCAP"]) != 52 or G.pad == 255:
+    if m.peek(G.E["CTL"]) != 1 or m.peek(G.EC["EC_POPCAP"]) != 54 or G.pad == 255:
         return (f"ΠΛΟΙΟ: αίθουσες ελέγχου {m.peek(G.E['CTL'])}, ταβάνι "
                 f"{m.peek(G.EC['EC_POPCAP'])}, πίστα {G.pad}")
     G.tap("C")

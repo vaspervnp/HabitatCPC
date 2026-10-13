@@ -5,7 +5,7 @@
 Ένα σενάριο όπως το παίζει ο παίκτης — ο πρώτος θόλος, μετά το airlock του,
 μετά ένας άποικος που μπαίνει — και σε κάθε βήμα ό,τι λέει η πρόζα:
 
-  ΑΡΧΗ      τέσσερις άποικοι στο σκάφος (κόμβος 64), όλοι ΕΞΩ (χωρίς
+  ΑΡΧΗ      έξι άποικοι (τέσσερις ως το βήμα 120) στο σκάφος (κόμβος 64), όλοι ΕΞΩ (χωρίς
             F_INDOORS), το σκάφος χωρίς ακμή, και η ζήτηση οξυγόνου 0: έξω
             αναπνέουν από τη στολή.
   ΘΟΛΟΣ     ο πρώτος θόλος μπαίνει μόνος του (κανένας διάδρομος) και δένεται
@@ -27,9 +27,18 @@
             ζωντανοί είναι μέσα, και όχι 2 x όλοι· και στο έλλειμμα που
             φέρνουν, όσοι είναι έξω δεν ξοδεύουν: ίδιο οξυγόνο σε 600 frames.
 
+  ΔΕΥΤΕΡΟΣ  (βήμα 120, στην αποικία δοκιμών) ένας νέος θόλος βόρεια του
+            airlock δένεται στο έδαφος μαζί του. Μόλις τελειώσει, όσοι
+            στέκονταν στο εργοτάξιο στέκονται στο airlock ΜΕΣΑ, με προορισμό
+            εκεί. Ως το βήμα 119
+            στεκόταν έξω, και η στολή του τον έστελνε στο airlock που ήδη
+            πατούσε: καμία άφιξη δεν τον έβαζε ποτέ μέσα, και ο tools/play.py
+            τον βρήκε νεκρό στο sol 4,27.
+
 Αρνητικά, με το snapshot πειραγμένο, το καθένα σε άλλο βήμα: ο θόλος κρατά
 τη σύνδεση εδάφους, ο χτίστης μένει μέσα στον θόλο, ο διάδρομος γίνεται ακμή
-στην τοποθέτηση, το airlock δεν έχει αέρα, έξω αναπνέουν, η ζήτηση μετρά όλους.
+στην τοποθέτηση, το airlock δεν έχει αέρα, έξω αναπνέουν, η ζήτηση μετρά όλους,
+ο χτίστης του δεύτερου θόλου έξω στο airlock (βήμα 120).
 """
 import ctypes, os, sys
 
@@ -60,9 +69,9 @@ def layout():
 
 
 class World:
-    def __init__(self, sym, g, patch=()):
+    def __init__(self, sym, g, patch=(), sna=TG.SNA):
         self.sym, self.g, self.L = sym, g, layout()
-        self.m = B.boot(sym, TG.SNA)
+        self.m = B.boot(sym, sna)
         self.b6p = cpc._lib.cpcemu_ram_ptr(self.m._h, 6)
         for at, v in patch:
             # #4000-#7FFF: ο κώδικας του τροχού στην τράπεζα 6 (b6code, βήματα
@@ -119,7 +128,7 @@ def scenario(sym, g, patch=(), quiet=False):
     say = (lambda s: None) if quiet else (lambda s: print("    " + s))
 
     # --- ΑΡΧΗ
-    crew = [w.ag(i) for i in range(4)]
+    crew = [w.ag(i) for i in range(6)]
     if any(a["node"] != SHIP or a["f"] & 3 != F_ALIVE for a in crew) or w.nb(SHIP):
         return f"η αρχή: {crew}, το σκάφος με γείτονες {w.nb(SHIP)}"
     m.run_frames(100)
@@ -150,7 +159,7 @@ def scenario(sym, g, patch=(), quiet=False):
         return f"ο θόλος τελείωσε: ο μηχανικός {e} — όχι έξω στο σκάφος"
     # ΚΑΙ ΚΑΝΕΙΣ ΑΛΛΟΣ ΜΕΣΑ (βήμα 88): όσοι έφεραν τα υλικά στέκονταν στο
     # εργοτάξιο, και ο θόλος τους κλείδωνε χωρίς ακμή.
-    shut = [i for i in range(4) if w.ag(i)["node"] == DOME]
+    shut = [i for i in range(6) if w.ag(i)["node"] == DOME]
     if shut:
         return f"ο θόλος τελείωσε και έκλεισε μέσα τους {shut}: {[w.ag(i) for i in shut]}"
     say(f"θόλος: δεμένος στο σκάφος ως εργοτάξιο, ο μηχανικός δούλεψε έξω "
@@ -174,7 +183,7 @@ def scenario(sym, g, patch=(), quiet=False):
     if (e["node"], e["f"] & F_INDOORS) != (LOCK, F_INDOORS):
         return f"το airlock τελείωσε: ο χτίστης {e} — όχι μέσα στο airlock"
     # όσοι στέκονται στο airlock — και οι μεταφορείς του (βήμα 88) — είναι μέσα
-    out = [i for i in range(4) if (w.ag(i)["node"], w.ag(i)["edge"]) == (LOCK, 255)
+    out = [i for i in range(6) if (w.ag(i)["node"], w.ag(i)["edge"]) == (LOCK, 255)
            and not w.ag(i)["f"] & F_INDOORS]
     if out:
         return f"το airlock τελείωσε: οι {out} στέκονται σε αυτό σημειωμένοι έξω"
@@ -183,9 +192,9 @@ def scenario(sym, g, patch=(), quiet=False):
 
     # --- ΜΠΑΙΝΕΙ: από το σκάφος στον θόλο. Οποιος έμεινε στο σκάφος: από το
     # βήμα 88 κάποιοι κουβάλησαν υλικά και στέκονται στο airlock.
-    WALKER = next((i for i in range(4) if (w.ag(i)["node"], w.ag(i)["edge"]) == (SHIP, 255)), None)
+    WALKER = next((i for i in range(6) if (w.ag(i)["node"], w.ag(i)["edge"]) == (SHIP, 255)), None)
     if WALKER is None:
-        return f"κανείς στο σκάφος: {[w.ag(i) for i in range(4)]}"
+        return f"κανείς στο σκάφος: {[w.ag(i) for i in range(6)]}"
     a = w.ag(WALKER)
     o2_0 = a["o2"]
     if o2_0 != 255:
@@ -222,7 +231,7 @@ def scenario(sym, g, patch=(), quiet=False):
 
     # --- ΖΗΤΗΣΗ. Χρειάζεται κάποιος έξω: από το βήμα 88 όσοι κουβάλησαν τα
     # υλικά του airlock στέκονται μέσα του, οπότε ένας άλλος γυρίζει στο σκάφος.
-    back = next((i for i in range(4) if i != WALKER and w.ag(i)["f"] & F_INDOORS), None)
+    back = next((i for i in range(6) if i != WALKER and w.ag(i)["f"] & F_INDOORS), None)
     if back is not None:
         w.put6(w.L["G_agent_fields"] + 512 + back, [SHIP])
         if w.wait(lambda: (w.ag(back)["node"], w.ag(back)["edge"]) == (SHIP, 255), 6000, 5) is None:
@@ -248,6 +257,44 @@ def scenario(sym, g, patch=(), quiet=False):
                 f"{o2b} σε 600 frames — έξω δεν ξοδεύουν")
     say(f"ζήτηση: {w.w16(40)} = 2 x {inside} μέσα, από {alive} ζωντανούς· σε έλλειμμα "
         f"οι {len(outs)} έξω κρατούν το οξυγόνο τους ({o2a})")
+
+    return None
+
+
+def sealed(sym, g, patch=(), quiet=False):
+    """ΔΕΥΤΕΡΟΣ (βήμα 120), στην αποικία δοκιμών: εκεί η μόνη πόρτα είναι το
+    airlock (κόμβος 65), οπότε κάθε νέος θόλος δένεται στο έδαφος μαζί του.
+    Στο main.sna το airlock του σεναρίου κάθεται σε λωρίδα ανάμεσα σε βουνό
+    και νερό, και κανένας θόλος που χωρά εκεί δεν είναι πιο κοντά του από
+    όσο στο σκάφος."""
+    w = World(sym, g, patch, sna=TG.COLONY)
+    m = w.m
+    m.poke(g + 6, 200)                                   # μέταλλο: εδώ ρωτάμε το πού
+    m.poke(g + 7, 0)
+    at = B.live_spot(m, sym, 0, (0, -26))                # βόρεια του airlock (0, -10)
+    B.build(m, sym, 0, g + 6, at=at, room=0, fit=False)
+    m.run_frames(20)
+    d2 = next((d for d in range(3, 64) if w.b6(w.L["G_dome_tbl"] + 24 * d + 4)[0]), None)
+    if d2 is None or w.nb(d2) != [LOCK]:
+        return (f"ο θόλος στο {at}: {d2}, γείτονες {w.nb(d2) if d2 is not None else '-'} "
+                f"(θέλει [{LOCK}], το airlock)")
+    builder = []
+
+    def at_site():
+        builder.extend(i for i in range(6) if (w.ag(i)["node"], w.ag(i)["edge"]) == (d2, 255)
+                       and i not in builder)
+    if w.wait(lambda: w.b6(w.L["G_dome_tbl"] + 24 * d2 + 4)[0] == DS_ACTIVE, 30000, 25,
+              at_site) is None:
+        return f"ο θόλος δεν τελείωσε ποτέ: μηχανικός {w.ag(ENGINEER)}"
+    m.run_frames(10)
+    moved = [i for i in builder if (w.ag(i)["node"], w.ag(i)["edge"]) == (LOCK, 255)]
+    out = [i for i in moved if not w.ag(i)["f"] & F_INDOORS]
+    if not moved or out or any(w.ag(i)["dest"] != LOCK for i in moved):
+        return (f"ο θόλος τελείωσε: στο εργοτάξιο στάθηκαν {builder}, στο airlock "
+                f"{[(i, w.ag(i)) for i in moved]}, έξω {out}")
+    if not quiet:
+        print(f"    δεύτερος θόλος: δεμένος στο airlock ως εργοτάξιο, οι {moved} βγήκαν "
+              f"στο airlock μέσα")
     return None
 
 
@@ -286,9 +333,15 @@ def main():
            ("έξω αναπνέουν", [(find(m, sym["ND_DEF"], [0xCB, 0x1B, 0x30], 16) + 2 + k, 0)
                               for k in range(2)]),
            # ef_o2: ld l,e γίνεται ld l,c — η ζήτηση από όλους τους ζωντανούς
-           ("η ζήτηση μετρά όλους", [(find(m, sym["EF_ALIVE"], [0x6B], 4), 0x69)])]
+           ("η ζήτηση μετρά όλους", [(find(m, sym["EF_ALIVE"], [0x6B], 4), 0x69)]),
+           # lko_one: call en_in · pop hl · jr nc,lko_out — το jr γίνεται jr
+           # χωρίς όρο (βήμα 120): ο χτίστης έξω στο airlock, όπως ως το 119
+           ("ο χτίστης του δεύτερου θόλου έξω στο airlock",
+            [(find(m, sym["LKO_ONE"], [0xCD] + w(sym["EN_IN"]) + [0xE1, 0x30], 60) + 4, 0x18)])]
+    err = sealed(sym, g)
+    check(err is None, err or "δεύτερος θόλος: οι χτίστες στο airlock, μέσα")
     for label, patch in neg:
-        err = scenario(sym, g, patch, quiet=True)
+        err = (sealed if "δεύτερου" in label else scenario)(sym, g, patch, quiet=True)
         check(err is not None, f"ΑΡΝΗΤΙΚΟ «{label}»: " + (err[:110] if err else "ΔΕΝ το έπιασε τίποτα"))
     return 1 if FAIL else 0
 
