@@ -26,6 +26,12 @@ build.asm μπαίνει πρώτο. Ιδιος πηγαίος, άλλα bytes.
 
 Αρνητικά, με το snapshot πειραγμένο: το βαθύ νερό να μη μετρά (μάσκα 7), η
 σειρά να προχωρά 127 bytes, και το «βρέθηκε» να αφήνει το bd_nres.
+
+ΤΟ ΟΡΥΧΕΙΟ ΠΑΝΤΟΥ (βήμα 123): χωρίς φλέβα A = 0 και bd_nres = 0, με το
+bd_half = ST_HALF· με φλέβα bd_half = 0· η αντλία και τα άλλα δεν το
+αγγίζουν. Οταν το bd_half αλλάζει, η υπογραφή των σειρών 3-4 (uip_sig) σβήνει,
+αλλιώς μένει. Το bd_half ξεκινά τυχαίο. Τρία αρνητικά ακόμη: χωρίς φλέβα
+άκυρο όπως ως το 122, η υπογραφή που μένει, το bd_half που δεν γράφεται.
 """
 import ctypes, os, random, sys
 
@@ -38,7 +44,10 @@ import cpc                                               # noqa: E402
 
 PROBE = 0x3F00
 K_EXTRACT, K_MINE, RES_NEAR = 3, 4, 2                    # src/const.asm
-CEIL = {"ορυχείο 4x4 χωρίς φλέβα": 1021, "αντλία 3x3 χωρίς νερό": 818}   # us, βήμα 67
+# us, βήμα 67: 1.021 και 818. Βήμα 123: το ορυχείο χωρίς φλέβα είναι πια
+# έγκυρη θέση — το bd_half αλλάζει και η υπογραφή σβήνει — 1.050· και το
+# «ποιο από τα δύο» (ld a,e · rra) κοστίζει στην αντλία χωρίς νερό 3 us, 821.
+CEIL = {"ορυχείο 4x4 χωρίς φλέβα": 1055, "αντλία 3x3 χωρίς νερό": 824}
 
 
 def synthetic(rnd):
@@ -61,18 +70,23 @@ def synthetic(rnd):
     return bytes(p)
 
 
-def model(pl, kind, param, w, h, tx, ty):
-    """(A, bd_nres) από την πρόζα του §6.5."""
+HALF = 1 << 2                                            # ST_HALF, βήμα 123
+
+
+def model(pl, kind, param, w, h, tx, ty, half):
+    """(A, bd_nres, bd_half) από την πρόζα του §6.5. `half` = το bd_half πριν.
+    ΤΟ ΟΡΥΧΕΙΟ ΠΑΝΤΟΥ (βήμα 123): χωρίς φλέβα επιτρέπεται, με bd_half =
+    ST_HALF· με φλέβα 0. Η αντλία και τα άλλα δεν το αγγίζουν."""
     if kind != 1 or param not in (K_EXTRACT, K_MINE):
-        return 0, 0
+        return 0, 0, half
     for y in range(ty - RES_NEAR, ty + h + RES_NEAR):
         for x in range(tx - RES_NEAR, tx + w + RES_NEAR):
             b = pl[(y + 64) * 128 + x + 64]
             if param == K_EXTRACT and (b & 7) in (4, 5):        # ρηχό, βαθύ νερό
-                return 0, 0
+                return 0, 0, half
             if param == K_MINE and (b & 7) == 3 and b & 8:       # βουνό με φλέβα
-                return 0, 0
-    return 1, 1 if param == K_EXTRACT else 2
+                return 0, 0, 0
+    return (1, 1, half) if param == K_EXTRACT else (0, 0, HALF)
 
 
 def check(sym, patch=(), timing=True):
@@ -99,17 +113,24 @@ def check(sym, patch=(), timing=True):
                 return None, None
         return t, m.peek(0x3FF0)
 
-    def one(pl, kind, param, w, h, tx, ty, step=20):
+    def one(pl, kind, param, w, h, tx, ty, step=20, half=None):
+        half = rnd.choice([0, HALF]) if half is None else half
         for a, v in (("BD_KIND", kind), ("BD_PARAM", param), ("BD_W", w), ("BD_H", h),
-                     ("BD_TX", tx & 255), ("BD_TY", ty & 255), ("BD_NRES", 0x77)):
+                     ("BD_TX", tx & 255), ("BD_TY", ty & 255), ("BD_NRES", 0x77),
+                     ("BD_HALF", half), ("UIP_SIG", 0x33)):
             m.poke(sym[a], v)
         t, A = run(step)
         where = f"είδος {kind} παράμετρος {param}, {w}x{h} στο ({tx},{ty})"
         if t is None:
             return where + ": δεν γύρισε", None
-        got, want = (A, m.peek(sym["BD_NRES"])), model(pl, kind, param, w, h, tx, ty)
+        got = (A, m.peek(sym["BD_NRES"]), m.peek(sym["BD_HALF"]))
+        want = model(pl, kind, param, w, h, tx, ty, half)
         if got != want:
-            return f"{where}: A = {got[0]}, bd_nres = {got[1]}, ο κανόνας λέει {want}", t
+            return f"{where}: A, bd_nres, bd_half = {got}, ο κανόνας λέει {want}", t
+        # Η ΥΠΟΓΡΑΦΗ ΤΩΝ ΣΕΙΡΩΝ 3-4 σβήνει μόνο όταν αλλάζει το bd_half.
+        sig = 0xFF if want[2] != half else 0x33
+        if m.peek(sym["UIP_SIG"]) != sig:
+            return f"{where}: bd_half {half} -> {want[2]}, uip_sig #{m.peek(sym['UIP_SIG']):02X}", t
         return None, t
 
     rnd = random.Random(67)
@@ -131,13 +152,13 @@ def check(sym, patch=(), timing=True):
     ctypes.memmove(b4, dry, 0x4000)
     slow = []
     for label, (param, w) in (("ορυχείο 4x4 χωρίς φλέβα", (K_MINE, 4)), ("αντλία 3x3 χωρίς νερό", (K_EXTRACT, 3))):
-        why, t = one(dry, 1, param, w, w, -10, 7, step=1)
+        why, t = one(dry, 1, param, w, w, -10, 7, step=1, half=0)
         if why:
             return why
         print(f"    {label}: {t} us (ταβάνι {CEIL[label]})")
         if t > CEIL[label]:
             slow.append(f"{label} {t} > {CEIL[label]} us")
-    return "πιο αργό από το βήμα 67: " + ", ".join(slow) if slow else None
+    return "πιο αργό από το βήμα 123: " + ", ".join(slow) if slow else None
 
 
 def main():
@@ -148,22 +169,31 @@ def main():
         print(f"ΑΠΟΤΥΧΙΑ: {why}")
         fails += 1
     else:
-        print("OK 1.200 κλήσεις του bd_res σε τρία επίπεδα = ο κανόνας του §6.5 (A και bd_nres)")
-        print("OK η χειρότερη αναζήτηση όχι πιο αργή από το βήμα 67")
+        print("OK 1.200 κλήσεις του bd_res σε τρία επίπεδα = ο κανόνας του §6.5 (A, bd_nres, "
+              "και από το βήμα 123 το bd_half με την υπογραφή των σειρών 3-4)")
+        print("OK η χειρότερη αναζήτηση όχι πιο αργή από το βήμα 123")
 
     # --- αρνητικά ---
     r, none = sym["BD_RES"], sym["BDR_NONE"]
     m = cpc.CPC()
     m.run_frames(60)
     assert m.quickload(TG.COLONY, start=False)
-    code = m.read_ram(r, 80)
+    code = m.read_ram(r, 128)
     assert code[9:12] == bytes([0x11, 4, 6]), "το bd_res δεν έχει ld de,#0604 στο +9"
     step = code.find(bytes([0x3E, 0x80, 0x91]))
     assert step > 0, "το bd_res δεν έχει ld a,128 / sub c"
     assert m.read_ram(none, 2) == bytes([0xAF, 0x32]), "το bdr_none δεν είναι xor a / ld (nn),a"
+    sig, half = sym["UIP_SIG"], sym["BDR_HALF"]
+    nf = code.find(bytes([0x7B, 0x1F, 0x3E, 0x01, 0xD0]))         # ld a,e · rra · ld a,1 · ret nc
+    sg = code.find(bytes([0x32, sig & 255, sig >> 8]))
+    assert nf > 0 and sg > 0, "το bd_res δεν έχει το «δεν βρέθηκε» ή την υπογραφή του βήματος 123"
+    assert m.read_ram(half + 6, 1) == bytes([0x77]), "το bdr_half δεν γράφει στο +6"
     for label, patch in (("το βαθύ νερό να μη μετρά", [(r + 11, 7)]),
                          ("τη σειρά να προχωρά 127 bytes", [(r + step + 1, 127)]),
-                         ("το «βρέθηκε» να αφήνει το bd_nres", [(none + 1, 0), (none + 2, 0), (none + 3, 0)])):
+                         ("το «βρέθηκε» να αφήνει το bd_nres", [(none + 1, 0), (none + 2, 0), (none + 3, 0)]),
+                         ("το ορυχείο χωρίς φλέβα άκυρο, όπως ως το 122", [(r + nf + 4, 0xC9)]),
+                         ("την υπογραφή να μένει", [(r + sg, 0), (r + sg + 1, 0), (r + sg + 2, 0)]),
+                         ("το bd_half να μη γράφεται", [(half + 6, 0)])):
         why = check(sym, patch, timing=False)
         if why:
             print(f"OK ΑΡΝΗΤΙΚΟ: με {label} αποτυγχάνει ({why[:80]})")

@@ -1377,6 +1377,10 @@ uip_aff:                                ; NZ: δεν φτάνουν (και το
         ld      hl,t_poor
         jr      nz,uip_say
         ld      hl,t_ok
+        ld      a,(bd_half)             ; ορυχείο εκτός φλέβας (βήμα 123)
+        or      a
+        jr      z,uip_say
+        ld      hl,t_half
 uip_say:
         call    hud_text7
         ld      b,40                    ; ως το τέλος, όσο κι αν είναι: από το
@@ -1402,9 +1406,9 @@ uip_spd:
         call    ob_addu
         jp      hud_text7
 
-; uip_blocked — ανά bd_nres: 0 τα tiles, 1 νερό, 2 φλέβα, 3 κανένα κτίσμα σε
+; uip_blocked — ανά bd_nres: 0 τα tiles, 1 νερό, (2 φλέβα ως το βήμα 123), 3 κανένα κτίσμα σε
 ; απόσταση (βήμα 85), 4 ο δρόμος κομμένος, 5 κανένα σχήμα διαδρόμου (βήμα 86).
-uip_nres:   dw t_block, t_nowat, t_noore, t_far, t_path, t_nofit
+uip_nres:   dw t_block, t_nowat, t_block, t_far, t_path, t_nofit  ; το 2 δεν βγαίνει από το βήμα 123
 
 ; uis_aff — A = φτάνουν τα υλικά; του διαδρόμου στο LINK, του καταλόγου αλλού.
 uis_aff:

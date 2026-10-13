@@ -37,6 +37,15 @@ interface (test_build, test_map, test_game, test_reveal, test_link): λίγες
 Αρνητικά, με το snapshot πειραγμένο: το θεμέλιο να μην επιτρέπεται, το πρώτο
 tile ένα δεξιότερα, η επόμενη σειρά του ελέγχου +64, επτά NO_MACH, το θεμέλιο
 χωρίς κατοχή, A = 255 αντί 1 στο afford, και ο θόλος να γυρνά Z.
+
+ΤΟ ΟΡΥΧΕΙΟ ΠΑΝΤΟΥ (βήμα 123). Το bd_select δίνει στο ορυχείο τιμή 0 όταν ο
+πίνακας δεν έχει άλλο — έτοιμο ή εργοτάξιο· μια άδεια εγγραφή που λέει ακόμη
+«ορυχείο» δεν μετρά — και μηδενίζει το bd_half. Το bd_check κρατά το bd_half
+του bd_res. Το bd_commit ενός ορυχείου γράφει στο ST_OPS το bd_half και, αν
+μπήκε δωρεάν, το ST_FREE· πληρώνει το bd_metal· και μετά το bd_mprice ξαναβάζει
+την τιμή του καταλόγου (τώρα υπάρχει ορυχείο) και μηδενίζει το bd_half. Τέσσερα
+αρνητικά: το bd_select χωρίς bd_mprice, οι άδειες εγγραφές να μετρούν, χωρίς
+ST_FREE, και το επόμενο ορυχείο δωρεάν κι αυτό.
 """
 import ctypes, os, random, sys
 
@@ -46,7 +55,7 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, "/home/vasilhs/cpcemu")
 import test_game as TG                                   # noqa: E402
 import cpc                                               # noqa: E402
-from test_terrain import model                           # noqa: E402
+from test_terrain import model, HALF                     # noqa: E402
 
 PROBE, OUT = 0x3E00, 0x3EF0
 # Τα stubs ΠΑΝΩ από το PROBE, στο #3F00 (βήμα 95· ως τότε στο #3D60, ακριβώς πάνω
@@ -56,13 +65,20 @@ PROBE, OUT = 0x3E00, 0x3EF0
 LOG, LPTR, FLAG, STUB = 0x3800, 0x3EFC, 0x3EFE, 0x3F00   # τα stubs του bd_redraw
 B1, B4 = 0xC0, 0xC4
 K_MINE, NO_MACH, DS_BUILDING, DK_SITE = 4, 255, 1, 6     # src/const.asm
+FREE = 1 << 3                                            # ST_FREE, βήμα 123
 OB_IX_FIG, OB_IX_DOME, OB_IX_STRUCT = 1, 2, 8
 MAX_DEGREE = 8
 # µs με το probe (βήμα 73). Στο βήμα 72: 1779, 3344, 5469, 1221, 2407, 208,
 # 127, 71, 15514 και 11825.
+# Βήμα 123, το ορυχείο παντού: ο έλεγχος του ορυχείου πάνω σε φλέβα 1.424 ->
+# 1.437 (το bd_half: ποιο από τα δύο, άλλαξε;)· το commit μιας δομής 892 ->
+# 927 (bd_mflags και bd_mprice, που για ό,τι δεν είναι ορυχείο γυρίζουν
+# αμέσως)· και το commit ενός ορυχείου, νέο: 1.530, με το bd_mprice να ψάχνει
+# στις 31 γεμάτες εγγραφές για ορυχείο (~600 us, μόνο στο FIRE).
 CEIL = {"έλεγχος 4x4": 796, "έλεγχος 6x6": 1365, "έλεγχος 8x8": 2124,
-        "έλεγχος 3x3": 599, "έλεγχος 4x4 ορυχείο": 1424, "έλεγχος έξω": 153,
-        "rect": 66, "afford": 63, "commit θόλου": 4656, "commit δομής": 892}
+        "έλεγχος 3x3": 599, "έλεγχος 4x4 ορυχείο": 1440, "έλεγχος έξω": 153,
+        "rect": 66, "afford": 63, "commit θόλου": 4656, "commit δομής": 930,
+        "commit ορυχείου": 1540}
 # Το commit από το βήμα 85: χωρίς την αναζήτηση του κοντινότερου θόλου (9.362
 # και 5.591 ως τότε)· τους δεσμούς τους βάζει το al_commit.
 
@@ -193,7 +209,7 @@ def rules(sym, patch=(), n=600):
     m = G.m
     rnd = random.Random(73)
     seen = {"έξω από τον κόσμο": 0, "κακά tiles": 0, "χωρίς υλικό": 0, "επιτρέπεται": 0,
-            "λίγα υλικά": 0}
+            "λίγα υλικά": 0, "δωρεάν": 0}
     for v in range(256):
         G.restore()
         _, _, F = G.run("BD_OK", [0x3E, v])
@@ -201,20 +217,33 @@ def rules(sym, patch=(), n=600):
             return f"bd_ok #{v:02X}: Z = {bool(F & 0x40)}, ο κανόνας λέει {ok_rule(v)}"
     for case in range(n // 3):
         G.restore()
-        i, cx, cy = rnd.randrange(13), rnd.randrange(256), rnd.randrange(256)
+        i, cx, cy = rnd.choice(list(range(13)) + [8] * 4), rnd.randrange(256), rnd.randrange(256)
         if case % 8 < 2:                    # το ανατολικό και το νότιο χείλος
             cx, cy = (127, cy) if case % 8 == 0 else (cx, 127)
         G.cursor(cx, cy)
         G.item(rnd.randrange(11))
+        # ΤΟ ΠΡΩΤΟ ΟΡΥΧΕΙΟ ΔΩΡΕΑΝ (βήμα 123): κάπου-κάπου ένα ορυχείο στον
+        # πίνακα — έτοιμο, εργοτάξιο, ή άδεια εγγραφή που λέει ακόμη «ορυχείο».
+        structs = bytearray(G.bank(6, G.gs, 32 * 8))
+        if rnd.random() < 0.5:
+            k = rnd.randrange(32)
+            structs[8 * k + 2], structs[8 * k + 4] = K_MINE, rnd.choice([0, 1, 2])
+            G.put(6, G.gs, structs)
+        mine = any(structs[8 * k + 2] == K_MINE and structs[8 * k + 4] for k in range(32))
+        m.poke(sym["BD_HALF"], HALF)
         before = m.read_ram(sym["BD_KIND"], 9)
         G.run("BD_SELECT", [0x3E, i])
-        got = (m.read_ram(sym["BD_KIND"], 9), m.peek(sym["CUR_HX"]), m.peek(sym["CUR_HY"]))
+        got = (m.read_ram(sym["BD_KIND"], 9), m.peek(sym["CUR_HX"]), m.peek(sym["CUR_HY"]),
+               m.peek(sym["BD_HALF"]))
         if i < 11:
-            it = G.items[i]
-            want = (it + bytes([2 if it[1] < K_MINE else 0]),
-                    snap_rule(cx, it[2]), snap_rule(cy, it[3]))
+            it = bytearray(G.items[i])
+            if i == 8 and not mine:
+                it[4] = 0
+                seen["δωρεάν"] += 1
+            want = (bytes(it) + bytes([2 if it[1] < K_MINE else 0]),
+                    snap_rule(cx, it[2]), snap_rule(cy, it[3]), 0)
         else:
-            want = (before, cx, cy)
+            want = (before, cx, cy, HALF)
         if got != want:
             return f"bd_select {i} με κέρσορα ({cx}, {cy}): {got}, ο κανόνας λέει {want}"
     for case in range(n):
@@ -248,7 +277,10 @@ def rules(sym, patch=(), n=600):
         m.write_ram(sym["BD_BAD"], bytes(rnd.randrange(256) for _ in range(8)))
         m.poke(sym["BD_NRES"], rnd.randrange(3))
         nres0 = m.peek(sym["BD_NRES"])
+        half0 = rnd.choice([0, HALF])                    # το bd_half πριν (βήμα 123)
+        m.poke(sym["BD_HALF"], half0)
         _, A, _ = G.run("BD_CHECK", [0x01, B4, 0x7F, 0xED, 0x49])
+        half = half0
         tx, ty, out = rect_rule(cx, cy, w, h)
         bad = [0] * 8
         if out:
@@ -265,12 +297,13 @@ def rules(sym, patch=(), n=600):
                 want_a, nres = nb, nres0
                 seen["κακά tiles"] += 1
             else:
-                want_a, nres = model(world, kind, param, w, h, tx, ty)
+                want_a, nres, half = model(world, kind, param, w, h, tx, ty, half0)
                 seen["χωρίς υλικό" if want_a else "επιτρέπεται"] += 1
-        got = (A, list(m.read_ram(sym["BD_BAD"], 8)), m.peek(sym["BD_NRES"]))
-        if got != (want_a, bad, nres):
-            return (f"bd_check {i} στο ({cx}, {cy}): A, bd_bad, bd_nres = {got}, ο κανόνας "
-                    f"λέει {(want_a, bad, nres)}")
+        got = (A, list(m.read_ram(sym["BD_BAD"], 8)), m.peek(sym["BD_NRES"]),
+               m.peek(sym["BD_HALF"]))
+        if got != (want_a, bad, nres, half):
+            return (f"bd_check {i} στο ({cx}, {cy}): A, bd_bad, bd_nres, bd_half = {got}, "
+                    f"ο κανόνας λέει {(want_a, bad, nres, half)}")
     for case in range(n):
         G.restore()
         cm, cb = rnd.randrange(50), rnd.randrange(30)
@@ -301,10 +334,11 @@ def commit_rules(sym, patch=(), n=300):
     m = G.m
     rnd = random.Random(7373)
     rm_list = m.read_ram(sym["RM_LIST"], 16)
-    seen = {"θόλοι": 0, "δομές": 0, "γεμάτος": 0, "Supply": 0, "Build": 0}
+    seen = {"θόλοι": 0, "δομές": 0, "γεμάτος": 0, "Supply": 0, "Build": 0,
+            "ορυχεία": 0, "ορυχεία δωρεάν": 0}
     for case in range(n):
         G.restore()
-        i = rnd.choice([0, 1, 2, 4, 5, 6, 7, 8, 9, 10])
+        i = rnd.choice([0, 1, 2, 4, 5, 6, 7, 8, 8, 9, 10])   # το ορυχείο διπλό (βήμα 123)
         G.item(i)
         kind, param, w, h = G.items[i][:4]
         size = 2 if param < K_MINE else 0
@@ -358,6 +392,12 @@ def commit_rules(sym, patch=(), n=300):
         m.write_ram(sym["CR_METAL"], bytes([cm & 255, cm >> 8]))
         m.write_ram(sym["CR_BIOP"], bytes([cb & 255, cb >> 8]))
         lm, lb = -(-cm // 10), -(-cb // 10)
+        # ΤΟ ΟΡΥΧΕΙΟ (βήμα 123): εκτός φλέβας ή όχι (bd_half), δωρεάν ή όχι
+        # (bd_metal, που το έγραψε το bd_mprice) — και τα δύο στο ST_OPS.
+        half = rnd.choice([0, HALF])
+        bm = rnd.choice([0, G.items[i][4]]) if param == K_MINE and kind == 1 else G.items[i][4]
+        m.poke(sym["BD_HALF"], half)
+        m.poke(sym["BD_METAL"], bm)
         _, A, _ = G.run("BD_COMMIT")
         # --- ο κανόνας ---
         want_d, want_s, want_w = bytearray(domes), bytearray(structs), bytearray(world)
@@ -374,8 +414,11 @@ def commit_rules(sym, patch=(), n=300):
             slot = next((s_ for s_ in range(32) if structs[8 * s_ + 4] == 0), None)
             node = None if slot is None else 64 + slot
             if slot is not None:
+                ops = (half | (0 if bm else FREE)) if param == K_MINE else 0
                 want_s[8 * slot:8 * slot + 8] = bytes([cx & 255, cy & 255, param, size,
-                                                       DS_BUILDING, 0, 0, lm << 4 | lb])
+                                                       DS_BUILDING, 0, ops, lm << 4 | lb])
+                seen["ορυχεία δωρεάν" if param == K_MINE and not bm else
+                     "ορυχεία" if param == K_MINE else "δομές"] += param == K_MINE
         if node is None:
             want_a = 255
             seen["γεμάτος"] += 1
@@ -389,7 +432,7 @@ def commit_rules(sym, patch=(), n=300):
                     # θόλος: το έδαφός του, μόνο κατοχή (βήμα 94)· δομή: θεμέλιο
                     want_w[a] = (want_w[a] & 0xCF | 0x10 if kind == 0
                                  else want_w[a] & 0xC0 | 0x17)
-            stock = (1000 - G.items[i][4], 1000 - G.items[i][5])
+            stock = (1000 - bm, 1000 - G.items[i][5])
             # ο γράφος δεν αλλάζει (βήμα 85): ούτε βαθμοί, ούτε γείτονες, ούτε rt_dirty
             # Supply για ό,τι χρωστιέται, μέταλλο πρώτα· αν τίποτα, Build
             for k, n_ in ((7, lm), (8, lb)) if lm or lb else ((0, 1),):
@@ -402,11 +445,16 @@ def commit_rules(sym, patch=(), n=300):
                "κόσμος": G.bank(4), "αποθέματα": (G.w16(G.g + 6), G.w16(G.g + 8)),
                "βαθμοί": m.read_ram(G.nodes, 96), "γείτονες": m.read_ram(G.adj, 8 * 96),
                "εργασίες": m.read_ram(G.jobs, 5 * 32), "rt_dirty": m.peek(sym["RT_DIRTY"]),
-               "ob_idx": m.peek(sym["OB_IDX"])}
+               "ob_idx": m.peek(sym["OB_IDX"]),
+               "bd_metal, bd_half": (m.peek(sym["BD_METAL"]), m.peek(sym["BD_HALF"]))}
         want = {"A": want_a, "θόλοι": bytes(want_d), "δομές": bytes(want_s),
                 "κόσμος": bytes(want_w), "αποθέματα": stock, "βαθμοί": bytes(want_deg),
                 "γείτονες": bytes(want_adj), "εργασίες": bytes(want_jobs), "rt_dirty": dirty,
-                "ob_idx": idx}
+                "ob_idx": idx,
+                # μετά από τοποθέτηση το bd_mprice: το επόμενο ορυχείο πληρώνει, το
+                # bd_half από την αρχή· με γεμάτο πίνακα τίποτα από τα δύο
+                "bd_metal, bd_half": ((bm, half) if node is None else
+                                      (G.items[8][4] if param == K_MINE and kind == 1 else bm, 0))}
         for key in got:
             if got[key] != want[key]:
                 g_, w_ = got[key], want[key]
@@ -476,7 +524,7 @@ def timing(sym):
     out["rect"] = G.run("BD_RECT", step=1)[0]
     m.write_ram(G.g + 6, bytes([0xE8, 3, 0xE8, 3]))
     out["afford"] = G.run("BD_AFFORD", step=1)[0]
-    for name, i in (("commit θόλου", 0), ("commit δομής", 4)):
+    for name, i in (("commit θόλου", 0), ("commit δομής", 4), ("commit ορυχείου", 8)):
         G.restore()
         G.item(i)
         G.cursor(0, 0)
@@ -517,15 +565,18 @@ def main():
     slow = [f"{k} {got[k]} > {c}" for k, c in CEIL.items() if got[k] > c]
     print("    " + ", ".join(f"{k} {v}" for k, v in got.items()) + " us")
     if slow:
-        print("ΑΠΟΤΥΧΙΑ: πιο αργό από το βήμα 73: " + ", ".join(slow))
+        print("ΑΠΟΤΥΧΙΑ: πιο αργό από τα ταβάνια (βήμα 73, και 123 για το ορυχείο): " + ", ".join(slow))
         fails += 1
     else:
-        print("OK τίποτα πιο αργό από το βήμα 73")
+        print("OK τίποτα πιο αργό από τα ταβάνια (βήμα 73, και 123 για το ορυχείο)")
 
     # --- αρνητικά ---
     m = cpc.CPC()
     m.run_frames(60)
     assert m.quickload(TG.COLONY, start=False)
+
+    def call(label):
+        return [0xCD, sym[label] & 255, sym[label] >> 8]
 
     def find(label, pat, span=64):
         i = m.read_ram(sym[label], span).find(bytes(pat))
@@ -548,7 +599,16 @@ def main():
             [(find("BD_COMMIT", [0x2B, 0x73, 0x23, 0x72], 160) + 3, 0)]),
            ("A = 255 στο afford", rules,
             [(a, 0) for a in (lambda p: (p, p + 1))(find("BDA_NO", [0xED, 0x44]))]),
-           ("ο θόλος γυρνά Z", redraw_rules, [(find("BDR_LP", [0x1C, 0xC9]), 0)])]
+           ("ο θόλος γυρνά Z", redraw_rules, [(find("BDR_LP", [0x1C, 0xC9]), 0)]),
+           # ΤΟ ΠΡΩΤΟ ΟΡΥΧΕΙΟ ΔΩΡΕΑΝ (βήμα 123)
+           ("το bd_select χωρίς το bd_mprice", rules,
+            [(a, 0) for a in (lambda p: (p, p + 1, p + 2))(find("BD_SELECT", call("BD_MPRICE"), 32))]),
+           ("το bd_mprice μετρά και τις άδειες εγγραφές", rules,
+            [(find("BMP_MINE", [0xB7, 0x28], 16) + 2, 0)]),
+           ("το δωρεάν ορυχείο χωρίς ST_FREE", commit_rules,
+            [(find("BD_MFLAGS", [0xF6, 8], 24) + 1, 0)]),
+           ("το επόμενο ορυχείο δωρεάν κι αυτό", commit_rules,
+            [(a, 0) for a in (lambda p: (p, p + 1, p + 2))(find("BDK_POST", call("BD_MPRICE"), 8))])]
     for label, fn, patch in neg:
         why = fn(sym, patch, n=150)
         if why:

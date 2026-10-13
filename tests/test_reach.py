@@ -86,7 +86,7 @@ sys.path.insert(0, os.path.join(ROOT, "tools"))
 sys.path.insert(0, "/home/vasilhs/cpcemu")
 import test_game as TG                                   # noqa: E402
 import test_place as TP                                  # noqa: E402
-from test_terrain import model as res_model              # noqa: E402
+from test_terrain import model as res_model, HALF        # noqa: E402
 import reach                                             # noqa: E402
 import cpc                                               # noqa: E402
 
@@ -219,23 +219,25 @@ def put_scene(G, world, domes, structs, deg=None):
     G.put(6, G.gs, s6)
 
 
-def expect(G, i, cx, cy, world, domes, structs, dims):
-    """(ui_bad, bd_nres, reach-αποτέλεσμα ή None) από την πρόζα."""
+def expect(G, i, cx, cy, world, domes, structs, dims, half=0):
+    """(ui_bad, bd_nres, reach-αποτέλεσμα ή None, bd_half) από την πρόζα.
+    `half` = το bd_half πριν· το αλλάζει μόνο ένα ορυχείο που φτάνει στο
+    bd_res (βήμα 123)."""
     kind, param, w, h = G.items[i][:4]
     tx, ty, out = TP.rect_rule(cx, cy, w, h)
     if out:
-        return 255, 0, None
+        return 255, 0, None, half
     nb = sum(1 for r in range(h) for c in range(w)
              if not TP.ok_rule(world[(ty + r + 64) * 128 + tx + c + 64]))
     if nb:
-        return nb, 0, None
-    a, nres = res_model(world, kind, param, w, h, tx, ty)
+        return nb, 0, None, half
+    a, nres, half = res_model(world, kind, param, w, h, tx, ty, half)
     if a:
-        return 0xF0 + nres, nres, None
+        return 0xF0 + nres, nres, None, half
     res = reach.plan(world, domes, structs, dims, kind, param, w, h, cx, cy)
     if res["ok"]:
-        return 0, 0, res
-    return 0xF0 + res["reason"], res["reason"], res
+        return 0, 0, res, half
+    return 0xF0 + res["reason"], res["reason"], res, half
 
 
 def got_of(G, sym):
@@ -344,10 +346,13 @@ def rules(sym, patch=(), n=500, seed=8585):
         # Οι σκηνές ορίου από άλλη γεννήτρια: μια καινούργια δεν μετακινεί
         # τις τυχαίες, και μαζί την κάλυψή τους.
         m.poke(sym["BD_NRES"], (SHIP_RND if what else rnd).randrange(6))
+        half0 = HALF if case & 1 else 0                  # βήμα 123: όχι από τη γεννήτρια
+        m.poke(sym["BD_HALF"], half0)
         _, A, _ = G.run("UI_VALIDATE")
-        bad, nres, res = expect(G, i, cx, cy, world, domes, structs, dims)
+        bad, nres, res, half = expect(G, i, cx, cy, world, domes, structs, dims, half0)
         got, want = got_of(G, sym), want_of(G, i, res if bad == 0 or bad >= 0xF3 else None, nres)
         got["A"], want["A"] = A, bad
+        got["bd_half"], want["bd_half"] = m.peek(sym["BD_HALF"]), half
         w_after = G.bank(4)
         if w_after != world:
             at = next(k for k in range(0x4000) if w_after[k] != world[k])
@@ -436,7 +441,7 @@ def ghost(sym, patch=(), n=160, seed=8686):
     while case < n:
         G.restore()
         i, cx, cy, world, domes, structs, deg = scene(rnd, G, sym)
-        bad, nres, res = expect(G, i, cx, cy, world, domes, structs, dims)
+        bad, nres, res, _ = expect(G, i, cx, cy, world, domes, structs, dims)
         if bad or not (res["corridors"] or res["path"]):
             continue
         case += 1

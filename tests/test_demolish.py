@@ -40,7 +40,11 @@ tile γύρω του· μόνο το αποτύπωμα, όχι οι διάδρ�
 τροχό· οι εργασίες μένουν· οι άνθρωποι μένουν· οι ακμές μένουν· ο κόμβος πίσω
 στη λίστα του γείτονα· το airlock μένει ενωμένο· το σκάφος γκρεμίζεται· κανένα
 ορθογώνιο στη λίστα· το ορθογώνιο χωρίς να σηκωθεί το φάντασμα· όλα τα
-ορθογώνια σε ένα πέρασμα.
+ορθογώνια σε ένα πέρασμα· το δωρεάν ορυχείο δίνει 30.
+
+ΤΑ ΟΡΥΧΕΙΑ (βήμα 123): το πρώτο της αποικίας μπαίνει δωρεάν (ST_FREE) και,
+γκρεμισμένο, δεν δίνει τίποτα πίσω· ένα δεύτερο πληρώνει 30 και τα παίρνει
+πίσω όλα από εργοτάξιο.
 """
 import os, sys
 
@@ -61,7 +65,7 @@ FAIL = []
 DOME = {0: (12, 8), 1: (24, 14), 2: (40, 24)}            # bld_items: μέταλλο, βιοπλαστικό
 AIRLOCK = (10, 6)
 CORR = (6, 3)                                            # ανά πλακίδιο
-K_AIRLOCK, K_PAD, K_SHIP = 5, 6, 7
+K_MINE, K_AIRLOCK, K_PAD, K_SHIP = 4, 5, 6, 7
 R_FACTORY = 8                                           # src/const.asm (R_*, G_room_n)
 F_ALIVE, F_INDOORS, F_WORKING = 1, 2, 32
 NO_TASK, SUIT_TRIP = 255, 70
@@ -538,6 +542,53 @@ def people(sym, g, patch=(), quiet=False):
     return None
 
 
+def mines(sym, g, patch=(), quiet=False):
+    """ΤΟ ΔΩΡΕΑΝ ΟΡΥΧΕΙΟ ΔΕΝ ΕΠΙΣΤΡΕΦΕΙ ΤΙΠΟΤΑ (βήμα 123). Το πρώτο ορυχείο της
+    αποικίας μπαίνει χωρίς μέταλλο, με ST_FREE· ένα δεύτερο πληρώνει 30. Το
+    δεύτερο γκρεμίζεται εργοτάξιο και δίνει πίσω και τα 30· το πρώτο τίποτα —
+    αλλιώς ένα δωρεάν εργοτάξιο, βαλμένο και γκρεμισμένο, θα έδινε 30 μέταλλο
+    κάθε φορά, για πάντα."""
+    say = (lambda s: None) if quiet else (lambda s: print("    " + s))
+    G, F = game(sym, g, patch)
+    G.run(1_000_000)
+    G.settle()
+    g_metal = L["G_econ_state"] + 6
+    metal = lambda: G.m.peek(g_metal) | G.m.peek(g_metal + 1) << 8
+    spots = B.res_spots("ore", 4, 2)
+    if len(spots) < 2:
+        return f"ΟΡΥΧΕΙΑ: η σκηνή θέλει δύο θέσεις στη φλέβα: {spots}"
+    nodes, paid = [], []
+    for tx, ty in spots:
+        m0 = metal()
+        if not B.build(G.m, sym, 8, g_metal, at=(2 * tx + 4, 2 * ty + 4)):
+            return f"ΟΡΥΧΕΙΑ: το ορυχείο στο ({tx}, {ty}) δεν μπήκε"
+        new = [64 + k for k in range(32) if 64 + k not in nodes
+               and struct(G, 64 + k)[2] == K_MINE and struct(G, 64 + k)[4]]
+        if len(new) != 1:
+            return f"ΟΡΥΧΕΙΑ: μετά το FIRE ορυχεία {new} καινούργια"
+        nodes += new
+        paid.append(m0 - metal())
+    ops = [struct(G, n)[6] & 0x08 for n in nodes]
+    if paid != [0, 30] or ops != [0x08, 0]:
+        return (f"ΟΡΥΧΕΙΑ: πλήρωσαν {paid}, ST_FREE {ops} — η πρόζα λέει [0, 30] και "
+                f"το πρώτο μόνο")
+    back = []
+    for n in reversed(nodes):
+        G.settle()
+        x, y = centre(G, n)
+        G.camera((x >> 1) - 10, (y >> 1) - 5)
+        _, _, s0, s1, _ = demolish(G, F, (x, y))
+        back.append(s1[0] - s0[0])
+        if struct(G, n)[4]:
+            return f"ΟΡΥΧΕΙΑ: το {n} δεν γκρεμίστηκε: {struct(G, n)}"
+    if back != [30, 0]:
+        return (f"ΟΡΥΧΕΙΑ: γκρεμισμένα εργοτάξια, πίσω {back} — η πρόζα λέει 30 από το "
+                f"δεύτερο και 0 από το δωρεάν")
+    say(f"ΟΡΥΧΕΙΑ: το πρώτο μπήκε δωρεάν (ST_FREE), το δεύτερο πλήρωσε 30· γκρεμισμένα "
+        f"εργοτάξια, πίσω 30 και 0")
+    return None
+
+
 def airlock(sym, g, patch=(), quiet=False):
     """Το airlock της αποικίας (65) φεύγει με τον διάδρομό του. Και όταν φεύγει
     ο θόλος στην άλλη άκρη, το airlock μένει χωρίς διάδρομο: ελεύθερο."""
@@ -671,6 +722,9 @@ def negatives(sym, g):
          refuse),
         ("κανένα ορθογώνιο στη λίστα", at_ovl(sym, "DMV_LP", 30, [0x3E, DK_RECT] + cd("DIRTY_PUSH"),
                                               [(2, 0), (3, 0), (4, 0)]), factory),
+        # bit ST_FREE,(hl) -> bit 0,(hl): ποτέ δωρεάν (βήμα 123)
+        ("το δωρεάν ορυχείο δίνει 30", at_ovl(sym, "DMD_IT", 64, [0xCB, 0x5E], [(1, 0x46)]),
+         mines),
         ("το ορθογώνιο χωρίς να σηκωθεί το φάντασμα",
          at_ovl(sym, "DHO_RECT", 20, cd("DT_GHOST_RECT"), nop3), factory),
         ("όλα τα ορθογώνια σε ένα πέρασμα",
@@ -691,6 +745,7 @@ def main():
                      (site, "ΕΡΓΟΤΑΞΙΟ: όλα πίσω, οι εργασίες του σβήνουν"),
                      (people, "ΑΝΘΡΩΠΟΙ: βγαίνουν, ζουν, χωρίς δουλειά"),
                      (airlock, "AIRLOCK: φεύγει με τον διάδρομό του, και μένει ελεύθερο"),
+                     (mines, "ΟΡΥΧΕΙΑ: το δωρεάν δεν δίνει τίποτα πίσω, το πληρωμένο όλα"),
                      (refuse, "ΑΡΝΗΣΕΙΣ: το σκάφος, η πίστα με πλοίο, το κενό")):
         err = fn(sym, g)
         check(err is None, err or what)

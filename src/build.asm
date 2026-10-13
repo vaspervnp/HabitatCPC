@@ -36,6 +36,7 @@ bd_select:
         ld      de,bd_kind
         ld      bc,BLD_REC
         ldir
+        call    bd_mprice               ; το πρώτο ορυχείο δωρεάν (βήμα 123)
         ; --- ισοτιμία: μισό tile πιο πέρα, αν το κέντρο δεν ταιριάζει ---
         ; Στο 127 το «πιο πέρα» θα ήταν το -128, η απέναντι άκρη του κόσμου:
         ; εκεί πάει μισό tile πίσω (βήμα 78).
@@ -376,6 +377,7 @@ bds_got:
         add     a,a
         or      d
         ld      (hl),a                  ; ST_OWED: μέταλλο<<4 | βιοπλαστικό
+        call    bd_mflags               ; ορυχείο: εκτός φλέβας, δωρεάν (βήμα 123)
 
         assert  D_POWER == 6 && D_OPS == 7 && ST_OWED == 7  ; το bdk_rec αφήνει το HL στο 7
         assert  (MAX_DOME & 3) == 0 && (MAX_STRUCT & 3) == 0     ; ανά τέσσερις
@@ -436,6 +438,7 @@ bst_nx:
         out     (c),c
         call    bd_stock_pay            ; πληρώνει ΑΦΟΥ βρεθεί θέση
 bdk_post:
+        call    bd_mprice               ; ένα ορυχείο μπήκε: το επόμενο πληρώνει (βήμα 123)
         ; ΠΡΩΤΑ ΤΑ ΥΛΙΚΑ (βήμα 88, §6.9). Το εργοτάξιο χρωστά ό,τι πλήρωσε ο
         ; παίκτης — το σύνολο του al_plan, μαζί με τους διαδρόμους που θα
         ; βάλει το al_commit — και δημοσιεύει εργασίες Supply· η Build έρχεται
@@ -529,6 +532,7 @@ bld_items:
         dw t_coll
         db BK_STRUCT,K_EXTRACT, 3,3, 22, 0
         dw t_extr
+bld_mine:                               ; ο τιμή του, στο bd_mprice (src/terrain.asm)
         db BK_STRUCT,K_MINE,    4,4, 30, 0
         dw t_mine
         db BK_STRUCT,K_AIRLOCK, 2,2, 10, 6

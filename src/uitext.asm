@@ -74,7 +74,7 @@ x_t_far:      db "TOO FAR",0       ; >= 64 tiles (βήμα 81)· ή > 12 (βήμ
 x_t_path:     db "PATH BLOCKED",0       ; βήμα 85, src/link.asm
 x_t_nofit:    db "NO CORRIDOR FITS",0       ; βήμα 86: η ζώνη «σχεδόν διαγώνιο»
 x_t_nowat:    db "NEEDS WATER NEARBY",0
-x_t_noore:    db "NEEDS AN ORE VEIN",0
+x_t_half:     db "NO VEIN  HALF ORE",0  ; ως το βήμα 122 «NEEDS AN ORE VEIN»
 x_t_fe:       db "FE",0
 x_t_bi:       db "BI",0
 
@@ -159,7 +159,7 @@ x_t_r_lng:    db "LOUNGE",0
               db "COLLECTOR",0, "STORES POWER",0
               db "RESOURCES",0, "WATER AND ORE",0
               db "EXTRACTOR",0, "WATER FROM GROUND",0
-              db "MINE",0, "ORE FROM A VEIN",0
+              db "MINE",0, "ORE, BEST ON A VEIN",0     ; βήμα 123: «ORE FROM A VEIN»
               db "TRANSPORT",0, "COMING AND GOING",0
               db "AIRLOCK",0, "WAY IN AND OUT",0
               db "LANDING PAD",0, "SHIPS LAND HERE",0
@@ -224,7 +224,7 @@ t_far     equ x_t_far - TEXT_IMG + G_text
 t_path    equ x_t_path - TEXT_IMG + G_text
 t_nofit   equ x_t_nofit - TEXT_IMG + G_text
 t_nowat   equ x_t_nowat - TEXT_IMG + G_text
-t_noore   equ x_t_noore - TEXT_IMG + G_text
+t_half    equ x_t_half - TEXT_IMG + G_text
 t_fe      equ x_t_fe - TEXT_IMG + G_text
 t_bi      equ x_t_bi - TEXT_IMG + G_text
 t_r_oxy   equ x_t_r_oxy - TEXT_IMG + G_text

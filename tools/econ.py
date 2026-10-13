@@ -119,6 +119,7 @@ MINE_OPS = 3                        # ως τρεις σε κάθε ορυχεί
 # του ST_OPS λέει ότι η Haul του υπάρχει (το 0x80 είναι της Drill).
 HAUL_LOAD, HAUL_CAP = 10, 30
 ST_HAUL = 0x40
+ST_HALF, ST_FREE = 0x04, 0x08     # το ST_OPS ενός ορυχείου (βήμα 123): εκτός φλέβας, δωρεάν
 
 O2_PER_COLONIST = 2
 CW_N = 5                            # οι ειδικότητες των πλοίων αποίκων (βήμα 91)
@@ -458,9 +459,11 @@ def flow_cycle(e):
             e.prod_mask |= 1 << S_WATER
 
 
-def mine_rate(n):
-    """Μετάλλευμα ανά κύκλο με n που σκάβουν (βήμα 94): 0, 2, 3, 4."""
-    return MINE_OUT + n - 1 if n else 0
+def mine_rate(n, half=False):
+    """Μετάλλευμα ανά κύκλο με n που σκάβουν (βήμα 94): 0, 2, 3, 4. Εκτός
+    φλέβας (βήμα 123) τα μισά, προς τα πάνω: 0, 1, 2, 2."""
+    r = MINE_OUT + n - 1 if n else 0
+    return (r + 1) >> 1 if half else r
 
 
 def haul_pile(e, i):
@@ -470,7 +473,8 @@ def haul_pile(e, i):
     από HAUL_LOAD χωρίς Haul παίρνει μία."""
     st = i * STRUCT_REC
     if e.power_ok == POWER_ALL and not e.full:      # βήμα 122: ούτε γεμάτη αποθήκη
-        r = mine_rate(e.struct[st + ST_OPS] & MINE_OPS)
+        ops = e.struct[st + ST_OPS]
+        r = mine_rate(ops & MINE_OPS, ops & ST_HALF)
         if r:
             e.struct[st + ST_OWED] = min(HAUL_CAP, e.struct[st + ST_OWED] + r)
     if e.struct[st + ST_OWED] >= HAUL_LOAD and not e.struct[st + ST_OPS] & ST_HAUL:

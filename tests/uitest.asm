@@ -247,6 +247,8 @@ nd_load:                                ; το su_tick γυρίζει εκεί (
 nd_die: ret                             ; και εδώ δεν το καλεί κανείς
         include "../src/stock.asm"
         include "../src/terrain.asm"
+bd_mprice:                              ; βήμα 123: src/mine.asm, μόνο στο παιχνίδι —
+bd_mflags:  ret                         ; εδώ το ορυχείο πληρώνει, όπως ως το 122
         include "../src/graph.asm"
         include "../src/route.asm"
         include "../src/link.asm"           ; βήμα 85: το ui.asm το καλεί

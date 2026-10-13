@@ -73,6 +73,23 @@ dmd_it:
         ld      (dm_st),a
         dec     hl
         dec     hl
+        ; ΤΟ ΔΩΡΕΑΝ ΟΡΥΧΕΙΟ ΔΕΝ ΕΠΙΣΤΡΕΦΕΙ ΤΙΠΟΤΑ (βήμα 123): αλλιώς το ίδιο
+        ; εργοτάξιο, βαλμένο δωρεάν και γκρεμισμένο, θα έδινε 30 μέταλλο κάθε
+        ; φορά. Ενας θόλος έχει εδώ μέγεθος 0-2, ποτέ K_MINE.
+        ld      a,(hl)
+        cp      K_MINE
+        jr      nz,dmd_paid
+        push    hl
+        inc     hl
+        inc     hl
+        inc     hl
+        inc     hl                      ; ST_OPS
+        bit     ST_FREE,(hl)
+        pop     hl
+        jr      z,dmd_paid
+        xor     a
+        ld      (dm_m),a                ; 30 -> 0· το βιοπλαστικό είναι ήδη 0
+dmd_paid:
         ; --- ΟΙ ΜΗΧΑΝΕΣ ΕΝΟΣ ΘΟΛΟΥ, με την τιμή του FIT (fit_price) ---
         ld      a,(dm_n)
         cp      MAX_DOME
@@ -816,6 +833,7 @@ dmca_s:
         ; Η εγγραφή ενός κόμβου είναι το mt_rec (src/meteor.asm): A -> HL, με
         ; την 6 μέσα, χαλάει A και DE. Ως το βήμα 102 εδώ υπήρχε αντίγραφό του.
         assert  D_STATE == ST_STATE && D_SIZE == ST_KIND && J_BUILD == 0
+        assert  K_MINE > 2 && ST_OPS == ST_KIND + 4             ; το δωρεάν ορυχείο (βήμα 123)
 
 ; ΟΙ ΜΕΤΑΒΛΗΤΕΣ ΔΕΝ ΓΡΑΦΟΝΤΑΙ στο ovl.bin ούτε στις τρύπες (nocode): ζουν
 ; στο GH_BUF μετά τον κώδικα, και το dm_do τις γράφει πριν τις διαβάσει.

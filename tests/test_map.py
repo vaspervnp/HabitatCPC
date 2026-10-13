@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """Ο ΧΑΡΤΗΣ ΜΕΤΡΑΕΙ: η αντλία θέλει λίμνη, το ορυχείο θέλει φλέβα (§6.5, §5.6).
 
+ΑΠΟ ΤΟ ΒΗΜΑ 123 το ορυχείο ΠΡΟΤΙΜΑ φλέβα: χωρίς αυτήν μπαίνει, με τη μισή
+απόδοση, και ο πίνακας το λέει (NO VEIN  HALF ORE). Και το πρώτο ορυχείο της
+αποικίας είναι δωρεάν: εδώ μπαίνει ένα στη φλέβα χωρίς να πέσει το μέταλλο, με
+ST_FREE και χωρίς ST_HALF, και ένα δεύτερο στο στεγνό έδαφος πληρώνει 30, με
+ST_HALF και χωρίς ST_FREE.
+
 Ο πίνακας του §6.5 γράφει «extractor (on water)» και «mine (on ore)» από την
 πρώτη σελίδα του σχεδίου. Ο κώδικας δεν το διάβαζε ποτέ: μια αντλία χτιζόταν
 μέσα στην αποικία, στη μέση της ερήμου, οπουδήποτε — και έβγαζε νερό. Το ίδιο
@@ -35,6 +41,21 @@ import test_game as T                                              # noqa: E402
 
 FAIL = []
 I_DOME_S, I_SOLAR, I_EXTRACT, I_MINE = 0, 4, 7, 8   # σειρά στο bld_items
+
+
+ST_HALF, ST_FREE = 0x04, 0x08                               # src/const.asm, βήμα 123
+
+
+def mine_ops(m):
+    """Τα ST_OPS των ορυχείων του πίνακα δομών, με τη σειρά τους (τράπεζα 6),
+    χωρίς τους χειριστές και τις εργασίες (bits 0-1, 6-7)."""
+    import cpc
+    gs = next(int(line.split("#")[1].split()[0], 16)
+              for line in open(os.path.join(ROOT, "build", "layout.asm"), encoding="utf-8")
+              if line.startswith("G_struct_tbl")) - 0x4000
+    b6 = cpc._lib.cpcemu_ram_ptr(m._h, 6)
+    return [b6[gs + 8 * k + 6] & 0x3C for k in range(32)
+            if b6[gs + 8 * k + 2] == 4 and b6[gs + 8 * k + 4]]
 
 
 def check(ok, msg):
@@ -85,17 +106,31 @@ def main():
     check(B.build(m, sym, I_EXTRACT, g_metal, at=(2 * tx + 3, 2 * ty + 3)),
           "και η αντλία μπαίνει στ' αλήθεια — πληρωμένο μέταλλο")
 
-    # --- 3. το ορυχείο, με τον ίδιο κανόνα και άλλο υλικό -----------------
+    # --- 3. το ορυχείο: στη φλέβα ολόκληρο, αλλού μισό (βήμα 123) ---------
     bad, say = ghost(I_MINE, *dry4[0], 4)
-    check(bad and "ORE VEIN" in say,
-          f"το ορυχείο λέει όχι μακριά από φλέβα {dry4[0]}: "
-          f"ui_bad={bad} |{say}|")
+    check(not bad and "HALF ORE" in say,
+          f"το ορυχείο μακριά από φλέβα {dry4[0]} μπαίνει, και ο πίνακας λέει τη "
+          f"μισή απόδοση: ui_bad={bad} |{say}|")
     bad, say = ghost(I_MINE, *vein[0], 4)
     check(not bad and "READY" in say,
-          f"και ναι στους πρόποδες {vein[0]}: ui_bad={bad} |{say}|")
+          f"και στους πρόποδες {vein[0]} ολόκληρο: ui_bad={bad} |{say}|")
+    metal = lambda: m.peek(g_metal) | m.peek(g_metal + 1) << 8
+    m0 = metal()
     tx, ty = vein[0]
     check(B.build(m, sym, I_MINE, g_metal, at=(2 * tx + 4, 2 * ty + 4)),
           "και το ορυχείο μπαίνει στ' αλήθεια")
+    ops = mine_ops(m)
+    check(metal() == m0 and ops == [ST_FREE],
+          f"το πρώτο ορυχείο δωρεάν: μέταλλο {m0} -> {metal()}, ST_OPS {ops} — "
+          f"ST_FREE, όχι ST_HALF")
+    m1 = metal()
+    tx, ty = dry4[0]
+    check(B.build(m, sym, I_MINE, g_metal, at=(2 * tx + 4, 2 * ty + 4)),
+          "και ένα δεύτερο στο στεγνό έδαφος")
+    ops = mine_ops(m)
+    check(m1 - metal() == 30 and ops == [ST_FREE, ST_HALF],
+          f"το δεύτερο πληρώνει 30: μέταλλο {m1} -> {metal()}, ST_OPS {ops} — "
+          f"ST_HALF, όχι ST_FREE")
 
     # --- 4. ΤΟ ΑΡΝΗΤΙΚΟ ΔΕΙΓΜΑ: στο ίδιο χώμα, θόλος και ηλιακό ----------
     # Ο θόλος πληρώνει και τους διαδρόμους του (βήμα 85): με ό,τι αφήνουν αντλία

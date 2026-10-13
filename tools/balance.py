@@ -340,17 +340,34 @@ def build(m, sym, item, g_metal, at=None, room=None, place=True, fit=True):
         m.set_joystick_type(0)
         m.run_frames(2)
         return None
-    metal0 = m.peek(g_metal) | (m.peek(g_metal + 1) << 8)
+    # ΜΠΗΚΕ ΑΝ ΓΕΜΙΣΕ ΜΙΑ ΕΓΓΡΑΦΗ, όχι αν έπεσε το μέταλλο: από το βήμα 123
+    # το πρώτο ορυχείο μιας αποικίας δεν κοστίζει τίποτα.
+    metal0, n0 = m.peek(g_metal) | (m.peek(g_metal + 1) << 8), records(m)
     stick(JOY_FIRE)                      # -> τοποθέτηση
     m.set_joystick_type(0)
     m.run_frames(30)
     metal1 = m.peek(g_metal) | (m.peek(g_metal + 1) << 8)
-    if metal1 == metal0:
+    placed = records(m) != n0
+    if not placed:
         print(f"  ΠΡΟΣΟΧΗ: το κτίσμα {item} ΔΕΝ μπήκε (μέταλλο {metal0}, "
               f"ui_bad={m.peek(sym['UI_BAD'])})", flush=True)
     elif fit and room is not None:
         fit_dome(m, sym)
-    return metal1 != metal0
+    return placed
+
+
+def records(m):
+    """Πόσοι θόλοι και πόσες δομές δεν είναι άδειες (τράπεζα 6)."""
+    import cpc
+    L = {}
+    for line in open(os.path.join(ROOT, "build", "layout.asm"), encoding="utf-8"):
+        p = line.split()
+        if len(p) >= 3 and p[1] == "equ" and p[2].startswith("#"):
+            L[p[0]] = int(p[2][1:], 16)
+    b6 = cpc._lib.cpcemu_ram_ptr(m._h, 6)
+    gd, gs = L["G_dome_tbl"] - 0x4000, L["G_struct_tbl"] - 0x4000
+    return (sum(1 for d in range(64) if b6[gd + 24 * d + 4]) +
+            sum(1 for k in range(32) if b6[gs + 8 * k + 4]))
 
 
 def no_link(m, sym):

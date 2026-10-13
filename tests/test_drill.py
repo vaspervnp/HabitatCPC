@@ -363,25 +363,32 @@ def chain(sym, g, patch=(), patch6=(), quiet=False, stop=None):
     while t < 30000 and ops() == 0:
         m.run_frames(20)
         t += 20
+    # ΚΑΙ ΑΝ ΣΚΑΒΟΥΝ ΚΙ ΑΛΛΟΙ (βήμα 123): το πρώτο ορυχείο είναι δωρεάν, κανείς
+    # δεν κουβαλά υλικά, και ένας δεύτερος εργάτης έρχεται συχνά πριν φύγει ο
+    # πρώτος. Ο μετρητής ακολουθεί τους ανθρώπους: όταν φεύγει ο w, ST_OPS =
+    # όσοι μένουν.
     w = drillers()[0] if drillers() else w
-    while t < 60000 and ops() == 1:
+    while t < 60000 and w in drillers():
         m.run_frames(20)
         t += 20
     a = G.agent(w)
-    if ops() != 0 or a["flags"] & 32 or a["node"] == node and a["edge"] == 255:
-        return f"ΑΝΑΧΩΡΗΣΗ: σε {t} frames ST_OPS {ops()}, ο {w}: {a}"
+    if (w in drillers() or ops() != len(drillers()) or a["flags"] & 32
+            or a["node"] == node and a["edge"] == 255):
+        return (f"ΑΝΑΧΩΡΗΣΗ: σε {t} frames ST_OPS {ops()}, στο ορυχείο {drillers()}, "
+                f"ο {w}: {a}")
     say(f"ΡΥΘΜΟΣ: στον σωρό ανά κύκλο με όσους σκάβουν {seen}· η στολή γύρισε τον {w} "
-        f"πίσω και το ST_OPS έπεσε στο 0, F_WORKING σβηστό")
+        f"πίσω και το ST_OPS έπεσε στους {ops()} που μένουν, F_WORKING σβηστό")
     if stop == "leave":
         return None
-    # --- κάποιος ξανάρχεται, και πεθαίνει εκεί ---
-    t = 0
-    while t < 30000 and ops() == 0:
+    # --- κάποιος (ξανά)έρχεται, και πεθαίνει εκεί ---
+    t, there = 0, set(drillers())
+    while t < 30000 and not set(drillers()) - there:
+        there &= set(drillers())                        # όσοι φεύγουν, φεύγουν
         m.run_frames(20)
         t += 20
-    who = drillers()
-    if ops() != 1 or len(who) != 1:
-        return f"ΘΑΝΑΤΟΣ: κανείς δεν ξανάρθε σε {t} frames (ST_OPS {ops()})"
+    who = sorted(set(drillers()) - there)
+    if not who or ops() != len(drillers()):
+        return f"ΘΑΝΑΤΟΣ: κανείς δεν ήρθε σε {t} frames (ST_OPS {ops()}, {drillers()})"
     d = who[0]
     # Η ΤΕΛΕΥΤΑΙΑ ΜΟΝΑΔΑ: το su_tick σκοτώνει στο dec 1 -> 0 (jp z,nd_die).
     # Με 0 το dec πήγαινε στο 255 και ο άποικος ζούσε.
@@ -390,9 +397,11 @@ def chain(sym, g, patch=(), patch6=(), quiet=False, stop=None):
     while t < 2000 and G.b6[G.ag + d] & 1:
         m.run_frames(5)
         t += 5
-    if G.b6[G.ag + d] & 1 or ops() != 0:
-        return f"ΘΑΝΑΤΟΣ: ο {d} ζει {bool(G.b6[G.ag + d] & 1)}, ST_OPS {ops()} — η πρόζα λέει 0"
-    say(f"ΘΑΝΑΤΟΣ: ο {d} ξανάρθε, η στολή του άδειασε εκεί, και το ST_OPS έπεσε στο 0")
+    if G.b6[G.ag + d] & 1 or d in drillers() or ops() != len(drillers()):
+        return (f"ΘΑΝΑΤΟΣ: ο {d} ζει {bool(G.b6[G.ag + d] & 1)}, ST_OPS {ops()}, στο ορυχείο "
+                f"{drillers()} — η πρόζα λέει ένας λιγότερος")
+    say(f"ΘΑΝΑΤΟΣ: ο {d} ήρθε, η στολή του άδειασε εκεί, και το ST_OPS έπεσε στους "
+        f"{ops()} που μένουν")
     if stop == "death":
         return None
     # --- ένα ρομπότ γεώτρησης ξυπνά, πάει και μένει ---
@@ -400,7 +409,7 @@ def chain(sym, g, patch=(), patch6=(), quiet=False, stop=None):
     G.index([1])
     G.set_bots(1)
     t = 0
-    while t < 30000 and not drillers():
+    while t < 30000 and not [i for i in drillers() if i >= 80]:
         m.run_frames(20)
         t += 20
     who = [i for i in drillers() if i >= 80]
@@ -436,7 +445,9 @@ def chain(sym, g, patch=(), patch6=(), quiet=False, stop=None):
 # άθροισμα των 13 αποθεμάτων και το ec_setfull, χωρίς θόλο Storage σε αυτή τη
 # σκηνή — και το ec_full στο hl_pile κάθε ορυχείου: 1.480 -> 1.660, 3.807 ->
 # 4.008, 1.842 -> 2.022. Ως το 121 τα ταβάνια ήταν 1.488, 3.818 και 1.848.
-COST = {"κύκλος, χωρίς ορυχεία": 1668, "κύκλος, τρία ορυχεία 0/2/3, ο πρώτος": 4016,
+# Βήμα 123: η μισή απόδοση εκτός φλέβας (bit ST_HALF στο hl_pile, 8 us σε κάθε
+# ορυχείο που σκάβει) — ο πρώτος κύκλος με τρία 4.008 -> 4.026· ως το 122 4.016.
+COST = {"κύκλος, χωρίς ορυχεία": 1668, "κύκλος, τρία ορυχεία 0/2/3, ο πρώτος": 4034,
         "κύκλος, τρία ορυχεία 0/2/3, ο επόμενος": 2030,
         "κύκλος, τρία ορυχεία στις θέσεις 29-31, ο επόμενος": 2030,
         "θέση 12 χωρίς κύκλο": 690, "θέση 13": 2800,

@@ -63,6 +63,11 @@ hl_pile:
         and     MINE_OPS
         jr      z,hlp_pile              ; κανείς δεν σκάβει
         inc     a                       ; 2, 3, 4: MINE_OUT + όσοι - 1
+        bit     ST_HALF,(ix+ST_OPS)     ; εκτός φλέβας (βήμα 123): τα μισά,
+        jr      z,hlp_add               ; προς τα πάνω — 1, 2, 2
+        inc     a
+        srl     a
+hlp_add:
         add     a,(ix+ST_OWED)
         cp      HAUL_CAP + 1
         jr      c,hlp_st
