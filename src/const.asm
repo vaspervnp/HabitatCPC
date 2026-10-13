@@ -80,6 +80,9 @@ ST_JOINED   equ 6           ; airlock: έχει ήδη τον διάδρομό �
 ST_OPS      equ 6           ; ορυχείο: όσοι σκάβουν εκεί (βήμα 94, src/drill.asm), η Drill (bit 7), η Haul (bit 6, βήμα 95)
 ST_HALF     equ 2           ; το bit του ST_OPS ενός ορυχείου: εκτός φλέβας, μισή απόδοση (βήμα 123)
 ST_FREE     equ 3           ; το bit του ST_OPS ενός ορυχείου: μπήκε δωρεάν, δεν επιστρέφει τίποτα (βήμα 123)
+ST_DLOW     equ 4           ; το bit του ST_OPS ενός ορυχείου: η Drill του περιμένει χαμηλά (βήμα 126, src/drill.asm)
+DRILL_PRIO  equ 4           ; η Drill του πρώτου που σκάβει (job_prio)
+DRILL_LOW   equ 2           ; του δεύτερου και του τρίτου: κάτω από κάθε Operate (room_prio >= 3)
 ST_OWED     equ 7           ; εργοτάξιο: φορτία που χρωστιούνται, μέταλλο<<4 | βιοπλ. (βήμα 88)· έτοιμο ορυχείο: ο σωρός (βήμα 95, src/haul.asm)
 CORR_REC    equ 5
 C_A         equ 0

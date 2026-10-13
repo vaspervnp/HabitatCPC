@@ -76,10 +76,11 @@ ef_lp:
         ld      hl,EC_MINES
         inc     (hl)
         ld      a,(ix+ST_OPS)
-        and     #83                     ; όσοι σκάβουν και η Drill, όχι η Haul
-        cp      MINE_OPS                ; με το bit 7: υπάρχει ήδη, NC
+        and     #83 | (1 << ST_DLOW)    ; όσοι σκάβουν, η Drill και αν περιμένει
+        cp      MINE_OPS                ; χαμηλά, όχι η Haul· με το bit 7: NC
         call    c,dr_post               ; src/drill.asm· κρατά τον IX
-        call    hl_pile                 ; src/haul.asm· κρατά τον IX
+        call    hl_pile                 ; src/haul.asm· κρατά τον IX· με τον A
+                                        ; όπως τον άφησαν τα δύο πάνω (βήμα 126)
         ld      de,8                    ; MINE_POWER
         ld      hl,EC_PUSE
         jr      ef_addn
@@ -284,3 +285,45 @@ ef_charge:
 efc_st:
         ld      (EC_PSTORE),hl
         ret
+
+; ---------------------------------------------------------------------------
+; dr_raise — IX -> ένα ορυχείο με τη Drill του χαμηλά και κανέναν να σκάβει
+; (βήμα 126): η εργασία του πίσω στο DRILL_PRIO, και το ST_DLOW σβήνει. Το
+; dr_post (src/drill.asm) τη δημοσίευσε με DRILL_LOW όσο έσκαβε κάποιος· αν
+; εκείνος φύγει πριν έρθει ο δεύτερος, το ορυχείο θα έμενε άδειο πίσω από
+; όλες τις μηχανές. Ενα πέρασμα των 32 εργασιών, μία φορά για κάθε τέτοιο
+; άδειασμα: μετά το bit είναι σβηστό. Χωρίς εργασία (τη σκούπισε κάτι άλλο)
+; σβήνει και το bit 7, που αλλιώς θα έλεγε ψέματα για πάντα: ο επόμενος
+; κύκλος τη δημοσιεύει ξανά. Κρατά τον IX· χαλάει AF, BC, DE, HL.
+; ---------------------------------------------------------------------------
+dr_raise:
+        res     ST_DLOW,(ix+ST_OPS)
+        ld      a,ixl
+        rrca
+        rrca
+        rrca                            ; η δομή: ο πίνακας αρχίζει σε σελίδα
+        add     a,MAX_DOME
+        ld      c,a                     ; ο κόμβος της
+        ld      hl,G_job_tbl + J_NODE
+        ld      de,JOB_REC
+        ld      b,MAX_JOB
+drr_lp:
+        ld      a,(hl)
+        cp      c
+        jr      z,drr_node
+drr_nx:
+        add     hl,de
+        djnz    drr_lp
+        res     7,(ix+ST_OPS)           ; καμία: ούτε το «υπάρχει»
+        ret
+drr_node:
+        dec     hl
+        ld      a,(hl)                  ; J_KIND
+        inc     hl
+        cp      J_DRILL
+        jr      nz,drr_nx
+        inc     hl
+        inc     hl                      ; J_PRIO
+        ld      (hl),DRILL_PRIO
+        ret
+        assert  J_KIND == 0 && J_NODE == 1 && J_PRIO == 3

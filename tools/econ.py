@@ -140,6 +140,11 @@ MINE_OPS = 3                        # ως τρεις σε κάθε ορυχεί
 HAUL_LOAD, HAUL_CAP = 10, 30
 ST_HAUL = 0x40
 ST_HALF, ST_FREE = 0x04, 0x08     # το ST_OPS ενός ορυχείου (βήμα 123): εκτός φλέβας, δωρεάν
+# Η DRILL ΤΟΥ ΔΕΥΤΕΡΟΥ ΚΑΙ ΤΟΥ ΤΡΙΤΟΥ ΚΑΤΩ ΑΠΟ ΤΙΣ ΜΗΧΑΝΕΣ (βήμα 126, src/drill.asm):
+# με κάποιον ήδη να σκάβει δημοσιεύεται με DRILL_LOW και το ST_DLOW· άδειο το
+# ορυχείο πριν έρθει ο επόμενος, ο κύκλος ροής την ξαναπηγαίνει στο DRILL_PRIO.
+ST_DLOW = 0x10
+DRILL_PRIO, DRILL_LOW = 4, 2
 
 O2_PER_COLONIST = 2
 CW_N = 5                            # οι ειδικότητες των πλοίων αποίκων (βήμα 91)
@@ -439,10 +444,14 @@ def flow_cycle(e):
             # στον σωρό, με το ρεύμα του τελευταίου ισοζυγίου (haul_pile, βήμα 95).
             use += MINE_POWER
             e.mines += 1
-            n = e.struct[st + ST_OPS] & 0x83    # όχι το ST_HAUL
+            n = e.struct[st + ST_OPS] & (0x83 | ST_DLOW)   # όχι το ST_HAUL
             # το bit 7: η Drill του υπάρχει ήδη, ως να φτάσει κάποιος (dr_post)
-            if n < MINE_OPS and post_drill(e, MAX_DOME + i):
-                e.struct[st + ST_OPS] |= 0x80
+            if n < MINE_OPS:
+                low = n & MINE_OPS                  # βήμα 126: κάποιος ήδη σκάβει
+                if post_drill(e, MAX_DOME + i, DRILL_LOW if low else DRILL_PRIO):
+                    e.struct[st + ST_OPS] |= 0x80 | (ST_DLOW if low else 0)
+            elif n == 0x80 | ST_DLOW:               # άδειο, η Drill χαμηλά (dr_raise)
+                raise_drill(e, i)
             haul_pile(e, i)
     if e.lost:                              # βήμα 115: src/repost.asm
         sweep(e)
@@ -1370,7 +1379,7 @@ def jobs_tick(e, a, F_ALIVE, F_WORKING):
             # ΟΧΙ `b`: είναι η εγγραφή της εργασίας, που σβήνει πιο κάτω. Ως το
             # βήμα 95 εδώ ήταν `b`, και η αναφορά έσβηνε ένα byte άλλης εργασίας.
             sb = (node - MAX_DOME) * STRUCT_REC + ST_OPS
-            e.struct[sb] = (e.struct[sb] + 1) & 0x7F    # και η Drill του έφυγε
+            e.struct[sb] = (e.struct[sb] + 1) & 0x7F & ~ST_DLOW   # και η Drill του έφυγε
         a.flags[i] |= F_WORKING
         a.task[i] = NO_TASK
         jb[b + J_KIND] = NO_JOB
@@ -1834,12 +1843,28 @@ def drill_need(e, a, F_ALIVE=1):
     return places > drills
 
 
-def post_drill(e, node):
-    """Το dr_post (βήμα 94)."""
-    return post_job(e, J_DRILL, node)
+def post_drill(e, node, prio=DRILL_PRIO):
+    """Το dr_post (βήμα 94): από το βήμα 126 με την προτεραιότητα που γράφει
+    στο job_prio — DRILL_LOW όταν κάποιος ήδη σκάβει."""
+    return post_job(e, J_DRILL, node, prio)
 
 
-def post_job(e, kind, node):
+def raise_drill(e, i):
+    """Το dr_raise (βήμα 126, src/flow.asm): το ορυχείο i άδειασε με τη Drill
+    του χαμηλά — πίσω στο DRILL_PRIO, και το ST_DLOW σβήνει. Η πρώτη εργασία
+    στον κόμβο του που είναι Drill· χωρίς καμία σβήνει και το bit 7, και ο
+    επόμενος κύκλος τη δημοσιεύει ξανά."""
+    e.struct[i * STRUCT_REC + ST_OPS] &= ~ST_DLOW & 0xFF
+    jb = e.job
+    for k in range(MAX_JOB):
+        b = k * JOB_REC
+        if jb[b + J_NODE] == MAX_DOME + i and jb[b + J_KIND] == J_DRILL:
+            jb[b + J_PRIO] = DRILL_PRIO
+            return
+    e.struct[i * STRUCT_REC + ST_OPS] &= 0x7F
+
+
+def post_job(e, kind, node, prio=None):
     """Το st_post μέσω του jp_have (src/drill.asm, src/jobs.asm): μια εργασία
     του είδους για τον κόμβο, αν δεν υπάρχει ήδη, στην πρώτη ελεύθερη θέση·
     τίποτα αν ο πίνακας γέμισε. True αν υπάρχει πια."""
@@ -1853,7 +1878,7 @@ def post_job(e, kind, node):
             jb[b + J_KIND] = kind
             jb[b + J_NODE] = node
             jb[b + J_AGENT] = 255
-            jb[b + J_PRIO] = JOB_PRIO[kind]
+            jb[b + J_PRIO] = JOB_PRIO[kind] if prio is None else prio
             jb[b + J_SITE] = node
             return True
     return False

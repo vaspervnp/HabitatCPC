@@ -142,17 +142,19 @@ def piles(sym, patch=(), patch6=(), quiet=False):
         (want_ore, want_mines, want_jobs), want_st = TD.ref_flow(G)
         if TD.cycle(G) is None:
             return "ΣΩΡΟΙ: το econ_flow δεν τερμάτισε"
-        # η πρόζα: στο σάρωμα, με τη σειρά των δομών, η Drill και μετά η Haul
+        # η πρόζα: στο σάρωμα, με τη σειρά των δομών, η Drill και μετά η Haul· η
+        # Drill στο 4 χωρίς κανέναν να σκάβει, στο 2 με κάποιον (βήμα 126)
         posts = []
-        for k, _, _, _, hp, hn, d in PSCENE:
-            posts += [(J_DRILL, 64 + k, 4)] if d else []
+        for k, v, _, _, hp, hn, d in PSCENE:
+            posts += [(J_DRILL, 64 + k, 2 if v[6] & 3 else 4)] if d else []
             posts += [(J_HAUL, 64 + k, 5)] if (hp if power else hn) else []
         free = [j for j in range(32) if jobs0[5 * j] == 255]
         prose = bytearray(jobs0)
         for j, (kind, node, pr) in zip(free, posts):
             prose[5 * j:5 * j + 5] = bytes([kind, node, 255, pr, node])
         want_piles = [(wp if power else wn) for _, _, wp, wn, *_ in PSCENE]
-        want_ops = [(v[6] | (0x80 if d else 0) | (BIT if (hp if power else hn) else 0))
+        want_ops = [(v[6] | (0x80 if d else 0) | (EC.ST_DLOW if d and v[6] & 3 else 0)
+                     | (BIT if (hp if power else hn) else 0))
                     for _, v, _, _, hp, hn, d in PSCENE]
         got_piles = [G.rec(k)[ST_OWED] for k, *_ in PSCENE]
         got_ops = [G.rec(k)[ST_OPS] for k, *_ in PSCENE]
@@ -413,8 +415,9 @@ def negatives(sym, g):
     # econ_flow: call hl_pile -> nop
     at6("το hl_pile δεν καλείται", "ECON_FLOW", 400, [0xCD] + w(sym["HL_PILE"]),
         [(0, 0), (1, 0), (2, 0)], "piles")
-    # hl_pile: ld a,(EC_POK) · cp P_ALL · jr nz -> nop nop
-    at0("βγάζει και χωρίς ρεύμα", "HL_PILE", 10, [0xFE, EC.POWER_ALL, 0x20], [(2, 0), (3, 0)],
+    # hl_pile: ld a,(EC_POK) · cp P_ALL · jr nz -> nop nop (μετά τον έλεγχο του
+    # άδειου ορυχείου του βήματος 126)
+    at0("βγάζει και χωρίς ρεύμα", "HL_PILE", 16, [0xFE, EC.POWER_ALL, 0x20], [(2, 0), (3, 0)],
         "piles")
     # hl_pile: cp HAUL_CAP + 1 -> cp 255
     at0("χωρίς ταβάνι", "HL_PILE", 40, [0xFE, HAUL_CAP + 1], [(1, 255)], "piles")
@@ -423,8 +426,8 @@ def negatives(sym, g):
         [(4, 0x18)], "piles")
     # st_post: ld a,(ix+ST_OPS) · or c · ld (ix+ST_OPS),a -> το or c nop
     at0("η Haul χωρίς το bit 6", "ST_POST", 40, [0xDD, 0x7E, ST_OPS, 0xB1], [(3, 0)], "piles")
-    # econ_flow: and #83 -> nop nop
-    at6("η Drill βλέπει το bit 6", "ECON_FLOW", 200, [0xE6, 0x83, 0xFE], [(0, 0), (1, 0)], "piles")
+    # econ_flow: and #93 -> nop nop (#83 ως το βήμα 125: και το ST_DLOW από το 126)
+    at6("η Drill βλέπει το bit 6", "ECON_FLOW", 200, [0xE6, 0x93, 0xFE], [(0, 0), (1, 0)], "piles")
     # hl_arrive: res ST_HAUL,(hl) -> nop nop
     at0("το bit μένει στο φόρτωμα", "HL_ARRIVE", 40, [0xCB, 0xB6], [(0, 0), (1, 0)], "arrive")
     # hl_arrive: sub HAUL_LOAD · jr c · ld (hl),a -> το ld nop
