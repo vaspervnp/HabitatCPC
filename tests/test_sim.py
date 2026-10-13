@@ -800,7 +800,7 @@ def event_branches(sym, g, nexthop, sim0):
     def broken_by(x):
         """Πόσες γερές μηχανές θα σταματούσε η έκλαμψη του r3."""
         e = fresh(g, nexthop, base).e
-        r3 = rolls(x)[2]
+        r3 = rolls(x)[2] & 63                   # οι στόχοι από τα έξι χαμηλά (βήμα 124)
         before = sum(1 for v in e.dome if v)
         for v in (r3 + 37, (r3 >> 3) + 101, (r3 >> 1) + 173):
             EC.break_one(e, v)
@@ -817,14 +817,15 @@ def event_branches(sym, g, nexthop, sim0):
     # bit 0 του r1. Η δεύτερη έχει τα επτά μηδέν και το r1 περιττό, και θα
     # σταματούσε μια γερή μηχανή αν το bit δεν κοιταζόταν (το αρνητικό).
     # Από το βήμα 121 η έκλαμψη θέλει και μία περιστροφή στις τέσσερις του
-    # ρολογιού (το frame της στημένης κατάστασης) και η θύελλα r2 < 32, και οι
+    # ρολογιού (το frame της στημένης κατάστασης) και η θύελλα 1/2048, και οι
+    # (βήμα 124: θύελλα r2 >= #FFE0, έκλαμψη r3 >= #FFC0, όχι τα μικρά r2, r3),
     # δύο ΟΧΙ μέσα στην ησυχία: η αποικία της δοκιμής έχει 80 ζωντανούς, και
     # το calm και το fgap ξεκινούν από μηδέν (calm_branches για τα όρια).
     cases = (
-        ("έκλαμψη", lambda r1, r2, r3: r3 < 64 and r2 >= 32),   # όχι θύελλα πρώτα
+        ("έκλαμψη", lambda r1, r2, r3: r3 >= 0xFFC0 and r2 < 0xFFE0),   # όχι θύελλα πρώτα
         ("βλάβη", lambda r1, r2, r3: r3 & 0x7F == 0 and r3 >> 8 and not r1 & 1),
         ("βλάβη που κόβει το r1", lambda r1, r2, r3: r3 & 0x7F == 0 and r3 >> 8 and r1 & 1),
-        ("θύελλα", lambda r1, r2, r3: r2 < 32),
+        ("θύελλα", lambda r1, r2, r3: r2 >= 0xFFE0),
         ("επισκέπτες", lambda r1, r2, r3: r2 & 0x7FF == 0),
     )
     flare_x = cut_x = None
@@ -905,11 +906,30 @@ def calm_branches(sym, g, nexthop, sim0):
     def first(hit):
         return next(x for x in range(1, 65536) if hit(*rolls(x)))
 
-    storm_x = first(lambda r1, r2, r3: r2 < 32 and (r3 & 0x7F or r1 & 1))
-    both_x = first(lambda r1, r2, r3: r2 < 32 and not r3 & 0x7F and not r1 & 1)
-    flare_x = first(lambda r1, r2, r3: r3 < 64 and r2 >= 32)   # όχι θύελλα πρώτα
+    storm_x = first(lambda r1, r2, r3: r2 >= 0xFFE0 and (r3 & 0x7F or r1 & 1))
+    flare_x = first(lambda r1, r2, r3: r3 >= 0xFFC0 and r2 < 0xFFE0)   # όχι θύελλα πρώτα
+    # ΘΥΕΛΛΑ ΚΑΙ ΒΛΑΒΗ ΔΕΝ ΠΕΦΤΟΥΝ ΠΙΑ ΣΤΗΝ ΙΔΙΑ ΖΑΡΙΑ (βήμα 124): με r2 >= #FFE0
+    # καμία από τις 65.535 θέσεις του Galois — και κάθε θύελλα του r2 < 32
+    # είχε ζαριά βλάβης στις 64 περιστροφές πριν, και δεν περνούσε ποτέ.
+    pos, x = [], 0xACE1
+    for _ in range(65535):
+        x = EC.lfsr(x)
+        pos.append(x)
+    both = sum(1 for i in range(65535) if pos[(i + 1) % 65535] >= 0xFFE0
+               and not pos[(i + 2) % 65535] & 0x7F and not pos[i] & 1)
+    gated = [any(not pos[(i - 3 * k + 2) % 65535] & 0x7F and not pos[(i - 3 * k) % 65535] & 1
+                 for k in range(1, EC.FAULT_GAP + 1))
+             for i in range(65535) if pos[(i + 1) % 65535] >= 0xFFE0]
+    old = [any(not pos[(i - 3 * k + 2) % 65535] & 0x7F and not pos[(i - 3 * k) % 65535] & 1
+               for k in range(1, EC.FAULT_GAP + 1))
+           for i in range(65535) if pos[(i + 1) % 65535] < 32]
+    if both or sum(gated) * 2 > len(gated) or not all(old):
+        print(f"ΑΠΟΤΥΧΙΑ ησυχία: θύελλα και βλάβη μαζί σε {both} θέσεις· κομμένες από "
+              f"βλάβη {sum(gated)} από {len(gated)} (r2 >= #FFE0), {sum(old)} από "
+              f"{len(old)} (r2 < 32)")
+        return 1
     rain_x = first(lambda r1, r2, r3: r1 >> 4 == 0xFFF)
-    fault_x = first(lambda r1, r2, r3: not r3 & 0x7F and not r1 & 1 and r2 >= 32)
+    fault_x = first(lambda r1, r2, r3: not r3 & 0x7F and not r1 & 1 and r2 < 0xFFE0)
     N = [0, 0]                                  # ποτέ
     TWO = 2 * EC.SOL_FRAMES                     # 24.000 frames πριν: sol 255
     GAP = EC.FAULT_GAP * 16
@@ -929,8 +949,6 @@ def calm_branches(sym, g, nexthop, sim0):
          lambda e: e.storm == EC.STORM_LEN),
         ("θύελλα μία περιστροφή νωρίτερα από το κενό", storm_x, 20, N, at(GAP - 16),
          lambda e: e.storm == 0 and e.lev == at(GAP - 16)),
-        ("θύελλα και βλάβη στην ίδια ζαριά", both_x, 20, N, N,
-         lambda e: e.storm == EC.STORM_LEN and e.lev == NOW),
         ("έκλαμψη, 20 ζωντανοί", flare_x, 20, N, N, lambda e: e.ldis == NOW),
         ("έκλαμψη, 19 ζωντανοί", flare_x, 19, N, N, lambda e: e.ldis == N),
         ("βροχή, 20 ζωντανοί", rain_x, 20, N, N,
@@ -991,11 +1009,13 @@ def calm_branches(sym, g, nexthop, sim0):
     print(f"OK ησυχία:   {len(cases)} ζαριές στα όρια — θύελλα, έκλαμψη και βροχή με "
           f"20 ζωντανούς και όχι με 19, ακριβώς δύο sol μετά την προηγούμενη και όχι "
           f"μία περιστροφή νωρίτερα, ακριβώς {EC.FAULT_GAP} περιστροφές μετά από "
-          f"βλάβη και όχι νωρίτερα, θύελλα και βλάβη μαζί μόνο η θύελλα, βλάβη και "
+          f"βλάβη και όχι νωρίτερα, βλάβη και "
           f"με 3 ζωντανούς — ίδια bytes στον Z80 και στην αναφορά· {LONG} περιστροφές "
           f"ίδιες, {len(dis)} καταστροφές με κενά {min(gaps) / EC.SOL_FRAMES:.2f}-"
           f"{max(gaps) / EC.SOL_FRAMES:.2f} sol, {len(faults)} βλάβες, κανένα γεγονός "
-          f"πιο κοντά από {EC.FAULT_GAP} περιστροφές")
+          f"πιο κοντά από {EC.FAULT_GAP} περιστροφές· θύελλα και βλάβη ποτέ στην ίδια "
+          f"ζαριά, και {sum(gated)} από τις {len(gated)} θύελλες του Galois κομμένες από "
+          f"βλάβη (όλες οι {len(old)} με το r2 < 32 του 121)")
 
     # ΑΡΝΗΤΙΚΑ: ο Z80 πειραγμένος, η αναφορά όχι.
     def code_at(name, pat, span=64):
@@ -1128,11 +1148,21 @@ def store_branches(sym, g, nexthop, sim0):
             dug = piles(flow.e)
         want, before = flow, list(flow.e.stock)    # όχι fresh(): δεν αντιγράφει το mines
         sweep(want, SWEEP)
-        same_goods = want.e.stock[1:] == before[1:]
-        if same_goods != bool(full):
-            print(f"ΑΠΟΤΥΧΙΑ αποθήκη: «{name}» — η αναφορά: γεμάτη {full}, αγαθά "
-                  f"{'ίδια' if same_goods else 'άλλαξαν'} στο σάρωμα")
+        after = want.e.stock
+        # ΓΕΜΑΤΗ (βήμα 124): ό,τι προσθέτει σταματά — οι κήποι και το VITROMEAT —
+        # και οι μετατροπές συνεχίζουν: τα αγαθά αλλάζουν, το σύνολο δεν ανεβαίνει,
+        # και κανένα από τα τέσσερα που βγάζουν κήποι και VITROMEAT δεν ανεβαίνει.
+        grown = [k for k in (EC.S_STARCH, EC.S_VEG, EC.S_MEDPLANT, EC.S_MEAT)
+                 if after[k] > before[k]]
+        moved = after[1:] != before[1:]
+        ok = (moved and not grown and sum(after[1:]) <= sum(before[1:])) if full else moved
+        if not ok:
+            print(f"ΑΠΟΤΥΧΙΑ αποθήκη: «{name}» — η αναφορά: γεμάτη {full}, σύνολο "
+                  f"{sum(before[1:])} -> {sum(after[1:])}, ανέβηκαν {grown}, αγαθά "
+                  f"{'άλλαξαν' if moved else 'ίδια'} στο σάρωμα")
             return 1
+        if full:
+            conv = sum(before[1:]) - sum(after[1:])
         if chain(st) != keys(want):
             print(f"ΑΠΟΤΥΧΙΑ αποθήκη: «{name}» — το σάρωμα του Z80 διαφέρει από την αναφορά")
             return 1
@@ -1163,7 +1193,8 @@ def store_branches(sym, g, nexthop, sim0):
           f"πολύ πάνω, χωρίς θόλο Storage (500), με θόλο L (1.100) — και μετά από "
           f"τον καθένα ένα σάρωμα της παραγωγής στον ίδιο Z80, και ένα από γεμάτη "
           f"σε «ένα λιγότερο»: ίδια bytes με την αναφορά· οι σωροί {pile0} -> {dug} "
-          f"όταν χωρά, ίδιοι όταν γεμίσει, και γεμάτη κανένα αγαθό δεν αλλάζει")
+          f"όταν χωρά, ίδιοι όταν γεμίσει· γεμάτη, κήποι και VITROMEAT σταματούν και οι "
+          f"μετατροπές τρέχουν (βήμα 124: το σύνολο πέφτει {conv} σε ένα σάρωμα)")
     print(f"              ο κύκλος ροής {us1} us με τον θόλο M (8360 στο 121, 8610 στο 122, ταβάνι "
           f"{STORE_FLOW_US}), {us8} με οκτώ θόλους Storage ({STORE_FLOW8_US})")
 
@@ -1181,9 +1212,11 @@ def store_branches(sym, g, nexthop, sim0):
     a = code_at("ST_CHECK", [0x2A, stock1 & 255, stock1 >> 8], 80)
     negs.append(("το νερό αντί για την τροφή", "ένα λιγότερο",
                  a and [(a + 1, (stock1 - 2) & 255)]))
-    a = code_at("ERM_INF", [0xDD, 0x7E, 0x06, 0xFE, 0xFF], 20)
-    negs.append(("οι μηχανές δεν σταματούν", "ακριβώς γεμάτη",
-                 a and [(a + 4, 0)]))                         # cp 0: ποτέ CY
+    a = code_at("ERM_INF", [0xDD, 0x7E, 0x09, 0xE6, 4], 20)
+    negs.append(("το VITROMEAT δεν σταματά", "ακριβώς γεμάτη",
+                 a and [(a + 4, 0)]))                         # and 0: ποτέ
+    negs.append(("σταματούν όλες, και το οξυγόνο", "ακριβώς γεμάτη",
+                 a and [(a + 4, 0xFF)]))                      # and #FF: κάθε σημαία
     a = code_at("EC_SETFULL", [0x0E, 0xAF], 20)
     negs.append(("οι κήποι δεν σταματούν", "ακριβώς γεμάτη", a and [(a + 1, 0xB7)]))
     a = code_at("EC_SETFULL", [0x21, sym["ERM_INF"] & 255, sym["ERM_INF"] >> 8], 20)

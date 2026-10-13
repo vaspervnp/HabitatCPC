@@ -46,7 +46,9 @@ COST = {DOME_S: (12, 8), DOME_M: (24, 14), DOME_L: (40, 24), SOLAR: (15, 0),
         TURBINE: (18, 0), COLLECTOR: (14, 0), EXTRACTOR: (22, 0), MINE: (30, 0),
         AIRLOCK: (10, 6), PAD: (45, 0)}
 DS_BUILDING, DS_ACTIVE = 1, 2
+MINE_K = 4                         # K_MINE, το είδος της δομής
 R_GREEN = 5                        # D_ROOM του θερμοκηπίου: οι υποδοχές του είναι φυτά
+R_STORAGE = 6                      # D_ROOM της αποθήκης (το ROOM είναι η σειρά του καταλόγου)
 STRUCT_NAMES = ["ηλιακός", "ανεμογ.", "συλλέκτης", "αντλία", "ορυχείο", "airlock", "πίστα",
                 "σκάφος"]
 MACH_NAMES = ["OXYGEN", "METAL", "PLASTIC", "WEAPONS", "CHIPS", "ROBOTS", "MEALS", "SPARES",
@@ -181,6 +183,14 @@ class Game:
         return {i: {f: getattr(a, f)[i] for f in E.FIELDS} for i in range(128)
                 if a.flags[i] & 1}
 
+    def capacity(self):
+        """Η αποθήκη (βήμα 122): 500 και 100/300/600 ανά θόλο Storage έτοιμο."""
+        return 500 + sum((100, 300, 600)[d[2]] for d in self.domes()
+                         if d[4] == DS_ACTIVE and d[3] == R_STORAGE)
+
+    def total(self):
+        return sum(self.stock(k) for k in range(1, 14))
+
     def oxy(self):
         """Θόλοι οξυγόνου σε λειτουργία: ο καθένας φτάνει για δέκα (§6.5)."""
         return sum(1 for d in self.domes() if d[4] == DS_ACTIVE and d[3] == 4)
@@ -216,6 +226,8 @@ class Game:
             pp=w(X["EC_PPROD"]), pu=w(X["EC_PUSE"]), bat=w(X["EC_PSTORE"]),
             o2p=w(X["EC_O2PROD"]), o2u=w(X["EC_O2USE"]),
             pok=p(X["EC_POK"]), o2ok=p(X["EC_O2OK"]), storm=p(X["EC_STORM"]),
+            cap=self.capacity(), full=p(self.sym["EC_FULL"]),
+            mines=[(s[6] & 0x0C, s[7]) for s in self.structs() if s[2] == MINE_K and s[4]],
             sites=self.sites(), jobs=len(jobs),
             jk=[j[0] for j in jobs], jfree=sum(1 for j in jobs if j[2] == 255),
             mile=p(X["EC_MILE"]),
@@ -298,9 +310,10 @@ class Game:
         out.sort()
         return [(2 * tx + 1, 2 * ty + 1) for _, tx, ty in out]
 
-    def spot(self, item, near, room=None):
+    def spot(self, item, near, room=None, need=True):
         """(θέση σε μισά tiles, κομμάτια διαδρόμου) για το item: η φθηνότερη
-        που περνά τον κανόνα, κοντά στο near. None αν δεν υπάρχει σε 8 tiles."""
+        που περνά τον κανόνα, κοντά στο near. None αν δεν υπάρχει σε 8 tiles.
+        `need` = False: το ορυχείο και χωρίς φλέβα (βήμα 123, μισή απόδοση)."""
         b4 = self.world()
         domes = [d[:4] for d in self.domes()]
         structs = [s[:7] for s in self.structs()]
@@ -319,7 +332,7 @@ class Game:
                                for i in range(w) for j in range(h)):
                         self.why["έδαφος"] = self.why.get("έδαφος", 0) + 1
                         continue
-                    if item in B.NEED and not B.has_near(b4, tx, ty, w, B.NEED[item][0]):
+                    if need and item in B.NEED and not B.has_near(b4, tx, ty, w, B.NEED[item][0]):
                         continue
                     p = reach.plan(b4, domes, structs, dims, kind, param, w, h,
                                    2 * tx + w, 2 * ty + h)
@@ -577,8 +590,50 @@ def plan_grow():
     ]
 
 
+def storage_due(G):
+    """Η αποθήκη (βήμα 122): ένας θόλος Storage όταν τα αγαθά φτάνουν τα 120
+    κάτω από τη χωρητικότητα, και όχι ενώ ένας χτίζεται ήδη."""
+    return (G.total() >= G.capacity() - 120 and
+            not any(d[4] == DS_BUILDING and d[3] == R_STORAGE for d in G.domes()))
+
+
+def plan_store():
+    """Το mine_ns με την αποθήκη (βήμα 124): ένας θόλος Storage S όποτε τα
+    αγαθά πλησιάζουν τη χωρητικότητα, πριν σταματήσουν οι μηχανές."""
+    plan = plan_mine_ns()
+    at = next(k for k, s in enumerate(plan) if s["name"] == "πίστα")
+    plan.insert(at, step("αποθήκη", DOME_S, (30, 14), "storage", after=["οξυγόνο"],
+                         when=storage_due, again=True))
+    return plan
+
+
+def plan_long():
+    """Το store για 40 sols και είκοσι αποίκους (βήμα 124): οι καταστροφές
+    περιμένουν τους είκοσι (βήμα 121). Δεύτερο και τρίτο οξυγόνο, κοιτώνες,
+    κυλικείο και θερμοκήπιο όσο μεγαλώνει η αποικία, και πλοία όποτε χωρούν
+    (όσοι αντέχει το οξυγόνο: δέκα το καθένα)."""
+    n = lambda k: (lambda G: G.rows[-1]["alive"] >= k)
+    plan = [s for s in plan_store() if s["item"] != "ship"]
+    plan += [
+        step("πλοίο", "ship", None, after=["πίστα", "έλεγχος"],
+             when=lambda G: room_free(G, 10 * G.oxy()), again=True),
+        step("οξυγόνο 2", DOME_S, (6, 2), "oxygen", [OXYGEN], after=["οξυγόνο"], when=n(7)),
+        step("κοιτώνες 2", DOME_S, (30, 2), "quarters", after=["κοιτώνες"], when=n(8)),
+        step("θερμοκήπιο 2", DOME_S, (20, 14), "green", [STARCH], after=["άμυλο"], when=n(9)),
+        step("λαχανικά 2", DOME_S, (20, 14), "green", [VEG], after=["λαχανικά"], when=n(9)),
+        step("εργαστήριο 2", DOME_S, (18, -10), "lab", [MEAT], after=["εργαστήριο"], when=n(10)),
+        step("κυλικείο 2", DOME_S, (18, 2), "canteen", [MEALS], after=["κυλικείο"], when=n(10)),
+        step("οξυγόνο 3", DOME_S, (6, 2), "oxygen", [OXYGEN], after=["οξυγόνο 2"], when=n(15)),
+        step("κοιτώνες 3", DOME_S, (30, 2), "quarters", after=["κοιτώνες 2"], when=n(14)),
+        step("θερμοκήπιο 3", DOME_S, (20, 14), "green", [STARCH], after=["άμυλο"], when=n(15)),
+        step("λαχανικά 3", DOME_S, (20, 14), "green", [VEG], after=["λαχανικά"], when=n(15)),
+        step("ηλιακός 3", SOLAR, (-8, -14), when=n(12)),
+    ]
+    return plan
+
+
 PLANS = {"base": plan_base, "lean": plan_lean, "spares": plan_spares, "mine": plan_mine,
-         "mine_ns": plan_mine_ns, "grow": plan_grow}
+         "mine_ns": plan_mine_ns, "grow": plan_grow, "store": plan_store, "long": plan_long}
 
 
 def tweak(G, spec):
@@ -597,6 +652,10 @@ def tweak(G, spec):
         elif k == "nofault":
             codeat.poke(G.m, G.sym["EC_BREAK"], 0xC9)
             codeat.poke(G.m, G.sym["EC_BREAK_D"], 0xC9)
+        elif k == "iron":
+            # Η απόδοση της μηχανής METAL (βήμα 124): το qty της συνταγής της
+            # (G_recipes + 10 * 1 + 7), 1 στο παιχνίδι.
+            G.m.poke(G.L["G_recipes"] + 10 * 1 + 7, int(v, 0))
         elif k == "eng_op":
             # Ο μηχανικός και στις Operate (job_roles[J_OPERATE] = εργάτης |
             # μηχανικός | βιολόγος): πόσο λείπει ένας χειριστής.
@@ -630,6 +689,8 @@ def try_step(G, s):
         G.built[s["name"]] = (node, at)
         return True
     m, bp = COST[s["item"]]
+    if s["item"] == MINE and not any(t[2] == MINE_K and t[4] for t in G.structs()):
+        m = 0                               # το πρώτο ορυχείο δωρεάν (βήμα 123)
     if G.stock(S_METAL) < m or G.stock(S_BIOPL) < bp:
         return False                        # ούτε χωρίς διαδρόμους: μην ψάξεις
     key = (s["name"], sum(1 for d in G.domes() if d[4]) + sum(1 for t in G.structs() if t[4]))
@@ -654,6 +715,20 @@ def try_step(G, s):
             got = g
         if got and not got[1]:
             break
+    half = False
+    if got is None and s["item"] == MINE:
+        # ΚΑΜΙΑ ΘΕΣΗ ΣΤΗ ΦΛΕΒΑ (βήμα 123): δίπλα σε ό,τι έχει χτιστεί, με τη
+        # μισή απόδοση — ο κόσμος 1048 του βήματος 120.
+        sb = lambda v: v - 256 if v > 127 else v
+        own = [(sb(d[0]), sb(d[1])) for d in G.domes() if d[4]] + \
+              [(sb(t[0]), sb(t[1])) for t in G.structs() if t[4]]
+        for c in own:
+            g = G.spot(s["item"], c, need=False)
+            if g and (got is None or g[1] < got[1]):
+                got = g
+            if got and not got[1]:
+                break
+        half = got is not None
     G.spot_cache[key] = got
     if got is None:
         return None                         # καμία θέση ακόμη: ίσως μετά από άλλα
@@ -669,7 +744,8 @@ def try_step(G, s):
         return False
     G.built[s["name"]] = (node, at)
     G.event(f"χτίζεται «{s['name']}» (κόμβος {node}, {at}, {pieces} διάδρ.) -> "
-            f"μέταλλο {G.stock(S_METAL)}, βιοπλ. {G.stock(S_BIOPL)}")
+            f"μέταλλο {G.stock(S_METAL)}, βιοπλ. {G.stock(S_BIOPL)}"
+            + (", ΕΚΤΟΣ ΦΛΕΒΑΣ (μισό)" if half else ""))
     if s["codes"]:
         left = G.fit(at, s["codes"])
         G.event(f"   εξοπλισμός: {'όλος' if not left else 'περιμένει ' + str(left)}")
@@ -790,6 +866,7 @@ def main():
     ap.add_argument("--pairs", default=None, help="για --make: seed:planet,...")
     ap.add_argument("--dump", action="store_true")
     ap.add_argument("--tweak", default="", help="π.χ. spares=12,metal=250,nofault,fault=0xFF")
+    ap.add_argument("--json", default=None, help="τα δείγματα και τα συμβάντα, για διαγράμματα")
     a = ap.parse_args()
     if a.make:
         pairs = ([(int(x.split(":")[0], 0), int(x.split(":")[1])) for x in a.pairs.split(",")]
@@ -815,6 +892,14 @@ def main():
         worldmap(G)
     if left:
         print("δεν χτίστηκαν:", ", ".join(s["name"] for s in left if not s["again"]))
+    if a.json:
+        import json
+        json.dump(dict(seed=a.seed, planet=a.planet, plan=a.plan, tweak=a.tweak,
+                       rows=[dict(sol=r["sol"], alive=r["alive"], popcap=r["popcap"],
+                                  stock=r["stock"], cap=r["cap"], full=r["full"],
+                                  storm=r["storm"], pok=r["pok"], o2ok=r["o2ok"],
+                                  mines=r["mines"], sites=r["sites"]) for r in G.rows],
+                       events=G.events), open(a.json, "w"))
     return 0
 
 

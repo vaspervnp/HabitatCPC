@@ -292,8 +292,10 @@ def frequency():
     for r1 in range(0xFFF0, 0x10000):
         r2 = EC.lfsr(r1)
         r3 = EC.lfsr(r2)
-        if ((r2 >> 7) == 0 or (r3 & 0x7F) == 0 or (r2 & 0x7FF) == 0
-                or (r3 >> 6) == 0):
+        # Οι ζαριές του βήματος 124: θύελλα r2 >= #FFE0, έκλαμψη r3 >= #FFC0
+        # (ως τότε τα μικρά r2 και r3), βλάβη, επισκέπτης.
+        if (r2 >= 0xFFE0 or (r3 & 0x7F) == 0 or (r2 & 0x7FF) == 0
+                or r3 >= 0xFFC0):
             clash.append(hex(r1))
     check(25 <= n <= 50 and not clash,
           f"συχνότητα: {n} βροχές σε 200 sols (μία ανά {200 / max(n, 1):.1f}), "

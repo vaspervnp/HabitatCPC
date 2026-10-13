@@ -175,7 +175,13 @@ def colony():
     o2_zero, minox, water = 0, 255, []
     for _ in range(80):
         m.run_frames(100)
-        pok = m.peek(g + B.EC["POK"])
+        # Η ΣΤΑΘΜΗ ΚΑΙ ΤΟ ΝΕΡΟ ΤΗΝ ΙΔΙΑ ΣΤΙΓΜΗ (βήμα 124). Το A.snap πιο κάτω
+        # τρέχει το μηχάνημα ως την αναμονή του vsync και άλλα τρία καρέ· το
+        # νερό διαβαζόταν μετά από αυτό, και όταν ο κύκλος ροής έπεφτε ανάμεσα
+        # (τα 14 bytes του βήματος 124 μετακίνησαν τη φάση δύο καρέ) το δείγμα
+        # έδειχνε τη στάθμη 2 του προηγούμενου κύκλου με το νερό του επόμενου,
+        # που είχε στάθμη 1 και άντλησε: «158 -> 168 με το φορτίο πεσμένο».
+        pok, wat = m.peek(g + B.EC["POK"]), w16(g)
         shed += pok == 2
         dark += pok == 0
         if pok == 2 and "LOW POWER" in alert():
@@ -184,7 +190,7 @@ def colony():
             o2_zero += 1
         live = [a for a in A.snap(m, sym) if a["flags"] & A.F_ALIVE]
         minox = min([minox] + [a["oxygen"] for a in live])
-        water.append((pok, w16(g)))
+        water.append((pok, wat))
 
     check(shed, f"η νύχτα ΠΕΦΤΕΙ ΤΟ ΦΟΡΤΙΟ: {shed}/80 δείγματα στη στάθμη 2 — "
                 f"χωρίς αυτό η δοκιμή δεν δοκιμάζει τίποτα")
