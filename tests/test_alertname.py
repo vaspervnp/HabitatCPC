@@ -97,9 +97,12 @@ OK_LINE = "ALL SYSTEMS OK"
 # τη σελιδοποίηση, το al_is και τα γράμματα· το NO ENGINEER το σάρωμα των 32
 # εργασιών (~370 µs), μόνο όσο λέγεται· το jb_post το jp_rep (+21 µs), μόνο σε
 # θόλο με χαλασμένη. Μετρημένα: 9.143, 9.363, 11.319, 1.856.
-COST = {"hud_draw, ALL SYSTEMS OK": 9_160,
-        "hud_draw, BROKEN κρατημένη": 9_380,
-        "hud_draw, NO ENGINEER, Build τελευταία σε γεμάτο πίνακα": 11_330,
+# ΜΕ 100 ΤΡΟΦΙΜΑ ΑΠΟ ΤΟ ΒΗΜΑ 122 (calm_bytes): η μπάρα της τροφής είναι κόκκινη
+# κάτω από το ένα τρίτο, +27 µs. Τα ταβάνια είναι το βήμα 121 με αυτά: 9.170,
+# 9.390, 11.346· το 122, με το STORAGE FULL στη σειρά, 9.163, 9.373, 11.329.
+COST = {"hud_draw, ALL SYSTEMS OK": 9_170,
+        "hud_draw, BROKEN κρατημένη": 9_390,
+        "hud_draw, NO ENGINEER, Build τελευταία σε γεμάτο πίνακα": 11_346,
         "jb_post, κρατά μια χαλασμένη": 1_870}
 
 
@@ -128,9 +131,13 @@ def calm_bytes(sym, E):
     out = [(E["EC_GAMEOVER"], 0), (E["EC_POK"], 1), (E["EC_O2OK"], 1),
            (E["EC_METEOR"], 0), (E["EC_STORM"], 0), (E["EC_SHSTATE"], 0),
            (sym["FO_N"], 0), (sym["SU_ALARM"], 0)]
-    for k in (EC.S_FOOD, EC.S_WATER):
+    # Τροφή 100, όχι 500 (βήμα 122): ένα γεύμα ανά ζωντανό φτάνει για να μη
+    # βγει LOW ON FOOD, και με 500 τα αγαθά της αποικίας περνούσαν τα 600 της
+    # (το αμπάρι και ο θόλος Storage S) — η γραμμή έλεγε STORAGE FULL. Το νερό
+    # δεν μετρά στην αποθήκη.
+    for k, n in ((EC.S_FOOD, 100), (EC.S_WATER, 500)):
         a = E["EC_STOCK"] + 2 * k
-        out += [(a, 500 & 255), (a + 1, 500 >> 8)]
+        out += [(a, n & 255), (a + 1, n >> 8)]
     return out
 
 
@@ -492,6 +499,16 @@ def no_random(G, sym):
     G.m.poke(sym["EC_BREAK"], 0xC9)
 
 
+def roomy(G, F, sym):
+    """Μετά την πληρωμή: 100 μέταλλο και 100 βιοπλαστικό αντί για τα 500 + 500
+    του TF.STOCK, ώστε τα αγαθά να χωρούν στα 600 της αποικίας (βήμα 122) και
+    η τελευταία γραμμή να είναι «ALL SYSTEMS OK», όχι «STORAGE FULL». Το
+    ec_full το ξαναμετρά ο επόμενος κύκλος ροής· εδώ μηδενίζεται για να μην
+    τον περιμένει η γραμμή."""
+    F.set_stocks(100, 100)
+    G.m.poke(sym["EC_FULL"], 0)
+
+
 def game_break(sym, g, patch=(), quiet=False, frames=60_000_000):
     say = (lambda s: None) if quiet else (lambda s: print("    " + s))
     X = econ_at()
@@ -504,6 +521,7 @@ def game_break(sym, g, patch=(), quiet=False, frames=60_000_000):
     F.put(0, 1)
     F.put(1, 2)
     F.look()
+    roomy(G, F, sym)
     G.run(frames, until=lambda: F.rec(node)[16:18] == [HP, HP])
     rec = F.rec(node)
     if rec[8:10] != [1, 2] or rec[16:18] != [HP, HP]:
@@ -565,6 +583,7 @@ def game_wait(sym, g, patch=(), quiet=False, frames=60_000_000):
         return f"ΣΤΗΣΙΜΟ: ο εξοπλισμός δεν άνοιξε (κατάσταση {F.peek('UI_STATE')})"
     F.put(0, 1)
     F.look()
+    roomy(G, F, sym)
     ready = lambda: (lambda h: 0 < h < 128 and h & 3 == 0)(F.rec(node)[16])
     G.run(frames, until=ready)
     if not ready():

@@ -540,6 +540,77 @@ nd_bury:
         jp      fg_mark                 ; αν φαινόταν έξω, σβήνει (βήμα 89)
 
 ; ---------------------------------------------------------------------------
+; st_check — ο κύκλος ροής αρχίζει (βήμα 122): πόσα χωράνε — το
+; αμπάρι του σκάφους (STORE_BASE) και οι θόλοι Storage του ευρετηρίου, 100 /
+; 300 / 600 κατά μέγεθος, ως ROOM_MAX — πόσα υπάρχουν — όλα τα αγαθά εκτός από
+; το νερό — και το ec_full: 1 αν δεν χωρά άλλο. Από τον κύκλο ροής (econ_flow,
+; src/flow.asm), μία φορά ανά 64 περιστροφές, με την 6 μέσα. ΟΧΙ ΣΤΟ rooms_rebuild, που
+; τρέχει κάθε περιστροφή και είναι το χειρότερο frame του τροχού: εκεί ο
+; έλεγχος του είδους θα πλήρωνε ~5 us για κάθε θόλο. Χαλάει όλα, και τον HL'.
+; ---------------------------------------------------------------------------
+st_check:
+        ld      ix,STORE_BASE           ; IX = η χωρητικότητα
+        ld      a,(G_room_n + R_STORAGE)
+        or      a
+        jr      z,stc_tot
+        ld      b,a
+        exx
+        ld      hl,G_room_list + R_STORAGE * ROOM_MAX
+        exx
+        ; 52 us ο θόλος: ο δείκτης της λίστας στον HL' (κανένα exx στο ISR,
+        ; src/isr.asm), όχι push/pop γύρω από το jb_dome_ptr — 100 us.
+stc_lp:
+        exx
+        ld      a,(hl)                  ; ο θόλος, 0-63
+        inc     hl
+        exx
+        ld      l,a
+        ld      h,0
+        add     hl,hl
+        add     hl,hl
+        add     hl,hl
+        ld      d,h
+        ld      e,l
+        add     hl,hl
+        add     hl,de                   ; x24
+        ld      de,G_dome_tbl + D_SIZE
+        add     hl,de
+        ld      a,(hl)                  ; 0-2
+        add     a,a
+        add     a,stc_caps & 255
+        ld      l,a
+        ld      h,stc_caps >> 8
+        ld      e,(hl)
+        inc     hl
+        ld      d,(hl)                  ; DE = όσα χωρά αυτός
+        add     ix,de
+        djnz    stc_lp
+stc_tot:
+        ; Ξεδιπλωμένο: 9 us το απόθεμα αντί για 16 με βρόχο (60 bytes αντί για
+        ; 15, στο b6code). Το άθροισμα δεν ξεχειλίζει: 13 x EC_CAP < 65.536.
+        ld      hl,(EC_STOCK + 2)       ; χωρίς το νερό (S_WATER = 0)
+stc_k = 1
+        repeat  12
+stc_k = stc_k + 1
+        ld      de,(EC_STOCK + stc_k * 2)
+        add     hl,de
+        rend
+        ex      de,hl                   ; DE = σύνολο
+        push    ix
+        pop     hl                      ; HL = η χωρητικότητα
+        or      a
+        sbc     hl,de                   ; CY, ή μηδέν: δεν χωρά άλλο
+        ld      a,0
+        jr      c,stc_full
+        jr      nz,stc_set
+stc_full:
+        inc     a
+stc_set:
+        jp      ec_setfull              ; src/econ.asm, τράπεζα 0
+stc_caps:    dw 100, 300, 600
+        assert  (stc_caps & 255) <= 256 - 6 && S_WATER == 0 && S_MEAT == 13 && DOME_REC == 24 && EC_CAP * 13 < 65536
+
+; ---------------------------------------------------------------------------
 ; rooms_rebuild — θέση 14: ποιοι θόλοι είναι τι. 64 εγγραφές ανά περιστροφή.
 ; ---------------------------------------------------------------------------
 rooms_rebuild:

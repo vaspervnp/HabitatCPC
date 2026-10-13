@@ -44,6 +44,7 @@ x_txt_noeng:  db "NO ENGINEER",0   ; βήμα 88
 x_txt_suit:   db "SUIT AIR LOW",0   ; βήμα 90
 x_txt_mer:    db "MERCHANT LANDED",0   ; βήμα 93: χωρίς κενά στο τέλος, όπως όλα από το 93 (hd_say)
 x_txt_foe:    db "INTRUDERS",0         ; βήμα 111
+x_txt_full:   db "STORAGE FULL",0      ; βήμα 122
 x_txt_brk:    db "BROKEN",0            ; βήμα 119: και το όνομα της μηχανής (hd_named)
 x_t_saving:   db "SAVING TO DISC...",0
         ; Το κείμενο, ένα κενό και επτά γράμματα χωρούν στις 19 στήλες: ένα 20ό
@@ -194,6 +195,7 @@ txt_nopwr equ x_txt_nopwr - TEXT_IMG + G_text
 txt_shed  equ x_txt_shed - TEXT_IMG + G_text
 txt_noo2  equ x_txt_noo2 - TEXT_IMG + G_text
 txt_storm equ x_txt_storm - TEXT_IMG + G_text
+txt_full  equ x_txt_full - TEXT_IMG + G_text
 txt_meteor equ x_txt_meteor - TEXT_IMG + G_text
 txt_lost  equ x_txt_lost - TEXT_IMG + G_text
 t_saving  equ x_t_saving - TEXT_IMG + G_text

@@ -56,6 +56,9 @@ hl_pile:
         ld      a,(EC_POK)
         cp      P_ALL
         jr      nz,hlp_pile             ; χωρίς ρεύμα δεν σκάβεται τίποτα
+        ld      a,(ec_full)
+        or      a
+        jr      nz,hlp_pile             ; ούτε με γεμάτη αποθήκη (βήμα 122)
         ld      a,(ix+ST_OPS)
         and     MINE_OPS
         jr      z,hlp_pile              ; κανείς δεν σκάβει

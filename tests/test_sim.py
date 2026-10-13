@@ -71,12 +71,17 @@ def run_z80(sym, g, sim, ticks, move_n=None, decay_n=None, off=(), pin=None,
     m.poke(sym["TICK_COUNT"], ticks & 0xFF)
     m.poke(sym["TICK_COUNT"] + 1, ticks >> 8)
     frames = enter(m, sym, "RUN_TICKS")
+    return z80_read(m, sym, frames)
 
+
+def z80_read(m, sym, frames):
+    """Ο,τι επιστρέφει το run_z80, από έναν Z80 που έτρεξε."""
     enter(m, sym, "SAVE_STATE")
     return (m.read_ram(STAGE_AG, 2048), m.read_ram(STAGE_OCC, 128), frames,
             m.read_ram(STAGE_DOME, 1536), m.read_ram(STAGE_STR, 32 * 8),
             m.read_ram(sym["G_ECON_STATE"], EC.ECON_BYTES) +
-            m.read_ram(STAGE_OCC + EC.X_OFF, EC.X_N),   # EC_X (βήμα 121)
+            m.read_ram(STAGE_OCC + EC.X_OFF, EC.X_N) +  # EC_X (βήμα 121)
+            bytes([m.peek(sym["EC_FULL"])]),            # η αποθήκη (βήμα 122)
             m.read_ram(sym["G_JOB_TBL"], EC.MAX_JOB * EC.JOB_REC),
             m.read_ram(sym["G_ROOM_N"], 12) +
             m.read_ram(sym["G_ROOM_LIST"], 96))
@@ -122,6 +127,8 @@ def z80_load(sym, g, sim, rt_n=None, patch=()):
     m.write_ram(sym["G_JOB_TBL"], bytes(sim.e.job))
     m.write_ram(sym["G_ROOM_N"], bytes(sim.e.room_n))
     m.write_ram(sym["G_ROOM_LIST"], bytes(sim.e.room_list))
+    m.poke(sym["EC_FULL"], sim.e.full)      # τράπεζα 0· το LOAD_STATE βάζει και
+                                            # τον κώδικά του (ec_setfull, βήμα 122)
     enter(m, sym, "LOAD_STATE")
 
     for at, v in patch:                     # τα αρνητικά: κώδικας αλλαγμένος
@@ -163,8 +170,9 @@ def check_occ(blob, occ, g):
 
 def econ_bytes(e):
     """Η οικονομία όπως τη διαβάζει το run_z80: τα ECON_BYTES της τράπεζας 2,
-    και από το βήμα 121 τα έξι του EC_X (η ησυχία) στην τράπεζα 6."""
-    return EC.to_bytes(e) + EC.x_bytes(e)
+    από το βήμα 121 τα έξι του EC_X (η ησυχία) στην τράπεζα 6, και από το 122
+    το ec_full της τράπεζας 0."""
+    return EC.to_bytes(e) + EC.x_bytes(e) + bytes([e.full])
 
 
 def fresh(g, nexthop, src):
@@ -189,7 +197,7 @@ def fresh(g, nexthop, src):
               "ship_eta", "pop_cap", "pad_node", "milestones", "deaths_sol",
               "no_death_sols", "green_sols", "no_trade_sols", "traded",
               "meteor", "mcx", "mcy", "mrnd", "nbuild", "markup", "lands",
-              "ldis", "lev"):
+              "ldis", "lev", "full"):
         setattr(s.e, f, getattr(src.e, f))
     return s
 
@@ -299,7 +307,8 @@ def main():
                            "deaths_sol", "no_death_sols", "green_sols",
                            "no_trade_sols", "traded", "pad_node"]),
                   (108, 1, ["ldis_sol"]), (109, 2, ["ldis_frame"]),   # βήμα 121
-                  (111, 1, ["lev_sol"]), (112, 2, ["lev_frame"])]
+                  (111, 1, ["lev_sol"]), (112, 2, ["lev_frame"]),
+                  (114, 1, ["full"])]                               # βήμα 122
         print("ΑΠΟΤΥΧΙΑ οικονομία:")
         for base, width, names in groups:
             for j, n in enumerate(names):
@@ -564,6 +573,10 @@ def main():
 
     # --- η ησυχία των καταστροφών και το κενό των βλαβών (βήμα 121) ---
     if calm_branches(sym, g, nexthop, sim0):
+        return 1
+
+    # --- η χωρητικότητα των αποθηκών (βήμα 122) ---
+    if store_branches(sym, g, nexthop, sim0):
         return 1
 
     # --- οι ανάγκες στα όριά τους (βήμα 53) ---
@@ -1013,6 +1026,195 @@ def calm_branches(sym, g, nexthop, sim0):
     print(f"OK ησυχία:   ΑΡΝΗΤΙΚΑ — {', '.join(n for n, _, _ in negs)}: ο Z80 "
           f"διαφέρει από την αναφορά")
     return 0
+
+
+# Ο κύκλος ροής της αποικίας της δοκιμής, το πρώτο frame μετά τη φόρτωση (το
+# βαρύτερο): 8.360 us στο βήμα 121· το st_check του 122 +250 με τον θόλο M της,
+# και 54 us κάθε θόλος Storage ακόμη.
+STORE_FLOW_US, STORE_FLOW8_US = 8620, 9000
+
+
+def store_branches(sym, g, nexthop, sim0):
+    """Η ΑΠΟΘΗΚΗ (βήμα 122): ο κύκλος ροής (θέση 12) στα όρια της
+    χωρητικότητας — ένα λιγότερο, ακριβώς, πολύ πάνω· χωρίς τον θόλο Storage·
+    με τον θόλο L — που ανάβει ή σβήνει το ec_full και σκάβει (ή όχι) στα
+    ορυχεία· και μετά ένα ολόκληρο σάρωμα της παραγωγής (θέση 11 καρφωμένη,
+    64 περιστροφές) με το ec_full όπως το άφησε. Ολα τα bytes ίδια στον Z80 και
+    στην αναφορά. Γεμάτη: κανένα αγαθό δεν αλλάζει (ούτε φτιάχνεται ούτε
+    τρώγεται) και ο σωρός δεν μεγαλώνει· αλλιώς φτιάχνονται."""
+    base = fresh(g, nexthop, sim0)
+    EC.rooms_rebuild(base.e, base.pc)
+    keys = lambda z: (z.a.to_bytes(), bytes(z.e.dome), bytes(z.e.struct),
+                      econ_bytes(z.e), bytes(z.e.job), bytes(z.occ[:128]))
+    store = [base.e.room_list[EC.R_STORAGE * EC.ROOM_MAX + k]
+             for k in range(base.e.room_n[EC.R_STORAGE])]
+    if len(store) != 1:
+        print(f"ΑΠΟΤΥΧΙΑ αποθήκη: η αποικία της δοκιμής έχει θόλους Storage {store}, όχι έναν")
+        return 1
+    sd = store[0] * EC.DOME_REC
+
+    def cap(e):
+        return EC.STORE_BASE + sum(
+            EC.STORE_SIZE[e.dome[e.room_list[EC.R_STORAGE * EC.ROOM_MAX + k] * EC.DOME_REC
+                                 + EC.D_SIZE]] for k in range(e.room_n[EC.R_STORAGE]))
+
+    def total(e, n):
+        """Τα όπλα (που καμία μηχανή δεν τρώει) ώστε το σύνολο να είναι n."""
+        e.stock[EC.S_GUN] += n - sum(e.stock[1:])
+        assert e.stock[EC.S_GUN] >= 0
+
+    def no_store(e):
+        e.dome[sd + EC.D_STATE] = EC.DS_BUILDING
+        EC.rooms_rebuild(e, None)
+
+    def large(e):
+        e.dome[sd + EC.D_SIZE] = 2
+    # (όνομα, πριν από τον κύκλο ροής, γεμάτη;)
+    cases = (
+        ("ένα λιγότερο", lambda e: total(e, cap(e) - 1), 0),
+        ("ακριβώς γεμάτη", lambda e: total(e, cap(e)), 1),
+        ("πολύ πάνω", lambda e: total(e, cap(e) + 700), 1),
+        ("χωρίς θόλο Storage", lambda e: (no_store(e), total(e, 700)), 1),
+        ("θόλος L, ένα λιγότερο", lambda e: (large(e), total(e, cap(e) - 1)), 0),
+        ("θόλος L, ακριβώς", lambda e: (large(e), total(e, cap(e))), 1),
+    )
+
+    def z80(st, n, pin, patch=()):
+        got = run_z80(sym, g, fresh(g, nexthop, st), n, pin=pin,
+                      rt_n=EC.MAX_DOME + EC.MAX_STRUCT, patch=patch)
+        return (got[0], got[3], got[4], got[5], got[6], got[1])
+
+    def sweep(sim, n):
+        for _ in range(n):
+            EC.production_slice(sim.e, plant_class=sim.pc)
+
+    def chain(st, patch=()):
+        """Ο Z80: ένας κύκλος ροής (θέση 12) και μετά SWEEP κλήσεις της θέσης
+        11, χωρίς να ξαναφορτωθεί — η παραγωγή ακούει τον κώδικα που άλλαξε
+        το ec_setfull, όχι αυτόν που έβαλε το LOAD_STATE."""
+        m = z80_load(sym, g, fresh(g, nexthop, st), EC.MAX_DOME + EC.MAX_STRUCT, patch)
+        for pin, n in ((12, 1), (11, SWEEP)):
+            m.poke(sym["PIN_SLOT"], pin)
+            m.poke(sym["TICK_COUNT"], n & 0xFF)
+            m.poke(sym["TICK_COUNT"] + 1, n >> 8)
+            enter(m, sym, "RUN_TICKS")
+        got = z80_read(m, sym, 0)
+        return (got[0], got[3], got[4], got[5], got[6], got[1])
+
+    def piles(e):
+        return [e.struct[i * EC.STRUCT_REC + EC.ST_OWED] for i in range(EC.MAX_STRUCT)
+                if e.struct[i * EC.STRUCT_REC + EC.ST_KIND] == EC.K_MINE]
+    SWEEP = 4 * EC.ECON_DIV
+    starts = {}
+    pile0 = piles(base.e)
+    dug = None
+    for name, setup, full in cases:
+        st = fresh(g, nexthop, base)
+        setup(st.e)
+        st.e.flow_div = 1                       # ο κύκλος ροής σε αυτή την κλήση
+        flow = fresh(g, nexthop, st)
+        slot12(flow)
+        if flow.e.full != full or (piles(flow.e) == pile0) != bool(full):
+            print(f"ΑΠΟΤΥΧΙΑ αποθήκη: «{name}» — η αναφορά: γεμάτη {flow.e.full}, "
+                  f"σύνολο {sum(st.e.stock[1:])} από {cap(st.e)}, σωροί "
+                  f"{pile0} -> {piles(flow.e)}")
+            return 1
+        if z80(st, 1, 12) != keys_flow(flow):
+            print(f"ΑΠΟΤΥΧΙΑ αποθήκη: «{name}» — ο κύκλος ροής του Z80 διαφέρει "
+                  f"από την αναφορά")
+            return 1
+        if not full:
+            dug = piles(flow.e)
+        want, before = flow, list(flow.e.stock)    # όχι fresh(): δεν αντιγράφει το mines
+        sweep(want, SWEEP)
+        same_goods = want.e.stock[1:] == before[1:]
+        if same_goods != bool(full):
+            print(f"ΑΠΟΤΥΧΙΑ αποθήκη: «{name}» — η αναφορά: γεμάτη {full}, αγαθά "
+                  f"{'ίδια' if same_goods else 'άλλαξαν'} στο σάρωμα")
+            return 1
+        if chain(st) != keys(want):
+            print(f"ΑΠΟΤΥΧΙΑ αποθήκη: «{name}» — το σάρωμα του Z80 διαφέρει από την αναφορά")
+            return 1
+        starts[name] = (st, keys(want))
+    # Και ανάποδα: ο κώδικας της γεμάτης αποθήκης από το LOAD_STATE, και ένας
+    # κύκλος ροής που βρίσκει χώρο τον ξαναγυρίζει.
+    st = fresh(g, nexthop, starts["ένα λιγότερο"][0])
+    st.e.full = 1
+    if chain(st) != starts["ένα λιγότερο"][1]:
+        print("ΑΠΟΤΥΧΙΑ αποθήκη: από γεμάτη σε «ένα λιγότερο» ο Z80 διαφέρει από την αναφορά")
+        return 1
+    # ΤΟ ΚΟΣΤΟΣ: ο κύκλος ροής, ένα frame της θέσης 12 κάθε 64 περιστροφές, με
+    # τον θόλο M της αποικίας και με οκτώ (ROOM_MAX) θόλους Storage.
+    def flow_us(st):
+        m = z80_load(sym, g, fresh(g, nexthop, st), EC.MAX_DOME + EC.MAX_STRUCT)
+        m.poke(sym["PIN_SLOT"], 12)
+        return tick_us(m, sym)
+    st8 = fresh(g, nexthop, starts["ένα λιγότερο"][0])
+    st8.e.room_n[EC.R_STORAGE] = EC.ROOM_MAX
+    for k in range(EC.ROOM_MAX):
+        st8.e.room_list[EC.R_STORAGE * EC.ROOM_MAX + k] = k
+    us1, us8 = flow_us(starts["ένα λιγότερο"][0]), flow_us(st8)
+    if us1 > STORE_FLOW_US or us8 > STORE_FLOW8_US:
+        print(f"ΑΠΟΤΥΧΙΑ αποθήκη: ο κύκλος ροής {us1} us με έναν θόλο Storage (ταβάνι "
+              f"{STORE_FLOW_US}), {us8} με οκτώ ({STORE_FLOW8_US})")
+        return 1
+    print(f"OK αποθήκη:  {len(cases)} κύκλοι ροής στα όρια — ένα λιγότερο, ακριβώς, "
+          f"πολύ πάνω, χωρίς θόλο Storage (500), με θόλο L (1.100) — και μετά από "
+          f"τον καθένα ένα σάρωμα της παραγωγής στον ίδιο Z80, και ένα από γεμάτη "
+          f"σε «ένα λιγότερο»: ίδια bytes με την αναφορά· οι σωροί {pile0} -> {dug} "
+          f"όταν χωρά, ίδιοι όταν γεμίσει, και γεμάτη κανένα αγαθό δεν αλλάζει")
+    print(f"              ο κύκλος ροής {us1} us με τον θόλο M (8360 στο 121, ταβάνι "
+          f"{STORE_FLOW_US}), {us8} με οκτώ θόλους Storage ({STORE_FLOW8_US})")
+
+    # ΑΡΝΗΤΙΚΑ: ο Z80 πειραγμένος, η αναφορά όχι.
+    full = sym["EC_FULL"]
+
+    def code_at(name, pat, span=160):
+        a = sym[name]
+        code = run_peek(sym, a, span)
+        k = next((k for k in range(span - len(pat) + 1)
+                  if code[k:k + len(pat)] == pat), None)
+        return None if k is None else a + k
+    stock1 = sym["G_ECON_STATE"] + 2
+    negs = []
+    a = code_at("ST_CHECK", [0x2A, stock1 & 255, stock1 >> 8], 80)
+    negs.append(("το νερό αντί για την τροφή", "ένα λιγότερο",
+                 a and [(a + 1, (stock1 - 2) & 255)]))
+    a = code_at("ERM_INF", [0xDD, 0x7E, 0x06, 0xFE, 0xFF], 20)
+    negs.append(("οι μηχανές δεν σταματούν", "ακριβώς γεμάτη",
+                 a and [(a + 4, 0)]))                         # cp 0: ποτέ CY
+    a = code_at("EC_SETFULL", [0x0E, 0xAF], 20)
+    negs.append(("οι κήποι δεν σταματούν", "ακριβώς γεμάτη", a and [(a + 1, 0xB7)]))
+    a = code_at("EC_SETFULL", [0x21, sym["ERM_INF"] & 255, sym["ERM_INF"] >> 8], 20)
+    negs.append(("η τρίτη κλήση μένει erm_in", "ακριβώς γεμάτη",
+                 a and [(a + 1, sym["ERM_IN"] & 255), (a + 2, sym["ERM_IN"] >> 8)]))
+    a = code_at("HL_PILE", [0x3A, full & 255, full >> 8, 0xB7, 0x20], 40)
+    negs.append(("τα ορυχεία σκάβουν", "ακριβώς γεμάτη", a and [(a + 4, 0), (a + 5, 0)]))
+    a = sym["STC_CAPS"] + 2
+    negs.append(("ο θόλος M χωρά 200", "ένα λιγότερο", [(a, 200), (a + 1, 0)]))
+    for what, case, patch in negs:
+        st, want = starts[case]
+        if not patch or chain(st, patch) == want:
+            print(f"ΑΠΟΤΥΧΙΑ αποθήκη: ΑΡΝΗΤΙΚΟ «{what}» — "
+                  f"{'το μοτίβο δεν βρέθηκε' if not patch else 'ο Z80 βγαίνει ίδιος'}")
+            return 1
+    print(f"OK αποθήκη:  ΑΡΝΗΤΙΚΑ — {', '.join(n for n, _, _ in negs)}: ο Z80 "
+          f"διαφέρει από την αναφορά")
+    return 0
+
+
+def slot12(sim):
+    """Η θέση 12 της αναφοράς, όπως τη τρέχει το Sim.tick (tools/entity.py)."""
+    alive = sum(1 for i in range(EC.AG_BOT0) if sim.a.flags[i] & E.F_ALIVE)
+    inside = sum(1 for i in range(EC.AG_BOT0)
+                 if sim.a.flags[i] & E.F_ALIVE and sim.a.flags[i] & E.F_INDOORS)
+    EC.flow_balance(sim.e, alive, inside)
+
+
+def keys_flow(z):
+    """Ο,τι συγκρίνει ένας κύκλος ροής της θέσης 12: όπως οι άλλοι."""
+    return (z.a.to_bytes(), bytes(z.e.dome), bytes(z.e.struct),
+            econ_bytes(z.e), bytes(z.e.job), bytes(z.occ[:128]))
 
 
 # (όνομα, οξυγόνο, νερό, τροφή, ύπνος, υγεία, ηθικό) — βήμα 53
@@ -2149,14 +2351,15 @@ def meteors(sym, g, nexthop, sim0):
 
     # 5. Ο ΙΔΙΟΣ Ο ΤΡΟΧΟΣ (βήμα 65), και τέσσερα αρνητικά: με τον προϋπολογισμό
     # της δρομολόγησης ένα λιγότερο, με την 6 να μένει στο παράθυρο, με τις
-    # σβηστές θέσεις να τρέχουν, και με το wheel_reset να μη μηδενίζει τη θέση.
+    # σβηστές θέσεις να τρέχουν, και με το wheel_reset να μη μηδενίζει τη θέση
+    # ή την αποθήκη (βήμα 122).
     why = wheel_check(sym, g, nexthop, base)
     if why:
         print(f"ΑΠΟΤΥΧΙΑ τροχός: {why}")
         return 1
     print(f"OK τροχός:     η δρομολόγηση σε ακριβώς ⌈μονάδες / {WH_RT_B}⌉ frames με την 1 "
           f"στο παράθυρο μετά από καθένα, οι σβηστές θέσεις δεν αγγίζουν τίποτα, το "
-          f"wheel_reset ξεκινά από τη θέση 0")
+          f"wheel_reset ξεκινά από τη θέση 0 με την αποθήκη να χωρά")
     m = boot_only()
     wt, wf, wr = sym["WHEEL_TICK"], sym["WH_FRAME"], sym["WHEEL_RESET"]
     find = lambda at, pat, n=64: next((at + k for k in range(n)
@@ -2165,11 +2368,15 @@ def meteors(sym, g, nexthop, sim0):
     w_at = find(wt + 3, [0x01, 0xC0, 0x7F])                  # ld bc,GA_PORT + PAGE_B1
     o_at = find(wf + 10, [0xB7, 0xC8])                       # or a · ret z (wh_on)
     r_at = find(wr, [0xAF, 0x32], 4)                         # xor a · ld (wh_slot),a
+    sf = sym["EC_SETFULL"]
+    f_at = find(wr, [0xCD, sf & 255, sf >> 8], 16)           # call ec_setfull
     for label, patch in (("προϋπολογισμός ένα λιγότερο", b_at and [(b_at + 1, WH_RT_B - 1)]),
                          ("η 6 μένει στο παράθυρο", w_at and [(w_at + 1, 0xC6)]),
                          ("οι σβηστές θέσεις τρέχουν", o_at and [(o_at + 1, 0x00)]),
                          ("το wheel_reset κρατά τη θέση", r_at and [(r_at + 1, 0), (r_at + 2, 0),
-                                                                  (r_at + 3, 0)])):
+                                                                  (r_at + 3, 0)]),
+                         ("το wheel_reset κρατά τη γεμάτη αποθήκη",
+                          f_at and [(f_at, 0), (f_at + 1, 0), (f_at + 2, 0)])):
         if not patch or wheel_check(sym, g, nexthop, base, patch) is None:
             print(f"ΑΠΟΤΥΧΙΑ ΑΡΝΗΤΙΚΟ τροχού: με «{label}» ο έλεγχος πέρασε")
             return 1
@@ -2504,7 +2711,9 @@ def wheel_check(sym, g, nexthop, base, patch=()):
          για τις 96 πηγές, και μετά από ΚΑΘΕ frame η τράπεζα 1 στο παράθυρο
          (§7.4: ο τροχός μπαίνει με την 6 και βγαίνει με την 1).
       2. όλες οι θέσεις σβηστές, 32 frames: η τράπεζα 6 και η οικονομία ίδιες.
-      3. wheel_reset: wh_slot = 0 και rt_dirty = 0.
+      3. wheel_reset: wh_slot = 0 και rt_dirty = 0, και η αποθήκη «χωρά» —
+         το ec_full και ο κώδικάς του (ec_setfull, βήμα 122): ένα νέο παιχνίδι
+         μετά από μια γεμάτη αποικία δεν περιμένει τον κύκλο ροής.
     """
     import ctypes
     import cpc
@@ -2566,10 +2775,18 @@ def wheel_check(sym, g, nexthop, base, patch=()):
         return f"32 frames πήγαν το wh_slot από {slot} σε {m.peek(sym['WH_SLOT'])}"
     m.poke(sym["WH_SLOT"], 7)
     m.poke(sym["RT_DIRTY"], 1)
+    inf, c3 = sym["ERM_INF"], sym["ERM_C3"] + 1
+    full = lambda: (m.peek(sym["EC_FULL"]), m.peek(sym["ERP_FULL"]),
+                    m.peek(c3) | m.peek(c3 + 1) << 8)
+    for at, v in ((sym["EC_FULL"], 1), (sym["ERP_FULL"], 0xAF), (c3, inf & 255), (c3 + 1, inf >> 8)):
+        m.poke(at, v)
     run("WHEEL_RESET")
     if (m.peek(sym["WH_SLOT"]), m.peek(sym["RT_DIRTY"])) != (0, 0):
         return f"μετά το wheel_reset wh_slot {m.peek(sym['WH_SLOT'])}, rt_dirty " \
                f"{m.peek(sym['RT_DIRTY'])}"
+    if full() != (0, 0xB7, sym["ERM_IN"]):
+        return "μετά το wheel_reset η αποθήκη μένει γεμάτη: ec_full, κήπος, τρίτη κλήση " \
+               + ", ".join(f"#{v:02X}" for v in full())
     return None
 
 

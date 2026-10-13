@@ -163,6 +163,8 @@ class Hud:
             return "LOW ON WATER       "
         if e["storm"]:
             return "SANDSTORM          "
+        if e.get("full"):                  # η αποθήκη γέμισε (βήμα 122)
+            return "STORAGE FULL       "
         return "ALL SYSTEMS OK     "
 
     # --- σε γραμμικά bytes -------------------------------------------

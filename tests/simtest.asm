@@ -57,6 +57,8 @@ load_state:
         ld      de,G_struct_tbl
         ld      bc,512
         ldir
+        ld      a,(ec_full)             ; ο κώδικας της γεμάτης αποθήκης, όπως τον
+        call    ec_setfull              ; αφήνει το st_check (βήμα 122)
         ld      bc,GA_PORT + PAGE_B1
         out     (c),c
         ld      a,#5A

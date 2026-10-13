@@ -63,6 +63,9 @@ STATE3 = dict(o2prod=0, o2use=0, pstore=5, pcap=0,
 # βροχή μετεωριτών, που μπαίνει μπροστά του.
 STATE4 = dict(STATE, stock=[412, 33, 0, 120, 40, 12, 8, 3, 0, 2, 0, 0, 0, 0])
 STATE5 = dict(STATE4, meteor=3)
+# Εκτη και έβδομη (βήμα 122): η αποθήκη γέμισε — και η θύελλα μπαίνει μπροστά της.
+STATE6 = dict(STATE, full=1)
+STATE7 = dict(STATE, full=1, storm=1)
 
 
 def econ_base():
@@ -93,6 +96,7 @@ def load(sym, g, st, tx=-21, ty=-13, hud=True):
     for k in ("alive", "popcap", "sol", "day", "pok", "o2ok", "storm", "gameover",
               "meteor"):
         m.poke(g + EC[k.upper()], st.get(k, 0))
+    m.poke(sym["EC_FULL"], st.get("full", 0))       # τράπεζα 0 (βήμα 122)
     return m
 
 
@@ -149,7 +153,8 @@ def main():
     # --- 2. το περιεχόμενο ----------------------------------------------
     for name, st in (("κανονική", STATE), ("μηδενικά + συναγερμός", STATE2),
                      ("υπερχείλιση + LOW POWER", STATE3), ("λίγο φαγητό", STATE4),
-                     ("μετεωρίτες", STATE5)):
+                     ("μετεωρίτες", STATE5), ("γεμάτη αποθήκη", STATE6),
+                     ("θύελλα και γεμάτη αποθήκη", STATE7)):
         m = load(sym, g, st)
         m.poke(sym["REP_N"], 1)
         run(m, sym, "START")

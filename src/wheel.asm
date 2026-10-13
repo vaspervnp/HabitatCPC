@@ -42,6 +42,7 @@ wheel_reset:
         xor     a
         ld      (wh_slot),a
         ld      (rt_dirty),a
+        call    ec_setfull              ; η αποθήκη χωρά ως τον πρώτο κύκλο ροής (βήμα 122)
         ld      a,#80                   ; οι εισβολείς: η θέση 15 τους μετρά (βήμα 111)
         ld      (fo_n),a
         ret

@@ -783,7 +783,7 @@ hud_alert:
         ld      a,(EC_POK)
         ld      hl,txt_nopwr
         or      a
-        jr      z,hd_say
+        jp      z,hd_say                ; jp από το βήμα 122: το STORAGE FULL τον έβγαλε από το jr
         ld      hl,txt_noo2
         ld      a,(EC_O2OK)
         or      a
@@ -860,6 +860,14 @@ hd_brk:
 hd_storm:
         ld      hl,txt_storm
         ld      a,(EC_STORM)
+        or      a
+        jr      nz,hd_say
+        ; Η ΑΠΟΘΗΚΗ ΓΕΜΙΣΕ (βήμα 122): οι μηχανές που βγάζουν απόθεμα, οι κήποι
+        ; και τα ορυχεία σταματούν, και το HUD δεν έχει άλλη θέση να το πει.
+        ; Μετά τη θύελλα, που περνά μόνη της· πριν από τον έμπορο, που είναι
+        ; είδηση.
+        ld      hl,txt_full
+        ld      a,(ec_full)
         or      a
         jr      nz,hd_say
         ; Ο ΕΜΠΟΡΟΣ ΠΡΟΣΓΕΙΩΘΗΚΕ (βήμα 93): έρχεται μόνος του και μένει μισό

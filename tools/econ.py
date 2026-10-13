@@ -190,6 +190,8 @@ class Econ:
         # οικονομία — βλ. x_bytes.
         self.ldis = [0, 0]
         self.lev = [0, 0]
+        # ΓΕΜΑΤΗ ΑΠΟΘΗΚΗ (βήμα 122): το ec_full του Z80, στην τράπεζα 0 (src/stock.asm).
+        self.full = 0
         self.amenity = 0            # δέντρα και σαλόνια — παρηγοριά (§6.6)
         # Το μήκος του sol είναι ΔΕΔΟΜΕΝΟ και όχι σταθερά: μια δοκιμή που
         # θέλει να δει πέντε sols δεν μπορεί να περιμένει 60.000 frames.
@@ -311,6 +313,8 @@ def run_dome(e, d, plant_class=None):
                 continue
             if not ops:                         # ΕΝΑΣ βιολόγος ποτίζει όλο
                 continue                        # τον κήπο (βλ. src/econ.asm)
+            if e.full:                          # γεμάτη αποθήκη (βήμα 122)
+                continue
             run_plant(e, base, s, p, plant_class)
             continue
         m = e.dome[base + D_MACH + s]
@@ -328,6 +332,8 @@ def run_dome(e, d, plant_class=None):
         ins = ((r[0], r[1]), (r[2], r[3]), (r[4], r[5]))
         if any(st != NO_STOCK and e.stock[st] < q for st, q in ins):
             continue                                # λείπει είσοδος: δεν καίει
+        if e.full and r[6] != NO_STOCK:             # γεμάτη αποθήκη (βήμα 122):
+            continue                                # ούτε τρώει ούτε ζητά ρεύμα
         # Το ρεύμα μετράει ως ΖΗΤΗΣΗ: όσα θα έτρεχαν αν υπήρχε. Με «όσα κάηκαν»
         # το μπλακάουτ μηδένιζε τη ζήτηση και το ρεύμα ξαναγύριζε μόνο του.
         e.acc_power += r[8]
@@ -385,6 +391,7 @@ def flow_balance(e, alive, inside):
 
 
 def flow_cycle(e):
+    store_check(e)                      # η αποθήκη (βήμα 122): πριν σκάψουν τα ορυχεία
     prod = cap = water = 0
     use = e.mach_power
     e.mines = 0
@@ -462,7 +469,7 @@ def haul_pile(e, i):
     ο σωρός παίρνει τον ρυθμό του, ως HAUL_CAP· και με ή χωρίς, ένας σωρός
     από HAUL_LOAD χωρίς Haul παίρνει μία."""
     st = i * STRUCT_REC
-    if e.power_ok == POWER_ALL:
+    if e.power_ok == POWER_ALL and not e.full:      # βήμα 122: ούτε γεμάτη αποθήκη
         r = mine_rate(e.struct[st + ST_OPS] & MINE_OPS)
         if r:
             e.struct[st + ST_OWED] = min(HAUL_CAP, e.struct[st + ST_OWED] + r)
@@ -477,6 +484,19 @@ STORM_LEN = 32          # περιστροφές — περίπου δέκα δ�
 # περιστροφές (δύο sol) από την προηγούμενη· οι βλάβες είναι φθορά, από την
 # αρχή, με FAULT_GAP περιστροφές ανάμεσα — και ανάμεσα σε βλάβη και καταστροφή.
 DIS_POP, FAULT_GAP = 20, 64
+# Η ΧΩΡΗΤΙΚΟΤΗΤΑ ΤΩΝ ΑΠΟΘΗΚΩΝ (βήμα 122): συνολική, όλα τα αγαθά εκτός από το
+# νερό, κάτω από το αμπάρι του σκάφους και τους θόλους Storage κατά μέγεθος.
+STORE_BASE, STORE_SIZE = 500, (100, 300, 600)
+
+
+def store_check(e):
+    """st_check (src/needs.asm): στην αρχή κάθε κύκλου ροής, πόσα
+    χωράνε — το αμπάρι και ως ROOM_MAX θόλοι Storage — και αν χωρά άλλο."""
+    cap = STORE_BASE
+    for k in range(e.room_n[R_STORAGE]):
+        d = e.room_list[R_STORAGE * ROOM_MAX + k]
+        cap += STORE_SIZE[e.dome[d * DOME_REC + D_SIZE]]
+    e.full = 1 if sum(e.stock[1:]) >= cap else 0
 
 
 def break_one(e, x):
@@ -903,9 +923,13 @@ def populate(e, n_dome=POP_DOME, n_struct=POP_STRUCT, seed=11):
     # Λίγο βιοπλαστικό και επεξεργαστές στην αρχή: η αλυσίδα των ρομπότ
     # θέλει Metal + Processors + Bioplastic μαζί, και χωρίς απόθεμα εκκίνησης
     # δεν γυρίζει ποτέ — οπότε η «ανεξαρτησία» του §10.2 δεν πιάνεται.
-    for s, q in ((S_WATER, 600), (S_FOOD, 400), (S_ORE, 600), (S_STARCH, 200),
-                 (S_VEG, 200), (S_MEDPLANT, 300), (S_MEDI, 200), (S_SPARE, 40),
-                 (S_BIOPL, 120), (S_PROC, 120), (S_METAL, 200)):
+    # ΚΑΙ ΧΩΡΟΥΝ (βήμα 122): η αποθήκη είναι συνολική, και αυτή η αποικία έχει
+    # το αμπάρι (500) και έναν θόλο Storage M (300). Ως τότε κουβαλούσε 2.380
+    # αγαθά και κάθε σάρωμα θα την έβρισκε γεμάτη — τίποτα δεν θα παραγόταν.
+    # 630 αφήνουν 170 για ό,τι φτιάχνει μέσα στα παράθυρα του tests/test_sim.py.
+    for s, q in ((S_WATER, 600), (S_FOOD, 200), (S_ORE, 80), (S_STARCH, 40),
+                 (S_VEG, 40), (S_MEDPLANT, 40), (S_MEDI, 30), (S_SPARE, 40),
+                 (S_BIOPL, 60), (S_PROC, 40), (S_METAL, 60)):
         e.stock[s] = q
     # Μια θύελλα ήδη σε εξέλιξη. Η ζαριά τη ρίχνει μία στις 128 περιστροφές,
     # που σημαίνει ότι ένα παράθυρο 40 περιστροφών τη χάνει τις δύο φορές
