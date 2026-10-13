@@ -43,6 +43,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 sys.path.insert(0, "/home/vasilhs/cpcemu")
+sys.path.insert(0, HERE)
+import menuread as MR                                                   # noqa: E402
 
 RASM = os.path.expanduser("~/rasm/rasm.exe")
 DSK = os.path.join(ROOT, "build", "habitat.dsk")
@@ -166,6 +168,7 @@ def main():
     m.type_text('|disc\n', hold_frames=4, gap_frames=8)
     m.run_frames(60)
     m.type_text('run"habitat\n', hold_frames=4, gap_frames=8)
+    MR.pick(m, MR.syms(ROOT))            # ο τυχαίος πλανήτης (βήμα 128)
 
     def w16(a):
         return m.peek(a) | (m.peek(a + 1) << 8)
@@ -435,6 +438,7 @@ def main():
     m.type_text('|disc\n', hold_frames=4, gap_frames=8)
     m.run_frames(60)
     m.type_text('run"habitat\n', hold_frames=4, gap_frames=8)
+    MR.pick(m, MR.syms(ROOT))            # ο τυχαίος πλανήτης (βήμα 128)
     for _ in range(120):
         m.run_frames(30)
         if w16(g + 2) == 100 and m.peek(g + 58) == 6:        # §10.1 (βήμα 120)

@@ -12,8 +12,9 @@
 ; πάνω το χρειάζεται μόνο η ΤΕΛΕΥΤΑΙΑ πράξη. Ετσι:
 ;
 ;   #8000-#8DFF   η γεννήτρια (φορτώνεται, τρέχει, ξεχνιέται)
-;   #9000-#97FF   ο φορτωτής (589 bytes στο βήμα 112, με τον δικό του
-;                 αναγνώστη τομέων από το 113· το boot_end ελέγχεται)
+;   #9000-#97FF   ο φορτωτής (589 bytes στο βήμα 112, 1.228 με τον δικό
+;                 του αναγνώστη τομέων από το 113, 1.677 με το μενού του
+;                 πλανήτη από το 128· το boot_end ελέγχεται)
 ;   #9800-#9FFF   ο κατάλογος του δίσκου (βήμα 113)· ο buffer 2 KB του
 ;                 AMSDOS αν χρειαστεί
 ;   #A000-#A1FF   ένας τομέας (SECT_BUF, βήμα 113)
@@ -37,6 +38,10 @@ CAS_IN_CLOSE    equ #BC7A
 SCR_SET_MODE    equ #BC0E
 TXT_SET_CURSOR  equ #BB75
 TXT_OUTPUT      equ #BB5A
+KM_TEST_KEY     equ #BB1E
+MC_WAIT_FLYBACK equ #BD19
+KL_U_ROM_DISABLE equ #B903
+KL_ROM_RESTORE  equ #B90C
 
 LF_BUF          equ #9800               ; 2 KB, βασική RAM
 GEN_ORG         equ #8000               ; όπου φορτώνεται η γεννήτρια
@@ -90,14 +95,16 @@ boot:
         ; παιχνίδι γυρίζει σε MODE 0 μόνο του, αφού σβήσουν τα ROM.
         ld      a,1
         call    SCR_SET_MODE
-        ld      b,5
-        ld      c,17
-        ld      hl,t_title
-        call    pr_at
-        ld      b,7
-        ld      c,9
-        ld      hl,t_sub
-        call    pr_at
+        call    bt_title
+        ; --- ο πλανήτης (βήμα 128) ---
+        ; ΠΡΙΝ ΑΠΟ ΤΟ ΦΟΡΤΩΜΑ, όπως το ζήτησε ο παίκτης: ο δίσκος δεν έχει
+        ; ξεκινήσει ακόμη, και η επιλογή δεν χρειάζεται τίποτα από αυτόν. Τη
+        ; διαβάζει η γεννήτρια, στο τέλος, από το A.
+        call    mn_pick
+        ld      (bt_pl),a
+        ld      a,1
+        call    SCR_SET_MODE            ; το μενού φεύγει, ο τίτλος ξαναγράφεται
+        call    bt_title
         ld      b,11
         ld      c,8
         ld      hl,t_load
@@ -190,6 +197,7 @@ boot:
         ld      c,8
         ld      hl,t_world
         call    pr_at
+        ld      a,(bt_pl)               ; ο πλανήτης του μενού (βήμα 128)
         call    GEN_ORG
         ld      b,14
         ld      c,8
@@ -395,9 +403,12 @@ fli_lp:
 fli_bad:
         pop     af
         ei
-; fl_quit — το AMSDOS παίρνει τον δίσκο. Η κεφαλή ξαναπάει στο track 0: εκεί
-; την άφησε το ίδιο (ο φορτωτής είναι στο πρώτο track), και αν πιστεύει ότι
-; είναι ακόμη εκεί, δεν θα κινηθεί για να διαβάσει τον κατάλογό του.
+; fl_quit — το AMSDOS παίρνει τον δίσκο. Η κεφαλή ξαναπάει στο track 0, όπου
+; το CAS IN OPEN διαβάζει πρώτα τον κατάλογο: αν το AMSDOS πιστεύει ότι είναι
+; ήδη εκεί, δεν την κινεί. Το πιστεύει όταν ο φορτωτής χωράει στο track 0 (ως
+; το βήμα 127). Από το 128, με το μενού, ο τελευταίος τομέας του LOADER.BIN
+; είναι στο track 1 και το AMSDOS κινείται μόνο του· το SEEK μένει, γιατί ένας
+; μικρότερος φορτωτής θα το ξαναχρειαζόταν (tests/test_disc.py, §7).
 fl_quit:
         ld      a,1
         ld      (fl_off),a
@@ -792,6 +803,159 @@ fli_w:
         ret
 
 ; ---------------------------------------------------------------------------
+; mn_pick — το μενού του πλανήτη (βήμα 128, §13.2). Out: A = 0-3 ο πλανήτης
+; (§5.7), #FF τυχαίος.
+;
+; ΒΕΛΑΚΙΑ Ή ΧΕΙΡΙΣΤΗΡΙΟ, FIRE Ή ENTER. Ο φορτωτής ζει ακόμη μαζί με το firmware,
+; που σαρώνει το πληκτρολόγιο 50 φορές το δευτερόλεπτο· το KM TEST KEY
+; διαβάζει τον χάρτη του, το χειριστήριο 0 μέσα (πλήκτρα 72-77). Μετράει
+; μόνο ό,τι ΠΑΤΗΘΗΚΕ ΤΩΡΑ: το mn_prev ξεκινά «όλα πατημένα», ώστε ένα RETURN
+; που κρατιέται ακόμη από το RUN"HABITAT να μη διαλέξει μόνο του.
+; ---------------------------------------------------------------------------
+mn_pick:
+        ld      b,10
+        ld      c,14
+        ld      hl,t_choose
+        call    pr_at
+        ld      b,23
+        ld      c,7
+        ld      hl,t_keys
+        call    pr_at
+        ld      hl,t_menu
+        ld      b,12                    ; οι πέντε γραμμές, ανά δύο σειρές
+mnp_row:
+        push    bc
+        ld      c,2
+        call    pr_at                   ; ο HL μένει στο 0 του κειμένου
+        inc     hl
+        pop     bc
+        inc     b
+        inc     b
+        ld      a,b
+        cp      12 + 2 * 5
+        jr      c,mnp_row
+mnp_flip:
+        call    mn_flip                 ; η διαλεγμένη ανάποδα
+mnp_wait:
+        call    MC_WAIT_FLYBACK
+        call    mn_keys                 ; E = τα πλήκτρα τώρα
+        ld      hl,mn_prev
+        ld      a,(hl)
+        ld      (hl),e
+        cpl
+        and     e                       ; όσα πατήθηκαν από το προηγούμενο frame
+        jr      z,mnp_wait
+        push    af
+        call    mn_flip                 ; η παλιά ξανά ίσια
+        pop     de                      ; D = τα καινούργια (το mn_flip χαλάει τα DE)
+        ld      a,(mn_sel)
+        rr      d
+        jr      c,mnp_up
+        rr      d
+        jr      c,mnp_dn
+        dec     a                       ; FIRE: 0 τυχαίος -> #FF, 1-4 -> 0-3
+        ret
+mnp_up:
+        dec     a
+        jp      p,mnp_set
+        ld      a,4                     ; από την κορυφή στον πάτο
+        jr      mnp_set
+mnp_dn:
+        inc     a
+        cp      5
+        jr      c,mnp_set
+        xor     a
+mnp_set:
+        ld      (mn_sel),a
+        jr      mnp_flip
+
+; mn_keys — Out: E = bit 0 πάνω, bit 1 κάτω, bit 2 FIRE. Το KM TEST KEY
+; χαλάει A, C, HL και τις σημαίες.
+mn_keys:
+        ld      hl,mn_ktab
+        ld      e,0
+mnk_lp:
+        ld      a,(hl)
+        inc     a
+        ret     z                       ; #FF: τέλος
+        dec     a
+        inc     hl
+        ld      d,(hl)
+        inc     hl
+        push    hl
+        push    de
+        call    KM_TEST_KEY
+        pop     de
+        pop     hl
+        jr      z,mnk_lp
+        ld      a,e
+        or      d
+        ld      e,a
+        jr      mnk_lp
+
+; mn_flip — αναποδογυρίζει τη γραμμή του mn_sel ΚΑΤΕΥΘΕΙΑΝ στην οθόνη.
+;
+; ΟΧΙ ΜΕ ΤΟ TXT INVERSE. Το firmware γράφει έναν χαρακτήρα σε ~3 ms: η γραμμή
+; των 38 κρατά 6 frames, και ξαναγράφοντας όλο το μενού σε κάθε πάτημα το
+; βελάκι άργησε 0,6 s. Στο MODE 1 η πένα 1 (τα γράμματα) είναι το bit 0 του
+; pixel, στο πάνω μισό του byte, και το χαρτί 0 μηδέν: XOR #F0 τα αλλάζει
+; μεταξύ τους, και το ίδιο XOR τα ξαναγυρίζει. 8 x 76 bytes, ~5 ms.
+;
+; Η ΠΑΝΩ ROM ΣΒΗΝΕΙ ΓΙΑ ΛΙΓΟ: ο φορτωτής ξεκίνησε με CALL από το BASIC, και
+; στο #C000 ο επεξεργαστής ΔΙΑΒΑΖΕΙ το BASIC (οι εγγραφές πάνε στη RAM, γι'
+; αυτό η μπάρα της γεννήτριας δεν το χρειάζεται). Η οθόνη είναι στο #C000
+; χωρίς μετατόπιση: τη μηδενίζει το SCR SET MODE.
+mn_flip:
+        ld      a,(mn_sel)
+        add     a,a
+        add     a,12 - 1                ; η σειρά, από το 0
+        ld      l,a
+        ld      h,0
+        add     hl,hl
+        add     hl,hl
+        add     hl,hl
+        add     hl,hl                   ; x 16
+        ld      d,h
+        ld      e,l
+        add     hl,hl
+        add     hl,hl                   ; x 64
+        add     hl,de                   ; x 80
+        ld      de,#C000 + 2            ; η στήλη 2
+        add     hl,de
+        call    KL_U_ROM_DISABLE
+        push    af
+        ld      c,8
+mnf_ln:
+        push    hl
+        ld      b,76
+mnf_b:
+        ld      a,(hl)
+        xor     #F0
+        ld      (hl),a
+        inc     hl
+        djnz    mnf_b
+        pop     hl
+        ld      a,h
+        add     a,8
+        ld      h,a
+        dec     c
+        jr      nz,mnf_ln
+        pop     af
+        jp      KL_ROM_RESTORE
+
+; bt_title — ο τίτλος και ο υπότιτλος, πάνω από το μενού και πάνω από τη
+; φόρτωση.
+bt_title:
+        ld      b,5
+        ld      c,17
+        ld      hl,t_title
+        call    pr_at
+        ld      b,7
+        ld      c,9
+        ld      hl,t_sub
+        jr      pr_at
+
+; ---------------------------------------------------------------------------
 ; pr_at — B = γραμμή, C = στήλη (1-25 / 1-40), HL = κείμενο με τερματικό 0.
 ;
 ; Το TXT OUTPUT χαλάει τα πάντα εκτός από το IX/IY, γι' αυτό ο δείκτης του
@@ -829,6 +993,31 @@ t_sub:      db "a colony on a dead world",0
 t_load:     db "LOADING ",0
 t_world:    db "BUILDING THE WORLD",0
 t_ready:    db "READY             ",0
+t_choose:   db "CHOOSE A WORLD",0
+t_keys:     db "UP/DOWN, THEN FIRE OR ENTER",0
+; Πέντε γραμμές των 38 χαρακτήρων: η ανάποδη μπάρα του mn_flip είναι 76 bytes.
+; Οι περιγραφές είναι μετρημένες, όχι του πίνακα του §5.7: 24 κόσμοι ανά
+; πλανήτη από το tools/worldgen_ref.py, νερό / γη για χτίσιμο (έδαφος και
+; σκόνη) / βουνό / φλέβες σε 16.384 πλακίδια — έρημος 3.274 / 7.342 / 3.984 /
+; 76, πάγος 6.006 / 4.245 / 4.252 / 76, θύελλα 2.114 / 5.778 / 5.444 / 121,
+; φεγγάρι 863 / 7.846 / 4.817 / 126. Το γόνιμο έδαφος δεν το διαβάζει τίποτα
+; (§3.5), γι' αυτό δεν το λένε.
+t_menu:     db " RANDOM      ANY OF THE FOUR          ",0
+t_menu1:    db " DESERT      WATER, LAND, SOME ORE    ",0
+            db " ICE         MUCH WATER, LESS LAND    ",0
+            db " STORM       MOUNTAINS, ORE, DRY      ",0
+            db " BARREN MOON DUST, ORE, LITTLE WATER  ",0
+t_menu_e:
+        assert  t_menu1 - t_menu == 39
+        assert  t_menu_e - t_menu == 5 * 39
+mn_ktab:    db 0,1, 72,1                ; πάνω: βελάκι, χειριστήριο
+            db 2,2, 73,2                ; κάτω
+            db 18,4, 6,4, 47,4          ; RETURN, το μικρό ENTER, SPACE
+            db 76,4, 77,4               ; τα δύο FIRE του χειριστηρίου
+            db #FF
+mn_sel:     db 0                        ; 0 τυχαίος, 1-4 οι πλανήτες 0-3
+mn_prev:    db #FF
+bt_pl:      db #FF                      ; ό,τι διάλεξε, για τη γεννήτρια
 
 n_bank1:    db "BANK1.BIN"
 n_bank1_e:
