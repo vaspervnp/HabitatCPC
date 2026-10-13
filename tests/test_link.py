@@ -201,7 +201,7 @@ class Pair:
             for i in range(wide):
                 b4[W.index(FIELD[0] + i, FIELD[1] + j)] = 0
         for k, v in (patch or {}).items():
-            if isinstance(k, tuple):         # (τράπεζα, διεύθυνση): το b5code
+            if isinstance(k, tuple):         # (τράπεζα, διεύθυνση): το b6code
                 G.bank(k[0])[k[1] - 0x4000] = v
             else:
                 G.m.poke(k, v)
@@ -390,14 +390,16 @@ def build(sym, g, sa, sb, dx, dy, what, patch=None):
     # λευκό του περιγράμματος: το φέρνει μία από τις δύο τελευταίες σειρές της
     # διαγωνίου, που ξαναζωγραφίζουν και τον θόλο (tests/test_corridor.py). Η πλήρης σχεδίαση δεν
     # αρκεί για μέτρο: χωρίς τη σημαία δεν το έχει ούτε εκείνη.
-    short = len(runs) > 1 and runs[1][1] == 1 and runs[1][0] in (2, 6)
+    # ΚΑΙ ΚΑΘΕΤΑ από το βήμα 129, με τις γωνίες: τότε στο bit k - 1.
+    short = len(runs) > 1 and runs[1][1] == 1
+    kb = ((runs[0][0] + 4) & 7) - (0 if short and runs[1][0] in (2, 6) else 1)
     grey = None
     if short:
         (bx, by), bs = (P.cb, sb) if side == 0 else (P.ca, sa)
         a = assets()
         qw, qh = a.dims(f"dome_{S.SIZES[bs]}_nw")
         fx, fy = 2 * bx - 4 * cam[0] - qw, 8 * by - 16 * cam[1] - qh
-        px = S.bend(a, bs, (runs[0][0] + 4) & 7)
+        px = S.bend(a, bs, kb)
         assert all(0 <= fx + x // 2 < 80 and 0 <= fy + y < 160 for x, y in px), \
             "το pixel της στροφής έξω από το κάδρο"
         grey = all(pic[(fy + y) * 80 + fx + x // 2] & S.PIX[x & 1] == v
@@ -445,9 +447,10 @@ def build(sym, g, sa, sb, dx, dy, what, patch=None):
           f"{joint_b}, την αντίθετη του τελευταίου τρεξίματος"
           + (f" (όχι στο {wrong})" if wrong != joint_b else ""))
     # Και οι κοντές στροφές (βήμα 97): ο b παίρνει το bit της πλευράς της
-    # διαγωνίου όταν η συνέχεια είναι ΕΝΑ tile οριζόντια (src/bend.asm).
-    fb = G.bank(5)[sym["JTB_FLAGS"] - 0x4000 + node_b]
-    want_b = 1 << ((runs[0][0] + 4) & 7) if short else 0
+    # διαγωνίου όταν η συνέχεια είναι ΕΝΑ tile οριζόντια (src/bend.asm) — και
+    # από το 129 κάθετα, στο bit k - 1. Στην τράπεζα 6 από το 129 (ως τότε 5).
+    fb = G.bank(6)[sym["JTB_FLAGS"] - 0x4000 + node_b]
+    want_b = 1 << kb if short else 0
     check(fb == want_b, f"{what}: κοντή στροφή στον b {fb:08b} (θέλει {want_b:08b})")
     if short:
         check(grey, f"{what}: και το pixel της είναι γκρι στην οθόνη")
@@ -662,8 +665,11 @@ def main():
     # τελευταίες σειρές της διαγωνίου, με τη σημαία του jtb_mark ήδη γραμμένη.
     build(sym, g, 0, 1, 5, -4, "S -> M, ένα tile ανατολικά μετά τη στροφή")
     build(sym, g, 0, 2, -9, -5, "S -> L, ένα tile δυτικά μετά τη στροφή")
+    # Βήμα 129: και ΕΝΑ tile κάθετα, με τη γωνία πάνω στον δακτύλιο.
+    build(sym, g, 0, 0, -3, -5, "S -> S, ένα tile βόρεια μετά τη στροφή")
+    build(sym, g, 1, 2, 4, 8, "M -> L, ένα tile νότια μετά τη στροφή")
     _, _, _, grey = build(sym, g, 0, 1, 5, -4, "χωρίς σημαία",
-                          patch={(5, sym["JTB_MARK"]): 0xC9})
+                          patch={(6, sym["JTB_MARK"]): 0xC9})
     check(grey is False, f"ΑΡΝΗΤΙΚΟ: με το jtb_mark κομμένο, το pixel της κοντής "
                          f"στροφής μένει λευκό")
     for c in [(0, 0, 10, 10), (0, 0, -10, 10), (1, 1, 12, -12), (0, 2, 12, 6),

@@ -25,17 +25,24 @@
 ; στην τελευταία, 1.518 στην προτελευταία. Με τις σειρές ένα tile δεξιά, 411
 ; μένουν έξω.
 ;
-; ΣΤΗΝ ΤΡΑΠΕΖΑ 5 (b5code, tools/pack.py): στην 0 και στο b6code δεν έμεναν
-; ούτε τα 64 bytes των σημαιών. Τρέχει με την 5 στο παράθυρο, μέσα από το
-; jt_b5 (src/object.asm), και ζωγραφίζει με το ob_put την πρώτη γραμμή του
-; δυτικού ή του ανατολικού αρμού (jt_pxl, jt_pxr), που είναι ακριβώς αυτό το
-; pixel. Τίποτα εδώ δεν σελιδοποιεί. Το tests/objtest.asm το έχει επίπεδο, το
-; tests/uitest.asm στην τράπεζα 5, όπως το παιχνίδι.
+; ΜΕ ΤΙΣ ΓΩΝΙΕΣ (βήμα 129, src/corner.asm) δύο pixels οριζόντια — το ένα του
+; 97 και το διπλανό του προς τον αρμό — και ένα ΚΑΘΕΤΑ: η γωνία ακουμπά τον
+; δακτύλιο εκεί όπου ως τότε τον ακουμπούσε το πρώτο αξονικό, που δεν
+; ζωγραφίζεται πια. Τα κάθετα παίρνουν τα ζυγά bits, k - 1 (0, 2, 4, 6).
+;
+; ΣΤΟ b6code ΑΠΟ ΤΟ ΒΗΜΑ 129. Ως τότε ζούσε στην τράπεζα 5 (b5code), γιατί
+; στην 0 και στο b6code δεν έμεναν ούτε τα 64 bytes των σημαιών· εκεί έμεναν 19
+; bytes, όχι τα ~30 των κάθετων. Στο b6code τα καλούν σχεδόν όλοι με την 6
+; ήδη στο παράθυρο — η μέτρηση των διαδρόμων (jt_mark -> jtm_bend), οι αρμοί
+; (jt_dome -> jtd_sw) — και το jp τους δεν περνά πια από τη σελιδοποίηση. Οι δύο που
+; έρχονται απ' έξω, το jt_clear και το crr_conns (src/ui.asm), μπαίνουν από το
+; jt_b6 / jt_b6c του src/object.asm. Τα δύο pixels (jtb_pxl, jtb_pxr) είναι
+; εδώ, αντίγραφα της πρώτης γραμμής του δυτικού και του ανατολικού αρμού της
+; τράπεζας 5 (JT_PX* του build/joint_tab.asm): η 5 δεν φαίνεται από εδώ. Τα
+; tests/objtest.asm και uitest.asm το έχουν επίπεδο.
 ; ---------------------------------------------------------------------------
 
-B5C_MAX     equ 248                     ; = B5C_MAX του tools/pack.py (272 ως το βήμα 99: 24 στα σήματα των μηχανών)
-
-        assert  C_LEN == C_DIR + 1      ; ld hl,(oc_cr + C_DIR) στο jtm_bend (src/object.asm)
+        assert  C_LEN == C_DIR + 1      ; ld hl,(oc_cr + C_DIR) στο jtm_bend, πιο κάτω
 
 jtb_flags:  defs MAX_DOME
 
@@ -48,12 +55,32 @@ jtb_clr:
         ldir
         ret
 
+; jtm_bend — από το jt_mark, για διάδρομο με συνέχεια και b θόλο: μόνο αν η
+; συνέχεια είναι ΕΝΑ tile, η σημαία του b (jtb_mark, src/bend.asm), και ο
+; διακόπτης του jtd_end ανοίγει. Ως το βήμα 128 μόνο οριζόντια· από το 129, με
+; τις γωνίες, και κάθετα, στο bit k - 1 (A = 3 αντί για 4). Ως το 128 στο
+; src/object.asm (τράπεζα 0): το jt_mark που το καλεί είναι στο b6code, και
+; από το 129 και το jtb_mark — 18 bytes της 0 πίσω.
+jtm_bend:
+        ld      hl,(oc_cr+C_DIR)        ; L = κατεύθυνση, H = μήκος
+        dec     h
+        ret     nz
+        ld      a,#C3                   ; jp jtb_dome: ο jtd_end ανοίγει
+        ld      (jtd_sw),a
+        ld      a,3                     ; κάθετα: k - 1
+        bit     1,l                     ; 2 ή 6: οριζόντιος
+        jr      z,jtmb_v
+        inc     a                       ; οριζόντια: k
+jtmb_v:
+        jp      jtb_mark
+
 ; jtb_mark — από το jtm_bend (src/object.asm): ο διάδρομος συνεχίζει ΕΝΑ tile
-; οριζόντια ως τον b, θόλο. Η σημαία του b, στην πλευρά της διαγωνίου.
+; ως τον b, θόλο. Η σημαία του b, στην πλευρά της διαγωνίου. In: A = 4 για
+; οριζόντια συνέχεια (bit k), 3 για κάθετη (bit k - 1, βήμα 129).
 jtb_mark:
-        ld      a,(c_rec + C_DIR)       ; η διαγώνιος
-        add     a,4
-        and     7                       ; k, η πλευρά της
+        ld      hl,c_rec + C_DIR        ; η διαγώνιος
+        add     a,(hl)
+        and     7                       ; k, ή k - 1
         ld      hl,bit_tab              ; src/entity.asm
         call    ob_addu
         ld      e,(hl)                  ; 1 << k
@@ -99,41 +126,72 @@ jtbd_nx:
         jr      nz,jtbd_lp
         ret
 
-; jtb_px — A = k (1, 3, 5, 7): το pixel της στροφής από εκείνη την πλευρά, στο
-; πλαίσιο d_fx, d_fy (QW, QH στο d_qw, d_qh). Ανατολικά (1, 3) η τελευταία
-; στήλη, το δεξί pixel· δυτικά (5, 7) η πρώτη, το αριστερό. Από κάτω (3, 5)
-; η γραμμή qh + 4, από πάνω (1, 7) η qh - 5.
+; jtb_px — A = k: τα pixels της στροφής από εκείνη την πλευρά, στο πλαίσιο
+; d_fx, d_fy (QW, QH στο d_qw, d_qh).
+;   ΜΟΝΟ k, οριζόντια: δύο γραμμές στην άκρη του πλαισίου — ανατολικά (1, 3)
+;   το δεξί pixel της στήλης 2 QW - 1, δυτικά (5, 7) το αριστερό της 0· από
+;   πάνω (1, 7) οι γραμμές qh - 5 και - 4, από κάτω (3, 5) οι qh + 3 και + 4.
+;   Ως το βήμα 128 μόνο η μία, qh - 5 ή qh + 4.
+;   ΖΥΓΟ k, κάθετα (βήμα 129): ένα pixel δίπλα στον αρμό του κάθετου —
+;   ανατολικά (0, 2) το δεξί της στήλης QW, δυτικά (4, 6) το αριστερό της
+;   QW - 1· η γραμμή 0 από πάνω (0, 6), η 2 qh - 1 από κάτω (2, 4).
+; «Από κάτω» είναι (k + 2) & 4 και για τα δύο.
 jtb_px:
         ld      c,a
         ld      hl,(d_qw)               ; L = QW, H = QH
-        inc     a
-        and     4                       ; 4: η διαγώνιος από κάτω
+        add     a,2
+        and     4                       ; 4: από κάτω
+        bit     0,c
+        jr      z,jtbp_v
+        add     a,a
+        add     a,h
+        sub     5                       ; qh - 5 ή qh + 3
+        ld      b,2
+        jr      jtbp_y
+jtbp_v:
+        ld      b,1
+        or      a
+        jr      z,jtbp_y                ; η γραμμή 0
         ld      a,h
-        jr      z,jtbp_up
-        add     a,9
-jtbp_up:
-        sub     5
+        add     a,a
+        dec     a                       ; η 2 qh - 1
+jtbp_y:
         push    hl
         ld      hl,(d_fy)
         call    ob_addu
         ld      (ob_y),hl
         pop     hl
-        ld      de,jt_pxl               ; δυτικά: η στήλη 0
-        xor     a
+        ld      de,jtb_pxl              ; δυτικά: το αριστερό pixel
         bit     2,c
-        jr      nz,jtbp_x
-        ld      de,jt_pxr               ; ανατολικά: η στήλη 2 QW - 1
-        ld      a,l
-        add     a,a
+        jr      nz,jtbp_s
+        ld      de,jtb_pxr              ; ανατολικά: το δεξί
+jtbp_s:
+        ld      a,l                     ; QW
+        bit     0,c
+        jr      nz,jtbp_h
+        bit     2,c                     ; κάθετα: QW ανατολικά, QW - 1 δυτικά
+        jr      z,jtbp_x
         dec     a
+        jr      jtbp_x
+jtbp_h:
+        add     a,a                     ; οριζόντια: 2 QW - 1 ανατολικά, 0 δυτικά
+        dec     a
+        bit     2,c
+        jr      z,jtbp_x
+        xor     a
 jtbp_x:
         ld      hl,(d_fx)
         call    ob_addu
         ld      (ob_x),hl
         ld      (ob_src),de
-        ld      hl,#0101                ; 1 byte, 1 γραμμή
+        ld      l,1                     ; 1 byte, B γραμμές
+        ld      h,b
         xor     a                       ; με μάσκα, χωρίς καθρέφτισμα
         jp      ob_put
+
+; Το pixel, δύο φορές: η πρώτη γραμμή του δυτικού και του ανατολικού αρμού.
+jtb_pxl:    db JT_PXL_M, JT_PXL_D, JT_PXL_M, JT_PXL_D
+jtb_pxr:    db JT_PXR_M, JT_PXR_D, JT_PXR_M, JT_PXR_D
 
 ; jtb_cc — ο αρμός του b του διαδρόμου που μόλις μπήκε (crr_conns, από το
 ; cr_redraw), στη λίστα: DK_CONN στην αντίθετη του ΤΕΛΕΥΤΑΙΟΥ τρεξίματος.

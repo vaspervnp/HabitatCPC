@@ -426,11 +426,14 @@ zz_b1code_end:
         incbin  "../build/world_new.bin"
         org     B5_BASE                 ; οι μηχανές στην τράπεζα 5 (βήμα 85)
         incbin  "../build/bank5.bin", 0, G_b5code - B5_BASE
-        ; ΚΑΙ ΚΩΔΙΚΑΣ ΠΑΝΩ ΤΟΥΣ (βήμα 97): οι κοντές στροφές, που τρέχουν με την
-        ; 5 στο παράθυρο (src/bend.asm). Η BANK5.BIN του δίσκου είναι ολόκληρο
-        ; αυτό το κομμάτι (tools/mkdsk.py).
+        ; ΚΑΙ ΚΩΔΙΚΑΣ ΠΑΝΩ ΤΟΥΣ (βήμα 97): οι κοντές στροφές, που έτρεχαν με την
+        ; 5 στο παράθυρο. Από το βήμα 129 το src/bend.asm είναι στο b6code, και
+        ; εδώ τα σχέδια των γωνιών (src/corner.asm), που τα ζωγραφίζει το
+        ; ob_put_in με την 5 μέσα, όπως τους αρμούς. Η BANK5.BIN του δίσκου
+        ; είναι ολόκληρο αυτό το κομμάτι (tools/mkdsk.py).
+B5C_MAX     equ 248                     ; = B5C_MAX του tools/pack.py (272 ως το βήμα 99: 24 στα σήματα των μηχανών)
         org     G_b5code
-        include "bend.asm"
+        include "../build/corner_spr.asm"   ; βήμα 129: τα σχέδια των γωνιών
 zz_b5code_end:
         assert  zz_b5code_end <= G_b5code + B5C_MAX
         assert  G_b5code + B5C_MAX == #8000
@@ -449,6 +452,8 @@ zz_b5code_end:
         include "flow.asm"              ; βήμα 93: η θέση 12, από την τράπεζα 0
         include "repost.asm"            ; βήμα 115: ό,τι χάθηκε από γεμάτο πίνακα
         include "joint.asm"             ; βήμα 96: οι αρμοί, με την 6 στο παράθυρο
+        include "bend.asm"              ; βήμα 97: οι κοντές στροφές (στην 5 ως το 128)
+        include "corner.asm"            ; βήμα 129: οι γωνίες των διαδρόμων
         include "span6.asm"             ; βήμα 114: το αδιαφανές τέλος των κελυφών
         include "walk6.asm"             ; βήμα 118: όποιος περπατά έξω, στο Γ
         include "alert6.asm"            ; βήμα 119: ποια μηχανή, στη γραμμή ειδοποιήσεων

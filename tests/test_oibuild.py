@@ -28,15 +28,17 @@
                   Ως το βήμα 95 οι πόρτες, με το bit των φιγούρων· από το 96 το
                   γράφει η ίδια η μέτρηση των διαδρόμων (jt_mark), και ο
                   αρμός ζωγραφίζεται μετά το κέλυφος. Και από το 97 οι
-                  κοντές στροφές, στο jtb_flags της τράπεζας 5: ένα bit στην
-                  πλευρά της διαγωνίου (scene.dome_bends) — και ο διακόπτης
-                  jtd_sw του src/object.asm, #21 (ld hl) αν υπάρχει έστω μία,
-                  #C9 (ret) αν όχι
+                  κοντές στροφές, στο jtb_flags (τράπεζα 5 ως το βήμα 128, 6
+                  από το 129): ένα bit στην πλευρά της διαγωνίου
+                  (scene.dome_bends) — και ο διακόπτης jtd_sw του
+                  src/object.asm, #C3 (jp· #21, ld hl, ως το 128) αν υπάρχει
+                  έστω μία, #C9 (ret) αν όχι
   και ακόμα       ob_idx = 0, ob_meas = 0, η κάμερα όπως ήταν, η τράπεζα 6 στο
                   παράθυρο
 
 — και τίποτε άλλο: μόνο η στοίβα, οι πρόχειρες μεταβλητές του περάσματος
 αντικειμένων (ob_x ως st_ord, oiw_fn, d_id) και του χτισίματος (oi_e, oi_ptr, oi_k),
+— όχι οι πρόχειρες της γωνίας (βήμα 129, cn_*): η μέτρηση δεν περνά από εκεί,
 και οι φιγούρες των θόλων όταν ξαναχτίζονται.
 
 Οι κατηγορίες που ΔΕΝ ξαναχτίζονται μένουν όπως ήταν, εγγραφές και μετρητές.
@@ -123,9 +125,15 @@ class Rig:
         m.run_frames(60)
         assert m.quickload(TG.COLONY, start=False), "quickload απέτυχε"
         m.run_frames(400)
-        for at, v in patch:
-            m.poke(at, v)
         self.ptr = [cpc._lib.cpcemu_ram_ptr(m._h, n) for n in range(8)]
+        # (at, v) στη μνήμη όπως τη βλέπει ο Z80 τώρα· (n, at, v) στην τράπεζα n
+        # στο παράθυρο, ό,τι κι αν είναι μέσα (το b6code, από το βήμα 129 και
+        # το jtm_bend: η 6 δεν είναι πάντα στο παράθυρο στο frame 400)
+        for p in patch:
+            if len(p) == 3:
+                self.put(p[0], p[1] - 0x4000, [p[2]])
+            else:
+                m.poke(*p)
         self.keep = [self.bank(n) for n in range(8)]
 
     def bank(self, n):
@@ -180,11 +188,52 @@ def box(rects):
 
 
 def corridor_rects(a, col, i):
-    """Τα πλακίδια που ζωγραφίζει το scene.draw_corridor, με την κάμερα στο 0."""
+    """Τα πλακίδια των δύο τρεξιμάτων ΟΛΟΚΛΗΡΩΝ, με την κάμερα στο 0: το κουτί
+    του ευρετηρίου. Από το βήμα 129 το scene.draw_corridor ζωγραφίζει τη γωνία
+    — προς οριζόντιο ένα κομμένο διαγώνιο και ένα μπάλωμα, προς κάθετο ένα
+    σχέδιο 5 x 8 — και η μέτρηση του Z80 δεν τα κοιτάζει: ό,τι φαίνεται από
+    αυτά πέφτει μέσα στα τρεξίματα (opaque_rects, πιο κάτω, και ο έλεγχος στο
+    model)."""
+    cam = S.Camera()
+    d = col.c(i, S.C_A)
+    dr, n = col.c(i, S.C_DIR), col.c(i, S.C_LEN)
+    fx, fy, qw, qh, sz = S.dome_frame(a, cam, col, d)
+    px = a.conn_points[sz * 16 + dr * 2]
+    py = a.conn_points[sz * 16 + dr * 2 + 1]
+    x, y = S.corr_origin(fx + px, fy + py, dr, qw, qh, fx, fy, sz)
+    sx, sy = S.CORR_STEP[dr]
+    w, h = a.dims(S.CORR_SPR[dr & 3])
     out = []
+    for _ in range(n):
+        out.append((x, y, w, h))
+        lastx, lasty = x, y
+        x, y = x + sx, y + sy
+    j = i + 1
+    if j < S.MAX_CORR and col.c(j, S.C_A) == 255 and col.c(j, S.C_STATE):
+        d1 = col.c(j, S.C_DIR)
+        x, y = S.corr_bend(lastx, lasty, sx, sy, d1)
+        vx, vy = S.CORR_STEP[d1]
+        w, h = a.dims(S.CORR_SPR[d1 & 3])
+        for _ in range(col.c(j, S.C_LEN)):
+            out.append((x, y, w, h))
+            x, y = x + vx, y + vy
+    return out
+
+
+def opaque_rects(a, col, i):
+    """Ο,τι ζωγραφίζει ΠΡΑΓΜΑΤΙ το scene.draw_corridor, γωνία μαζί: ανά
+    sprite, το ορθογώνιο των bytes του με μάσκα που δεν είναι #FF."""
+    out = []
+
+    def grab(canvas, rows, x, y, masked, clip):
+        cells = [(bx, by) for by, r in enumerate(rows)
+                 for bx in range(len(r) // 2) if r[2 * bx] != 0xFF]
+        if cells:
+            x0, x1 = min(c[0] for c in cells), max(c[0] for c in cells) + 1
+            y0, y1 = min(c[1] for c in cells), max(c[1] for c in cells) + 1
+            out.append((x + x0, y + y0, x1 - x0, y1 - y0))
     keep = S.blit
-    S.blit = lambda canvas, rows, x, y, masked, clip: out.append(
-        (x, y, len(rows[0]) // (2 if masked else 1), len(rows)))
+    S.blit = grab
     try:
         S.draw_corridor(None, a, S.Camera(), col, i, S.Clip())
     finally:
@@ -203,7 +252,20 @@ def model(a, col):
     corrs = []
     for i in range(S.MAX_CORR):
         if col.c(i, S.C_STATE) and col.c(i, S.C_A) != 255 and col.c(i, S.C_LEN):
-            corrs.append(box(corridor_rects(a, col, i)) + (i,))
+            b = box(corridor_rects(a, col, i))
+            # Ο,τι φαίνεται από τη γωνία (βήμα 129) μέσα στο κουτί των
+            # τρεξιμάτων — για στροφή που βγάζει το route: ο άξονας μοιράζεται
+            # μία φορά με τη διαγώνιο, και η συνέχεια έχει μήκος. Οι τυχαίες
+            # εγγραφές εδώ έχουν και αναστροφές και μήκος 0.
+            j = i + 1
+            if j < S.MAX_CORR and col.c(j, S.C_A) == 255 and col.c(j, S.C_STATE) \
+                    and col.c(j, S.C_DIR) in ((col.c(i, S.C_DIR) + 1) & 7,
+                                              (col.c(i, S.C_DIR) - 1) & 7) \
+                    and col.c(j, S.C_LEN):
+                o = box(opaque_rects(a, col, i))
+                assert b[0] <= o[0] and o[1] <= b[1] and b[2] <= o[2] and o[3] <= b[3], \
+                    f"ο διάδρομος {i} ζωγραφίζει έξω από το κουτί του: {o} > {b}"
+            corrs.append(b + (i,))
     live = [s for s in range(S.MAX_STRUCT) if col.s(s, S.S_STATE)]
     order = sorted(live, key=lambda s: s8(col.s(s, S.S_CY)))
     structs = []
@@ -218,8 +280,9 @@ def model(a, col):
 
 
 def bends(col):
-    """jtb_flags (τράπεζα 5, src/bend.asm): ένα bit ανά κοντή στροφή, στην
-    πλευρά της διαγωνίου (scene.dome_bends) — βήμα 97."""
+    """jtb_flags (src/bend.asm, στο b6code της τράπεζας 6 από το βήμα 129, στην
+    5 ως τότε): ένα bit ανά κοντή στροφή, στην πλευρά της διαγωνίου, ή μείον ένα
+    κάθετα (scene.dome_bends) — βήμα 97."""
     out = bytearray(S.MAX_DOME)
     for d in range(S.MAX_DOME):
         for k in S.dome_bends(col, d):
@@ -312,8 +375,8 @@ def scene(R, a, rnd, case):
     # Βήμα 97: σκουπίδια και στις σημαίες των στροφών — από δικό τους rnd, ώστε
     # οι 300 καταστάσεις, και άρα τα ταβάνια, να μένουν ίδιες.
     frnd = random.Random(9700 + case)
-    R.put(5, sym["JTB_FLAGS"] - 0x4000, bytes(frnd.randrange(256) for _ in range(S.MAX_DOME)))
-    m.poke(sym["JTD_SW"], frnd.choice((0xC9, 0x21)))     # ο διακόπτης, ανοιχτός ή κλειστός
+    R.put(6, sym["JTB_FLAGS"] - 0x4000, bytes(frnd.randrange(256) for _ in range(S.MAX_DOME)))
+    m.poke(sym["JTD_SW"], frnd.choice((0xC9, 0xC3)))     # ο διακόπτης, ανοιχτός ή κλειστός
     m.poke(sym["CAM_TX"], rnd.randrange(-64, 64) & 255)
     m.poke(sym["CAM_TY"], rnd.randrange(-64, 64) & 255)
     m.poke(sym["D_ID"], 255)
@@ -348,8 +411,8 @@ def expect(R, a, before, col, mask):
         for k, v in enumerate(doors(col)):
             poke("DOME_CONN", v, k)
         jf = sym["JTB_FLAGS"] - 0x4000  # βήμα 97: και οι κοντές στροφές
-        b[5][jf:jf + S.MAX_DOME] = bends(col)
-        poke("JTD_SW", 0x21 if any(bends(col)) else 0xC9)   # ld hl,jtb_dome ή ret
+        b[6][jf:jf + S.MAX_DOME] = bends(col)
+        poke("JTD_SW", 0xC3 if any(bends(col)) else 0xC9)   # jp jtb_dome ή ret
     poke("OB_IDX", 0)
     free = {(0, off) for off in range(0x00A0, 0x0100)}                 # η στοίβα
     free |= {(0, off) for off in range(0x3E00, 0x3F00)}                # το probe
@@ -435,8 +498,13 @@ def main():
     m.run_frames(60)
     assert m.quickload(TG.COLONY, start=False)
 
-    def find(at, pat, span=120):
-        i = m.read_ram(sym[at], span).find(bytes(pat))
+    def find(at, pat, span=120, bank=None):
+        if bank is None:
+            raw = bytes(m.read_ram(sym[at], span))
+        else:                                   # στο παράθυρο, από την τράπεζα
+            o = sym[at] - 0x4000
+            raw = ctypes.string_at(cpc._lib.cpcemu_ram_ptr(m._h, bank), 0x4000)[o:o + span]
+        i = raw.find(bytes(pat))
         assert i >= 0, f"δεν βρέθηκε το {pat} στο {at}"
         return sym[at] + i
 
@@ -456,7 +524,8 @@ def main():
             [(find("OI_BUILD", [0x2D, 0x24, 0x22], 30) + k, v)
              for k, v in enumerate([0x21, meas & 255, meas >> 8, 0x34, 0x00])]),
            ("τον διακόπτη που δεν κλείνει (jt_clear)", [(find("JT_CLEAR", [0x3E, 0xC9]) + 1, 0x21)]),
-           ("τον διακόπτη που δεν ανοίγει (jtm_bend)", [(find("JTM_BEND", [0x3E, 0x21]) + 1, 0xC9)])]
+           ("τον διακόπτη που δεν ανοίγει (jtm_bend)",
+            [(6, find("JTM_BEND", [0x3E, 0xC3], bank=6) + 1, 0xC9)])]
     for label, patch in neg:
         why = run(sym, a, patch, n=100)
         if why:

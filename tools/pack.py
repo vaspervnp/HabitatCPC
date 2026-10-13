@@ -421,14 +421,44 @@ def joints(smap, blob):
             f.write("        db      " + ", ".join(f"{x},{y},{k}" for x, y, k in
                                                    tab[8 * sz:8 * sz + 8])
                     + f"   ; {'sml'[sz]}: n ne e se s sw w nw\n")
-        f.write("; Η πρώτη γραμμή του δυτικού και του ανατολικού: ένα pixel (src/bend.asm).\n")
-        f.write(f"jt_pxl  equ G_joints + {desc[1][0]}\n")
-        f.write(f"jt_pxr  equ G_joints + {desc[2][0]}\n")
+        f.write("; Η πρώτη γραμμή του δυτικού και του ανατολικού: ένα pixel, μάσκα και\n")
+        f.write("; δεδομένα (src/bend.asm· από το βήμα 129 στο b6code, όπου δεν φαίνεται\n")
+        f.write("; η τράπεζα 5 — γι' αυτό τα bytes και όχι η διεύθυνσή τους).\n")
+        for nm, sid in (("JT_PXL", 1), ("JT_PXR", 2)):
+            img = spr[sid][2]
+            f.write(f"{nm}_M equ #{img[0]:02X}\n{nm}_D equ #{img[1]:02X}\n")
         f.write("; jt_spr, ανά σχέδιο: διεύθυνση στην τράπεζα 5, πλάτος, ύψος.\n")
         f.write("jt_spr:\n")
         for i, (o, w, h) in enumerate(desc):
             f.write(f"        dw      G_joints + {o}\n        db      {w}, {h}\n")
     return data
+
+
+def corners():
+    """ΟΙ ΓΩΝΙΕΣ ΤΩΝ ΔΙΑΔΡΟΜΩΝ (βήμα 129), από το tools/corner.py: οι θέσεις και
+    οι διαστάσεις στο build/corner_tab.asm (src/corner.asm, b6code), τα σχέδια
+    στο build/corner_spr.asm (η δέσμευση b5code της τράπεζας 5, src/main.asm)."""
+    import corner
+    corner.check_bands()
+    lines = corner.asm_lines()
+    lines.append("; cn_pos: (x bytes, γραμμή) του μπαλώματος από το ΠΡΩΤΟ αξονικό πλακίδιο")
+    lines.append("; (corner.first), οριζόντια και μετά κάθετα, ανά προσανατολισμό (1")
+    lines.append("; δυτικά, 2 βόρεια).")
+    lines.append("cn_pos:")
+    for kind in ("h", "v"):
+        pos = {}
+        for d0 in (1, 3, 5, 7):
+            x, y, o = corner.place(kind, d0)
+            fx, fy = corner.first(kind, d0)
+            pos[o] = (x - fx, y - fy)
+        lines.append("        db      " + ", ".join(f"{pos[o][0]},{pos[o][1]}" for o in range(4))
+                     + f"   ; {kind}: να, νδ, βα, βδ")
+    out = os.path.join(ROOT, "build")
+    os.makedirs(out, exist_ok=True)
+    with open(os.path.join(out, "corner_tab.asm"), "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+    with open(os.path.join(out, "corner_spr.asm"), "w", encoding="utf-8") as f:
+        f.write("\n".join(corner.spr_lines()) + "\n")
 
 
 def mode1_font(m0):
@@ -530,6 +560,7 @@ def build_runs(smap, blob):
     # γκρι, πάνω από το κέλυφος (src/joint.asm). Τα ζωγραφίζει το ob_put_in
     # με την 5 μέσα, όπως τις μηχανές.
     jdata = joints(smap, blob)
+    corners()
     bank5.append(Run("joints", len(jdata), jdata,
                      note="παράγεται: οι αρμοί v, h και d ανά μέγεθος"))
     # ΤΑ ΣΗΜΑΤΑ ΤΩΝ ΜΗΧΑΝΩΝ (βήμα 100): στην 5, όπου ζουν οι μηχανές· τα

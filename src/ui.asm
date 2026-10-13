@@ -1475,7 +1475,7 @@ crr_conns:
         call    dirty_push
         ld      hl,jtb_cc               ; ο b (src/bend.asm, βήμα 97)
         ld      de,dt_end               ; πίσω με την 1
-        jp      jt_b5c
+        jp      jt_b6c
 
 ; cr_stampx — το cr_stamp, και τα tiles του ΜΙΣΟΥ ΠΛΑΤΟΥΣ (βήμα 96). Ο αξονικός
 ; διάδρομος στο κέντρο του θόλου πάει μισό πλάτος πίσω: 1 byte στη στήλη

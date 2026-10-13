@@ -282,6 +282,8 @@ snoop_buf:  defs 96
         include "../src/span6.asm"          ; βήμα 114: στο παιχνίδι στο b6code
         include "../src/walk6.asm"          ; βήμα 118: στο παιχνίδι στο b6code
         include "../src/alert6.asm"         ; βήμα 119: στο παιχνίδι στο b6code
+        include "../src/bend.asm"           ; βήμα 97: στο παιχνίδι στο b6code (129)
+        include "../src/corner.asm"         ; βήμα 129: στο παιχνίδι στο b6code
         include "../src/objindex.asm"
         assert  $ <= #C000
         org     #7000
@@ -292,8 +294,10 @@ snoop_buf:  defs 96
         incbin  "../build/world_col.bin"
         org     B5_BASE                 ; οι μηχανές στην τράπεζα 5 (βήμα 85)
         incbin  "../build/bank5.bin", 0, G_b5code - B5_BASE
-        org     G_b5code                ; και οι κοντές στροφές (βήμα 97), όπως
-        include "../src/bend.asm"       ; στο src/main.asm
+        ; οι κοντές στροφές ήταν εδώ ως το βήμα 128 (src/bend.asm): πήγαν στο
+        ; b6code, εδώ στο #8000 με τα υπόλοιπα· και εδώ τα σχέδια των γωνιών
+        org     G_b5code
+        include "../build/corner_spr.asm"
         org     #8000
         incbin  "../build/bank6_col.bin"
         org     #C000

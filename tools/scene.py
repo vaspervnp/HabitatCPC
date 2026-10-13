@@ -26,6 +26,7 @@ import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from sprites import load_map, load_bin
 from refrender import Canvas, quad_rows, SCR_W, SCR_H
+import corner
 
 # --- εγγραφές, ίδιες με τον Z80 -------------------------------------------
 DOME_REC = 24
@@ -306,20 +307,53 @@ def draw_corridor(canvas, a, cam, colony, i, clip):
     rows = a.rows(CORR_SPR[dr & 3])
     j = i + 1
     cont = j < MAX_CORR and colony.c(j, C_A) == 255 and colony.c(j, C_STATE) != DS_EMPTY
-    for _ in range(n):
-        blit(canvas, rows, x, y, True, clip)
+    d1 = colony.c(j, C_DIR) if cont else None
+    horiz = cont and d1 in (2, 6)
+    for k in range(n):
+        if horiz and k == n - 1:
+            # Η ΓΩΝΙΑ (βήμα 129, tools/corner.py): το τελευταίο διαγώνιο ως το
+            # κάτω χείλος της οριζόντιας λωρίδας — ή από το πάνω, βόρεια.
+            h = corner.H_ROWS
+            if sy > 0:
+                blit(canvas, rows[:h], x, y, True, clip)
+            else:
+                blit(canvas, rows[16 - h:], x, y + 16 - h, True, clip)
+        else:
+            blit(canvas, rows, x, y, True, clip)
         lastx, lasty = x, y
         x += sx
         y += sy
     if not cont:
         return
-    x, y = corr_bend(lastx, lasty, sx, sy, colony.c(j, C_DIR))
-    vx, vy = CORR_STEP[colony.c(j, C_DIR)]
-    rows = a.rows(CORR_SPR[colony.c(j, C_DIR) & 3])
-    for _ in range(colony.c(j, C_LEN)):
+    x, y = corr_bend(lastx, lasty, sx, sy, d1)
+    vx, vy = CORR_STEP[d1]
+    rows = a.rows(CORR_SPR[d1 & 3])
+    x += vx                                 # το πρώτο αξονικό το σκεπάζει η γωνία
+    y += vy
+    for _ in range(colony.c(j, C_LEN) - 1):
         blit(canvas, rows, x, y, True, clip)
         x += vx
         y += vy
+    # το μπάλωμα της ένωσης, πάνω από όλα του διαδρόμου — προς κάθετο το
+    # σχέδιο της γωνίας ολόκληρο, ανάμεσα στη διαγώνιο και στο δεύτερο κάθετο
+    kind = "h" if horiz else "v"
+    px, py, orient = corner.place(kind, dr)
+    blit(canvas, corner_rows(kind, orient), lastx + px, lasty + py, True, clip)
+
+
+def corner_rows(kind, orient):
+    """Το μπάλωμα της γωνίας στον προσανατολισμό orient (bit 0 οριζόντια, bit
+    1 κάθετα), όπως το καθρεφτίζει το ob_blit: τα ζεύγη ανάποδα και κάθε byte
+    με τα δύο του pixels αλλαγμένα."""
+    from refrender import flip_byte
+    _, _, w, h, rows = corner.patch(kind)
+    raw = [bytes(b for m, d in row for b in (m, d)) for row in rows]
+    if orient & 2:
+        raw = raw[::-1]
+    if orient & 1:
+        raw = [bytes(b for i in range(len(r) - 2, -1, -2)
+                     for b in (flip_byte(r[i]), flip_byte(r[i + 1]))) for r in raw]
+    return raw
 
 
 PIX = (0xAA, 0x55)                      # τα bits του αριστερού και του δεξιού pixel
@@ -348,16 +382,18 @@ def dome_dirs(colony, d):
 
 def dome_bends(colony, d):
     """Οι ΚΟΝΤΕΣ ΣΤΡΟΦΕΣ του θόλου (βήμα 97): διάδρομοι που φτάνουν σε αυτόν
-    οριζόντια με ΕΝΑ tile μετά τη στροφή. Για καθέναν η πλευρά k (1 βα, 3 να,
-    5 νδ, 7 βδ) όπου βρίσκεται η διαγώνιος, η αντίθετη της φοράς της."""
+    με ΕΝΑ tile μετά τη στροφή. Για καθέναν η πλευρά k (1 βα, 3 να, 5 νδ, 7
+    βδ) όπου βρίσκεται η διαγώνιος, η αντίθετη της φοράς της — οριζόντια.
+    ΚΑΙ ΚΑΘΕΤΑ από το βήμα 129, με τις γωνίες: τότε k - 1 (0, 2, 4, 6)."""
     out = set()
     for i in range(colony.n_corr - 1):
         if colony.c(i, C_STATE) == DS_EMPTY or colony.c(i, C_B) != d:
             continue
         j = i + 1
         if colony.c(j, C_A) == 255 and colony.c(j, C_STATE) != DS_EMPTY \
-                and colony.c(j, C_LEN) == 1 and colony.c(j, C_DIR) in (2, 6):
-            out.add((colony.c(i, C_DIR) + 4) & 7)
+                and colony.c(j, C_LEN) == 1:
+            k = (colony.c(i, C_DIR) + 4) & 7
+            out.add(k if colony.c(j, C_DIR) in (2, 6) else k - 1)
     return out
 
 
@@ -474,22 +510,30 @@ def bend(a, sz, k):
 
     Από τη ΣΧΕΔΙΑΣΗ, όπως το joint(): ένας θόλος μεγέθους sz στο (40, 30) και
     ένας μικρός από όπου το route.plan βγάζει τέτοια διαδρομή, με τον ίδιο τον
-    διάδρομο και τα δύο κελύφη. Στις άλλες γεωμετρίες (κάθετος, μακρύτερος)
-    δεν μένει κανένα pixel έξω από το joint() — μετρημένο σε όλες τις
-    θέσεις ως 12 tiles (βήμα 97).
+    διάδρομο και τα δύο κελύφη. Στις άλλες γεωμετρίες (μακρύτερος) δεν μένει
+    κανένα pixel έξω από το joint() — μετρημένο σε όλες τις θέσεις ως 12 tiles
+    (βήμα 97).
+
+    ΑΠΟ ΤΟ ΒΗΜΑ 129, ΜΕ ΤΙΣ ΓΩΝΙΕΣ, δύο pixels οριζόντια (το ένα του 97 και
+    το διπλανό του προς τον αρμό) και ένα ΚΑΘΕΤΑ, δίπλα στον αρμό του κάθετου:
+    η γωνία ακουμπά τον δακτύλιο εκεί όπου ως τότε τον ακουμπούσε το πρώτο
+    αξονικό. Το k είναι τότε ζυγό, η πλευρά της διαγωνίου μείον ένα
+    (dome_bends).
     """
     key = (sz, k)
     if key in _BEND:
         return _BEND[key]
     import route
     tx, ty = 40, 30
+    axial = (2, 6) if k & 1 else (0, 4)     # μονό: οριζόντια· ζυγό: κάθετα (129)
+    side = k | 1
     for dy in range(-30, 31):
         for dx in range(-60, 61):
             p = route.plan(tx + dx, ty + dy, 0, tx, ty, sz)
             if p is None or p[0] != 0 or len(p[1]) != 2:
                 continue
             (d0, _), (d1, n1) = p[1]
-            if n1 == 1 and d1 in (2, 6) and (d0 + 4) & 7 == k:
+            if n1 == 1 and d1 in axial and (d0 + 4) & 7 == side:
                 break
         else:
             continue

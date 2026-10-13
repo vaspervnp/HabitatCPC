@@ -253,7 +253,8 @@ done_flag:  db 0
         include "../src/tiles.asm"
         include "../src/object.asm"
         include "../src/joint.asm"          ; βήμα 96: στο παιχνίδι στο b6code
-        include "../src/bend.asm"           ; βήμα 97: στο παιχνίδι στο b5code
+        include "../src/bend.asm"           ; βήμα 97: στο παιχνίδι στο b6code (στο b5code ως το 128)
+        include "../src/corner.asm"         ; βήμα 129: στο παιχνίδι στο b6code
         include "../src/objindex.asm"
         include "../src/span.asm"           ; βήμα 108: στην τράπεζα 0, όπως στο παιχνίδι
         include "../src/span6.asm"          ; βήμα 114: στο παιχνίδι στο b6code
@@ -307,7 +308,9 @@ cr_d1:  db 0
         org     #0000                   ; τράπεζα 4 — το επίπεδο κόσμου
         incbin  "../build/world_col.bin"
         org     B5_BASE                 ; τράπεζα 5 — οι μηχανές (βήμα 85)
-        incbin  "../build/bank5.bin"
+        incbin  "../build/bank5.bin", 0, G_b5code - B5_BASE
+        org     G_b5code                ; και τα σχέδια των γωνιών (βήμα 129)
+        include "../build/corner_spr.asm"
         org     #8000                   ; τράπεζα 6 — τεταρτημόρια ΚΑΙ πίνακες
         incbin  "../build/bank6_col.bin"
         org     #C000                   ; τράπεζα 7

@@ -200,15 +200,20 @@ def bend_route(sz, want):
 
 
 def bend_scenes():
-    """(όνομα, colony, κάμερα): οι δώδεκα κοντές στροφές και οι δύο έλεγχοι."""
+    """(όνομα, colony, κάμερα): οι εικοσιτέσσερις κοντές στροφές (δώδεκα
+    οριζόντιες ως το βήμα 128, και οι κάθετες των γωνιών του 129) και οι δύο
+    έλεγχοι."""
     out = []
     cases = [(f"στροφή {'sml'[sz]} k={k}", sz,
               lambda d0, d1, l1, k=k: l1 == 1 and d1 in (2, 6) and (d0 + 4) & 7 == k)
              for sz in range(3) for k in (1, 3, 5, 7)]
+    cases += [(f"κάθετη στροφή {'sml'[sz]} k={k}", sz,
+               lambda d0, d1, l1, k=k: l1 == 1 and d1 in (0, 4) and (d0 + 4) & 7 == k)
+              for sz in range(3) for k in (1, 3, 5, 7)]
     cases += [("έλεγχος: οριζόντιος, δύο tiles", 1,
                lambda d0, d1, l1: l1 == 2 and d1 in (2, 6)),
-              ("έλεγχος: κάθετος, ένα tile, και οριζόντιος", 1,
-               lambda d0, d1, l1: l1 == 1 and d1 in (0, 4))]
+              ("έλεγχος: κάθετος, δύο tiles, και οριζόντιος", 1,
+               lambda d0, d1, l1: l1 == 2 and d1 in (0, 4))]
     for name, sz, want in cases:
         f, runs = bend_route(sz, want)
         c = S.Colony()
@@ -318,14 +323,20 @@ def bends(sym, a, ag, plane, variants):
         return at + k
     jm, jp, jb = sym["JTB_MARK"], sym["JTB_PX"], sym["JTM_BEND"]
     # Ο διακόπτης του jtd_end (jtd_sw) τον ανοίγει το jtm_bend στη μέτρηση: ένα
-    # ret στη θέση του θα το έσβηνε, γι' αυτό πειράζεται το ld a,#21.
-    neg = [("τον διακόπτη κλειστό (ld a,#C9 στο jtm_bend)", [(find(jb, [0x3E, 0x21]) + 1, 0xC9)]),
-           ("η διαγώνιος από την άλλη πλευρά (add a,0 στο jtb_mark)",
-            [(find(jm, [0xC6, 4]) + 1, 0)]),
+    # ret στη θέση του θα το έσβηνε, γι' αυτό πειράζεται το ld a,#C3 (#21 ως
+    # το βήμα 128).
+    neg = [("τον διακόπτη κλειστό (ld a,#C9 στο jtm_bend)", [(find(jb, [0x3E, 0xC3]) + 1, 0xC9)]),
            ("χωρίς τον έλεγχο του μήκους (jtm_bend)", [(find(jb, [0x25, 0xC0]) + 1, 0)]),
-           ("χωρίς τον έλεγχο του οριζόντιου (jtm_bend)",
-            [(find(jb, [0xCB, 0x4D, 0xC8]) + 2, 0)]),
-           ("το pixel από κάτω μία γραμμή πάνω (add a,8)", [(find(jp, [0xC6, 9]) + 1, 8)])]
+           ("η πλευρά χωρίς τη διαγώνιο (nop αντί για add a,(hl) στο jtb_mark)",
+            [(find(jm, [0x86, 0xE6, 7]), 0)]),
+           # βήμα 129: οι κάθετες στο bit k - 1, οι οριζόντιες στο k
+           ("τις κάθετες στο bit k (ld a,4 στο jtm_bend)", [(find(jb, [0x3E, 3]) + 1, 4)]),
+           ("τις οριζόντιες στο k - 1 (χωρίς το inc a)", [(find(jb, [0x28, 0x01, 0x3C]) + 2, 0)]),
+           ("το οριζόντιο pixel μία γραμμή (qh - 4 αντί για - 5)",
+            [(find(jp, [0xD6, 5]) + 1, 4)]),
+           ("ένα οριζόντιο pixel αντί για δύο (ld b,1)", [(find(jp, [0x06, 2]) + 1, 1)]),
+           ("το κάθετο από κάτω στη 2 qh (χωρίς το dec a)",
+            [(find(jp, [0x87, 0x3D]) + 1, 0)])]
     for label, patch in neg:
         n = sum(1 for (_, c, cam), ref in zip(scenes, refs)
                 if shoot_colony(sym, c, cam, patch)[0] != ref)
