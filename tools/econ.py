@@ -184,6 +184,12 @@ class Econ:
         self.gameover = 0
         self.gloom = 0              # πένθος: ανεβαίνει με κάθε θάνατο
         self.storm = 0              # περιστροφές αμμοθύελλας που απομένουν
+        # Η ΗΣΥΧΙΑ (βήμα 121): πότε άρχισε η τελευταία καταστροφή και πότε
+        # έγινε το τελευταίο γεγονός, [sol, frame] — [0, 0] είναι «ποτέ». Στα
+        # άδεια του node_occ στον Z80 (EC_X, src/const.asm), όχι στην
+        # οικονομία — βλ. x_bytes.
+        self.ldis = [0, 0]
+        self.lev = [0, 0]
         self.amenity = 0            # δέντρα και σαλόνια — παρηγοριά (§6.6)
         # Το μήκος του sol είναι ΔΕΔΟΜΕΝΟ και όχι σταθερά: μια δοκιμή που
         # θέλει να δει πέντε sols δεν μπορεί να περιμένει 60.000 frames.
@@ -466,6 +472,11 @@ def haul_pile(e, i):
 
 
 STORM_LEN = 32          # περιστροφές — περίπου δέκα δευτερόλεπτα
+# ΟΙ ΚΑΤΑΣΤΡΟΦΕΣ ΑΡΑΙΕΣ (βήμα 121, η απόφαση του χρήστη): θύελλα, έκλαμψη και
+# βροχή μετεωριτών μόνο με DIS_POP ζωντανούς, και ποτέ μέσα σε CALM_REVS
+# περιστροφές (δύο sol) από την προηγούμενη· οι βλάβες είναι φθορά, από την
+# αρχή, με FAULT_GAP περιστροφές ανάμεσα — και ανάμεσα σε βλάβη και καταστροφή.
+DIS_POP, FAULT_GAP = 20, 64
 
 
 def break_one(e, x):
@@ -522,14 +533,21 @@ def events(e):
     # αποικίας σταματούσε κάθε 1,3 sol και τα τέσσερα ανταλλακτικά του §10.1
     # τελείωναν σε τρία sols — μετά την πρώτη βλάβη χωρίς ανταλλακτικό,
     # ασφυξία. Και η έκλαμψη 1/256, δηλαδή τρεις φορές το sol.
+    # Η ΗΣΥΧΙΑ (βήμα 121, src/econ.asm): καμία καταστροφή με λιγότερους από
+    # DIS_POP ζωντανούς, μέσα σε δύο sol από την προηγούμενη, ή μέσα σε
+    # FAULT_GAP περιστροφές από οποιοδήποτε γεγονός (may) — ρωτημένα μόνο
+    # αφού πέσει η ζαριά.
     if e.storm:                             # αμμοθύελλα: τα πάνελ σκεπάζονται
         e.storm -= 1
-    elif (r2 >> 7) == 0:                    # τα ΨΗΛΑ bits του δεύτερου, 1/512
+    elif r2 < 32 and may(e):                # τα ΨΗΛΑ bits του δεύτερου, 1/2048
         e.storm = STORM_LEN
+        mark(e)
 
     # 1/256 από το βήμα 120: και το bit 0 του r1, που δεν είναι μέρος του r3
-    # (src/econ.asm, ev_fault).
-    if (r3 & 0x7F) == 0 and not r1 & 1:     # απλή βλάβη: τα χαμηλά του τρίτου
+    # (src/econ.asm, ev_fault). Φθορά από το βήμα 121: με FAULT_GAP ανάμεσα.
+    if ((r3 & 0x7F) == 0 and not r1 & 1     # απλή βλάβη: τα χαμηλά του τρίτου
+            and since(e, e.lev) >= FAULT_GAP * 16):
+        e.lev = [e.sol, e.frame]
         # Ο ΔΕΙΚΤΗΣ ΑΠΟ ΤΑ BITS ΠΟΥ ΠΕΡΙΣΣΕΨΑΝ, και από ΚΑΝΕΝΑ άλλο νούμερο:
         # το r2 είναι η προηγούμενη ρίψη του ίδιου Galois, και ο πολλαπλασιαστής
         # #B400 δεν αγγίζει το χαμηλό byte — άρα με μηδενικά τα χαμηλά του r3
@@ -549,13 +567,58 @@ def events(e):
     if (r2 & 0x7FF) == MER_ROLL and e.ship_state == SHIP_NONE and e.pad_node != 255:
         call_ship(e, unbidden(e, SK_MERCHANT))
 
-    if (r3 >> 6) == 0:                      # ηλιακή έκλαμψη: τα ψηλά του ίδιου
-        break_one(e, r3 + 37)               # 1/1024 — τρεις ανά τέσσερα sols
+    # ηλιακή έκλαμψη: τα ψηλά του ίδιου, και από το βήμα 121 μία περιστροφή στις
+    # τέσσερις του ρολογιού (1/4096): οι στόχοι θέλουν όλα τα 64 του r3, και το
+    # r3 < 64 ορίζει ήδη το r1 — στις τρεις ζαριές δεν μένει ελεύθερο bit.
+    if (r3 >> 6) == 0 and (e.frame >> 4) & 3 == 0 and may(e):
+        mark(e)
+        break_one(e, r3 + 37)
         break_one(e, (r3 >> 3) + 101)
         break_one(e, (r3 >> 1) + 173)
 
     meteor_tick(e, r1)
     return new_sol
+
+
+def since(e, t):
+    """ev_since: frames από το γεγονός t = [sol, frame]. 0xFFFF από τρία sol
+    και πάνω, και για το [0, 0], «ποτέ»."""
+    if t == [0, 0]:
+        return 0xFFFF
+    d = (e.sol - t[0]) & 0xFF
+    if d >= 3:
+        return 0xFFFF
+    return (d * e.sollen + e.frame - t[1]) & 0xFFFF
+
+
+def may(e):
+    """ev_may: μπορεί να αρχίσει καταστροφή τώρα;"""
+    return (e.alive >= DIS_POP and since(e, e.lev) >= FAULT_GAP * 16
+            and since(e, e.ldis) >= 2 * e.sollen)
+
+
+def mark(e):
+    """ev_mark: μια καταστροφή άρχισε τώρα — και είναι το τελευταίο γεγονός."""
+    e.ldis = [e.sol, e.frame]
+    e.lev = [e.sol, e.frame]
+
+
+def x_bytes(e):
+    """Τα πεδία του βήματος 121 όπως κάθονται στο EC_X (τράπεζα 6, στο πάνω
+    μισό του node_occ, θέση X_OFF): [sol, frame] της τελευταίας καταστροφής,
+    και του τελευταίου γεγονότος."""
+    return bytes([e.ldis[0]]) + int(e.ldis[1]).to_bytes(2, "little") + \
+        bytes([e.lev[0]]) + int(e.lev[1]).to_bytes(2, "little")
+
+
+X_OFF = 128 + 96 + 4                    # AG_FOE0 + AG_NFOE στο πάνω μισό
+X_N = 6
+
+
+def occ_hi(e):
+    """Το πάνω μισό της σελίδας node_occ για το harness: τα σημάδια των
+    φιγούρων μηδέν, και τα πεδία του EC_X στη θέση τους."""
+    return bytes(X_OFF - 128) + x_bytes(e) + bytes(256 - X_OFF - X_N)
 
 
 # --- η βροχή μετεωριτών (§6.10) — το src/meteor.asm, γραμμή προς γραμμή -----
@@ -616,6 +679,8 @@ def meteor_tick(e, r1):
         return
     if (r1 >> 4) != 0xFFF:
         return
+    if not may(e):                          # βήμα 121: ev_may
+        return
     e.mrnd = (r1 ^ e.frame) & 0xFFFF or 1
     c = _mbyte(e) & 127
     for _ in range(128):
@@ -625,6 +690,7 @@ def meteor_tick(e, r1):
                 e.mcx = _s8(rec[b + D_CX]) >> 1
                 e.mcy = _s8(rec[b + D_CY]) >> 1
                 e.meteor = METEOR_N
+                mark(e)
                 return
         c = (c + 1) & 127
 

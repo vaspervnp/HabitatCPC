@@ -18,6 +18,10 @@ tile, γεμάτος πίνακας εργασιών, σπόρος που θα �
                   μια δομή που ξαναγίνεται εργοτάξιο (DK_TILE, το tile του
                   κέντρου της): οι ρίγες του εργοταξίου· αν η λίστα είναι
                   γεμάτη, σηκώνεται η σημαία
+  η ησυχία        από το βήμα 121 μια βροχή αρχίζει μόνο αν το ev_may το
+                  επιτρέπει (20 ζωντανοί, δύο sol από την προηγούμενη
+                  καταστροφή, 64 περιστροφές από το τελευταίο γεγονός), και
+                  τότε οι δύο χρονοσφραγίδες στην τράπεζα 6 είναι το τώρα
   και ακόμα       mt_boom = 1 σε κάθε κρούση, ec_fdiv = 1 όταν μια δομή ξαναγίνει
                   εργοτάξιο, eb_d/eb_s όταν σταματά μηχανή θόλου, και η τράπεζα 6
                   στο παράθυρο όταν γυρίζει· από το βήμα 115 το jb_lost (το
@@ -62,6 +66,7 @@ FT_CLS = 250                             # src/const.asm: τα φυτά δεν �
 CEIL = {
     "ήσυχο": 41,        # καμία βροχή, καμία αρχή                         41
     "αρχή": 7041,       # ξεκινά βροχή (ή δεν βρίσκει κτίριο)           8451
+    "ησυχία": 193,      # η ζαριά έπεσε, η ησυχία λέει όχι (βήμα 121)
     "έξω": 285,         # κρούση έξω από τον κόσμο                       299
     "κτίριο": 5270,     # κρούση σε κτίριο                              6440
     "έδαφος": 5170,     # κρούση στο έδαφος, με ή χωρίς κρατήρα         6389
@@ -221,6 +226,25 @@ def scene(R, rnd, case):
                      0xFFF0 ^ (1 << rnd.randrange(16))])     # δίπλα στο όριο
     fr = r1 if kind == 0 and rnd.random() < 0.05 else rnd.randrange(65536)
     e[52], e[53] = fr & 255, fr >> 8
+    # Η ΗΣΥΧΙΑ (βήμα 121, ev_may): ζωντανοί, sol, και οι δύο χρονοσφραγίδες
+    # [sol, frame] στην τράπεζα 6 — από δική τους γεννήτρια, ώστε οι σκηνές
+    # του βήματος 76 να μένουν ίδιες. «Ποτέ» τις μισές φορές, για να αρχίζουν
+    # βροχές· πρόσφατη, πριν από τρία sol, ή ό,τι να 'ναι τις άλλες.
+    q = random.Random(1210 + case)
+    e[58] = q.choice([20, 20, 45, 19, 4])
+    e[51] = q.randrange(256)
+
+    def stamp():
+        k = q.randrange(6)
+        if k < 3:
+            return [0, 0, 0]
+        if k == 3:
+            f = (fr - q.randrange(1, 3000)) & 0xFFFF
+            return [e[51], f & 255, f >> 8]
+        if k == 4:
+            return [(e[51] - 3) & 255, q.randrange(256), q.randrange(256)]
+        return [q.randrange(256) for _ in range(3)]
+    R.put(6, L["G_node_occ"] - 0x4000 + EC.X_OFF, bytes(stamp() + stamp()))
     R.put(2, ge, e)
     m, sym = R.m, R.sym
     m.poke(sym["EV_R1"], r1 & 255)
@@ -257,6 +281,11 @@ def expect(R, before, r1):
     e.mrnd = raw[89] | (raw[90] << 8)
     e.nbuild = raw[91]                       # EC_NBUILD (βήμα 88)
     e.frame = raw[52] | (raw[53] << 8)
+    e.alive, e.sol = raw[58], raw[51]        # η ησυχία (βήμα 121)
+    e.sollen = raw[64] | (raw[65] << 8)
+    gx = L["G_node_occ"] - 0x4000 + EC.X_OFF
+    x = b[6][gx:gx + EC.X_N]
+    e.ldis, e.lev = [x[0], x[1] | x[2] << 8], [x[3], x[4] | x[5] << 8]
     e.flow_div = 255
     e.lost = False                           # βήμα 115: σηκώνεται μόνο αν δεν χώρεσε
     impact = e.meteor > 0
@@ -266,7 +295,8 @@ def expect(R, before, r1):
         tx, ty = s8(e.mcx + (byte & 15) - 8), s8(e.mcy + (byte >> 4) - 8)
         inside = -64 <= tx < 64 and -64 <= ty < 64
         node = hit_node(e, tx, ty) if inside else None
-    started = not impact and (r1 >> 4) == 0xFFF
+    rolled = not impact and (r1 >> 4) == 0xFFF
+    started = rolled and EC.may(e)
     dome0 = bytes(e.dome)                    # η υγεία πριν, για το σήμα (βήμα 100)
     struct0 = bytes(e.struct)                # η κατάσταση πριν, για τις ρίγες (βήμα 109)
     EC.meteor_tick(e, r1)
@@ -277,6 +307,7 @@ def expect(R, before, r1):
     b[2][ge + 87], b[2][ge + 88] = e.mcx & 255, e.mcy & 255
     b[2][ge + 89], b[2][ge + 90] = e.mrnd & 255, e.mrnd >> 8
     b[2][ge + 91] = e.nbuild & 255
+    b[6][gx:gx + EC.X_N] = EC.x_bytes(e)
 
     def poke(name, v):
         a = sym[name]
@@ -297,7 +328,7 @@ def expect(R, before, r1):
     if e.lost:
         poke("JB_LOST", sym["JB_LOST"] >> 8)  # ld hl,jb_lost · ld (hl),h
     if not impact:
-        return b, "αρχή" if started else "ήσυχο"
+        return b, "αρχή" if started else "ησυχία" if rolled else "ήσυχο"
     poke("MT_BOOM", 1)
     if not inside:
         return b, "έξω"

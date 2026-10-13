@@ -75,7 +75,8 @@ def run_z80(sym, g, sim, ticks, move_n=None, decay_n=None, off=(), pin=None,
     enter(m, sym, "SAVE_STATE")
     return (m.read_ram(STAGE_AG, 2048), m.read_ram(STAGE_OCC, 128), frames,
             m.read_ram(STAGE_DOME, 1536), m.read_ram(STAGE_STR, 32 * 8),
-            m.read_ram(sym["G_ECON_STATE"], EC.ECON_BYTES),
+            m.read_ram(sym["G_ECON_STATE"], EC.ECON_BYTES) +
+            m.read_ram(STAGE_OCC + EC.X_OFF, EC.X_N),   # EC_X (βήμα 121)
             m.read_ram(sym["G_JOB_TBL"], EC.MAX_JOB * EC.JOB_REC),
             m.read_ram(sym["G_ROOM_N"], 12) +
             m.read_ram(sym["G_ROOM_LIST"], 96))
@@ -112,7 +113,9 @@ def z80_load(sym, g, sim, rt_n=None, patch=()):
     enter(m, sym, "BUILD_ROUTES")
 
     m.write_ram(STAGE_AG, sim.a.to_bytes())
-    m.write_ram(STAGE_OCC, bytes(sim.occ) + bytes(128))
+    # Το πάνω μισό της σελίδας: τα σημάδια των φιγούρων μηδέν, και από το
+    # βήμα 121 η ησυχία των καταστροφών στα άδεια των πρακτόρων 100-127.
+    m.write_ram(STAGE_OCC, bytes(sim.occ[:128]) + EC.occ_hi(sim.e))
     m.write_ram(STAGE_DOME, bytes(sim.e.dome))
     m.write_ram(STAGE_STR, bytes(sim.e.struct))
     m.write_ram(sym["G_ECON_STATE"], EC.to_bytes(sim.e))   # τράπεζα 2, βασική
@@ -158,6 +161,12 @@ def check_occ(blob, occ, g):
     return None
 
 
+def econ_bytes(e):
+    """Η οικονομία όπως τη διαβάζει το run_z80: τα ECON_BYTES της τράπεζας 2,
+    και από το βήμα 121 τα έξι του EC_X (η ησυχία) στην τράπεζα 6."""
+    return EC.to_bytes(e) + EC.x_bytes(e)
+
+
 def fresh(g, nexthop, src):
     """Αντίγραφο της αρχικής κατάστασης — ο Z80 και η αναφορά ξεκινούν ίδια."""
     s = E.Sim(g, nexthop, src.e.dist)
@@ -179,7 +188,8 @@ def fresh(g, nexthop, src):
               "sollen", "daylen", "prod_mask", "ship_state", "ship_kind",
               "ship_eta", "pop_cap", "pad_node", "milestones", "deaths_sol",
               "no_death_sols", "green_sols", "no_trade_sols", "traded",
-              "meteor", "mcx", "mcy", "mrnd", "nbuild", "markup", "lands"):
+              "meteor", "mcx", "mcy", "mrnd", "nbuild", "markup", "lands",
+              "ldis", "lev"):
         setattr(s.e, f, getattr(src.e, f))
     return s
 
@@ -272,7 +282,7 @@ def main():
             print(f"    {j:2d}  Z80 {list(got_job[j*5:j*5+5])} != "
                   f"αναφορά {list(sim.e.job[j*5:j*5+5])}")
         return 1
-    want_econ = EC.to_bytes(sim.e)
+    want_econ = econ_bytes(sim.e)
     if got_econ != want_econ:
         # Η διάταξη περιγράφεται μία φορά, εδώ, και ακολουθεί την to_bytes.
         w16 = [f"stock:{n}" for n in EC.STOCKS] + [
@@ -287,7 +297,9 @@ def main():
                   (64, 2, ["sollen", "daylen", "prod_mask", "ship_eta"]),
                   (72, 1, ["ship_state", "ship_kind", "pop_cap", "milestones",
                            "deaths_sol", "no_death_sols", "green_sols",
-                           "no_trade_sols", "traded", "pad_node"])]
+                           "no_trade_sols", "traded", "pad_node"]),
+                  (108, 1, ["ldis_sol"]), (109, 2, ["ldis_frame"]),   # βήμα 121
+                  (111, 1, ["lev_sol"]), (112, 2, ["lev_frame"])]
         print("ΑΠΟΤΥΧΙΑ οικονομία:")
         for base, width, names in groups:
             for j, n in enumerate(names):
@@ -316,6 +328,22 @@ def main():
     landings = crew_landed = 0
     was_landed = False
     watch = fresh(g, nexthop, sim0)
+    # ΜΙΑ ΒΛΑΒΗ ΣΤΗΝ ΠΡΩΤΗ ΖΑΡΙΑ (βήμα 121). Με 1/256 ανά περιστροφή και το
+    # κενό FAULT_GAP οι 320 περιστροφές του παραθύρου τη χάνουν συχνά, και ως
+    # το 120 τη βρίσκαν από τύχη. Ο σπόρος διαλέγεται ώστε η πρώτη ζαριά της
+    # θέσης 15 να σταματήσει μια μηχανή που δουλεύει: ο κύκλος του §6.10 —
+    # βλάβη, επισκευή με ανταλλακτικό — κλείνει μέσα στο παράθυρο.
+    def first_fault(x):
+        r1 = EC.lfsr(x)
+        r3 = EC.lfsr(EC.lfsr(r1))
+        if r3 & 0x7F or r1 & 1:
+            return False
+        e = fresh(g, nexthop, sim0).e
+        before = bytes(e.dome)
+        EC.break_one(e, r3 >> 7)
+        return bytes(e.dome) != before
+    hz_seed = next(x for x in range(1, 65536) if first_fault(x))
+    watch.e.rnd = hz_seed
     head_before = sum(1 for i in range(128) if watch.a.flags[i] & E.F_ALIVE)
     prev = bytes(watch.e.dome)
     for _ in range(HAZ):
@@ -343,6 +371,7 @@ def main():
 
     # Το θερμοκήπιο συνεισφέρει; Το ίδιο τρέξιμο με άδειες γλάστρες.
     bare = fresh(g, nexthop, sim0)
+    bare.e.rnd = hz_seed
     for d in range(EC.MAX_DOME):
         b = d * EC.DOME_REC
         if bare.e.dome[b + EC.D_ROOM] == EC.R_GREENHOUSE:
@@ -531,6 +560,10 @@ def main():
 
     # --- κάθε ζαριά της θέσης 15, στημένη (βήμα 46) ---
     if event_branches(sym, g, nexthop, sim0):
+        return 1
+
+    # --- η ησυχία των καταστροφών και το κενό των βλαβών (βήμα 121) ---
+    if calm_branches(sym, g, nexthop, sim0):
         return 1
 
     # --- οι ανάγκες στα όριά τους (βήμα 53) ---
@@ -770,11 +803,15 @@ def event_branches(sym, g, nexthop, sim0):
     # Η ΒΛΑΒΗ ΔΥΟ ΦΟΡΕΣ από το βήμα 120: 1/256, τα χαμηλά επτά του r3 ΚΑΙ το
     # bit 0 του r1. Η δεύτερη έχει τα επτά μηδέν και το r1 περιττό, και θα
     # σταματούσε μια γερή μηχανή αν το bit δεν κοιταζόταν (το αρνητικό).
+    # Από το βήμα 121 η έκλαμψη θέλει και μία περιστροφή στις τέσσερις του
+    # ρολογιού (το frame της στημένης κατάστασης) και η θύελλα r2 < 32, και οι
+    # δύο ΟΧΙ μέσα στην ησυχία: η αποικία της δοκιμής έχει 80 ζωντανούς, και
+    # το calm και το fgap ξεκινούν από μηδέν (calm_branches για τα όρια).
     cases = (
-        ("έκλαμψη", lambda r1, r2, r3: r3 >> 8 == 0 and r3 & 0xC0 == 0),
+        ("έκλαμψη", lambda r1, r2, r3: r3 < 64 and r2 >= 32),   # όχι θύελλα πρώτα
         ("βλάβη", lambda r1, r2, r3: r3 & 0x7F == 0 and r3 >> 8 and not r1 & 1),
         ("βλάβη που κόβει το r1", lambda r1, r2, r3: r3 & 0x7F == 0 and r3 >> 8 and r1 & 1),
-        ("θύελλα", lambda r1, r2, r3: r2 >> 8 == 0 and r2 & 0x80 == 0),
+        ("θύελλα", lambda r1, r2, r3: r2 < 32),
         ("επισκέπτες", lambda r1, r2, r3: r2 & 0x7FF == 0),
     )
     flare_x = cut_x = None
@@ -788,12 +825,14 @@ def event_branches(sym, g, nexthop, sim0):
             x = xs[0]
         st = fresh(g, nexthop, base)
         st.e.rnd = x
+        # Η ζαριά βλέπει frame + 16: 64, μία περιστροφή στις τέσσερις (βήμα 121).
+        st.e.frame = 48
         if same(sym, g, nexthop, st, 20, f"ζαριά: {name}") is None:
             return 1
     n = broken_by(flare_x)
     # ΑΡΝΗΤΙΚΟ: η πρώτη μετατόπιση της έκλαμψης 37 -> 38 στον πίνακα.
     st = fresh(g, nexthop, base)
-    st.e.rnd = flare_x
+    st.e.rnd, st.e.frame = flare_x, 48
     if n == 0 or same(sym, g, nexthop, st, 20, "", quiet=True,
                       patch=[(sym["EV_FL_TAB"] + 1, 38)]) is not None:
         print(f"ΑΠΟΤΥΧΙΑ ζαριά: η έκλαμψη σταμάτησε {n} μηχανές, και με "
@@ -816,6 +855,163 @@ def event_branches(sym, g, nexthop, sim0):
           f"r1, θύελλα, επισκέπτες — ίδια bytes στον Z80 και στην αναφορά. ΑΡΝΗΤΙΚΑ: "
           f"με 37 -> 38 στον πίνακα της έκλαμψης, και χωρίς το bit του r1 στη "
           f"βλάβη, διαφέρουν")
+    return 0
+
+
+def calm_branches(sym, g, nexthop, sim0):
+    """Η ΗΣΥΧΙΑ (βήμα 121, src/econ.asm): η θέση 15 καρφωμένη, με σπόρους που
+    ρίχνουν θύελλα, έκλαμψη, βροχή μετεωριτών και βλάβη στην πρώτη ζαριά — με
+    19 και με 20 ζωντανούς, ακριβώς στα δύο sol μετά την προηγούμενη
+    καταστροφή και μία περιστροφή νωρίτερα, ακριβώς FAULT_GAP περιστροφές μετά
+    από το τελευταίο γεγονός και μία νωρίτερα. Ολα τα bytes ίδια στον Z80 και
+    στην αναφορά, και το αποτέλεσμα όπως το θέλει ο κανόνας. Μετά 12 sol ζαριών
+    με 20 ζωντανούς: τα κενά."""
+    base = fresh(g, nexthop, sim0)
+    spread(base.e)
+    EC.rooms_rebuild(base.e, base.pc)
+    base.e.storm = 0
+    # Το πραγματικό sol (12.000 frames, όχι 320): τα δύο sol και οι FAULT_GAP
+    # περιστροφές (1.024 frames) θέλουν να χωρούν στο ίδιο ρολόι. Η ζαριά
+    # βλέπει sol 1, frame 2.048: μία περιστροφή στις τέσσερις, για την έκλαμψη.
+    base.e.sollen, base.e.daylen = EC.SOL_FRAMES, EC.DAY_FRAMES
+    base.e.sol, base.e.frame = 1, 2032
+    NOW = [1, 2048]
+    keys = lambda z: (z.a.to_bytes(), bytes(z.e.dome), bytes(z.e.struct),
+                      econ_bytes(z.e), bytes(z.e.job), bytes(z.occ[:128]))
+
+    def z80(st, n, patch=()):
+        got = run_z80(sym, g, fresh(g, nexthop, st), n, pin=15,
+                      rt_n=EC.MAX_DOME + EC.MAX_STRUCT, patch=patch)
+        return (got[0], got[3], got[4], got[5], got[6], got[1])
+
+    def rolls(x):
+        r1 = EC.lfsr(x)
+        r2 = EC.lfsr(r1)
+        return r1, r2, EC.lfsr(r2)
+
+    def first(hit):
+        return next(x for x in range(1, 65536) if hit(*rolls(x)))
+
+    storm_x = first(lambda r1, r2, r3: r2 < 32 and (r3 & 0x7F or r1 & 1))
+    both_x = first(lambda r1, r2, r3: r2 < 32 and not r3 & 0x7F and not r1 & 1)
+    flare_x = first(lambda r1, r2, r3: r3 < 64 and r2 >= 32)   # όχι θύελλα πρώτα
+    rain_x = first(lambda r1, r2, r3: r1 >> 4 == 0xFFF)
+    fault_x = first(lambda r1, r2, r3: not r3 & 0x7F and not r1 & 1 and r2 >= 32)
+    N = [0, 0]                                  # ποτέ
+    TWO = 2 * EC.SOL_FRAMES                     # 24.000 frames πριν: sol 255
+    GAP = EC.FAULT_GAP * 16
+    at = lambda back: [(NOW[0] * EC.SOL_FRAMES + NOW[1] - back) // EC.SOL_FRAMES & 255,
+                       (NOW[0] * EC.SOL_FRAMES + NOW[1] - back) % EC.SOL_FRAMES]
+    # (όνομα, σπόρος, ζωντανοί, ldis, lev, ό,τι πρέπει να ισχύει μετά)
+    cases = (
+        ("θύελλα, 20 ζωντανοί", storm_x, 20, N, N,
+         lambda e: e.storm == EC.STORM_LEN and e.ldis == NOW and e.lev == NOW),
+        ("θύελλα, 19 ζωντανοί", storm_x, 19, N, N,
+         lambda e: e.storm == 0 and e.ldis == N),
+        ("θύελλα ακριβώς δύο sol μετά", storm_x, 20, at(TWO), N,
+         lambda e: e.storm == EC.STORM_LEN and e.ldis == NOW),
+        ("θύελλα μία περιστροφή νωρίτερα", storm_x, 20, at(TWO - 16), N,
+         lambda e: e.storm == 0 and e.ldis == at(TWO - 16)),
+        ("θύελλα ακριβώς FAULT_GAP μετά από βλάβη", storm_x, 20, N, at(GAP),
+         lambda e: e.storm == EC.STORM_LEN),
+        ("θύελλα μία περιστροφή νωρίτερα από το κενό", storm_x, 20, N, at(GAP - 16),
+         lambda e: e.storm == 0 and e.lev == at(GAP - 16)),
+        ("θύελλα και βλάβη στην ίδια ζαριά", both_x, 20, N, N,
+         lambda e: e.storm == EC.STORM_LEN and e.lev == NOW),
+        ("έκλαμψη, 20 ζωντανοί", flare_x, 20, N, N, lambda e: e.ldis == NOW),
+        ("έκλαμψη, 19 ζωντανοί", flare_x, 19, N, N, lambda e: e.ldis == N),
+        ("βροχή, 20 ζωντανοί", rain_x, 20, N, N,
+         lambda e: e.meteor == EC.METEOR_N and e.ldis == NOW),
+        ("βροχή, 19 ζωντανοί", rain_x, 19, N, N, lambda e: e.meteor == 0),
+        ("βροχή στην ησυχία", rain_x, 20, at(GAP), at(GAP),
+         lambda e: e.meteor == 0 and e.ldis == at(GAP)),
+        ("βλάβη, 3 ζωντανοί", fault_x, 3, N, N,
+         lambda e: e.lev == NOW and e.ldis == N),
+        ("βλάβη μία περιστροφή νωρίτερα", fault_x, 3, N, at(GAP - 16),
+         lambda e: e.lev == at(GAP - 16)),
+        ("βλάβη στο κενό μιας καταστροφής", fault_x, 20, at(GAP - 16), at(GAP - 16),
+         lambda e: e.lev == at(GAP - 16)),
+    )
+    starts = {}
+    for name, x, alive, ldis, lev, ok in cases:
+        st = fresh(g, nexthop, base)
+        st.e.rnd, st.e.alive, st.e.ldis, st.e.lev = x, alive, list(ldis), list(lev)
+        want = fresh(g, nexthop, st)
+        slot15(want, 1)
+        if not ok(want.e):
+            print(f"ΑΠΟΤΥΧΙΑ ησυχία: «{name}» — η αναφορά: θύελλα {want.e.storm}, "
+                  f"βροχή {want.e.meteor}, ldis {want.e.ldis}, lev {want.e.lev}")
+            return 1
+        if z80(st, 1) != keys(want):
+            print(f"ΑΠΟΤΥΧΙΑ ησυχία: «{name}» — ο Z80 διαφέρει από την αναφορά")
+            return 1
+        starts[name] = (st, keys(want))
+
+    # 12 SOL ΖΑΡΙΩΝ: 9.000 περιστροφές με 20 ζωντανούς, ίδια bytes στο τέλος,
+    # και στην αναφορά κάθε καταστροφή απέχει από την προηγούμενη τουλάχιστον
+    # δύο sol, κάθε βλάβη τουλάχιστον FAULT_GAP περιστροφές από ό,τι έγινε πριν
+    # ή μετά της.
+    LONG = 9000
+    st = fresh(g, nexthop, base)
+    st.e.rnd, st.e.alive = 0xBEEF, 20
+    sim = fresh(g, nexthop, st)
+    t = lambda v: v[0] * EC.SOL_FRAMES + v[1]
+    dis, faults = [], []
+    for _ in range(LONG):
+        d0, v0 = sim.e.ldis, sim.e.lev
+        slot15(sim, 1)
+        if sim.e.ldis != d0:
+            dis.append(t(sim.e.ldis))
+        elif sim.e.lev != v0:
+            faults.append(t(sim.e.lev))
+    want = keys(sim)
+    if z80(st, LONG) != want:
+        print(f"ΑΠΟΤΥΧΙΑ ησυχία: {LONG} περιστροφές — ο Z80 διαφέρει από την αναφορά")
+        return 1
+    gaps = [b - a for a, b in zip(dis, dis[1:])]
+    events = sorted(dis + faults)
+    near = [b for a, b in zip(events, events[1:]) if b - a < GAP]
+    if len(dis) < 2 or min(gaps) < TWO or near:
+        print(f"ΑΠΟΤΥΧΙΑ ησυχία: καταστροφές στα frames {dis}, κενά {gaps}, "
+              f"γεγονότα πιο κοντά από {GAP} {near}")
+        return 1
+    print(f"OK ησυχία:   {len(cases)} ζαριές στα όρια — θύελλα, έκλαμψη και βροχή με "
+          f"20 ζωντανούς και όχι με 19, ακριβώς δύο sol μετά την προηγούμενη και όχι "
+          f"μία περιστροφή νωρίτερα, ακριβώς {EC.FAULT_GAP} περιστροφές μετά από "
+          f"βλάβη και όχι νωρίτερα, θύελλα και βλάβη μαζί μόνο η θύελλα, βλάβη και "
+          f"με 3 ζωντανούς — ίδια bytes στον Z80 και στην αναφορά· {LONG} περιστροφές "
+          f"ίδιες, {len(dis)} καταστροφές με κενά {min(gaps) / EC.SOL_FRAMES:.2f}-"
+          f"{max(gaps) / EC.SOL_FRAMES:.2f} sol, {len(faults)} βλάβες, κανένα γεγονός "
+          f"πιο κοντά από {EC.FAULT_GAP} περιστροφές")
+
+    # ΑΡΝΗΤΙΚΑ: ο Z80 πειραγμένος, η αναφορά όχι.
+    def code_at(name, pat, span=64):
+        a = sym[name]
+        code = run_peek(sym, a, span)
+        k = next((k for k in range(span - len(pat) + 1)
+                  if code[k:k + len(pat)] == pat), None)
+        return None if k is None else a + k
+    may = sym["EV_MAY"]
+    negs = []
+    a = code_at("EV_MAY", [0xFE, EC.DIS_POP, 0xD8])
+    negs.append(("καταστροφές από 19 ζωντανούς", "θύελλα, 19 ζωντανοί",
+                 a and [(a + 1, 19)]))
+    a = code_at("EV_MAY", [0xD8, 0xED, 0x42, 0xC9])
+    negs.append(("ησυχία ενός sol", "θύελλα μία περιστροφή νωρίτερα",
+                 a and [(a + 1, 0), (a + 2, 0)]))
+    a = code_at("EV_FAULT", [0x01, GAP & 255, GAP >> 8])
+    negs.append(("βλάβη χωρίς κενό", "βλάβη μία περιστροφή νωρίτερα",
+                 a and [(a + 1, 0), (a + 2, 0)]))
+    a = code_at("MT_TICK", [0xCD, may & 255, may >> 8, 0xD8])
+    negs.append(("βροχή χωρίς ησυχία", "βροχή, 19 ζωντανοί", a and [(a + 3, 0)]))
+    for what, case, patch in negs:
+        st, want = starts[case]
+        if not patch or z80(st, 1, patch=patch) == want:
+            print(f"ΑΠΟΤΥΧΙΑ ησυχία: ΑΡΝΗΤΙΚΟ «{what}» — "
+                  f"{'το μοτίβο δεν βρέθηκε' if not patch else 'ο Z80 βγαίνει ίδιος'}")
+            return 1
+    print(f"OK ησυχία:   ΑΡΝΗΤΙΚΑ — {', '.join(n for n, _, _ in negs)}: ο Z80 "
+          f"διαφέρει από την αναφορά")
     return 0
 
 
@@ -1283,7 +1479,7 @@ def ship_branches(sym, g, nexthop, sim0):
     # ΚΑΙ ΟΙ ΜΑΣΚΕΣ ΘΕΣΕΩΝ (βήμα 92): ένας καινούργιος πιάνει θέση στον κόμβο
     # του, και ως εδώ η σύγκριση δεν το κοίταζε.
     keys = lambda z: (z.a.to_bytes(), bytes(z.e.dome), bytes(z.e.struct),
-                      EC.to_bytes(z.e), bytes(z.e.job), bytes(z.occ[:128]))
+                      econ_bytes(z.e), bytes(z.e.job), bytes(z.occ[:128]))
 
     def z80(st, n, patch=()):
         got = run_z80(sym, g, fresh(g, nexthop, st), n, pin=15,
@@ -1369,7 +1565,7 @@ def foe_battle(sym, g, nexthop, sim0):
     byte: πρώτα η θέση 15 καρφωμένη, μετά ολόκληρος ο τροχός."""
     st = foe_state(g, nexthop, sim0)
     keys = lambda z: (z.a.to_bytes(), bytes(z.e.dome), bytes(z.e.struct),
-                      EC.to_bytes(z.e), bytes(z.e.job), bytes(z.occ[:128]))
+                      econ_bytes(z.e), bytes(z.e.job), bytes(z.occ[:128]))
 
     def z80(patch=()):
         got = run_z80(sym, g, fresh(g, nexthop, st), FOE_PIN, pin=15,
@@ -1729,7 +1925,7 @@ def same(sym, g, nexthop, start, ticks, what, patch=(), quiet=False):
     for _ in range(ticks):
         sim.tick()
     want = (sim.a.to_bytes(), bytes(sim.occ), None, bytes(sim.e.dome),
-            bytes(sim.e.struct), EC.to_bytes(sim.e), bytes(sim.e.job))
+            bytes(sim.e.struct), econ_bytes(sim.e), bytes(sim.e.job))
     for name, i in (("πεδία", 0), ("μάσκες", 1), ("θόλοι", 3), ("δομές", 4),
                     ("οικονομία", 5), ("εργασίες", 6)):
         if got[i] != want[i]:
@@ -1800,7 +1996,7 @@ def edges(sym, g, nexthop, base):
     edge = edge_hits(st.e, st.e.mrnd, LONG_N, tiles)
     want = fresh(g, nexthop, st)
     slot15(want, LONG_N)
-    keys = lambda z: (bytes(z.e.dome), bytes(z.e.struct), EC.to_bytes(z.e),
+    keys = lambda z: (bytes(z.e.dome), bytes(z.e.struct), econ_bytes(z.e),
                       bytes(z.e.job))
 
     def z80(patch=()):
