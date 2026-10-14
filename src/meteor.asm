@@ -474,4 +474,4 @@ evm_put:
         inc     hl
         ld      (hl),d
         ret
-        assert  EC_X + 6 <= G_node_occ + 256   ; στα άδεια των πρακτόρων 100-127
+        assert  EC_VISACC < G_node_occ + 128 + 112  ; στα άδεια των πρακτόρων 100-111

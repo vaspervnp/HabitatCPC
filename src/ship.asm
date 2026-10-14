@@ -18,8 +18,18 @@
 SHIP_TRIP   equ 24
 SHIP_STAY   equ 8
 SHIP_NCREW  equ 4
-VIS_FOOD    equ 6
 VIS_MORALE  equ 24
+; ΕΠΙΣΚΕΠΤΕΣ ΠΟΥ ΠΛΗΡΩΝΟΥΝ (βήμα 134, tools/econ.py): VIS_BASE + κύρος/64 ανά
+; πλοίο· με κυλικείο, τρόφιμο και νερό ο καθένας τρώει, πίνει και δίνει
+; COIN_MEAL, και COIN_FUN ακόμη αν η αποικία έχει σαλόνι ή δέντρα. Ως το βήμα
+; 133 το πλοίο έτρωγε έξι τρόφιμα (VIS_FOOD) και δεν έδινε τίποτα.
+VIS_BASE    equ 2
+COIN_MEAL   equ 5
+COIN_FUN    equ 3
+COIN_MAX    equ 999
+GOOD_UP     equ 3
+GOOD_DOWN   equ 6
+GOOD_MAX    equ 100
 POP_PER_CTL equ 48
 POP_BASE    equ 6                       ; το πλήρωμα του σκάφους (βήμα 120· ως τότε 4)
 ; το R_CONTROL είναι στο const.asm
@@ -43,7 +53,7 @@ DEP_MASK    equ (1 << 10) - 1
         assert  EC_NODEATH == EC_DEATHS + 1 && EC_GREENS == EC_NODEATH + 1
         assert  EC_NOTRADE == EC_GREENS + 1 && EC_TRADED == EC_NOTRADE + 1
         assert  SHIP_LANDED == 2 * SHIP_INCOM && ((2 * SHIP_LANDED) & 3) == SHIP_NONE
-        assert  SK_COLONIST == 0 && VIS_FOOD < 256
+        assert  SK_COLONIST == 0 && COIN_MEAL + COIN_FUN < 256
         assert  (G_agent_fields & 255) == 0     ; AG_PG: η σελίδα των σημαιών
 
 ; ---------------------------------------------------------------------------
@@ -83,19 +93,63 @@ st_here:
 st_disp:
         ld      a,(EC_SHKIND)
         or      a                       ; SK_COLONIST
-        jr      z,ship_crew
+        jp      z,ship_crew             ; jp από το βήμα 134: τα νομίσματα στη μέση
         cp      SK_VISITOR
         jp      nz,sm_land              ; ο έμπορος (βήμα 93), πιο κάτω
-        ; --- επισκέπτες: τρώνε και ανεβάζουν το ηθικό ---
-        ld      hl,(EC_STOCK + 2*S_FOOD)
-        ld      bc,VIS_FOOD
+        ; --- επισκέπτες (βήμα 134): όσοι βρίσκουν κυλικείο, τρόφιμο και νερό
+        ; τρώνε, πίνουν και πληρώνουν· οι άλλοι φεύγουν και η εύνοια πέφτει ---
+        ld      a,(EC_PREST)
+        rlca
+        rlca
+        and     3                       ; κύρος / 64
+        add     a,VIS_BASE
+        ld      b,a
+sv_one:
+        ld      a,(G_room_n + R_CANTEEN)
         or      a
-        sbc     hl,bc
-        jr      nc,sv_pay
-        ld      h,b                     ; ό,τι είχαμε: 0
-        ld      l,b
-sv_pay:
+        jr      z,sv_no
+        ld      hl,(EC_STOCK + 2*S_FOOD)
+        ld      a,h
+        or      l
+        jr      z,sv_no
+        ld      de,(EC_STOCK + 2*S_WATER)
+        ld      a,d
+        or      e
+        jr      z,sv_no
+        dec     hl
         ld      (EC_STOCK + 2*S_FOOD),hl
+        dec     de
+        ld      (EC_STOCK + 2*S_WATER),de
+        ld      a,(EC_AMENITY)
+        or      a
+        ld      a,COIN_MEAL
+        jr      z,sv_pay
+        add     a,COIN_FUN
+sv_pay: ld      hl,(EC_COINS)
+        add     a,l
+        ld      l,a
+        adc     a,h
+        sub     l
+        ld      h,a
+        ld      (EC_COINS),hl
+        ld      de,-(COIN_MAX + 1)
+        add     hl,de                   ; CY: πάνω από το COIN_MAX
+        jr      nc,sv_up
+        ld      hl,COIN_MAX
+        ld      (EC_COINS),hl
+sv_up:  ld      a,(EC_GOOD)
+        add     a,GOOD_UP
+        cp      GOOD_MAX + 1
+        jr      c,sv_gst
+        ld      a,GOOD_MAX
+        jr      sv_gst
+sv_no:  ld      a,(EC_GOOD)
+        sub     GOOD_DOWN
+        jr      nc,sv_gst
+        xor     a
+sv_gst: ld      (EC_GOOD),a
+        djnz    sv_one
+        ; --- και ανεβάζουν το ηθικό, όπως πριν ---
         ld      hl,G_agent_fields       ; σελίδα flags
         ld      b,AG_BOT0               ; οι άποικοι: τα ρομπότ δεν έχουν ηθικό
 sv_lp:                                  ; (ως το βήμα 93 και οι 128)
@@ -115,6 +169,11 @@ sv_st:
 sv_n:
         inc     l
         djnz    sv_lp
+        ret
+
+; vs_coins — HL = τα νομίσματα (βήμα 134). Για το HUD, με το hd_b6.
+vs_coins:
+        ld      hl,(EC_COINS)
         ret
 
 ; --- καινούργιοι άποικοι στην πίστα ----------------------------------------
@@ -413,14 +472,72 @@ sr_m3:
         set     MB_INDEPEND,(hl)
 sr_m4:
         bit     MB_INDEPEND,(hl)        ; και αυτού του sol
-        ret     z
+        jr      z,sr_pres
         ld      a,(EC_ALIVE)
         cp      80
-        ret     c
+        jr      c,sr_pres
         ld      a,(EC_NODEATH)
         cp      5
-        ret     c
+        jr      c,sr_pres
         set     MB_HABITAT,(hl)
+
+        ; --- ΤΟ ΚΥΡΟΣ (βήμα 134, tools/econ.py): 10 ανά ορόσημο, οι μισοί
+        ; ζωντανοί, το σερί χωρίς θάνατο ως το 30, 5 ανά σαλόνι ή δέντρο ως τα
+        ; έξι, και η εύνοια, που πρώτα σβήνει κατά ένα. Ως 250. ---
+sr_pres:
+        ld      hl,EC_GOOD
+        ld      a,(hl)
+        or      a
+        jr      z,srp_g
+        dec     (hl)
+srp_g:  ld      a,(EC_MILE)
+        ld      c,0
+srp_m:  or      a
+        jr      z,srp_al
+        srl     a
+        jr      nc,srp_m
+        ld      d,a
+        ld      a,c
+        add     a,10
+        ld      c,a
+        ld      a,d
+        jr      srp_m
+srp_al: ld      a,(EC_ALIVE)
+        srl     a
+        add     a,c
+        ld      c,a
+        ld      a,(EC_NODEATH)
+        cp      30
+        jr      c,srp_nd
+        ld      a,30
+srp_nd: add     a,c
+        ld      c,a
+        ld      a,(EC_AMENITY)
+        cp      6
+        jr      c,srp_am
+        ld      a,6
+srp_am: ld      b,a
+        add     a,a
+        add     a,a
+        add     a,b                     ; x5
+        add     a,c
+        add     a,(hl)                  ; + η εύνοια (HL = EC_GOOD)
+        ld      (EC_PREST),a
+        ; --- και ο συσσωρευτής: πάνω από 255, πλοίο επισκεπτών — ή εισβολέων,
+        ; όπως η ζαριά. Αν δεν έρθει, μένει στο 255 και ξαναδοκιμάζει. ---
+        ld      hl,EC_VISACC
+        add     a,(hl)
+        jr      nc,srp_st
+        push    af
+        ld      a,SK_VISITOR
+        call    ev_kind                 ; src/econ.asm: ή εισβολείς
+        call    ship_call               ; CY: ήρθε
+        pop     de                      ; D = ό,τι περίσσεψε πάνω από το 256
+        ld      a,d
+        ld      hl,EC_VISACC
+        jr      c,srp_st
+        ld      a,255
+srp_st: ld      (hl),a
         ret
 
 ; sr_streak — το σερί στο (HL): Z συνεχίζει (+1, ως το 255), NZ σπάει (0).

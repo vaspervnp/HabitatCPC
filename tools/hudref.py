@@ -118,7 +118,9 @@ class Hud:
             self.text(a + b)
             self.num(e["stock"][idx], 3)
             self.put(" ")
-        self.text("    ")
+        # τα νομίσματα των επισκεπτών (βήμα 134) στις τέσσερις που περίσσευαν
+        self.put("$")
+        self.num(e.get("coins", 0), 3)
 
         self.row, self.col = 2, 0
         self.text("POP ")

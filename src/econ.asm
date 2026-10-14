@@ -612,20 +612,7 @@ ev_vis:
         jr      nz,ev_flare
         ld      a,SK_VISITOR
 ev_ship:
-        ; ΕΙΣΒΟΛΕΙΣ ΑΝΤΙ ΓΙΑ Ο,ΤΙ ΕΦΕΡΕ Η ΖΑΡΙΑ (βήμα 111): αν μετρήθηκαν
-        ; FOE_EVERY προσγειώσεις και ζουν FOE_POP άποικοι. Το πλοίο αποίκων που
-        ; καλεί ο παίκτης δεν περνά από εδώ. Μόνο όταν πέσει η ζαριά: καμία
-        ; περιστροφή δεν το πληρώνει.
-        ld      b,a
-        ld      a,(EC_ALIVE)
-        cp      FOE_POP
-        jr      c,evs_call
-        ld      a,(EC_LANDS)
-        cp      FOE_EVERY
-        jr      c,evs_call
-        ld      b,SK_FOE
-evs_call:
-        ld      a,b
+        call    ev_kind                 ; ή εισβολείς (βήμα 111)
         call    ship_call
 
 ev_flare:                               ; --- έκλαμψη: ψηλά του ίδιου ---
@@ -687,6 +674,23 @@ ev_after:
 
 ev_fl_tab:  db 0,37, 3,101, 1,173
 ev_fl_end:
+
+; ev_kind — A = το είδος ενός απρόσκλητου πλοίου -> A = το ίδιο, ή SK_FOE.
+; ΕΙΣΒΟΛΕΙΣ ΑΝΤΙ ΓΙΑ Ο,ΤΙ ΕΦΕΡΕ Η ΖΑΡΙΑ (βήμα 111): αν μετρήθηκαν FOE_EVERY
+; προσγειώσεις και ζουν FOE_POP άποικοι. Το πλοίο αποίκων που καλεί ο παίκτης
+; δεν περνά από εδώ· μόνο όταν πέσει η ζαριά, και από το βήμα 134 όταν το
+; κύρος φέρει επισκέπτες (sol_rollover, src/ship.asm). Χαλάει B.
+ev_kind:
+        ld      b,a
+        ld      a,(EC_ALIVE)
+        cp      FOE_POP
+        jr      c,evk_k
+        ld      a,(EC_LANDS)
+        cp      FOE_EVERY
+        jr      c,evk_k
+        ld      b,SK_FOE
+evk_k:  ld      a,b
+        ret
 
 
 ; ---------------------------------------------------------------------------

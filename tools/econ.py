@@ -226,6 +226,13 @@ class Econ:
         # οικονομία — βλ. x_bytes.
         self.ldis = [0, 0]
         self.lev = [0, 0]
+        # ΚΥΡΟΣ ΚΑΙ ΝΟΜΙΣΜΑΤΑ (βήμα 134), στο ίδιο μέρος, μετά το EC_X: τα
+        # νομίσματα των επισκεπτών, το κύρος του sol, η εύνοια των επισκεπτών
+        # (0-100) και ο συσσωρευτής που φέρνει τα πλοία τους.
+        self.coins = 0
+        self.prestige = 0
+        self.goodwill = 0
+        self.visacc = 0
         # ΓΕΜΑΤΗ ΑΠΟΘΗΚΗ (βήμα 122): το ec_full του Z80, στην τράπεζα 0 (src/stock.asm).
         self.full = 0
         # ΤΟ ΑΠΟΘΕΜΑ ΜΕΤΑΛΛΟΥ (βήμα 127): το ec_keep, δίπλα του.
@@ -681,11 +688,12 @@ def x_bytes(e):
     μισό του node_occ, θέση X_OFF): [sol, frame] της τελευταίας καταστροφής,
     και του τελευταίου γεγονότος."""
     return bytes([e.ldis[0]]) + int(e.ldis[1]).to_bytes(2, "little") + \
-        bytes([e.lev[0]]) + int(e.lev[1]).to_bytes(2, "little")
+        bytes([e.lev[0]]) + int(e.lev[1]).to_bytes(2, "little") + \
+        int(e.coins).to_bytes(2, "little") + bytes([e.prestige, e.goodwill, e.visacc])
 
 
 X_OFF = 128 + 96 + 4                    # AG_FOE0 + AG_NFOE στο πάνω μισό
-X_N = 6
+X_N = 11                                # 6 ως το βήμα 133
 
 
 def occ_hi(e):
@@ -1568,8 +1576,17 @@ TRADE_GIVE = 0x0F           # J_SITE μιας J_TRADE: ένα φορτίο ΓΙ�
 SHIP_TRIP = 24              # περιστροφές ταξιδιού
 SHIP_STAY = 8               # πόσο μένει προσγειωμένο
 COLONISTS_PER_SHIP = 4
-VISITOR_FOOD = 6
 VISITOR_MORALE = 24
+# ΕΠΙΣΚΕΠΤΕΣ ΠΟΥ ΠΛΗΡΩΝΟΥΝ (βήμα 134, όπως στο Planetbase, με τις αποφάσεις
+# του παίκτη: νομίσματα, η πίστα, το κύρος). Ως το βήμα 133 το πλοίο τους έτρωγε
+# έξι τρόφιμα και δεν έδινε τίποτα. Τώρα VIS_BASE + κύρος/64 επισκέπτες, και ο
+# καθένας, αν η αποικία έχει κυλικείο, τρόφιμο και νερό, τρώει ένα, πίνει ένα
+# και πληρώνει COIN_MEAL — και COIN_FUN ακόμη αν έχει σαλόνι ή δέντρα. Ο
+# χορτασμένος ανεβάζει την εύνοια κατά GOOD_UP, ο πεινασμένος την κατεβάζει
+# κατά GOOD_DOWN.
+VIS_BASE = 2
+COIN_MEAL, COIN_FUN, COIN_MAX = 5, 3, 999
+GOOD_UP, GOOD_DOWN, GOOD_MAX = 3, 6, 100
 # Πρώτη εκτίμηση, όπως όλα τα νούμερα ισορροπίας: με 8 ανά Control, μια
 # αποικία των ενενήντα δεν χωρούσε ούτε τον εαυτό της και κανένα πλοίο
 # αποίκων δεν είχε νόημα.
@@ -1913,9 +1930,17 @@ def pick_role(e, count):
 
 
 def visit(e, a, F_ALIVE):
-    """Επισκέπτες: τρώνε και ανεβάζουν το ηθικό. Ενοχλητικοί όταν πεινάς."""
-    take = min(VISITOR_FOOD, e.stock[S_FOOD])
-    e.stock[S_FOOD] -= take
+    """Επισκέπτες (βήμα 134): όσοι βρίσκουν κυλικείο, τρόφιμο και νερό τρώνε,
+    πίνουν και πληρώνουν· οι άλλοι φεύγουν πεινασμένοι, και η εύνοια πέφτει. Και
+    ανεβάζουν το ηθικό των αποίκων, όπως πριν."""
+    for _ in range(VIS_BASE + (e.prestige >> 6)):
+        if e.room_n[R_CANTEEN] and e.stock[S_FOOD] and e.stock[S_WATER]:
+            e.stock[S_FOOD] -= 1
+            e.stock[S_WATER] -= 1
+            e.coins = min(COIN_MAX, e.coins + COIN_MEAL + (COIN_FUN if e.amenity else 0))
+            e.goodwill = min(GOOD_MAX, e.goodwill + GOOD_UP)
+        else:
+            e.goodwill = max(0, e.goodwill - GOOD_DOWN)
     for i in range(AG_BOT0):            # οι άποικοι· τα ρομπότ δεν έχουν ηθικό (92)
         if a.flags[i] & F_ALIVE:
             a.morale[i] = min(255, a.morale[i] + VISITOR_MORALE)
@@ -2002,3 +2027,17 @@ def sol_rollover(e, a, F_ALIVE, F_WORKING, NEED_LOW):
     if e.alive >= 80 and (m & M_INDEPENDENCE) and e.no_death_sols >= 5:
         m |= M_HABITAT
     e.milestones = m
+
+    # ΤΟ ΚΥΡΟΣ (βήμα 134): 10 ανά ορόσημο, οι μισοί ζωντανοί, το σερί χωρίς
+    # θάνατο ως το 30, 5 ανά σαλόνι ή δέντρο ως τα έξι, και η εύνοια των
+    # επισκεπτών, που σβήνει κατά ένα το sol. Ως 250. Και κάθε sol προστίθεται
+    # στο visacc: όταν ξεπεράσει το 255, πλοίο επισκεπτών — ή εισβολέων, όπως
+    # η ζαριά. Αν δεν έρθει (άλλο πλοίο, καμία πίστα), μένει στο 255 και
+    # ξαναδοκιμάζει το επόμενο sol.
+    e.goodwill = max(0, e.goodwill - 1)
+    e.prestige = (10 * bin(m).count("1") + (e.alive >> 1) + min(e.no_death_sols, 30)
+                  + 5 * min(e.amenity, 6) + e.goodwill)
+    acc = e.visacc + e.prestige
+    if acc > 255:
+        acc = acc - 256 if call_ship(e, unbidden(e, SK_VISITOR)) else 255
+    e.visacc = acc

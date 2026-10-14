@@ -257,7 +257,6 @@ bd_mflags:  ret                         ; εδώ το ορυχείο πληρώ�
         include "../src/ui.asm"
         include "../src/fit.asm"
         include "../src/rooms.asm"
-        include "../src/hw.asm"
         ; ΟΙ ΑΝΙΧΝΕΥΣΕΙΣ ΤΩΝ ΔΟΚΙΜΩΝ γράφουν στο #3F00-#3FFF (test_build,
         ; test_terrain, test_view, test_game). Ως το βήμα 96 ο κώδικας έφτανε ως
         ; το #3FFD και του έσβηναν την ουρά του ήχου· στο 97 το src/bend.asm θα
@@ -274,6 +273,10 @@ bd_mflags:  ret                         ; εδώ το ορυχείο πληρώ�
 walk_buf:   defs 240
 snoop_buf:  defs 96
         include "../src/sound.asm"
+        ; ΚΑΙ ΤΟ hw.asm (βήμα 134), όπως στο παιχνίδι (src/main.asm): η επίπεδη
+        ; περιοχή περνούσε το #3F00 κατά 28 bytes, με τα νομίσματα του HUD, την
+        ; κρυφή τους μνήμη και το fg_build που κρατά τη σειρά της λίστας.
+        include "../src/hw.asm"
         ; ΚΑΙ ΤΑ ΔΙΑΣΤΗΜΑΤΑ ΤΩΝ ΘΟΛΩΝ (βήμα 108): στην τράπεζα 0 του παιχνιδιού,
         ; αλλά εδώ η επίπεδη περιοχή θα περνούσε το #3F00 κατά 302 bytes· και με
         ; αυτά εδώ, κατά 38, από το ob_blit που μεγάλωσε. Γι' αυτό ήρθε και το
@@ -282,6 +285,9 @@ snoop_buf:  defs 96
         include "../src/span6.asm"          ; βήμα 114: στο παιχνίδι στο b6code
         include "../src/walk6.asm"          ; βήμα 118: στο παιχνίδι στο b6code
         include "../src/alert6.asm"         ; βήμα 119: στο παιχνίδι στο b6code
+vs_coins:                               ; βήμα 134: src/ship.asm, που εδώ δεν υπάρχει·
+        ld      hl,(EC_COINS)           ; το hd_b6 έχει βάλει την 6 στο παράθυρο
+        ret
         include "../src/bend.asm"           ; βήμα 97: στο παιχνίδι στο b6code (129)
         include "../src/corner.asm"         ; βήμα 129: στο παιχνίδι στο b6code
         include "../src/objindex.asm"

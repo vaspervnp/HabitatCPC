@@ -401,11 +401,15 @@ def chain(sym, g, patch=(), quiet=False, shots=None):
     return None
 
 
-def chain_site(sym, g, patch=(), quiet=False, frames=40000):
+SITE_WAIT = [None]          # τα frames πριν από τον δεύτερο θόλο: τα βρίσκει η σκηνή
+
+
+def chain_site(sym, g, patch=(), quiet=False, frames=40000, delay=0):
     """ΑΛΥΣΙΔΑ, ΣΕ ΕΡΓΟΤΑΞΙΟ: μετά τον πρώτο θόλο και το airlock του, ένας
     δεύτερος θόλος οξυγόνου με τη γεννήτρια από το FIT της τοποθέτησης. Οταν
     τελειώνει, το lk_done βγάζει όσους στέκονται εκεί, και τον χτίστη, έξω·
-    εκείνος κρατά την εργασία, ξαναμπαίνει από το airlock και τη στήνει."""
+    εκείνος κρατά την εργασία, ξαναμπαίνει από το airlock και τη στήνει.
+    `delay`: frames ανάμεσα στο airlock και στον δεύτερο θόλο."""
     say = (lambda s: None) if quiet else (lambda s: print("    " + s))
     w = TS.W(sym, g, patch)
     m = w.m
@@ -415,6 +419,7 @@ def chain_site(sym, g, patch=(), quiet=False, frames=40000):
     B.build(m, sym, 9, g + 6, at=TO.LOCK_AT, fit=False)
     if w.wait(lambda: w.lock()[4] == DS_ACTIVE, 30000) is None:
         return f"ΣΕ ΕΡΓΟΤΑΞΙΟ: το airlock δεν τελείωσε: {w.lock()}"
+    m.run_frames(delay)
     # ΝΟΤΙΟΔΥΤΙΚΑ, ΟΧΙ ΑΝΑΤΟΛΙΚΑ (βήμα 132). Ως το 131 το ανατολικό (+16, 0) δεν
     # χωρούσε και το live_spot έδινε το (-2, 6)· εκεί ο θόλος τελειώνει στην
     # ίδια επίσκεψη με το πρώτο στήσιμο (4 -> 36), το lk_done βγάζει τον χτίστη,
@@ -445,17 +450,33 @@ def chain_site(sym, g, patch=(), quiet=False, frames=40000):
             if j[0] == J_BUILD and j[1] == node and j[2] != 255 and w.dome(node)[4] == DS_ACTIVE \
                     and w.agent(j[2])["node"] != node:
                 out += 1                # ο χτίστης έξω, με την εργασία δική του
+    # Η ΣΚΗΝΗ ΠΡΩΤΑ: χωρίς στήσιμο στην ίδια επίσκεψη δεν δοκιμάζεται τίποτα,
+    # ούτε από τα αρνητικά (run_negative: «ΣΚΗΝΗ» δεν είναι «πιάστηκε»).
+    if not inside:
+        return (f"ΣΚΗΝΗ: ο θόλος στο {at} τελείωσε χωρίς στήσιμο στην ίδια "
+                f"επίσκεψη (υγείες {seen}) — η σκηνή δεν δοκιμάζει το lk_done με τον "
+                f"χτίστη, ούτε το αρνητικό του jabi_go")
     if hp() != HP:
         return (f"ΣΕ ΕΡΓΟΤΑΞΙΟ: σε {t} frames υγείες {seen}, θόλος {w.dome(node)}, "
                 f"εργασίες {w.jobs()} — η πρόζα λέει στήνεται ως το 200")
-    if not inside:
-        return (f"ΣΕ ΕΡΓΟΤΑΞΙΟ: ο θόλος στο {at} τελείωσε χωρίς στήσιμο στην ίδια "
-                f"επίσκεψη (υγείες {seen}) — η σκηνή δεν δοκιμάζει το lk_done με τον "
-                f"χτίστη, ούτε το αρνητικό του jabi_go")
-    say(f"ΣΕ ΕΡΓΟΤΑΞΙΟ: ο δεύτερος θόλος (κόμβος {node}, στο {at}), υγείες {seen} σε {t} "
-        f"frames· τελείωσε μαζί με το πρώτο στήσιμο, ο χτίστης ήταν έξω με τη Build σε "
-        f"{out} δείγματα και ξαναμπήκε")
+    say(f"ΣΕ ΕΡΓΟΤΑΞΙΟ: ο δεύτερος θόλος (κόμβος {node}, στο {at}, {delay} frames μετά το "
+        f"airlock), υγείες {seen} σε {t} frames· τελείωσε μαζί με το πρώτο στήσιμο, ο "
+        f"χτίστης ήταν έξω με τη Build σε {out} δείγματα και ξαναμπήκε")
     return None
+
+
+def site_scene(sym, g):
+    """Η ΣΚΗΝΗ ΒΡΙΣΚΕΤΑΙ, ΔΕΝ ΚΑΡΦΩΝΕΤΑΙ (βήμα 134): η πρώτη καθυστέρηση, σε
+    βήματα των 8 frames, με την οποία ο δεύτερος θόλος τελειώνει στην ίδια επίσκεψη
+    με το πρώτο στήσιμο. Ως το βήμα 133 χωρίς καθυστέρηση· το HUD με τα νομίσματα
+    μετακίνησε τη φάση του τροχού, και ο θόλος τελείωνε πριν."""
+    err = None
+    for d in range(0, 256, 8):
+        err = chain_site(sym, g, quiet=True, delay=d)
+        if err is None or not err.startswith("ΣΚΗΝΗ"):
+            SITE_WAIT[0] = d
+            return chain_site(sym, g, delay=d) if err is None else err
+    return err
 
 
 # --------------------------------------------------------------------------
@@ -526,7 +547,8 @@ def run_negative(sym, g, patch, test):
     if test == "fit":
         return fit(sym, g, patch, quiet=True)
     if test == "site":
-        return chain_site(sym, g, patch, quiet=True, frames=6000)
+        err = chain_site(sym, g, patch, quiet=True, frames=6000, delay=SITE_WAIT[0] or 0)
+        return None if err and err.startswith("ΣΚΗΝΗ") else err
     return {"deliver": deliver, "install": install, "stopped": stopped}[test](
         sym, patch, quiet=True)
 
@@ -548,7 +570,7 @@ def main():
     check(err is None, err or "FIT: τέσσερις μηχανές, υγεία 7, δύο Supply")
     err = chain(sym, g, shots=shots[:2] or None)
     check(err is None, err or "ΑΛΥΣΙΔΑ: η μηχανή κουβαλήθηκε και στήθηκε από τον μηχανικό")
-    err = chain_site(sym, g)
+    err = site_scene(sym, g)
     check(err is None, err or "ΑΛΥΣΙΔΑ ΣΕ ΕΡΓΟΤΑΞΙΟ: ο χτίστης βγήκε, ξαναμπήκε και τη στήθηκε")
     for k, v in cost(sym).items():
         check(v <= COST[k], f"{k}: {v} us (ταβάνι {COST[k]})")

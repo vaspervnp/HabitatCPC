@@ -52,8 +52,11 @@
             το μοντέλο για ΟΛΟΥΣ τους πράκτορες, κάθε φιγούρα φαίνεται, και η
             οθόνη είναι byte προς byte η πλήρης σχεδίαση (ένα ΑΝΤΙΓΡΑΦΟ της
             μηχανής την κάνει, ώστε η λίστα της κανονικής να μην ξαναχτίζεται
-            ποτέ: ό,τι μαζεύεται βήμα με βήμα, μένει). Τουλάχιστον τέσσερα
-            διαφορετικά κελιά στον δρόμο.
+            ποτέ: ό,τι μαζεύεται βήμα με βήμα, μένει). Από το βήμα 134 η
+            πλήρης σχεδίαση κρατά τη λίστα ίδια και με τη σειρά της, σβήνει τα
+            σημάδια των πρακτόρων 0-99 και αφήνει ίδια τα bytes των 100-127
+            (το EC_X)· και με τη λίστα άδεια, τη φτιάχνει από την αρχή.
+            Τουλάχιστον τέσσερα διαφορετικά κελιά στον δρόμο.
   ΓΩΝΙΑ     (βήμα 118) σε αντίγραφο με το ηλιακό του ΔΡΟΜΟΥ χτισμένο: ένας
             πράκτορας που δεν υπάρχει (ο 127) σε μια ακμή, και το fg_want για
             ΚΑΘΕ progress 0-255 = το μοντέλο. Σκάφος προς ηλιακό και ανάποδα,
@@ -102,6 +105,13 @@
             κελί χωρίς φιγούρες και fg_paint: κάθε φορά η πλήρης σχεδίαση, με
             τις φιγούρες στη σειρά της λίστας — σε ελεύθερο έδαφος, δίπλα και
             πάνω σε κτίσμα, σε φλέβα.
+  ΣΕΙΡΑ     (βήμα 134) μια λίστα της δοκιμής όπως στις ΣΤΟΙΒΕΣ: ο X σε ένα
+            κελί, η Y και η Z σε άλλο με τη Z τελευταία, από πάνω. Ο X φεύγει
+            (dh_agent, πράκτορας που δεν υπάρχει), η Z παίρνει τη θέση του πριν
+            από την Y, και η οθόνη είναι η πλήρης σχεδίαση: η Y από πάνω. Οι
+            δύο φιγούρες του κελιού διαφέρουν, αλλιώς η σκηνή δεν ελέγχει.
+  ΞΑΝΑΧΤΙΣΜΑ (βήμα 134) η λίστα του παιχνιδιού σε άλλη σειρά, των
+            πρακτόρων από τον μικρότερο: η πλήρης σχεδίαση την κρατά.
   ΜΕΡΗ      (βήμα 106) το fg_erase και το fg_paint μόνα τους σε ΚΑΘΕ κελί δύο
             καμερών (πάνω στο ηλιακό, πάνω σε φλέβα), εκτός από το φάντασμα:
             χρεώνουν όσο κοστίζουν ή περισσότερο, ανά έδαφος. Ως το βήμα 105
@@ -130,6 +140,9 @@ fg_paint (το νέο κελί άδειο), χωρίς το fg_build στο view
 το πρώτο σκέλος από το κέντρο, με progress 0 ήδη στο μονοπάτι, πρώτα κατά y
 πάνω από το P χωρίς το cpl, πρώτα κατά y ως τη στήλη του κέντρου του Q, το
 σκέλος στη στήλη της θέσης 0, και η σειρά μέσα στο Q που κινεί μόνο το y.
+Από το βήμα 134: χωρίς το fg_ord (η ΣΕΙΡΑ), το fg_build με τη σειρά των
+πρακτόρων (το ΞΑΝΑΧΤΙΣΜΑ), και σε όλους τους 128 πράκτορες (ο ΔΡΟΜΟΣ: το EC_X
+σβήνει).
 """
 import ctypes, os, sys
 
@@ -411,19 +424,30 @@ class G:
         n, bad = self.shown(figs, play)
         if bad:
             return f"{tag}: δεν φαίνονται {bad} (από {n})", set()
-        # Η ΠΛΗΡΗΣ ΣΧΕΔΙΑΣΗ ΣΕ ΑΝΤΙΓΡΑΦΟ, και με τη λίστα του άδεια και όλους
-        # σημειωμένους: το fg_build πρέπει να τη φτιάξει από την αρχή, ίδια, και
-        # να σβήσει τα σημάδια — αλλιώς κανείς δεν θα ξανασπρωχνόταν ποτέ.
+        # Η ΠΛΗΡΗΣ ΣΧΕΔΙΑΣΗ ΣΕ ΑΝΤΙΓΡΑΦΟ, με όλους σημειωμένους: το fg_build
+        # ξαναπερνά τη λίστα ίδια ΚΑΙ ΜΕ ΤΗ ΣΕΙΡΑ ΤΗΣ (βήμα 134: από τη σειρά
+        # εξαρτάται ποια φιγούρα είναι από πάνω σε κοινό κελί), και σβήνει τα
+        # σημάδια — αλλιώς κανείς δεν θα ξανασπρωχνόταν ποτέ. Των πρακτόρων
+        # 0-99 μόνο: τα 100-127 είναι το EC_X (src/const.asm), που ως το βήμα
+        # 133 μηδενιζόταν σε κάθε view_draw. Μετά, με τη λίστα άδεια: το
+        # fg_build τη φτιάχνει από την αρχή.
         c = self.clone()
-        c.m.poke(self.sym["FG_N"], 0)
         mk = self.L["G_node_occ"] + 128 - 0x4000
         for i in range(128):
-            c.bank(6)[mk + i] = 1
+            c.bank(6)[mk + i] = 1 if i < 100 else 0x40 + i
         other = c.full()
+        kept = c.figs()
+        if kept != figs or any(c.bank(6)[mk + i] for i in range(100)):
+            return (f"{tag}: η πλήρης σχεδίαση δεν κρατά τη λίστα: {kept}, όχι {figs}, "
+                    f"σημάδια {[i for i in range(100) if c.bank(6)[mk + i]][:8]}"), set()
+        if any(c.bank(6)[mk + i] != 0x40 + i for i in range(100, 128)):
+            return (f"{tag}: η πλήρης σχεδίαση σβήνει το EC_X: "
+                    f"{bytes(c.bank(6)[mk + 100:mk + 128]).hex()}"), set()
+        c.m.poke(self.sym["FG_N"], 0)
+        c.full()
         cl = {a: (x, y, f) for a, x, y, f in c.figs()}
-        if cl != want or any(c.bank(6)[mk + i] for i in range(128)):
-            return (f"{tag}: η πλήρης σχεδίαση δεν ξαναχτίζει τη λίστα: {sorted(cl.items())}, "
-                    f"σημάδια {[i for i in range(128) if c.bank(6)[mk + i]][:8]}"), set()
+        if cl != want:
+            return f"{tag}: η πλήρης σχεδίαση δεν ξαναχτίζει τη λίστα: {sorted(cl.items())}", set()
         if other != play:
             d = [k for k in range(len(play)) if play[k] != other[k]]
             return (f"{tag}: η οθόνη δεν είναι η πλήρης σχεδίαση: {len(d)} bytes, "
@@ -828,6 +852,82 @@ def stacks(sym, g, patch=(), quiet=False):
     return None
 
 
+def order(sym, g, patch=(), quiet=False):
+    """ΣΕΙΡΑ (βήμα 134). Η πρώτη διαφορά από την πλήρη σχεδίαση, ή None."""
+    say = (lambda s: None) if quiet else (lambda s: print("    " + s))
+    w = G(sym, g, patch)
+    w.drain()
+    c = w.clone()
+    s_, fl = w.sym, w.L["G_fig_list"] - 0x4000
+    fb, ot = s_["FG_BUILD"], s_["OB_TOUCH"]
+    for k, v in enumerate((0xC3, ot & 255, ot >> 8)):                # όπως οι ΣΤΟΙΒΕΣ
+        c.m.poke(fb + k, v)
+    c.full()
+    gx0, gx1, gy0, gy1 = (c.m.peek(s_["GH_BBX"]), c.m.peek(s_["GH_BBX"] + 1),
+                          c.m.peek(s_["GH_BBY"]), c.m.peek(s_["GH_BBY"] + 1))
+    cx, cy = sb(c.m.peek(s_["CAM_TX"])), sb(c.m.peek(s_["CAM_TY"]))
+    at_ = [(bx, ly) for ly in range(16, 152, 8) for bx in range(4, 76, 2)
+           if not (bx < gx1 and gx0 < bx + 2 and ly < gy1 and gy0 < ly + 8)]
+    cell = lambda bx, ly: ((2 * cx + bx // 2 + 128) & 255, (2 * cy + ly // 8 + 128) & 255)
+    (pb, pl), (qb, ql) = at_[0], at_[len(at_) // 2]
+    P, Q = cell(pb, pl), cell(qb, ql)
+    f0, f1 = c.m.peek(s_["ROLE_FIG"]), c.m.peek(s_["ROLE_FIG"] + 1)    # δύο ρόλοι
+    # X στο P, και Y, Z στο Q με τη Z τελευταία: η Z από πάνω. Πράκτορες που
+    # δεν υπάρχουν (125-127), όπως στις ΣΤΟΙΒΕΣ: το fg_want του X είναι
+    # «πουθενά», και το dh_agent τον βγάζει από τη λίστα — η Z στη θέση του.
+    ents = [P + (f0, 125), Q + (f0, 126), Q + (f1, 127)]
+    b6 = c.bank(6)
+    for k, e in enumerate(ents):
+        for col, v in zip(range(0, 256, 64), e):
+            b6[fl + col + k] = v
+    c.m.poke(s_["FG_N"], 3)
+    before = c.full()
+    c.m.poke(s_["DT_A"], 125)
+    c.probe(c.call("DH_AGENT"))
+    got = c.play()
+    n = c.m.peek(s_["FG_N"])
+    lst = [tuple(b6[fl + col + k] for col in range(0, 256, 64)) for k in range(n)]
+    if lst != [ents[2], ents[1]]:
+        return f"ΣΕΙΡΑ: η λίστα μετά το dh_agent {lst}, όχι {[ents[2], ents[1]]}"
+    ref = c.full()
+    qa = [(y * 80 + x) for y in range(ql, ql + 8) for x in (qb, qb + 1)]
+    if [before[k] for k in qa] == [ref[k] for k in qa]:
+        return "ΣΕΙΡΑ: οι δύο φιγούρες του Q δείχνουν το ίδιο — η σκηνή δεν ελέγχει τίποτα"
+    if got != ref:
+        d = [k for k in range(len(got)) if got[k] != ref[k]]
+        return (f"ΣΕΙΡΑ: μετά το dh_agent {len(d)} bytes διαφέρουν από την πλήρη σχεδίαση, "
+                f"πρώτο ({d[0] % 80}, {d[0] // 80}) — το Q στο ({qb}, {ql})")
+    say(f"ΣΕΙΡΑ: ο X έφυγε από το ({pb}, {pl}), η Z πήρε τη θέση του πριν από την Y, και το "
+        f"κελί ({qb}, {ql}) έχει την Y από πάνω, όπως η πλήρης σχεδίαση")
+    return None
+
+
+def rebuild(sym, g, patch=(), quiet=False):
+    """ΞΑΝΑΧΤΙΣΜΑ (βήμα 134). Η πρώτη διαφορά, ή None."""
+    say = (lambda s: None) if quiet else (lambda s: print("    " + s))
+    w = G(sym, g, patch)
+    w.drain()
+    c = w.clone()
+    figs = c.figs()
+    if len(figs) < 3:
+        return f"ΞΑΝΑΧΤΙΣΜΑ: μόνο {len(figs)} φιγούρες στη λίστα"
+    # Η σειρά των πρακτόρων ανάποδα από ό,τι θα έβαζε η πλήρης σχεδίαση ως το
+    # βήμα 133 (127 -> 0): με το fg_build από την αρχή, η λίστα θα γύριζε.
+    perm = sorted(figs)
+    base = c.L["G_fig_list"] - 0x4000
+    b6 = c.bank(6)
+    for k, (a, x, y, f) in enumerate(perm):
+        for col, v in zip(range(0, 256, 64), ((x + 128) & 255, (y + 128) & 255, f, a)):
+            b6[base + col + k] = v
+    c.full()
+    got = c.figs()
+    if got != perm:
+        return (f"ΞΑΝΑΧΤΙΣΜΑ: η λίστα μετά την πλήρη σχεδίαση {[a for a, *_ in got]}, "
+                f"όχι {[a for a, *_ in perm]}")
+    say(f"ΞΑΝΑΧΤΙΣΜΑ: η πλήρης σχεδίαση κρατά τη σειρά της λίστας: {[a for a, *_ in got]}")
+    return None
+
+
 def parts(sym, g, patch=(), out=None):
     """ΜΕΡΗ (βήμα 106): το fg_erase και το fg_paint μόνα τους, σε κάθε κελί
     δύο καμερών, χρεώνουν όσο κοστίζουν ή περισσότερο."""
@@ -1017,6 +1117,10 @@ def main():
     check(why is None, why or "ΚΕΛΙ: το σβήσιμο = η πλήρης σχεδίαση, και η φλέβα μένει")
     why = stacks(sym, g)
     check(why is None, why or "ΣΤΟΙΒΕΣ: σβήσιμο και ζωγράφισμα = η πλήρης σχεδίαση")
+    why = order(sym, g)
+    check(why is None, why or "ΣΕΙΡΑ: μια φιγούρα φεύγει, η σειρά αλλάζει, και η οθόνη μαζί")
+    why = rebuild(sym, g)
+    check(why is None, why or "ΞΑΝΑΧΤΙΣΜΑ: η πλήρης σχεδίαση κρατά τη σειρά της λίστας")
     parts(sym, g)
     cost(sym, g)
 
@@ -1045,6 +1149,20 @@ def main():
             continue
         why = scenario(sym, g, patch, quiet=True)
         check(why is not None, f"ΑΡΝΗΤΙΚΟ: με «{label}» αποτυγχάνει ({(why or '')[:110]})")
+    # βήμα 134: η σειρά της λίστας, και το EC_X
+    fo = find(sym["DHA_MV"], [0xCD] + w(sym["FG_ORD"]), 40)
+    fz = find(sym["FG_BUILD"], [0xB7, 0x28], 20)                   # or a / jr z,fgb_all
+    fn = find(sym["FGB_ALL"], [0x06, 100], 2)                      # ld b,AG_FOE0 + AG_NFOE
+    for label, patch, fn_ in (
+            ("χωρίς το fg_ord", fo and [(fo + k, 0) for k in range(3)], order),
+            ("το fg_build με τη σειρά των πρακτόρων", fz and [(fz + 1, 0x18)], rebuild),
+            ("το fg_build σε όλους τους 128 πράκτορες", fn and [(fn + 1, 128)], scenario)):
+        if not patch:
+            check(False, f"δεν βρέθηκε πού να πειραχτεί για «{label}»")
+            continue
+        why = fn_(sym, g, patch, quiet=True)
+        check(why is not None, f"ΑΡΝΗΤΙΚΟ: με «{label}» το {fn_.__name__} αποτυγχάνει "
+                               f"({(why or '')[:110]})")
     # Χωρίς τη χρέωση της σάρωσης στο fg_draw: με τη λίστα γεμάτη, 1,5 ms ανά
     # σάρωση που δεν τα χρεώνει κανείς.
     sc = find(sym["FG_DRAW"], [0xCD] + w(sym["DHV_CHARGE"]), 40)

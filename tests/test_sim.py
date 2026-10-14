@@ -199,7 +199,8 @@ def fresh(g, nexthop, src):
               "ship_eta", "pop_cap", "pad_node", "milestones", "deaths_sol",
               "no_death_sols", "green_sols", "no_trade_sols", "traded",
               "meteor", "mcx", "mcy", "mrnd", "nbuild", "markup", "lands",
-              "ldis", "lev", "full", "keep"):
+              "ldis", "lev", "full", "keep",
+              "coins", "prestige", "goodwill", "visacc"):    # βήμα 134
         setattr(s.e, f, getattr(src.e, f))
     return s
 
@@ -1851,6 +1852,60 @@ SHIP_CASES = (
 SHIP_CASES += FOE_SHIP_CASES             # βήμα 111
 
 
+# --- ΕΠΙΣΚΕΠΤΕΣ ΠΟΥ ΠΛΗΡΩΝΟΥΝ ΚΑΙ ΚΥΡΟΣ (βήμα 134) ---------------------------
+
+def _visitors(prestige=0, canteen=1, food=50, water=50, amenity=1, coins=0, goodwill=50):
+    """Το πλοίο επισκεπτών προσγειώνεται τώρα, με το κύρος, τα αποθέματα και τα
+    δωμάτια στις άκρες που θέλει η περίπτωση."""
+    def f(e, a):
+        e.ship_state, e.ship_kind, e.ship_eta = EC.SHIP_INCOMING, EC.SK_VISITOR, 0
+        e.prestige, e.coins, e.goodwill, e.amenity = prestige, coins, goodwill, amenity
+        e.room_n[EC.R_CANTEEN] = canteen
+        e.stock[EC.S_FOOD], e.stock[EC.S_WATER] = food, water
+    return f
+
+
+def _prestige(mile=0, alive=6, nodeath=0, amenity=0, goodwill=0, visacc=0,
+              ship=False, pad=True, lands=0):
+    """Η επόμενη περιστροφή κλείνει το sol, με ό,τι μπαίνει στο κύρος."""
+    def f(e, a):
+        _sol(e)
+        e.milestones, e.alive, e.no_death_sols, e.deaths_sol = mile, alive, nodeath, 0
+        e.amenity, e.goodwill, e.visacc, e.lands = amenity, goodwill, visacc, lands
+        if ship:
+            e.ship_state, e.ship_kind, e.ship_eta = EC.SHIP_INCOMING, EC.SK_COLONIST, 50
+        else:
+            e.ship_state = 0
+        if not pad:
+            e.pad_node = 255
+    return f
+
+
+VISIT_CASES = (
+    ("επισκέπτες: δύο, κυλικείο και σαλόνι", 1, _visitors()),
+    ("επισκέπτες: χωρίς σαλόνι ή δέντρο", 1, _visitors(amenity=0)),
+    ("επισκέπτες: χωρίς κυλικείο, η εύνοια ως το 0", 1, _visitors(canteen=0, goodwill=10)),
+    ("επισκέπτες: ένα τρόφιμο", 1, _visitors(food=1)),
+    ("επισκέπτες: χωρίς νερό", 1, _visitors(water=0)),
+    ("επισκέπτες: κύρος 63, δύο", 1, _visitors(prestige=63)),
+    ("επισκέπτες: κύρος 64, τρεις", 1, _visitors(prestige=64)),
+    ("επισκέπτες: κύρος 250, πέντε, τα νομίσματα ως το 999", 1,
+     _visitors(prestige=250, coins=990)),
+    ("επισκέπτες: η εύνοια ως το 100", 1, _visitors(goodwill=98)),
+    ("κύρος: όλα στις άκρες", 1,
+     _prestige(mile=31, alive=80, nodeath=255, amenity=9, goodwill=100)),
+    ("κύρος: σερί 29, σαλόνια 5", 1, _prestige(nodeath=28, amenity=5, goodwill=1)),
+    ("κύρος: ο συσσωρευτής ως το 255, χωρίς πλοίο", 1, _prestige(alive=10, visacc=200)),
+    ("κύρος: πάνω από 255, πλοίο επισκεπτών", 2, _prestige(alive=80, visacc=250)),
+    ("κύρος: πάνω από 255 με πλοίο ήδη, μένει 255", 1,
+     _prestige(alive=80, visacc=250, ship=True)),
+    ("κύρος: πάνω από 255 χωρίς πίστα, μένει 255", 1,
+     _prestige(alive=80, visacc=250, pad=False)),
+    ("κύρος: πάνω από 255, εισβολείς", 2, _prestige(alive=40, visacc=250, lands=8)),
+)
+SHIP_CASES += VISIT_CASES
+
+
 def ship_branches(sym, g, nexthop, sim0):
     """Η θέση 15 καρφωμένη: κάθε SHIP_CASES από την ίδια κατάσταση, στον Z80
     και στην αναφορά (slot15), και όλα τα bytes ίδια."""
@@ -1889,8 +1944,8 @@ def ship_branches(sym, g, nexthop, sim0):
           f"habitat — ίδια bytes στον Z80 και στην αναφορά. ΑΡΝΗΤΙΚΟ: με "
           f"αυτοματισμό από 9 ρομπότ διαφέρουν")
     # ΑΡΝΗΤΙΚΟ (βήμα 111): οι εισβολείς από 19 ζωντανούς (cp FOE_POP -> cp 19
-    # στο ev_ship).
-    at = sym["EV_SHIP"]
+    # στο ev_kind· στο ev_ship ως το βήμα 133).
+    at = sym["EV_KIND"]
     code = run_peek(sym, at, 16)
     k = next((k for k in range(14) if code[k:k + 2] == [0xFE, EC.FOE_POP]), None)
     st, n, want = starts["εισβολείς: 19 ζωντανοί"]
@@ -1901,6 +1956,33 @@ def ship_branches(sym, g, nexthop, sim0):
     print("OK πλοία και sol: εισβολείς από τη ζαριά των απρόσκλητων με 20 ζωντανούς "
           "και 8 προσγειώσεις, όχι με 19 ή 7· 2, 3, 3, 4 στην πίστα με 39, 40, 59, 60· "
           "οι προσγειώσεις ως το 255. ΑΡΝΗΤΙΚΟ: από 19 ζωντανούς διαφέρουν")
+    # ΤΑ ΑΡΝΗΤΙΚΑ ΤΟΥ ΒΗΜΑΤΟΣ 134: τέσσερα σκόπιμα λάθη, το καθένα στην
+    # περίπτωση που το βλέπει.
+    def fault(label, sym_at, pat, k_off, val, case):
+        at = sym[sym_at]
+        code = run_peek(sym, at, 160)
+        k = next((k for k in range(160 - len(pat)) if code[k:k + len(pat)] == pat), None)
+        st, n, want = starts[case]
+        caught = k is not None and z80(st, n, patch=[(at + k + k_off, val)]) != want
+        return caught, label
+    bad = [lab for ok, lab in (
+        fault("η εύνοια δεν σβήνει", "SR_PRES", [0x28, 0x01, 0x35], 2, 0x00,
+              "κύρος: σερί 29, σαλόνια 5"),
+        fault("τα νομίσματα χωρίς ταβάνι", "SV_PAY", [0x19, 0x30], 1, 0x18,
+              "επισκέπτες: κύρος 250, πέντε, τα νομίσματα ως το 999"),
+        fault("ο έλεγχος του κυλικείου ανάποδα", "SV_ONE", [0xB7, 0x28], 1, 0x20,
+              "επισκέπτες: χωρίς κυλικείο, η εύνοια ως το 0"),
+        fault("ο συσσωρευτής ξεχνά το πλοίο που δεν ήρθε", "SR_PRES", [0x3E, 0xFF], 1, 0x00,
+              "κύρος: πάνω από 255 με πλοίο ήδη, μένει 255"),
+    ) if not ok]
+    if bad:
+        print(f"ΑΠΟΤΥΧΙΑ πλοία και sol: ΑΡΝΗΤΙΚΑ του βήματος 134 που δεν πιάστηκαν: {bad}")
+        return 1
+    print(f"OK επισκέπτες και κύρος (βήμα 134): {len(VISIT_CASES)} περιπτώσεις — κυλικείο, "
+          f"σαλόνι, τρόφιμο, νερό, 2-5 επισκέπτες από το κύρος, νομίσματα ως το 999, εύνοια "
+          f"0-100, το κύρος στις άκρες του, ο συσσωρευτής με πλοίο, χωρίς, με άλλο πλοίο, "
+          f"χωρίς πίστα, και εισβολείς. ΑΡΝΗΤΙΚΑ: η εύνοια που δεν σβήνει, νομίσματα χωρίς "
+          f"ταβάνι, το κυλικείο ανάποδα, ο συσσωρευτής που ξεχνά — διαφέρουν")
     return 0
 
 

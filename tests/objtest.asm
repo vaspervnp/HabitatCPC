@@ -279,6 +279,10 @@ nd_load:                                ; το su_tick γυρίζει εκεί (
 nd_die: ret                             ; και εδώ δεν το καλεί κανείς
 asc_b6:                                 ; src/link.asm, που εδώ δεν υπάρχει (το hd_b6
 asc_b1: ret                             ; του hud.asm, βήμα 119)
+vs_coins:                               ; src/ship.asm (βήμα 134): τα νομίσματα της
+        ld      hl,(ot_coins)           ; τράπεζας 6, εδώ από μεταβλητή που γράφει
+        ret                             ; το tests/test_hud.py
+ot_coins:   dw 0
 al_wait:                                ; src/alert6.asm (βήμα 119): εδώ ούτε πίνακας
 al_broken:                              ; εργασιών ούτε μηχανές, και η γραμμή μένει
         xor     a                       ; όπως ως το βήμα 118

@@ -41,7 +41,7 @@ EC = dict(STOCK=0, PSTORE=28, PCAP=30, O2PROD=38, O2USE=40, POK=46, O2OK=47,
 STATE = dict(o2prod=200, o2use=188, pstore=3215, pcap=3240,
              stock=[412, 233, 0, 120, 40, 12, 8, 3, 0, 2, 0, 0, 0, 0],
              alive=34, popcap=48, sol=17, day=1,
-             pok=1, o2ok=1, storm=0, gameover=0)
+             pok=1, o2ok=1, storm=0, gameover=0, coins=16)
 
 # Δεύτερη κατάσταση: μηδενικά, τριψήφια, και συναγερμός. Η πρώτη δεν δοκιμάζει
 # ούτε τα μπροστινά μηδενικά ούτε τη γραμμή συναγερμού.
@@ -58,7 +58,7 @@ STATE2 = dict(o2prod=12, o2use=190, pstore=0, pcap=3240,
 STATE3 = dict(o2prod=0, o2use=0, pstore=5, pcap=0,
               stock=[650, 30, 0, 1005, 65535, 999, 100, 10, 0, 1, 0, 0, 0, 0],
               alive=100, popcap=148, sol=255, day=1,
-              pok=2, o2ok=1, storm=0, gameover=0)
+              pok=2, o2ok=1, storm=0, gameover=0, coins=1005)
 # Τέταρτη και πέμπτη: λίγο φαγητό (κάτω από μία μερίδα ανά ζωντανό), και η
 # βροχή μετεωριτών, που μπαίνει μπροστά του.
 STATE4 = dict(STATE, stock=[412, 33, 0, 120, 40, 12, 8, 3, 0, 2, 0, 0, 0, 0])
@@ -97,6 +97,7 @@ def load(sym, g, st, tx=-21, ty=-13, hud=True):
               "meteor"):
         m.poke(g + EC[k.upper()], st.get(k, 0))
     m.poke(sym["EC_FULL"], st.get("full", 0))       # τράπεζα 0 (βήμα 122)
+    w16(sym["OT_COINS"], st.get("coins", 0))        # βήμα 134: εδώ από μεταβλητή
     return m
 
 
