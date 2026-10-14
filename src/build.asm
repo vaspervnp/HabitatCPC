@@ -544,7 +544,6 @@ t_dome_s:   db "DOME S   ",0
 t_dome_m:   db "DOME M   ",0
 t_dome_l:   db "DOME L   ",0
 t_corr:     db "CORRIDOR ",0
-t_pathw:    db "PATH     ",0          ; το I πάνω στο μονοπάτι (src/info.asm, βήμα 85)
 t_solar:    db "SOLAR    ",0
 t_turb:     db "TURBINE  ",0
 t_coll:     db "COLLECTOR",0

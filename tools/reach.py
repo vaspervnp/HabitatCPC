@@ -48,7 +48,6 @@ K_AIRLOCK = 5
 K_SHIP = 7
 MAX_DEGREE = 8
 CORR_M, CORR_B = 6, 3           # ο διάδρομος ανά πλακίδιο (κατάλογος του build.asm)
-W_OCC_PATH = 0x20
 FOUNDATION = 7
 
 
@@ -361,14 +360,15 @@ def half_tiles(f, t, runs):
 
 
 def stamp(world, res):
-    """Ο κόσμος μετά το FIRE: τα tiles του μονοπατιού θεμέλιο με κατοχή 2, το
-    decor μένει· των διαδρόμων κατοχή 1 (cr_stamp), και από το βήμα 96 τα tiles
-    του μισού πλάτους, όσα είναι ελεύθερα (half_tiles)."""
+    """Ο κόσμος μετά το FIRE: τα tiles του μονοπατιού θεμέλιο χωρίς κατοχή (από
+    το βήμα 131· ως το 130 με κατοχή 2, που έκανε το μονοπάτι φράχτη), το decor
+    μένει· των διαδρόμων κατοχή 1 (cr_stamp), και από το βήμα 96 τα tiles του
+    μισού πλάτους, όσα είναι ελεύθερα (half_tiles)."""
     wl = bytearray(world)
     if res["path"]:
         for x, y in res["path"][2]:
             i = widx(x, y)
-            wl[i] = wl[i] & 0xC0 | W_OCC_PATH | FOUNDATION
+            wl[i] = wl[i] & 0xC0 | FOUNDATION
     for c in res["corridors"]:
         for x, y in c[4]:
             if -64 <= x < 64 and -64 <= y < 64:

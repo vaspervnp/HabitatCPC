@@ -145,6 +145,10 @@ class Game:
         self.built = {}                         # όνομα σταδίου -> (κόμβος, θέση)
         self.fits = []                          # [όνομα, θέση, κωδικοί] που περιμένουν υλικά
         self.spot_cache = {}
+        self.lastb = {}                         # όνομα σταδίου -> sol του τελευταίου
+        self.zones = False                      # το σχέδιο big: διάταξη με ζώνες
+        self.feed = None                        # --tweak feed=M:B
+        self.probes = []                        # (sol, ζωντανοί, x1, x4) ανά δύο sol
         self.m.poke(sym["UI_SPD"], 4)
 
     # --- μνήμη ---------------------------------------------------------------
@@ -201,6 +205,26 @@ class Game:
                 + sum(1 for s in self.structs() if s[4] == DS_BUILDING))
 
     # --- ο χρόνος ------------------------------------------------------------
+    def ticks(self):
+        return self.m.peek(self.X["EC_SOL"]) * 12000 + self.w16(self.X["EC_FRAME"])
+
+    def speed_probe(self, n1=800, n4=400):
+        """ΠΡΟΛΑΒΑΙΝΕΙ; (βήμα 131): n1 frames στο x1 και n4 στο x4, χωρίς πλήκτρα.
+        Ο βρόχος περιμένει το VSYNC και τρέχει τόσες θέσεις του τροχού όσες η
+        ταχύτητα (src/main.asm): ένα βαρύ frame χάνει το επόμενο VSYNC, και
+        τα ticks ανά frame πέφτουν κάτω από την ταχύτητα. Σε 150 frames το
+        λάθος ήταν ±7 %, σε 600 ±1,5 %. -> (x1, x4)."""
+        out = []
+        for spd, n in ((1, n1), (4, n4)):
+            self.m.poke(self.sym["UI_SPD"], spd)
+            self.m.run_frames(4)
+            t0 = self.ticks()
+            self.m.run_frames(n)
+            out.append((self.ticks() - t0) / n)
+        self.m.poke(self.sym["UI_SPD"], 4)
+        self.frames += n1 + n4 + 8
+        return tuple(out)
+
     def run(self, frames):
         while frames > 0:
             n = min(STEP, frames)
@@ -348,6 +372,77 @@ class Game:
                 break
         return (best[1], best[0][0]) if best else None
 
+    def own(self):
+        """(θόλοι, δομές) σε λειτουργία ή υπό κατασκευή, (x, y) σε μισά tiles."""
+        sb = lambda v: v - 256 if v > 127 else v
+        return ([(sb(d[0]), sb(d[1])) for d in self.domes() if d[4]],
+                [(sb(t[0]), sb(t[1])) for t in self.structs() if t[4]])
+
+    def spot_zone(self, item, zone):
+        """Η ΔΙΑΤΑΞΗ (βήμα 131). zone «core»: ένας θόλος στη σειρά ενός άλλου
+        αν γίνεται, με ως 4 κομμάτια διαδρόμου αν γίνεται, με τα λιγότερα, όσο
+        πιο κοντά στο κέντρο των θόλων. zone «edge»: μια δομή όσο πιο μακριά
+        από τους θόλους, ως 12 tiles, ώστε να μην κόβει τους διαδρόμους των
+        επόμενων — το σχέδιο long τις έβαζε σε σταθερά σημεία μέσα στη γη της
+        αποικίας, και σε κόσμους με χώρο έμενε «PATH BLOCKED».
+        -> (θέση, κομμάτια) ή None."""
+        domes, structs = self.own()
+        if not domes:
+            return None
+        cx = sum(x for x, _ in domes) // len(domes)
+        cy = sum(y for _, y in domes) // len(domes)
+        b4 = self.world()
+        dl = [d[:4] for d in self.domes()]
+        sl = [t[:7] for t in self.structs()]
+        dims = self.m.read_ram(self.L["G_struct_dims"], 64)
+        kind, param, w, h = self.m.read_ram(self.sym["BLD_ITEMS"] + 8 * item, 4)
+        R = 14 if zone == "core" else 20
+        tx0, ty0 = (cx - w) >> 1, (cy - h) >> 1
+        spots = [(tx, ty) for ty in range(ty0 - R, ty0 + R + 1)
+                 for tx in range(tx0 - R, tx0 + R + 1)]
+        best = None
+        for tx, ty in spots:
+            if not (-60 <= tx and tx + w <= 60 and -60 <= ty and ty + h <= 60):
+                continue
+            if not all(reach.ok_tile(b4[reach.widx(tx + i, ty + j)])
+                       for i in range(w) for j in range(h)):
+                continue
+            hx, hy = 2 * tx + w, 2 * ty + h
+            dist = max(abs(hx - cx), abs(hy - cy))
+            if zone == "core":
+                # ΣΤΗ ΣΕΙΡΑ: ίδιο x ή y με έναν θόλο και κενό ενός tile, ώστε
+                # ο διάδρομος να είναι ένα ευθύ κομμάτι και να μη διασταυρώνει
+                # κανέναν. «Οσο πιο κοντά στο κέντρο» σκέτο έφτιαχνε σωρό
+                # γύρω από το σκάφος, και μετά από τρεις με έξι θόλους κάθε
+                # νέος διάδρομος έβρισκε κάτι μπροστά του (PATH BLOCKED)· ένας
+                # αυστηρός κάνναβος πάλι δεν χωρούσε σε στενό έδαφος.
+                inline = any((hx == x and abs(hy - y) == LATTICE) or
+                             (hy == y and abs(hx - x) == LATTICE) for x, y in domes)
+                key = (0, 0 if inline else 1, dist)
+            else:
+                near = min(max(abs(hx - x), abs(hy - y)) for x, y in domes)
+                key = (0, -min(near, 24), dist)
+            p = reach.plan(b4, dl, sl, dims, kind, param, w, h, hx, hy)
+            if not p["ok"]:
+                k = f"λόγος {p['reason']}"
+                self.why[k] = self.why.get(k, 0) + 1
+                continue
+            key = (p["pieces"],) + key[1:]
+            if zone == "core":
+                key = (key[0] > 4, key[1], key[0], key[2])
+            else:
+                # ΤΑ ΜΟΝΟΠΑΤΙΑ ΤΩΝ ΔΟΜΩΝ ΕΧΟΥΝ ΚΑΤΑΛΗΨΗ (§9.3): ένα μακρύ μονοπάτι
+                # είναι φράχτης που κανένας θόλος και κανένας διάδρομος δεν
+                # περνά. Πρώτα όσα έχουν ως 3 tiles μονοπάτι — οι δομές μαζί,
+                # σε ένα «ναυπηγείο» — και από αυτά όσο πιο μακριά από τους θόλους.
+                plen = len(p["path"][2]) if p["path"] else 0
+                key = (0, plen > 3, key[1], plen, key[2])
+            if best is None or key < best[0]:
+                best = (key, (hx, hy))
+        if not best:
+            return None
+        return best[1], (best[0][2] if zone == "core" else 0)
+
     def place(self, item, at, room=None):
         """Χτίζει με τα πλήκτρα. -> ο κόμβος, ή None αν δεν μπήκε."""
         d0 = [d[4] for d in self.domes()]
@@ -435,9 +530,9 @@ def cause(a):
 # --------------------------------------------------------------------------
 # το σχέδιο
 # --------------------------------------------------------------------------
-def step(name, item, near, room=None, codes=(), after=(), when=None, again=False):
+def step(name, item, near, room=None, codes=(), after=(), when=None, again=False, zone=None):
     return dict(name=name, item=item, near=near, room=room, codes=list(codes),
-                after=list(after), when=when, again=again)
+                after=list(after), when=when, again=again, zone=zone)
 
 
 def room_free(G, upto=80):
@@ -648,8 +743,165 @@ def plan_long():
     return plan
 
 
+# --------------------------------------------------------------------------
+# ΠΕΡΑ ΑΠΟ ΤΟΥΣ ΕΙΚΟΣΙ (βήμα 131)
+# --------------------------------------------------------------------------
+LATTICE = 10                       # μισά tiles: θόλος S 4 tiles + διάδρομος 1
+# Τα D_ROOM του src/const.asm: ό,τι γράφει ο πίνακας θόλων στο byte 3.
+D_CONTROL, D_QUARTERS, D_CANTEEN, D_OXYGEN, D_GREEN, D_STORAGE, D_AIRLOCK, D_FACTORY, \
+    D_LAB, D_MEDBAY = range(1, 11)
+S_STARCH_I, S_VEG_I, S_MEAT_I, S_SPARE_I = 10, 11, 13, 6
+
+
+def last(G, n=8):
+    """Τα δείγματα του τελευταίου sol (ένα ανά όγδοο)."""
+    return G.rows[-n:]
+
+
+def cool(G, name, sols=1.0):
+    """Ενα στάδιο «ξανά» όχι συχνότερα από μία φορά το sol: το αποτέλεσμα ενός
+    θόλου φαίνεται αφού χτιστεί και στελεχωθεί."""
+    return G.sol() - G.lastb.get(name, -99) >= sols
+
+
+def machines(G, code):
+    """Οσες μηχανές code έχουν μπει (ή περιμένουν υλικά) σε θόλους."""
+    n = sum(d[8:16].count(code) for d in G.domes() if d[4] and d[3] != D_GREEN)
+    return n + sum(f[2].count(code) for f in G.fits)
+
+
+def plants(G, code):
+    return sum(d[8:16].count(code) for d in G.domes() if d[4] and d[3] == D_GREEN) + \
+        sum(f[2].count(code) for f in G.fits)
+
+
+def demand(name, test, sols=1.0):
+    """Ενα στάδιο «ξανά» που χτίζεται όταν το test(G) το ζητά, όχι πιο συχνά από
+    μία φορά στα sols, και ποτέ πριν από ένα ολόκληρο sol δειγμάτων."""
+    return lambda G: len(G.rows) >= 8 and cool(G, name, sols) and test(G)
+
+
+def o2_short(G):
+    rows = last(G)
+    return max(r["o2p"] for r in rows) < O2_PER_COL * (rows[-1]["alive"] + 4)
+
+
+def water_short(G):
+    w = [r["stock"][S_WATER] for r in last(G)]
+    return w[-1] < w[0] and w[-1] < 60 + 5 * G.rows[-1]["alive"]
+
+
+def power_short(G, night):
+    """Το ρεύμα κόπηκε στο τελευταίο μισό sol, τη μέρα (λείπει παραγωγή) ή τη
+    νύχτα (λείπει αποθήκη), και καμία δομή ρεύματος δεν χτίζεται ήδη. Με
+    όλο το sol, νύχτες που είχαν περάσει έχτιζαν ξανά και ξανά."""
+    rows = last(G, 4)
+    if any(r["storm"] for r in rows):
+        return False                        # η θύελλα σκεπάζει τα πάνελ: περνά
+    if any(t[4] == DS_BUILDING and t[2] in (0, 1, 2) for t in G.structs()):
+        return False
+    return any(r["pok"] != 1 and ((r["pp"] == 0) == night) for r in rows)
+
+
+def food_short(G, which):
+    """Η τροφή πέφτει και δεν φτάνει για πέντε sol: ποιο από τα τρία υλικά του
+    MEALS λείπει, ή «meals» αν υπάρχουν όλα (λείπει μάγειρας ή μηχανή)."""
+    rows = last(G)
+    f = [r["stock"][S_FOOD] for r in rows]
+    if not (f[-1] < f[0] and f[-1] < 5 * (rows[-1]["alive"] + 4)):
+        return False
+    st = rows[-1]["stock"]
+    low = min((st[S_STARCH_I], "starch"), (st[S_VEG_I], "veg"), (st[S_MEAT_I], "meat"))
+    return (low[1] if low[0] < 10 else "meals") == which
+
+
+def need_low(G, k):
+    """Πόσοι κατά μέσο όρο στο τελευταίο sol είχαν την ανάγκη k κάτω από 64:
+    0 o2, 1 νερό, 2 τροφή, 3 ύπνος."""
+    rows = last(G)
+    return sum(sum(1 for a in r["need"].values() if a[k] < 64) for r in rows) / len(rows)
+
+
+def open_sites(G):
+    """Εργοτάξια ταυτόχρονα: δύο, τρία από τους δώδεκα (βήμα 131)."""
+    return OPEN if not G.rows or G.rows[-1]["alive"] < 12 else OPEN + 1
+
+
+def plan_big():
+    """Ως εκεί όπου σταματά (βήμα 131): θόλοι μαζεμένοι γύρω από το κέντρο
+    τους, δομές στην περιφέρεια (Game.spot_zone), πίστα και έλεγχος αμέσως
+    μετά την τροφή για να έρθουν χέρια, και από εκεί και πέρα ό,τι ζητούν οι
+    μετρήσεις του τελευταίου sol — όχι σταθεροί αριθμοί αποίκων: οξυγόνο
+    που δεν φτάνει για όλους μαζί με τέσσερις ακόμη, νερό που πέφτει, ρεύμα
+    που κόπηκε (μέρα: ηλιακός, νύχτα: συλλέκτης), τροφή που πέφτει (ό,τι από
+    τα τρία λείπει), βιοπλαστικό και μέταλλο που λείπουν με την πρώτη ύλη
+    τους εκεί, ύπνος, αποθήκη."""
+    alive = lambda G: G.rows[-1]["alive"]
+    st = lambda G, k: G.rows[-1]["stock"][k]
+    opening = [
+        step("οξυγόνο", DOME_S, (6, 2), "oxygen", [OXYGEN]),
+        # Το κυλικείο ΠΡΩΤΟ: χωρίς αυτό δεν πίνει κανείς (δίψα σε 1,7 sol), και
+        # στον πάγο #ACE1·1 το μονοπάτι της αντλίας του έκλεινε τη θέση.
+        step("κυλικείο", DOME_S, None, "canteen", zone="core", after=["οξυγόνο"]),
+        step("ηλιακός", SOLAR, None, zone="edge"),
+        step("airlock", AIRLOCK, (6, 12), after=["οξυγόνο"]),
+        step("αντλία", EXTRACTOR, "water"),
+        step("εργοστάσιο", DOME_S, None, "factory", [METAL], zone="core", after=["οξυγόνο"]),
+        step("ορυχείο", MINE, "ore"),
+        step("ηλιακός 2", SOLAR, None, zone="edge"),
+        step("συλλέκτης", COLLECTOR, None, zone="edge"),
+        step("άμυλο", DOME_S, None, "green", [STARCH], zone="core", after=["κυλικείο"]),
+        step("λαχανικά", DOME_S, None, "green", [VEG], zone="core", after=["κυλικείο"]),
+        step("εργαστήριο", DOME_S, None, "lab", [MEAT], zone="core", after=["κυλικείο"]),
+        step("γεύματα", "fit", "κυλικείο", codes=[MEALS], after=["κυλικείο"]),
+        step("έλεγχος", DOME_S, None, "control", zone="core", after=["κυλικείο"]),
+        step("πίστα", PAD, None, zone="edge", after=["έλεγχος"]),
+        step("πλαστικό", DOME_S, None, "factory", [PLASTIC], zone="core", after=["άμυλο"]),
+        step("κοιτώνες", DOME_S, None, "quarters", zone="core", after=["κυλικείο"]),
+    ]
+    more = [
+        step("πλοίο", "ship", None, after=["πίστα", "έλεγχος"], when=ship_ok, again=True),
+        step("οξυγόνο+", DOME_S, None, "oxygen", [OXYGEN], zone="core", after=["οξυγόνο"],
+             when=demand("οξυγόνο+", o2_short), again=True),
+        step("αντλία+", EXTRACTOR, "water", after=["αντλία"],
+             when=demand("αντλία+", water_short, 1.5), again=True),
+        step("γεύματα+", DOME_S, None, "canteen", [MEALS], zone="core", after=["γεύματα"],
+             when=demand("γεύματα+", lambda G: food_short(G, "meals")), again=True),
+        step("άμυλο+", DOME_S, None, "green", [STARCH], zone="core", after=["άμυλο"],
+             when=demand("άμυλο+", lambda G: food_short(G, "starch")), again=True),
+        step("λαχανικά+", DOME_S, None, "green", [VEG], zone="core", after=["λαχανικά"],
+             when=demand("λαχανικά+", lambda G: food_short(G, "veg")), again=True),
+        step("εργαστήριο+", DOME_S, None, "lab", [MEAT], zone="core", after=["εργαστήριο"],
+             when=demand("εργαστήριο+", lambda G: food_short(G, "meat")), again=True),
+        step("ηλιακός+", SOLAR, None, zone="edge", after=["ηλιακός 2"],
+             when=demand("ηλιακός+", lambda G: power_short(G, False)), again=True),
+        step("συλλέκτης+", COLLECTOR, None, zone="edge", after=["συλλέκτης"],
+             when=demand("συλλέκτης+", lambda G: power_short(G, True)), again=True),
+        step("κοιτώνες+", DOME_S, None, "quarters", zone="core", after=["κοιτώνες"],
+             when=demand("κοιτώνες+", lambda G: need_low(G, 3) >= max(2, alive(G) / 4)),
+             again=True),
+        step("πλαστικό+", DOME_S, None, "factory", [PLASTIC], zone="core", after=["πλαστικό"],
+             when=demand("πλαστικό+", lambda G: st(G, S_BIOPL) < 25 and st(G, S_STARCH_I) >= 40
+                         and machines(G, PLASTIC) < 1 + alive(G) // 10), again=True),
+        step("μέταλλο+", DOME_S, None, "factory", [METAL], zone="core", after=["εργοστάσιο"],
+             when=demand("μέταλλο+", lambda G: st(G, S_METAL) < 40 and st(G, S_ORE) >= 30
+                         and machines(G, METAL) < 1 + alive(G) // 10), again=True),
+        step("ορυχείο+", MINE, "ore", after=["ορυχείο"],
+             when=demand("ορυχείο+", lambda G: st(G, S_ORE) < 10 and st(G, S_METAL) < 40
+                         and len(G.rows[-1]["mines"]) < 1 + alive(G) // 10, 2.0), again=True),
+        step("ανταλλακτικά", DOME_S, None, "factory", [SPARES], zone="core",
+             after=["εργοστάσιο"], when=lambda G: st(G, S_SPARE_I) < 6),
+        step("αποθήκη", DOME_S, None, "storage", zone="core", after=["οξυγόνο"],
+             when=storage_due, again=True),
+        step("ιατρείο", DOME_S, None, "medbay", zone="core", after=["κοιτώνες"],
+             when=lambda G: alive(G) >= 16),
+    ]
+    return opening + more
+
+
 PLANS = {"base": plan_base, "lean": plan_lean, "spares": plan_spares, "mine": plan_mine,
-         "mine_ns": plan_mine_ns, "grow": plan_grow, "store": plan_store, "long": plan_long}
+         "mine_ns": plan_mine_ns, "grow": plan_grow, "store": plan_store, "long": plan_long,
+         "big": plan_big}
 
 
 def tweak(G, spec):
@@ -672,10 +924,21 @@ def tweak(G, spec):
             # Η απόδοση της μηχανής METAL (βήμα 124): το qty της συνταγής της
             # (G_recipes + 10 * 1 + 7), 1 στο παιχνίδι.
             G.m.poke(G.L["G_recipes"] + 10 * 1 + 7, int(v, 0))
+        elif k == "plastic":
+            # Η απόδοση της μηχανής PLASTIC (βήμα 131): το qty της συνταγής 2
+            # (G_recipes + 10 * 2 + 7), 1 στο παιχνίδι — όπως το iron του 124.
+            G.m.poke(G.L["G_recipes"] + 10 * 2 + 7, int(v, 0))
         elif k == "eng_op":
             # Ο μηχανικός και στις Operate (job_roles[J_OPERATE] = εργάτης |
             # μηχανικός | βιολόγος): πόσο λείπει ένας χειριστής.
             G.m.poke(G.sym["JOB_ROLES"] + 1, 0x07)
+        elif k == "feed":
+            # ΥΛΙΚΑ ΧΩΡΙΣ ΤΕΛΟΣ (βήμα 131, μέτρηση): σε κάθε δείγμα το μέταλλο
+            # και το βιοπλαστικό ανεβαίνουν ως M και B — για να φανεί τι γίνεται
+            # πάνω από τους είκοσι όταν δεν σταματά τίποτα στην αρχή. Οχι πάνω
+            # από την αποθήκη: γεμάτη, σταματούν οι κήποι.
+            fm, _, fb = v.partition(":")
+            G.feed = (int(fm, 0), int(fb or "0", 0))
         elif k == "fault":
             a = codeat.find(G.m, G.sym["EV_FAULT"], [0x7D, 0xE6, 0x7F], 40)
             assert a, "δεν βρέθηκε το and #7F του ev_fault"
@@ -713,7 +976,15 @@ def try_step(G, s):
     if G.spot_cache.get(key, 0) is None:
         return None                         # ίδια αποικία, ίδια απάντηση
     near = s["near"]
-    if isinstance(near, str):
+    got = None
+    G.why = {}
+    if s.get("zone"):
+        got = G.spot_zone(s["item"], s["zone"])
+        G.spot_cache[key] = got
+        if got is None:
+            return None
+        cands = []
+    elif isinstance(near, str):
         cands = G.res_near(near)[:40]
     else:
         # ο στόχος, και αν εκεί δεν χωρά, γύρω από ό,τι έχει χτιστεί, από το
@@ -723,8 +994,6 @@ def try_step(G, s):
               [(sb(t[0]), sb(t[1])) for t in G.structs() if t[4]]
         own.sort(key=lambda c: max(abs(c[0] - near[0]), abs(c[1] - near[1])))
         cands = [near] + own
-    got = None
-    G.why = {}
     for c in cands:                         # η φθηνότερη από όλους τους στόχους
         g = G.spot(s["item"], c)
         if g and (got is None or g[1] < got[1]):
@@ -732,7 +1001,12 @@ def try_step(G, s):
         if got and not got[1]:
             break
     half = False
-    if got is None and s["item"] == MINE:
+    if got is None and s["item"] == MINE and G.zones:
+        # Στο σχέδιο big (βήμα 131) στην περιφέρεια: δίπλα σε ό,τι έχει
+        # χτιστεί έπεφτε στη μέση των θόλων και τους έκοβε τους διαδρόμους.
+        got = G.spot_zone(MINE, "edge")
+        half = got is not None
+    elif got is None and s["item"] == MINE:
         # ΚΑΜΙΑ ΘΕΣΗ ΣΤΗ ΦΛΕΒΑ (βήμα 123): δίπλα σε ό,τι έχει χτιστεί, με τη
         # μισή απόδοση — ο κόσμος 1048 του βήματος 120.
         sb = lambda v: v - 256 if v > 127 else v
@@ -775,6 +1049,14 @@ def play(G, plan, sols):
     nowhere = set()
     while G.sol() < sols:
         G.run(STEP)
+        if int(G.sol()) >= 2 * (len(G.probes) + 1):            # ανά δύο sol
+            x1, x4 = G.speed_probe()
+            G.probes.append((round(G.sol(), 2), G.rows[-1]["alive"], round(x1, 3), round(x4, 3)))
+        if G.feed:
+            for k, top in ((S_METAL, G.feed[0]), (S_BIOPL, G.feed[1])):
+                if G.stock(k) < top:
+                    G.m.poke(G.g + 2 * k, top & 255)
+                    G.m.poke(G.g + 2 * k + 1, top >> 8)
         if not G.rows[-1]["alive"]:
             G.event("ΤΕΛΟΣ: κανείς ζωντανός")
             break
@@ -798,7 +1080,7 @@ def play(G, plan, sols):
                 continue
             if s["when"] and not s["when"](G):
                 continue
-            if not cheap and G.sites() >= OPEN:
+            if not cheap and G.sites() >= open_sites(G):
                 held = True
                 continue
             r = try_step(G, s)
@@ -808,6 +1090,7 @@ def play(G, plan, sols):
                     nowhere.add(s["name"])
                 continue
             if r:
+                G.lastb[s["name"]] = G.sol()
                 if not s["again"]:
                     todo.remove(s)
                 break                       # ένα πράγμα ανά δείγμα
@@ -896,6 +1179,7 @@ def main():
     print(f"πλανήτης {a.planet}, seed #{a.seed:04X}, σχέδιο «{a.plan}», {a.sols} sols"
           + (f", πειράγματα {a.tweak}" if a.tweak else ""),
           flush=True)
+    G.zones = a.plan == "big"
     left = play(G, PLANS[a.plan](), a.sols)
     report(G)
     deaths = [e for e in G.events if "ΘΑΝΑΤΟΣ" in e]
@@ -915,7 +1199,7 @@ def main():
                                   stock=r["stock"], cap=r["cap"], full=r["full"],
                                   storm=r["storm"], pok=r["pok"], o2ok=r["o2ok"],
                                   mines=r["mines"], sites=r["sites"]) for r in G.rows],
-                       events=G.events), open(a.json, "w"))
+                       events=G.events, probes=G.probes), open(a.json, "w"))
     return 0
 
 

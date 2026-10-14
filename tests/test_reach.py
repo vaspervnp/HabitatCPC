@@ -29,7 +29,9 @@
             μονοπατιού και πουθενά αλλού· το αρχείο αναίρεσης γυρίζει την οθόνη
             όπως ήταν.
   FIRE      Το uist_place χτίζει ό,τι έδειξε το φάντασμα: τα tiles του
-            μονοπατιού θεμέλιο με κατοχή 2 και το decor τους, οι διάδρομοι
+            μονοπατιού θεμέλιο χωρίς κατοχή (κατοχή 2 ως το βήμα 130) και το
+            decor τους — και από το βήμα 131 ένας θόλος χτίζεται πάνω σε
+            μονοπάτι, με τον διάδρομό του από πάνω του —, οι διάδρομοι
             στον πίνακα με τον θόλο ως άκρο a (από εκεί ζωγραφίζονται, και ένα
             airlock δεν είναι ποτέ), στον γράφο η ακμή του μονοπατιού — ή, για
             ό,τι δεν έχει μονοπάτι, η σύνδεση εδάφους στο κοντινότερο airlock ή
@@ -65,7 +67,7 @@
 
 Αρνητικά, με το snapshot πειραγμένο: εμβέλεια 13, χωρίς την προσωρινή
 σφραγίδα, χωρίς το ξεσφράγισμα, μόνο το πρώτο Γ, το γρήγορο «όχι» ένα tile πιο
-κοντά, το μονοπάτι με κατοχή 1, σε airlock και οριζόντια ή διαγώνια, διάδρομος
+κοντά, το μονοπάτι με κατοχή 2 όπως ως το βήμα 130, σε airlock και οριζόντια ή διαγώνια, διάδρομος
 που ξεκινά από airlock, η δομή δένεται σε θόλο, airlock με ακμή δέχεται κι
 άλλον, το NO CORRIDOR FITS λέγεται TOO FAR, το airlock κρατά τον τελευταίο θόλο,
 το airlock που μπαίνει μόνο του δεν μετριέται, οι διάδρομοι στη λίστα αλλαγών
@@ -750,7 +752,26 @@ FIRE_AT = [("θόλος S", 0, (16, -12), (4, -9), None),
            ("θόλος S, τρεις διάδρομοι", 0, (8, 8), (-6, -2),
             lambda res: len(res["corridors"]) == 3),
            ("airlock νότια του κυλικείου", 9, (0, 26), (-10, 4),
-            lambda res: [c[0] for c in res["corridors"]] == [2])]
+            lambda res: [c[0] for c in res["corridors"]] == [2]),
+           # ΠΑΝΩ ΣΤΟ ΜΟΝΟΠΑΤΙ (βήμα 131): ένας ηλιακός με μονοπάτι οκτώ tiles και
+           # πάνω, και ένας θόλος S που πατά τέσσερα tiles του και ο διάδρομός του
+           # ένα ακόμη. Ως το βήμα 130 το μονοπάτι είχε κατοχή 2 και ο θόλος
+           # ήταν κόκκινος (PATH BLOCKED).
+           ("ηλιακός, μακρύ μονοπάτι", 4, (-11, 39), (-15, 14),
+            lambda res: res["path"] and len(res["path"][2]) >= 8),
+           ("θόλος S πάνω στο μονοπάτι", 0, (-6, 30), (-12, 10),
+            lambda res, b4: on_path(res, b4, -6, 30))]
+
+
+def on_path(res, b4, cx, cy, w=4, h=4):
+    """Ο θόλος στο (cx, cy) πατά τουλάχιστον τέσσερα tiles θεμελίου χωρίς
+    κατοχή — το μονοπάτι του ηλιακού — και ένας διάδρομός του ένα ακόμη."""
+    path = lambda b: b & 0x37 == 0x07
+    tx, ty = (cx - w) >> 1, (cy - h) >> 1
+    fp = [b4[reach.widx(tx + i, ty + j)] for i in range(w) for j in range(h)]
+    ct = [b4[reach.widx(x, y)] for c in res["corridors"] for x, y in c[4]
+          if not (tx <= x < tx + w and ty <= y < ty + h)]
+    return sum(map(path, fp)) >= 4 and any(map(path, ct))
 
 
 def fire(sym, g, patch=()):
@@ -778,7 +799,7 @@ def fire(sym, g, patch=()):
         res = reach.plan(b4, domes, structs, dims, kind, param, w, h, cx, cy)
         if not res["ok"] or not (res["corridors"] or res["path"]):
             return f"{name} στο ({cx}, {cy}): ο κανόνας δεν το δένει πουθενά — {res['reason']}"
-        if need and not need(res):
+        if need and not (need(res, b4) if need.__code__.co_argcount == 2 else need(res)):
             return f"{name}: η σκηνή δεν έχει αυτό που δοκιμάζει — {len(res['corridors'])} διάδρομοι"
         deg0 = m.read_ram(nodes, 96)
         stock0 = (G.m.peek(g + 6) | G.m.peek(g + 7) << 8, G.m.peek(g + 8) | G.m.peek(g + 9) << 8)
@@ -979,7 +1000,9 @@ def negatives(sym, g):
          [(find(m, sym["AL_CUNT"], [0xCB, 0xAE]) + k, 0) for k in (0, 1)]),
         ("μόνο το πρώτο Γ", rules, [(sym["AL_LTRY"] - 2, 0xC9), (sym["AL_LTRY"] - 1, 0)]),
         ("το γρήγορο «όχι» ένα tile πιο κοντά", rules, [(far + 1, 39)]),
-        ("το μονοπάτι με κατοχή 1", "fire", [(find(m, sym["AL_CBS"], [0xF6, 0x27]) + 1, 0x17)]),
+        # or W_FOUNDATION στο al_cbs γίνεται or W_FOUNDATION + W_OCC_PATH
+        ("το μονοπάτι με κατοχή 2, όπως ως το βήμα 130", "fire",
+         [(find(m, sym["AL_CBS"], [0xF6, 0x07]) + 1, 0x27)]),
         # --- βήμα 86 ---
         ("σε airlock και οριζόντια ή διαγώνια", rules,
          [(find(m, sym["CR_SIDE"], [0x3A] + w(sym["CR_TS"]) + [0x3C, 0x20], 200) + 4, 0x18)]),

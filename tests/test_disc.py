@@ -390,12 +390,16 @@ def main():
               bytes([76, 4, 77, 4, 0xFF, 0, 0, 0]))
     k = CPC()
     bad = held(k, bytes(dsk)) if n == 1 else None
-    nd_bad = ndiff(bad, ref_menu(k.peek(bs["MW_K"]), 0)) if bad else 0
+    # Το mw_k ζει στο MENU.BIN (&4000), που τα αρχεία του παιχνιδιού το έχουν
+    # ήδη σκεπάσει όταν το μενού έφυγε: ως το βήμα 130 εκεί έτυχε αριθμός
+    # κάτω από 32. Η οθόνη συγκρίνεται με το μενού ΚΑΘΕ κόσμου.
+    nd_bad = min(ndiff(bad, ref_menu(j, 0)) for j in range(MW.MW_N)) if bad else 0
     del k
     check(n == 1 and nd_bad > 0,
           f"ΑΡΝΗΤΙΚΟ: με το mn_prev να ξεκινά από 0 ({n} σημείο) το κρατημένο "
           f"RETURN διαλέγει μόνο του και το μενού "
-          f"{'έφυγε' if nd_bad else 'έμεινε'} ({nd_bad} bytes)")
+          f"{'έφυγε' if nd_bad else 'έμεινε'} (τουλάχιστον {nd_bad} bytes "
+          f"διαφορετικά από καθέναν από τους {MW.MW_N} κόσμους)")
     wait = MR.wait(m, bs)
     nd = ndiff(m.read_ram(0xC000, 0x4000), ref_menu(k0, 0))
     seed, pl = MW.worlds()[k0][:2]
