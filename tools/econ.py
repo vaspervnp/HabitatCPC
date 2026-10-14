@@ -233,6 +233,9 @@ class Econ:
         self.prestige = 0
         self.goodwill = 0
         self.visacc = 0
+        # ΚΑΙ ΤΑ ΝΟΜΙΣΜΑΤΑ ΤΟΥ ΕΜΠΟΡΟΥ (βήμα 135), σε δεκάδες: τα γράφει η
+        # προσγείωσή του (land_merchant), τα πουλά στη γραμμή του.
+        self.mcoins = 0
         # ΓΕΜΑΤΗ ΑΠΟΘΗΚΗ (βήμα 122): το ec_full του Z80, στην τράπεζα 0 (src/stock.asm).
         self.full = 0
         # ΤΟ ΑΠΟΘΕΜΑ ΜΕΤΑΛΛΟΥ (βήμα 127): το ec_keep, δίπλα του.
@@ -689,11 +692,12 @@ def x_bytes(e):
     και του τελευταίου γεγονότος."""
     return bytes([e.ldis[0]]) + int(e.ldis[1]).to_bytes(2, "little") + \
         bytes([e.lev[0]]) + int(e.lev[1]).to_bytes(2, "little") + \
-        int(e.coins).to_bytes(2, "little") + bytes([e.prestige, e.goodwill, e.visacc])
+        int(e.coins).to_bytes(2, "little") + bytes([e.prestige, e.goodwill, e.visacc,
+                                                    e.mcoins])
 
 
 X_OFF = 128 + 96 + 4                    # AG_FOE0 + AG_NFOE στο πάνω μισό
-X_N = 11                                # 6 ως το βήμα 133
+X_N = 12                                # 6 ως το βήμα 133, 11 ως το 134
 
 
 def occ_hi(e):
@@ -1611,11 +1615,13 @@ INDEPENDENCE_STOCKS = tuple(range(10))
 # medical supplies 25, gun 80, starch/vegetables/vitromeat 5, medicinal 10)·
 # το ρομπότ 120, ανάμεσα στο ρομπότ μεταφοράς (80) και κατασκευής (160), γιατί
 # εδώ ένα Bot γίνεται εναλλάξ το ένα ή το άλλο. Το νερό δεν είναι εμπόρευμα,
-# όπως εκεί.
-TRADE_VALUE = [0, 5, 10, 15, 10, 40, 15, 25, 80, 120, 5, 5, 10, 5]   # ανά απόθεμα
+# όπως εκεί, και η θέση 0 είναι από το βήμα 135 ΤΑ ΝΟΜΙΣΜΑΤΑ, σε δεκάδες: αξία
+# 1 το καθένα (Planetbase), άρα 10 η δεκάδα, και μία δεκάδα ανά πάτημα.
+TRADE_VALUE = [10, 5, 10, 15, 10, 40, 15, 25, 80, 120, 5, 5, 10, 5]  # ανά απόθεμα
 # Η ΜΟΝΑΔΑ ΤΟΥ ΒΕΛΟΥΣ, ~50-100 σε αξία: 10 τρόφιμα, 5 μέταλλα, 2 επεξεργαστές,
 # 1 ρομπότ. Και του φορτίου: ο έμπορος φέρνει 1-4 μονάδες από το καθένα.
-TRADE_LOT = [0, 10, 10, 5, 10, 2, 5, 4, 1, 1, 10, 10, 10, 10]
+TRADE_LOT = [1, 10, 10, 5, 10, 2, 5, 4, 1, 1, 10, 10, 10, 10]
+MER_COIN = 5                # δεκάδες ανά παρτίδα νομισμάτων του εμπόρου: 50
 TRADE_N = 13                # τα αποθέματα 1-13: όλα εκτός από το νερό
 MER_SLOTS = 4
 MER_ROLL = 0x5A5            # (r2 & 0x7FF): το μηδέν είναι ο επισκέπτης
@@ -1637,13 +1643,15 @@ def mer_bytes(seed, n):
 
 def land_merchant(e):
     """Το φορτίο και το κέρδος, τη στιγμή που προσγειώνεται. Τρία bytes:
-    το πρώτο δίνει το κέρδος (5 bits, ως 30) και αν φέρνει τέσσερα (bit 5), το
+    το πρώτο δίνει το κέρδος (5 bits, ως 30), αν φέρνει τέσσερα (bit 5) και από
+    το βήμα 135 πόσα νομίσματα (bits 6-7, x 50), το
     δεύτερο το πρώτο αγαθό (χαμηλά 4 bits, mod 13) και το βήμα ανάμεσά τους
     (ψηλά 4, mod 12, + 1), το τρίτο τις μονάδες, δύο bits το καθένα. Το 13 είναι
     πρώτος αριθμός: s, s + d, s + 2d, s + 3d (mod 13) είναι πάντα διαφορετικά."""
     b0, b1, b2 = mer_bytes(e.rnd, 3)
     m = b0 & 31
     e.markup = MARKUP_MIN + (m - 31 if m >= 31 else m)
+    e.mcoins = (b0 >> 6) * MER_COIN     # βήμα 135: 0-3 παρτίδες των 50
     k = 4 if b0 & 32 else 3
     t = b1 & 15
     t = t - 13 if t >= 13 else t
@@ -1692,7 +1700,9 @@ def trade(e, net):
     take, give = trade_totals(e, net)
     if take == 0 or give < take:
         return False
-    if any(n < 0 and -n > e.stock[g] for g, n in enumerate(net)):
+    # τα νομίσματα (βήμα 135) δεν ξαναμετριούνται: η γραμμή τα κράτησε ως όσα
+    # είχες όταν άνοιξε, και όσο είναι εδώ ο έμπορος άλλο πλοίο δεν πληρώνει
+    if any(n < 0 and -n > e.stock[g] for g, n in enumerate(net) if g):
         return False
     # ΟΙ ΜΕΤΑΦΟΡΕΙΣ ΠΡΩΤΑ (trd_post): χωρίς θέση στον πίνακα, ή χωρίς πίστα,
     # ούτε συμφωνία
@@ -1714,9 +1724,13 @@ def trade(e, net):
     # κουβαληθούν. Ο έμπορος περιμένει (SK_DEALT, eta #FFFF).
     loads = 0
     for g, n in enumerate(net):
-        if n < 0:
+        if n < 0 and g:
             e.stock[g] += n
             loads += (-n + TRADE_LOAD - 1) // TRADE_LOAD
+    # ΤΑ ΝΟΜΙΣΜΑΤΑ ΑΜΕΣΩΣ (βήμα 135), όπως στο Planetbase: σε δεκάδες, χωρίς
+    # φορτία. Η γραμμή κρατά το ΠΑΝΩ ως το COIN_MAX. Τα mcoins μένουν: η γραμμή
+    # δεν ξανανοίγει, και ο επόμενος έμπορος γράφει τα δικά του.
+    e.coins += 10 * net[0]
     for k in range(MER_SLOTS):
         g = e.cargo[2 * k]
         e.cargo[2 * k + 1] = max(net[g], 0) if g else 0

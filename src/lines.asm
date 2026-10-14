@@ -149,13 +149,24 @@ ln_row4:
 ; ως όσα έχεις και ως 99. Η μονάδα είναι του tr_lot (src/stock.asm). FIRE ή
 ; SPACE: η ανταλλαγή, και φεύγει. ESC κλείνει, και η προσφορά ξεχνιέται.
 ;
+; ΚΑΙ ΤΑ ΝΟΜΙΣΜΑΤΑ (βήμα 135), αμέσως μετά τα δικά του, όπως στο Planetbase:
+; τα δέχεται, αξία 1 το καθένα, και πουλά όσα φέρνει (EC_MCOIN) με το κέρδος
+; του. Δέκα ανά πάτημα, ως το 999 που χωρά το HUD και ως 990 προς αυτόν· στη
+; γραμμή φαίνονται τα νομίσματα, όχι οι δεκάδες, και χωρίς το «@ αξία»:
+;
+;   σειρά 4    <COINS  > SHIP 150 GIVE 120 HAVE 999
+;
+; Αλλάζουν χέρια ΑΜΕΣΩΣ στη συμφωνία, χωρίς φορτία και μεταφορείς.
+;
 ; Η ΠΡΟΣΦΟΡΑ ΖΕΙ ΣΤΗ ΜΝΗΜΗ ΕΡΓΑΣΙΑΣ ΤΟΥ src/crew.asm: εκείνη τη θέλει μόνο η
 ; προσγείωση αποίκων, και όσο ο έμπορος είναι εδώ άλλο πλοίο δεν έρχεται.
 ; ---------------------------------------------------------------------------
 TR_MODE     equ 3                       ; ac_mode
 TR_NET      equ G_crew                  ; 14, ανά απόθεμα: + παίρνεις, - δίνεις
-TR_ORD      equ G_crew + 14             ; 13: η σειρά των βελών
-        assert  TR_ORD + TRADE_N <= G_crew + 33
+TR_ORD      equ G_crew + 14             ; 14: η σειρά των βελών, με τα νομίσματα
+TR_MC       equ TR_ORD + TRADE_N + 1    ; όσα νομίσματα φέρνει, σε δεκάδες (βήμα 135)
+TR_HC       equ TR_MC + 1               ; και όσα έχεις, 16 bit
+        assert  TR_HC + 1 < G_crew + 33
         assert  (EC_CARGO >> 8) == ((EC_CARGO + 2 * MER_SLOTS - 1) >> 8)
         assert  TR_MODE == CW_MODE + 1 && BT_TRADE == BT_SHIP + 1  ; το bww_act
 
@@ -172,7 +183,7 @@ trt_here:
         and     1 << A_UP | 1 << A_DOWN
         jp      nz,tr_ud
         ld      hl,tr_sel
-        ld      c,TRADE_N
+        ld      c,TRADE_N + 1           ; και τα νομίσματα (βήμα 135)
         jp      cw_lr                   ; ui_lr, ήχος, ui_dirty, ui_panel (src/act.asm)
 
 ; tr_panel — σειρά 3, στήλη 0. Τελειώνει όπως το cw_panel.
@@ -216,9 +227,8 @@ tr_panel:
         call    hud_char
         ld      hl,t_tr_ship
         call    hud_text
-        ld      a,(tr_cq)
-        ld      b,2                     ; ως 40 (tr_lot x 4)
-        call    hud_numa
+        ld      a,(tr_cq)               ; ως 40 (tr_lot x 4), ή 150 νομίσματα
+        call    tr_qn
         pop     hl
         ld      a,(hl)                  ; net
         or      a
@@ -230,16 +240,22 @@ tr_panel:
 trp_n:  push    af
         call    hud_text
         pop     af
-        ld      b,2
-        call    hud_numa
+        call    tr_qn
         jr      trp_hv
-trp_0:  ld      b,8
+trp_0:  ld      a,(tr_g)
+        cp      1                       ; CY: τα νομίσματα, ένα ψηφίο ακόμη
+        ld      a,8
+        adc     a,0
+        ld      b,a
         call    hud_blank
 trp_hv: ld      hl,t_tr_have
         call    hud_text
         ld      hl,(tr_hv)
-        ld      b,3                     ; ως το EC_CAP, 600
+        ld      b,3                     ; ως το EC_CAP, 600, ή το COIN_MAX, 999
         call    hud_num
+        ld      a,(tr_g)
+        or      a
+        jp      z,acp_end               ; τα νομίσματα: η αξία τους είναι 1
         call    hud_space
         ld      a,'@'
         call    hud_char
@@ -274,6 +290,22 @@ tro_c:  ld      a,(de)
 tro_cn: inc     de
         inc     de
         djnz    tro_c
+        ; ΤΑ ΝΟΜΙΣΜΑΤΑ (βήμα 135): αμέσως μετά τα δικά του, ως το απόθεμα 0 — το
+        ; νερό, που δεν ανταλλάσσεται. Οσα φέρνει και όσα έχεις, από την τράπεζα
+        ; 6, ΜΙΑ ΦΟΡΑ: όσο είναι εδώ ο έμπορος άλλο πλοίο δεν έρχεται, άρα ούτε
+        ; πληρώνει. Η γραμμή ζωγραφίζει με την 7 στο παράθυρο (τα ονόματα): ένα
+        ; asc_b1 μέσα στο tr_load θα την έβγαζε, και το πρώτο γράμμα του ονόματος
+        ; θα ερχόταν από την 1.
+        ld      (hl),0
+        inc     l
+        push    hl
+        call    asc_b6                  ; κρατούν όλους (src/link.asm)
+        ld      a,(EC_MCOIN)
+        ld      hl,(EC_COINS)
+        call    asc_b1
+        ld      (TR_MC),a
+        ld      (TR_HC),hl
+        pop     hl
         ; ...και μετά τα υπόλοιπα, με τη σειρά των αποθεμάτων
         ld      c,1
 tro_r:  call    tr_find
@@ -334,6 +366,8 @@ tr_load:
         ld      c,(hl)
         ld      a,c
         ld      (tr_g),a
+        or      a
+        jr      z,trl_cn                ; τα νομίσματα (βήμα 135)
         call    tr_find
         ld      (tr_cq),a
         ld      a,c
@@ -342,7 +376,7 @@ tr_load:
         ld      e,(hl)
         inc     hl
         ld      d,(hl)
-        ld      (tr_hv),de
+trl_hv: ld      (tr_hv),de
 tr_netc:                                ; C = απόθεμα -> HL -> net του, και
         ld      a,c                     ; A = net, με S και Z (βήμα 103: τέσσερις
 tr_neta:                                ; A = απόθεμα     καλούντες το ήθελαν)
@@ -352,6 +386,39 @@ tr_neta:                                ; A = απόθεμα     καλούντ�
         ld      a,(hl)
         or      a
         ret
+trl_cn: ld      a,(TR_MC)
+        ld      (tr_cq),a
+        ld      de,(TR_HC)
+        jr      trl_hv
+
+; tr_ten — HL (ως 999) / 10 -> HL. Χαλάει AF, DE.
+tr_ten:
+        ld      a,-1
+        ld      de,-10
+trtn_l: inc     a
+        add     hl,de
+        jr      c,trtn_l
+        ld      l,a
+        ld      h,0
+        ret
+
+; tr_qn — A = ποσότητα του διαλεγμένου, στη μονάδα του πίνακα: δύο ψηφία· τα
+; νομίσματα (tr_g = 0) σε δεκάδες, άρα x10 σε τρία (βήμα 135).
+tr_qn:
+        ld      l,a
+        ld      h,0
+        ld      b,2
+        ld      a,(tr_g)
+        or      a
+        jp      nz,hud_num
+        ld      d,h
+        ld      e,l
+        add     hl,hl
+        add     hl,hl
+        add     hl,de
+        add     hl,hl                   ; x10
+        inc     b
+        jp      hud_num
 
 ; tr_ud — από το tr_tick: A = 1 πάνω, 2 κάτω (3: πάνω).
 tr_ud:
@@ -379,8 +446,15 @@ tru_tk: add     a,c
         push    hl
         ld      hl,EC_CAP               ; όσα χωράνε στην αποθήκη...
         ld      de,(tr_hv)
-        sbc     hl,de                   ; CY = 0: net 0-127 + μονάδα 1-10
-        ld      a,(tr_cq)               ; ...και όσα φέρνει: το μικρότερο
+        ld      a,(tr_g)
+        or      a                       ; CY = 0
+        jr      nz,tru_sb
+        ld      hl,COIN_MAX             ; ...ή τα νομίσματα ως το 999, σε
+        sbc     hl,de                   ; δεκάδες (βήμα 135)
+        call    tr_ten
+        jr      tru_cq
+tru_sb: sbc     hl,de
+tru_cq: ld      a,(tr_cq)               ; ...και όσα φέρνει: το μικρότερο
         inc     h
         dec     h
         jr      nz,tru_rm               ; πάνω από 255 χωράνε
@@ -403,14 +477,20 @@ tru_dn: dec     a                       ; net - 1: αρνητικό για net <
 tru_gv: cpl                             ; -(net - 1) - 1 = -net: όσα δίνεις, θετικά
         add     a,c
         ld      b,a
-        ld      a,(tr_hv + 1)
+        push    hl
+        ld      hl,(tr_hv)
+        ld      a,(tr_g)
+        or      a
+        call    z,tr_ten                ; τα νομίσματα: όσες δεκάδες έχεις
+        ld      a,h
         or      a
         ld      a,TRADE_MAX
-        jr      nz,tru_mx               ; πάνω από 255 έχεις
-        ld      a,(tr_hv)
+        jr      nz,tru_mp               ; πάνω από 255 έχεις
+        ld      a,l
         cp      TRADE_MAX
-        jr      c,tru_mx
+        jr      c,tru_mp
         ld      a,TRADE_MAX
+tru_mp: pop     hl
 tru_mx: cp      b                       ; A = όσα μπορείς: το μικρότερο
         jr      c,tru_ng
         ld      a,b
@@ -420,51 +500,41 @@ tru_st: ld      (hl),a
 
 ; tr_sum — tr_take: όσα παίρνεις, στις τιμές του (tr_price).
 ; tr_give: όσα δίνεις, στην αξία τους. Χαλάει όλους.
+;
+; ΕΝΑΣ ΒΡΟΧΟΣ ΣΤΑ ΑΠΟΘΕΜΑΤΑ (βήμα 135), από τα νομίσματα, που είναι το 0 με
+; αξία 10 η δεκάδα. Ως το βήμα 134 το πάρσιμο περνούσε τις θέσεις του
+; φορτίου του, και μια κενή θέση έχει απόθεμα 0: θα μετρούσε τα νομίσματα
+; ξανά. Θετικό net έχουν μόνο όσα φέρνει (το ΠΑΝΩ ως tr_cq), άρα το ίδιο ζύγι.
 tr_sum:
         ld      hl,0
         ld      (tr_take),hl
         ld      (tr_give),hl
-        ld      c,l                     ; C = θέση φορτίου (0)
-trs_c:  ld      a,c
-        add     a,a
-        add     a,EC_CARGO & 255
-        ld      l,a
-        ld      h,EC_CARGO >> 8
-        ld      a,(hl)                  ; το απόθεμα (0: κενή θέση, net 0)
-        ld      b,a
-        call    tr_neta                 ; A = net
-        dec     a
-        jp      m,trs_cn                ; <= 0: δεν το παίρνεις
-        inc     a
-        push    bc
+        ld      c,0                     ; C = απόθεμα
+trs_lp: call    tr_netc                 ; A = net, με S και Z
+        jr      z,trs_n
+        jp      m,trs_g
+        push    bc                      ; παίρνεις
         push    af
-        ld      a,b                     ; το απόθεμα
+        ld      a,c
         call    tr_price                ; ~0,5 ms: μόνο όταν πατηθεί πλήκτρο
         ld      e,a                     ; η τιμή του
         pop     af
         pop     bc
         ld      hl,tr_take
-        call    trs_add
-trs_cn: inc     c
-        ld      a,c
-        cp      MER_SLOTS
-        jr      c,trs_c
-        ld      c,1                     ; C = απόθεμα
-trs_g:  call    tr_netc
-        jp      p,trs_gn                ; >= 0: δεν το δίνεις
-        neg
+        jr      trs_ad
+trs_g:  neg                             ; δίνεις
         push    af
         ld      a,c
         ld      hl,tr_value
-        call    ob_addu
+        call    ob_addu                 ; κρατά το BC
         ld      e,(hl)                  ; η αξία του
         pop     af
         ld      hl,tr_give
-        call    trs_add
-trs_gn: inc     c
+trs_ad: call    trs_add
+trs_n:  inc     c
         ld      a,c
         cp      TRADE_N + 1
-        jr      c,trs_g
+        jr      c,trs_lp
         ret
 
 ; trs_add — (HL) += A x E, 16 bit. Κρατά το C.
@@ -504,6 +574,9 @@ tr_deal:
         call    tr_sum
         call    tr_ok
         jp      c,uip_deny
+        ; Τα νομίσματα που δίνεις δεν ξαναμετριούνται εδώ (βήμα 135): το ΚΑΤΩ τα
+        ; κράτησε ως όσα είχες στο tr_open, και ως να φύγει ο έμπορος άλλο πλοίο
+        ; δεν έρχεται, ούτε πληρώνει.
         ld      c,1
 trd_ck: call    tr_netc
         jp      p,trd_kn
@@ -554,6 +627,34 @@ trd_n:  inc     c
         ld      a,c
         cp      TRADE_N + 1
         jr      c,trd_lp
+        ; ΤΑ ΝΟΜΙΣΜΑΤΑ ΑΜΕΣΩΣ (βήμα 135), όπως στο Planetbase: ούτε φορτία ούτε
+        ; μεταφορείς. Το net σε δεκάδες, + παίρνεις, - δίνεις· το ΠΑΝΩ το κράτησε
+        ; ως το COIN_MAX, και όσο είναι εδώ ο έμπορος άλλο πλοίο δεν πληρώνει.
+        ; Μετά το net του γίνεται 0: μια κενή θέση του φορτίου, απόθεμα 0, θα το
+        ; διάβαζε σαν ποσότητα πιο κάτω.
+        ld      hl,TR_NET
+        ld      a,(hl)
+        ld      (hl),0
+        or      a
+        jr      z,trd_nc
+        ; Το EC_MCOIN μένει: η γραμμή δεν ξανανοίγει (SK_DEALT), και ο επόμενος
+        ; έμπορος γράφει το δικό του.
+        ld      e,a
+        add     a,a
+        sbc     a,a
+        ld      d,a                     ; DE = net, προσημασμένο
+        ld      h,d
+        ld      l,e
+        add     hl,hl
+        add     hl,hl
+        add     hl,de
+        add     hl,hl                   ; x10
+        call    asc_b6
+        ld      de,(EC_COINS)
+        add     hl,de
+        ld      (EC_COINS),hl
+        call    asc_b1
+trd_nc:
         ; όσα παίρνεις μένουν στο πλοίο του: η ποσότητα κάθε θέσης του φορτίου
         ; γίνεται όσα πήρες (οι κενές θέσεις έχουν απόθεμα 0, και το TR_NET 0)
         ld      hl,EC_CARGO
@@ -600,8 +701,8 @@ trd_post:
         ret
 
 ; Το όνομα κάθε αποθέματος στο t_f_names, ήδη x8 (βήμα 103): μεταλλεύματα 18,
-; το δικό τους, άρα ως 144.
-tr_name:    db 0*8, 6*8, 18*8, 1*8, 2*8, 4*8, 7*8, 8*8, 3*8, 5*8, 12*8, 13*8, 14*8, 9*8
+; το δικό τους, και στη θέση 0 τα νομίσματα, 19 (βήμα 135), άρα ως 152.
+tr_name:    db 19*8, 6*8, 18*8, 1*8, 2*8, 4*8, 7*8, 8*8, 3*8, 5*8, 12*8, 13*8, 14*8, 9*8
 tr_sel:     db 0
 tr_g:       db 0
 tr_cq:      db 0

@@ -325,8 +325,9 @@ def chain(sym, g, patch=(), quiet=False):
     if not G.open():
         return f"ΑΛΥΣΙΔΑ: η γραμμή του εμπόρου δεν άνοιξε (κατάσταση {G.state()})"
     # 10 μέταλλα (2 x 5, 22 το ένα) και 2 επεξεργαστές (59) για 40 μεταλλεύματα:
-    # 338 για 400. Η σειρά: μέταλλο, επεξεργαστές, ρομπότ, τρόφιμα, μετάλλευμα
-    for key in [TT.UP, TT.UP, TT.RIGHT, TT.UP] + [TT.RIGHT] * 3 + [TT.DOWN] * 4:
+    # 338 για 400. Η σειρά: μέταλλο, επεξεργαστές, ρομπότ, νομίσματα (βήμα
+    # 135), τρόφιμα, μετάλλευμα
+    for key in [TT.UP, TT.UP, TT.RIGHT, TT.UP] + [TT.RIGHT] * 4 + [TT.DOWN] * 4:
         G.tap(key)
     jobs0 = G.trades()
     G.tap(cpc.KEY_SPACE)

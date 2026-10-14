@@ -44,6 +44,16 @@
              (SK_DEALT)· TRADE DONE, πίσω στο LOOK. Ως το 97 όλα στιγμιαία, και
              ο έμπορος έφευγε.
   ESC        κλείνει, και η προσφορά ξεχνιέται.
+  ΝΟΜΙΣΜΑΤΑ  (βήμα 135, όπως στο Planetbase) αμέσως μετά τα δικά του: τα δέχεται,
+             αξία 1 το καθένα, και πουλά όσα φέρνει — 0, 50, 100 ή 150 από τα
+             bits 6-7 του πρώτου byte του φορτίου — με το κέρδος του: η δεκάδα
+             10 + (10 x κέρδος + 50) / 100. Δέκα ανά πάτημα: ΠΑΝΩ ως όσα φέρνει
+             και ως το 999, ΚΑΤΩ ως όσα έχεις και ως 990. Η σειρά 4:
+               <COINS  > SHIP 150 GIVE 120 HAVE 123
+             χωρίς το «@ αξία». Στη συμφωνία αλλάζουν χέρια ΑΜΕΣΩΣ, χωρίς
+             φορτία. Δεν ξαναμετριούνται: το ΚΑΤΩ τα κράτησε ως όσα είχες όταν
+             άνοιξε η γραμμή, και όσο είναι εδώ ο έμπορος άλλο πλοίο δεν
+             έρχεται να πληρώσει.
   ΦΕΥΓΕΙ     όταν τελειώσει το μισό sol η γραμμή κλείνει μόνη της.
   ΚΟΥΜΠΙ     κόκκινο όσο δεν είναι εδώ, και τότε δεν ανοίγει τίποτα· λευκό στη
              γραμμή, με τη ΜΕΤΑΦΟΡΑ στη μπάρα. Η γραμμή του πλοίου (91) δείχνει
@@ -64,7 +74,10 @@
 μεταφορείς, συμφωνία με τον πίνακα γεμάτο, συμφωνία χωρίς πίστα, ένα φορτίο
 ανά αγαθό, το πλοίο του κρατά όλο το φορτίο. Η γραμμή που δεν κλείνει όταν
 φύγει, το κουμπί που δεν κοκκινίζει, το κουμπί που ανοίγει χωρίς έμπορο, η
-γραμμή του πλοίου στη ΔΙΑΧΕΙΡΙΣΗ όπως ως το 92, το μήνυμα που λείπει.
+γραμμή του πλοίου στη ΔΙΑΧΕΙΡΙΣΗ όπως ως το 92, το μήνυμα που λείπει. Από
+το βήμα 135: τα νομίσματα ως το 600 της αποθήκης χωρίς δεκάδες, τα νομίσματα έξω
+από το ζύγι, νομίσματα που δεν αλλάζουν χέρια, και η θέση 0 του φορτίου που τα
+κρατά για να κουβαληθούν.
 """
 import os, random, re, sys
 
@@ -101,6 +114,8 @@ NAME = {S.S_FOOD: "MEALS", S.S_ORE: "ORE", S.S_METAL: "METAL", S.S_BIOPL: "PLAST
         S.S_MEDPLANT: "HERBS", S.S_MEAT: "MEAT"}
 CAP, GIVE_MAX = 600, 99
 GOODS = list(range(1, 14))
+COINS, COIN_MAX = 0, 999                 # βήμα 135: το απόθεμα 0, σε δεκάδες
+VALUE[COINS], LOT[COINS], NAME[COINS] = 10, 1, "COINS"
 
 # Η κατάσταση του περιπάτου: κέρδος 47% (οι επεξεργαστές 40 x 47 = 18,8: το
 # στρογγύλεμα φαίνεται), τέσσερα αγαθά, και αποθέματα στις άκρες — μέταλλο
@@ -111,6 +126,7 @@ CARGO = [(S.S_METAL, 20), (S.S_PROC, 6), (S.S_BOT, 2), (S.S_FOOD, 40)]
 STOCK = {S.S_WATER: 300, S.S_FOOD: 300, S.S_ORE: 120, S.S_METAL: 595, S.S_BIOPL: 45,
          S.S_PROC: 0, S.S_SPARE: 7, S.S_MEDI: 3, S.S_GUN: 0, S.S_BOT: 0,
          S.S_STARCH: 25, S.S_VEG: 0, S.S_MEDPLANT: 10, S.S_MEAT: 15}
+HAVE_C, MC = 123, 15                     # νομίσματα: έχεις 123, φέρνει 150
 COST = {"θέση 15": 312, "HUD": 12046, "προσγείωση": 1300, "frame": 1500, "σχέδιο": 60000}
 
 
@@ -118,6 +134,18 @@ def check(ok, msg):
     print(("OK " if ok else "ΑΠΟΤΥΧΙΑ ") + msg)
     if not ok:
         FAIL.append(msg)
+
+
+def x_at(name, k):
+    """Ενα πεδίο του EC_X (src/const.asm): στην τράπεζα 6, μετά τα σημάδια των
+    πρακτόρων 0-99."""
+    const = open(os.path.join(ROOT, "src", "const.asm"), encoding="utf-8").read()
+    mm = re.search(rf"^{name}\s+equ EC_X \+ (\d+)", const, re.M)
+    assert mm and int(mm.group(1)) == k, f"{name}: το src/const.asm άλλαξε"
+    return TO.layout()["G_node_occ"] + 128 + EC.AG_FOE0 + EC.AG_NFOE + k
+
+
+X_COINS, X_MCOIN = x_at("EC_COINS", 6), x_at("EC_MCOIN", 11)
 
 
 def econ_at():
@@ -142,24 +170,34 @@ def price(markup, g):
 
 
 class Line:
-    def __init__(self, markup, cargo, stock):
+    """Η γραμμή της πρόζας. Τα νομίσματα (COINS) σε δεκάδες: net, LOT, VALUE και
+    όσα φέρνει (mc)· όσα έχεις (coins) σε νομίσματα."""
+    def __init__(self, markup, cargo, stock, coins=HAVE_C, mc=MC):
         self.mk, self.cargo, self.stock = markup, dict(cargo), dict(stock)
-        self.order = [g for g, _ in cargo] + [g for g in GOODS if g not in self.cargo]
-        self.sel, self.net = 0, {g: 0 for g in GOODS}
+        self.cargo[COINS], self.stock[COINS] = mc, coins
+        self.order = ([g for g, _ in cargo] + [COINS]
+                      + [g for g in GOODS if g not in self.cargo])
+        self.sel, self.net = 0, {g: 0 for g in [COINS] + GOODS}
+
+    def room(self, g):
+        return (COIN_MAX - self.stock[g]) // 10 if g == COINS else CAP - self.stock[g]
+
+    def have(self, g):
+        return self.stock[g] // 10 if g == COINS else self.stock[g]
 
     def key(self, k):
         g = self.order[self.sel]
         n, lot = self.net[g], LOT[g]
         if k == LEFT:
-            self.sel = (self.sel - 1) % 13
+            self.sel = (self.sel - 1) % 14
         elif k == RIGHT:
-            self.sel = (self.sel + 1) % 13
+            self.sel = (self.sel + 1) % 14
         elif k == UP:
             self.net[g] = min(n + lot, 0) if n < 0 else \
-                min(n + lot, self.cargo.get(g, 0), CAP - self.stock[g])
+                min(n + lot, self.cargo.get(g, 0), self.room(g))
         elif k == DOWN:
             self.net[g] = max(n - lot, 0) if n > 0 else \
-                -min(-n + lot, self.stock[g], GIVE_MAX)
+                -min(-n + lot, self.have(g), GIVE_MAX)
 
     def totals(self):
         take = sum(n * price(self.mk, g) for g, n in self.net.items() if n > 0)
@@ -175,9 +213,14 @@ class Line:
         r3 = f"+{self.mk:2d}% TAKE {take:4d} GIVE {give:4d}" + (" FIRE=DEAL" if self.ok() else "")
         g = self.order[self.sel]
         n = self.net[g]
-        mid = f" TAKE {n:2d}" if n > 0 else f" GIVE {-n:2d}" if n < 0 else " " * 8
-        r4 = (f" <{NAME[g]:7s}> SHIP {self.cargo.get(g, 0):2d}" + mid
-              + f" HAVE {self.stock[g]:3d} @{VALUE[g]:3d}")
+        if g == COINS:
+            mid = f" TAKE {10 * n:3d}" if n > 0 else f" GIVE {-10 * n:3d}" if n < 0 else " " * 9
+            r4 = (f" <{NAME[g]:7s}> SHIP {10 * self.cargo[g]:3d}" + mid
+                  + f" HAVE {self.stock[g]:3d}")
+        else:
+            mid = f" TAKE {n:2d}" if n > 0 else f" GIVE {-n:2d}" if n < 0 else " " * 8
+            r4 = (f" <{NAME[g]:7s}> SHIP {self.cargo.get(g, 0):2d}" + mid
+                  + f" HAVE {self.stock[g]:3d} @{VALUE[g]:3d}")
         return TI.same(f"{r3:35s}"), TI.same(f"{r4:40s}")
 
 
@@ -205,7 +248,17 @@ class Game(TA.Game):
         for k, v in d.items():
             self.s16(self.EC["EC_STOCK"] + 2 * k, v)
 
-    def merchant(self, markup=MARKUP, cargo=CARGO, eta=300):
+    def coins(self):
+        return self.b6[X_COINS - 0x4000] | self.b6[X_COINS + 1 - 0x4000] << 8
+
+    def set_coins(self, v):
+        self.b6[X_COINS - 0x4000], self.b6[X_COINS + 1 - 0x4000] = v & 255, v >> 8
+
+    def mcoin(self):
+        return self.b6[X_MCOIN - 0x4000]
+
+    def merchant(self, markup=MARKUP, cargo=CARGO, eta=300, mc=MC):
+        self.b6[X_MCOIN - 0x4000] = mc
         self.s16(self.EC["EC_SHETA"], eta)
         self.m.poke(self.EC["EC_SHSTATE"], 2)
         self.m.poke(self.EC["EC_SHKIND"], 1)
@@ -247,7 +300,7 @@ def walk_keys():
     """Κάθε αγαθό: πέντε ΠΑΝΩ (ως όσα φέρνει ή χωράνε), δεκαέξι ΚΑΤΩ (πίσω στο
     μηδέν και ως όσα έχεις ή 99), ένα ΠΑΝΩ — και μετά είκοσι τυχαία."""
     keys = []
-    for _ in GOODS:
+    for _ in [COINS] + GOODS:
         keys += [UP] * 5 + [DOWN] * 16 + [UP, RIGHT]
     rnd = random.Random(93)
     keys += [rnd.choice([UP, DOWN, LEFT, RIGHT]) for _ in range(20)]
@@ -259,6 +312,7 @@ def line(sym, patch=(), quiet=False):
     say = (lambda s: None) if quiet else (lambda s: print("    " + s))
     G = Game(sym, patch)
     G.set_stock(STOCK)
+    G.set_coins(HAVE_C)
     G.merchant()
     if not G.open():
         return f"ΓΡΑΜΜΗ: με T, M κατάσταση {G.state()}, «{G.hud(3)}»"
@@ -282,7 +336,7 @@ def line(sym, patch=(), quiet=False):
             seen.add(("όριο", NAME[g]))
         if md.ok():
             seen.add(("FIRE=DEAL",))
-    if any(G.stock(k) != v for k, v in STOCK.items()):
+    if any(G.stock(k) != v for k, v in STOCK.items()) or G.coins() != HAVE_C:
         return "ΓΡΑΜΜΗ: τα αποθέματα άλλαξαν χωρίς ανταλλαγή"
     # ESC: η προσφορά ξεχνιέται
     G.tap(cpc.KEY_ESC)
@@ -304,12 +358,13 @@ def deal(sym, patch=(), quiet=False):
     m = G.m
     jt = TO.layout()["G_job_tbl"]
     G.set_stock(STOCK)
+    G.set_coins(HAVE_C)
     G.m.poke(G.EC["EC_TRADED"], 0)
     G.merchant()
     G.open()
     md = Line(MARKUP, CARGO, STOCK)
     # 5 μέταλλα (5 x 22 = 110) για 10 μεταλλεύματα (100): δεν φτάνει
-    seq = [UP] + [RIGHT] * 4 + [DOWN]
+    seq = [UP] + [RIGHT] * 5 + [DOWN]               # μετάλλευμα: μετά τα νομίσματα
     for k in seq:
         md.key(k)
         G.tap(k)
@@ -381,7 +436,7 @@ def deal(sym, patch=(), quiet=False):
     G.merchant()
     m.poke(G.EC["EC_TRADED"], 0)
     G.open()
-    for k in [RIGHT, RIGHT, UP, RIGHT, RIGHT, DOWN, DOWN]:
+    for k in [RIGHT, RIGHT, UP, RIGHT, RIGHT, RIGHT, DOWN, DOWN]:
         G.tap(k)
     before = G.stock()
     G.stick(0x10)
@@ -409,6 +464,82 @@ def deal(sym, patch=(), quiet=False):
         "για 20 μεταλλεύματα: τα 20 φεύγουν, 2 φορτία για τον έμπορο, τα 5 στο πλοίο του, "
         "δύο J_TRADE, TRADE DONE, το σερί σπάει, ο έμπορος περιμένει· ένα ρομπότ για 20 "
         "με FIRE· 99 τρόφιμα είναι 10 φορτία")
+    return None
+
+
+CARGO3 = [(S.S_METAL, 20), (S.S_PROC, 6), (S.S_BOT, 2)]     # κενή η τέταρτη θέση
+
+
+def coins(sym, patch=(), quiet=False):
+    """ΝΟΜΙΣΜΑΤΑ (βήμα 135): η γραμμή και η συμφωνία με νομίσματα. Η πρώτη διαφορά,
+    ή None."""
+    say = (lambda s: None) if quiet else (lambda s: print("    " + s))
+    G = Game(sym, patch)
+    m = G.m
+
+    def keys(md, seq, tag):
+        for n, k in enumerate(seq):
+            md.key(k)
+            G.tap(k)
+            if G.r34() != md.rows():
+                return (f"{tag}: πλήκτρο {n} ({KNAME[k]}) στο {NAME[md.order[md.sel]]}: "
+                        f"«{G.r34()[0]}» / «{G.r34()[1]}» — η πρόζα λέει «{md.rows()[0]}» / "
+                        f"«{md.rows()[1]}»")
+        return None
+
+    # --- ΤΟ 999: με 900, ως 90 από τα 150 του ---
+    G.set_stock(STOCK)
+    G.set_coins(900)
+    G.merchant(cargo=CARGO3)
+    G.open()
+    md = Line(MARKUP, CARGO3, STOCK, coins=900)
+    why = keys(md, [RIGHT] * 3 + [UP] * 12, "999")
+    if why or md.net[COINS] != 9:
+        return why or f"999: παίρνεις {10 * md.net[COINS]}"
+    G.tap(cpc.KEY_ESC)
+    # --- ΔΙΝΕΙΣ ΝΟΜΙΣΜΑΤΑ: 5 μέταλλα (110) για 120 από τα 123 ---
+    G.set_coins(HAVE_C)
+    G.set_stock(STOCK)
+    m.poke(G.EC["EC_TRADED"], 0)
+    G.merchant()
+    G.open()
+    md = Line(MARKUP, CARGO, STOCK)
+    why = keys(md, [UP] + [RIGHT] * 4 + [DOWN] * 13, "ΔΙΝΕΙΣ")
+    if why or md.net[COINS] != -12 or not md.ok():
+        return why or f"ΔΙΝΕΙΣ: δίνεις {-10 * md.net[COINS]}, συμφωνία {md.ok()}"
+    before = G.stock()
+    G.tap(cpc.KEY_SPACE)
+    m.run_frames(4)
+    r3 = TI.same(G.hud(3))
+    cargo = list(m.read_ram(G.EC["EC_CARGO"], 8))
+    got = (G.coins(), G.stock() == before, G.here(), m.peek(G.EC["EC_SHKIND"]),
+           m.peek(G.EC["EC_MARKUP"]), cargo, G.mcoin(), m.peek(G.EC["EC_TRADED"]))
+    want = (3, True, False, EC.SK_DEALT, 0, [S.S_METAL, 5, S.S_PROC, 0, S.S_BOT, 0, S.S_FOOD, 0],
+            MC, 1)
+    if got != want or not r3.startswith(TI.same("TRADE DONE")):
+        return f"ΔΙΝΕΙΣ: {got}, «{r3}» — η πρόζα λέει {want}, TRADE DONE"
+    # --- ΠΑΙΡΝΕΙΣ ΝΟΜΙΣΜΑΤΑ: 150 (15 x 15 = 225) για 30 μεταλλεύματα (300), με
+    # την τέταρτη θέση του φορτίου κενή ---
+    G.set_coins(HAVE_C)
+    G.set_stock(STOCK)
+    G.merchant(cargo=CARGO3)
+    G.open()
+    md = Line(MARKUP, CARGO3, STOCK)
+    why = keys(md, [RIGHT] * 3 + [UP] * 20 + [RIGHT] * 2 + [DOWN] * 3, "ΠΑΙΡΝΕΙΣ")
+    if why or md.net[COINS] != MC or md.totals() != (225, 300):
+        return why or f"ΠΑΙΡΝΕΙΣ: {md.net[COINS]} δεκάδες, ζύγι {md.totals()}"
+    G.tap(cpc.KEY_SPACE)
+    m.run_frames(4)
+    cargo = list(m.read_ram(G.EC["EC_CARGO"], 8))
+    got = (G.coins(), G.mcoin(), G.stock(S.S_ORE), m.peek(G.EC["EC_MARKUP"]), cargo,
+           m.peek(G.EC["EC_SHKIND"]))
+    want = (HAVE_C + 150, MC, STOCK[S.S_ORE] - 30, 3,
+            [S.S_METAL, 0, S.S_PROC, 0, S.S_BOT, 0, 0, 0], EC.SK_DEALT)
+    if got != want:
+        return f"ΠΑΙΡΝΕΙΣ: {got} — η πρόζα λέει {want}"
+    say("ΝΟΜΙΣΜΑΤΑ: με 900 ως 90 από τα 150 του· 5 μέταλλα για 120 από τα 123, 3 "
+        "έμειναν, κανένα φορτίο προς αυτόν· 150 του για 30 μεταλλεύματα, 273, τρία "
+        "φορτία, και η κενή θέση του φορτίου μένει κενή")
     return None
 
 
@@ -610,7 +741,7 @@ def cost(sym):
     G.set_stock(STOCK)
     G.merchant()
     G.open()
-    for k in [UP, RIGHT, UP, RIGHT, UP, RIGHT, RIGHT, DOWN, RIGHT, DOWN]:
+    for k in [UP, RIGHT, UP, RIGHT, UP, RIGHT, RIGHT, RIGHT, DOWN, RIGHT, DOWN]:
         G.tap(k)
     frame = G.call("UI_TICK", True, 0xC0) - base
     draw = G.probe([0xCD, sym["UI_DIRTY"] & 255, sym["UI_DIRTY"] >> 8,
@@ -659,7 +790,7 @@ def negatives(sym):
     add("τιμή χωρίς στρογγύλεμα", ram("TR_PRICE", 24, [0x11, 50, 0]), [(1, 0)], False, "line")
     # η σειρά των αποθεμάτων: το πρώτο πέρασμα δεν γράφει, το δεύτερο γράφει όλα
     a1 = ram("TR_OPEN", 48, [0x1A, 0xB7, 0x28, 0x02, 0x77, 0x2C])
-    a2 = ram("TR_OPEN", 64, [0x28, 0x02, 0x71, 0x2C])
+    a2 = ram("TR_OPEN", 96, [0x28, 0x02, 0x71, 0x2C])
     out.append(("τα δικά του όχι πρώτα", [(a1[0] + 4, 0), (a1[0] + 5, 0), (a2[0], 0), (a2[0] + 1, 0)]
                 if len(a1) == 1 and len(a2) == 1 else None, False, "line"))
     # --- ανταλλαγή ---
@@ -669,10 +800,10 @@ def negatives(sym):
     poor = t_addr(sym, "X_T_POOR")
     add("χωρίς τον έλεγχο του αποθέματος", ram("TR_DEAL", 64, [0x21, poor & 255, poor >> 8, 0xDA]),
         [(3, 0), (4, 0), (5, 0)], False, "deal")
-    add("χωρίς το σερί", ram("TR_DEAL", 160, [0x32, G.EC["EC_TRADED"] & 255,
+    add("χωρίς το σερί", ram("TR_DEAL", 300, [0x32, G.EC["EC_TRADED"] & 255,
                                                G.EC["EC_TRADED"] >> 8]),
         [(0, 0), (1, 0), (2, 0)], False, "deal")
-    add("η γραμμή του ξανανοίγει", ram("TR_DEAL", 200, [0x32, G.EC["EC_SHKIND"] & 255,
+    add("η γραμμή του ξανανοίγει", ram("TR_DEAL", 300, [0x32, G.EC["EC_SHKIND"] & 255,
                                                          G.EC["EC_SHKIND"] >> 8]),
         [(0, 0), (1, 0), (2, 0)], False, "deal")
     # trd_post: ld a,(EC_PADNODE) -> or 1 · ret (NZ, καμία εργασία)
@@ -683,8 +814,20 @@ def negatives(sym):
     add("συμφωνία χωρίς πίστα", [sym["TRD_POST"]], [(4, 0)], False, "deal")   # ret z -> nop
     add("ένα φορτίο ανά αγαθό", ram("TR_DEAL", 200, [0xD6, EC.TRADE_LOAD, 0x28]),
         [(4, 0), (5, 0)], False, "deal")                  # sub 10 · jr z · jr nc,trd_ld
-    add("το πλοίο του κρατά όλο το φορτίο", ram("TR_DEAL", 200, [0x23, 0x77, 0x23, 0x10]),
+    add("το πλοίο του κρατά όλο το φορτίο", ram("TR_DEAL", 300, [0x23, 0x77, 0x23, 0x10]),
         [(1, 0)], False, "deal")                          # trd_cg: inc hl · ld (hl),a
+    # --- νομίσματα (βήμα 135) ---
+    add("τα νομίσματα ως το 600 της αποθήκης, χωρίς δεκάδες",
+        ram("TRU_TK", 24, [0x3A, sym["TR_G"] & 255, sym["TR_G"] >> 8, 0xB7, 0x20]),
+        [(4, 0x18)], False, "coins")                    # jr nz,tru_sb -> jr
+    nc = sym["TR_NETC"]
+    add("τα νομίσματα έξω από το ζύγι",                 # ld c,0 -> ld c,1
+        ram("TR_SUM", 16, [0x0E, 0x00, 0xCD, nc & 255, nc >> 8]), [(1, 1)], False, "line")
+    add("νομίσματα που δεν αλλάζουν χέρια", ram("TR_DEAL", 300, [0x22, X_COINS & 255, X_COINS >> 8]),
+        [(0, 0), (1, 0), (2, 0)], False, "coins")
+    tn = sym["TR_NET"] if "TR_NET" in sym else TO.layout()["G_crew"]
+    add("η θέση 0 του φορτίου τα κρατά", ram("TR_DEAL", 300, [0x21, tn & 255, tn >> 8, 0x7E, 0x36, 0]),
+        [(4, 0), (5, 0)], False, "coins")
     # --- κουμπί, γραμμή που κλείνει, μήνυμα ---
     mh = sym["MER_HERE"]
     add("η γραμμή δεν κλείνει όταν φύγει", ram("TR_TICK", 8, [0xCD, mh & 255, mh >> 8, 0x28]),
@@ -709,8 +852,8 @@ def main():
     G = Game(sym)
     tv = list(G.m.read_ram(sym["TR_VALUE"], 14))
     tl = list(G.m.read_ram(sym["TR_LOT"], 14))
-    want_v = [0] + [VALUE[k] for k in GOODS]
-    want_l = [0] + [LOT[k] for k in GOODS]
+    want_v = [VALUE[k] for k in [COINS] + GOODS]
+    want_l = [LOT[k] for k in [COINS] + GOODS]
     check(tv == want_v == EC.TRADE_VALUE and tl == want_l == EC.TRADE_LOT,
           f"τιμές και μονάδες: ο Z80 {tv} / {tl}, η αναφορά ίδια, όπως η πρόζα")
 
@@ -722,6 +865,8 @@ def main():
     check(why is None, why or "γραμμή: πλήκτρο προς πλήκτρο, όπως η πρόζα")
     why = deal(sym)
     check(why is None, why or "ανταλλαγή: ζύγι, απόθεμα, και ο έμπορος φεύγει")
+    why = coins(sym)
+    check(why is None, why or "νομίσματα: τα δέχεται και τα πουλά, αμέσως, ως το 999")
     why = leave(sym)
     check(why is None, why or "αναχώρηση, κουμπί και μήνυμα")
     ind = independence(sym)
@@ -735,6 +880,7 @@ def main():
     run = {"landing": lambda s, p6: landing(s, patch6=p6, quiet=True),
            "line": lambda s, p: line(s, p, quiet=True),
            "deal": lambda s, p: deal(s, p, quiet=True),
+           "coins": lambda s, p: coins(s, p, quiet=True),
            "leave": lambda s, p: leave(s, p, quiet=True)}
     for label, edits, in6, test in negatives(sym):
         if edits is None:

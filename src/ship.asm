@@ -26,7 +26,6 @@ VIS_MORALE  equ 24
 VIS_BASE    equ 2
 COIN_MEAL   equ 5
 COIN_FUN    equ 3
-COIN_MAX    equ 999
 GOOD_UP     equ 3
 GOOD_DOWN   equ 6
 GOOD_MAX    equ 100
@@ -53,7 +52,7 @@ DEP_MASK    equ (1 << 10) - 1
         assert  EC_NODEATH == EC_DEATHS + 1 && EC_GREENS == EC_NODEATH + 1
         assert  EC_NOTRADE == EC_GREENS + 1 && EC_TRADED == EC_NOTRADE + 1
         assert  SHIP_LANDED == 2 * SHIP_INCOM && ((2 * SHIP_LANDED) & 3) == SHIP_NONE
-        assert  SK_COLONIST == 0 && COIN_MEAL + COIN_FUN < 256
+        assert  SK_COLONIST == 0 && COIN_MEAL + COIN_FUN < 256 && MER_COIN == 5
         assert  (G_agent_fields & 255) == 0     ; AG_PG: η σελίδα των σημαιών
 
 ; ---------------------------------------------------------------------------
@@ -278,7 +277,8 @@ sb_tab:     db 0, 255, 0, 255, 0, 255, 200, 200, 200, 200, 200, 160
 ; ΔΙΚΑ τους βήματα του Galois, οκτώ ανά byte, με σπόρο το EC_RND — που δεν
 ; αλλάζει: η ακολουθία των συμβάντων μένει ίδια, με ή χωρίς έμπορο (όπως η
 ; βροχή μετεωριτών, src/meteor.asm).
-;   1ο   κέρδος: τα 5 κάτω bits, mod 31 · τέσσερα αγαθά αν το bit 5
+;   1ο   κέρδος: τα 5 κάτω bits, mod 31 · τέσσερα αγαθά αν το bit 5 · και
+;        από το βήμα 135 τα νομίσματα που φέρνει: τα bits 6-7, x 50
 ;   2ο   το πρώτο αγαθό: τα 4 κάτω, mod 13 · το βήμα: τα 4 πάνω, mod 12, + 1
 ;   3ο   οι μονάδες, δύο bits ανά αγαθό
 ; Το 13 είναι πρώτος: t, t + d, t + 2d, t + 3d (mod 13) διαφέρουν πάντα.
@@ -303,6 +303,15 @@ sml_z:  ld      (hl),0
         xor     a                       ; 31 mod 31
 sml_m:  add     a,MARKUP_MIN
         ld      (EC_MARKUP),a
+        ld      a,d                     ; ΚΑΙ ΝΟΜΙΣΜΑΤΑ (βήμα 135): τα bits 6-7,
+        rlca                            ; 0-3 παρτίδες των 50 — ένας στους
+        rlca                            ; τέσσερις δεν φέρνει
+        and     3
+        ld      b,a
+        add     a,a
+        add     a,a
+        add     a,b                     ; x MER_COIN, σε δεκάδες
+        ld      (EC_MCOIN),a
         ld      b,3
         bit     5,d
         jr      z,sml_k
