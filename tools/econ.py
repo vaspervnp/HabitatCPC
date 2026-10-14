@@ -59,7 +59,10 @@ RECIPE = [
     # από τους δώδεκα κόσμους του tools/play.py φτάνουν τους 18-20 (DESIGN §10.1).
     # Δεν προσθέτει στην αποθήκη (2 -> 2, όχι MF_ADDS): δουλεύει και γεμάτη.
     (S_ORE, 2, NO_STOCK, 0, NO_STOCK, 0, S_METAL, 2, 3, MF_OPERATOR),   # iron
-    (S_STARCH, 2, NO_STOCK, 0, NO_STOCK, 0, S_BIOPL, 1, 3, MF_OPERATOR),
+    # ΔΥΟ ΒΙΟΠΛΑΣΤΙΚΑ ΑΠΟ ΔΥΟ ΑΜΥΛΑ (βήμα 133), όπως το μέταλλο στο 125: με 1
+    # το βιοπλαστικό ήταν κάτω από 10 το 26 % του χρόνου, και 99 % όταν οι θόλοι
+    # χτίζονταν από νωρίς (tools/play.py, DESIGN §10.1). 2 -> 2: όχι MF_ADDS.
+    (S_STARCH, 2, NO_STOCK, 0, NO_STOCK, 0, S_BIOPL, 2, 3, MF_OPERATOR),
     (S_METAL, 2, S_PROC, 1, NO_STOCK, 0, S_GUN, 1, 5, MF_OPERATOR),     # weapons
     (S_METAL, 2, NO_STOCK, 0, NO_STOCK, 0, S_PROC, 1, 5, MF_OPERATOR),
     (S_METAL, 2, S_PROC, 1, S_BIOPL, 1, S_BOT, 1, 8, MF_OPERATOR),      # robots
