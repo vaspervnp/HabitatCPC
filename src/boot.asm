@@ -11,10 +11,14 @@
 ; αυτήν, το #4000-#7FFF είναι το παράθυρο που αλλάζει τράπεζα και το #8000 και
 ; πάνω το χρειάζεται μόνο η ΤΕΛΕΥΤΑΙΑ πράξη. Ετσι:
 ;
+;   #4000-#7FFF   το μενού (MENU.BIN, βήμα 130: ~8,5 KB από το #4000, και
+;                 το παράθυρο των κλάσεων πίσω του) — ως το πρώτο αρχείο
+;                 που φορτώνεται στη βασική RAM, μετά την επιλογή
 ;   #8000-#8DFF   η γεννήτρια (φορτώνεται, τρέχει, ξεχνιέται)
 ;   #9000-#97FF   ο φορτωτής (589 bytes στο βήμα 112, 1.228 με τον δικό
 ;                 του αναγνώστη τομέων από το 113, 1.677 με το μενού του
-;                 πλανήτη από το 128· το boot_end ελέγχεται)
+;                 πλανήτη από το 128, 1.188 από το 130 που το μενού έγινε
+;                 αρχείο· το boot_end ελέγχεται)
 ;   #9800-#9FFF   ο κατάλογος του δίσκου (βήμα 113)· ο buffer 2 KB του
 ;                 AMSDOS αν χρειαστεί
 ;   #A000-#A1FF   ένας τομέας (SECT_BUF, βήμα 113)
@@ -31,17 +35,15 @@
 
         include "const.asm"
         include "../build/layout.asm"
+        include "menugeom.asm"          ; η οθόνη του μενού και η μπάρα (βήμα 130)
+        include "../build/disc_tab.asm" ; BAR_K, από το tools/mkdsk.py
 
 CAS_IN_OPEN     equ #BC77
 CAS_IN_DIRECT   equ #BC83
 CAS_IN_CLOSE    equ #BC7A
 SCR_SET_MODE    equ #BC0E
-TXT_SET_CURSOR  equ #BB75
-TXT_OUTPUT      equ #BB5A
-KM_TEST_KEY     equ #BB1E
-MC_WAIT_FLYBACK equ #BD19
-KL_U_ROM_DISABLE equ #B903
-KL_ROM_RESTORE  equ #B90C
+SCR_SET_INK     equ #BC32
+SCR_SET_BORDER  equ #BC38
 
 LF_BUF          equ #9800               ; 2 KB, βασική RAM
 GEN_ORG         equ #8000               ; όπου φορτώνεται η γεννήτρια
@@ -86,39 +88,42 @@ ENDGAME         equ #3FC0               ; το επίμετρο, με τα ROM �
         org     #9000
 
 boot:
-        ; --- η οθόνη φόρτωσης (§13.2) ---
+        ; --- η οθόνη (§13.2) ---
         ; Πρώτη πράξη, πριν από οτιδήποτε άλλο: το SCR SET MODE ΣΒΗΝΕΙ την
         ; οθόνη, οπότε το «Ready» και το run"habitat φεύγουν αμέσως. Ως εδώ ο
-        ; παίκτης κοίταζε μισό λεπτό μια οθόνη BASIC.
-        ;
-        ; MODE 1 και όχι 0: σαράντα στήλες χωρούν λέξεις, είκοσι όχι. Το
-        ; παιχνίδι γυρίζει σε MODE 0 μόνο του, αφού σβήσουν τα ROM.
-        ld      a,1
+        ; παίκτης κοίταζε μισό λεπτό μια οθόνη BASIC. Μαύρη, όσο φορτώνεται
+        ; το μενού: η πένα 0 και το περίγραμμα.
+        xor     a
+        ld      b,a
+        ld      c,a
+        call    SCR_SET_INK
+        ld      bc,0
+        call    SCR_SET_BORDER
+        xor     a
         call    SCR_SET_MODE
-        call    bt_title
-        ; --- ο πλανήτης (βήμα 128) ---
-        ; ΠΡΙΝ ΑΠΟ ΤΟ ΦΟΡΤΩΜΑ, όπως το ζήτησε ο παίκτης: ο δίσκος δεν έχει
-        ; ξεκινήσει ακόμη, και η επιλογή δεν χρειάζεται τίποτα από αυτόν. Τη
-        ; διαβάζει η γεννήτρια, στο τέλος, από το A.
-        call    mn_pick
-        ld      (bt_pl),a
-        ld      a,1
-        call    SCR_SET_MODE            ; το μενού φεύγει, ο τίτλος ξαναγράφεται
-        call    bt_title
-        ld      b,11
-        ld      c,8
-        ld      hl,t_load
-        call    pr_at
-        ld      a,2
-        call    bd_border
+        ; --- ο πλανήτης (βήμα 128), πάνω σε κομμάτι κόσμου (βήμα 130) ---
+        ; ΤΟ ΜΕΝΟΥ ΕΙΝΑΙ ΑΡΧΕΙΟ, το MENU.BIN (src/menu.asm): κόσμοι, tiles,
+        ; γράμματα και κώδικας, ~8 KB, πολύ περισσότερα από όσα χωρούν εδώ.
+        ; Φορτώνεται ΠΡΩΤΟ, στη βασική RAM που ως τότε δεν τη χρειάζεται
+        ; κανείς, και η επιλογή γίνεται πριν από το φόρτωμα του παιχνιδιού,
+        ; όπως το ζήτησε ο παίκτης στο βήμα 128. Ο κόσμος από τον R: τυχαίος
+        ; σε κάθε εκκίνηση. Το A που γυρίζει το διαβάζει η γεννήτρια, στο τέλος.
         call    fl_init                 ; ο κατάλογος του δίσκου (βήμα 113)
+        ld      hl,n_menu
+        ld      b,n_menu_e - n_menu
+        ld      de,MW_ORG
+        call    ld_file
+        ld      a,r
+        and     MW_N - 1
+        call    MW_ORG
+        ld      (bt_pl),a
+        ld      a,1                     ; από εδώ η μπάρα μετρά τα αρχεία
+        ld      (bt_on),a
         ld      hl,n_bank6
         ld      b,n_bank6_e - n_bank6
         ld      de,SCRATCH
         ld      c,PAGE_B6
         call    ld_bank
-        ld      a,6
-        call    bd_border
         ld      hl,n_bank7
         ld      b,n_bank7_e - n_bank7
         ld      de,SCRATCH
@@ -141,15 +146,11 @@ boot:
         call    ld_bank
         ; Η «τράπεζα 1» είναι η βασική RAM στο παράθυρο, όχι επέκταση: τα
         ; εικονίδια κάθονται πάνω από τον πίνακα DIST, χωρίς σελιδοποίηση.
-        ld      a,9
-        call    bd_border
         ld      hl,n_bank1
         ld      b,n_bank1_e - n_bank1
         ld      de,OV_LOAD              ; ο κώδικας των τρυπών, και τα εικονίδια
         call    ld_file
         ; --- τα δύο που πατάνε το AMSDOS, σε πρόχειρο χώρο ---
-        ld      a,12
-        call    bd_border
         ld      hl,n_page2
         ld      b,n_page2_e - n_page2
         ld      de,SCRATCH
@@ -173,15 +174,11 @@ boot:
         ; και το μοτέρ να σβήνει πριν από τα 5 δευτερόλεπτα της γένεσης. Η
         ; γεννήτρια δεν αγγίζει τίποτα κάτω από το #4000, και το firmware μόνο
         ; το #0000-#003F.
-        ld      a,26
-        call    bd_border
         ld      hl,n_game
         ld      b,n_game_e - n_game
         ld      de,#0100
         call    ld_file
         ; --- η γεννήτρια: φορτώνεται, τρέχει, και ξεχνιέται ---
-        ld      a,15
-        call    bd_border
         ld      hl,n_gen
         ld      b,n_gen_e - n_gen
         ld      de,GEN_ORG
@@ -189,20 +186,15 @@ boot:
         ld      bc,FDC_MOTOR            ; ο δίσκος τελείωσε
         xor     a
         out     (c),a
-        ld      a,3
-        call    bd_border
-        ; Η γένεση κρατά 5 δευτερόλεπτα (13,5 ως το βήμα 111). Το λέει, και δείχνει και μπάρα: το
-        ; gen.asm γράφει κατευθείαν στη χαρακτηρο-σειρά 16.
-        ld      b,14
-        ld      c,8
-        ld      hl,t_world
-        call    pr_at
+        ; Η γένεση κρατά 5 δευτερόλεπτα (13,5 ως το βήμα 111). Το λέει, και
+        ; δείχνει και μπάρα: ο φορτωτής γεμίζει ό,τι έμεινε από τα αρχεία, ανάβει
+        ; το BUILDING THE WORLD, και το gen.asm συνεχίζει τη ΙΔΙΑ μπάρα (βήμα
+        ; 130, src/menugeom.asm).
+        ld      a,BAR_FILES
+        call    bt_fill
+        call    bt_lit
         ld      a,(bt_pl)               ; ο πλανήτης του μενού (βήμα 128)
         call    GEN_ORG
-        ld      b,14
-        ld      c,8
-        ld      hl,t_ready
-        call    pr_at
         ; --- το επίμετρο ---
         ld      hl,eg_code
         ld      de,ENDGAME
@@ -295,15 +287,10 @@ ld_bank:
 ; πάνε στο AMSDOS, όπως ως το βήμα 112.
 ; ---------------------------------------------------------------------------
 ld_file:
+        call    lf_one
+        jp      bt_bar                  ; η μπάρα (βήμα 130· ως το 129 μία τελεία)
+lf_one:
         ld      (lf_dest),de
-        push    bc
-        push    de
-        push    hl
-        ld      a,'.'                   ; μία τελεία ανά αρχείο — ο δρομέας
-        call    TXT_OUTPUT              ; μένει εκεί που τον άφησε το t_load
-        pop     hl
-        pop     de
-        pop     bc
         ld      a,(fl_off)
         or      a
         jr      nz,lf_amsdos
@@ -803,179 +790,86 @@ fli_w:
         ret
 
 ; ---------------------------------------------------------------------------
-; mn_pick — το μενού του πλανήτη (βήμα 128, §13.2). Out: A = 0-3 ο πλανήτης
-; (§5.7), #FF τυχαίος.
-;
-; ΒΕΛΑΚΙΑ Ή ΧΕΙΡΙΣΤΗΡΙΟ, FIRE Ή ENTER. Ο φορτωτής ζει ακόμη μαζί με το firmware,
-; που σαρώνει το πληκτρολόγιο 50 φορές το δευτερόλεπτο· το KM TEST KEY
-; διαβάζει τον χάρτη του, το χειριστήριο 0 μέσα (πλήκτρα 72-77). Μετράει
-; μόνο ό,τι ΠΑΤΗΘΗΚΕ ΤΩΡΑ: το mn_prev ξεκινά «όλα πατημένα», ώστε ένα RETURN
-; που κρατιέται ακόμη από το RUN"HABITAT να μη διαλέξει μόνο του.
+; Η ΜΠΑΡΑ ΤΩΝ ΑΡΧΕΙΩΝ (βήμα 130, src/menugeom.asm). Το πλαίσιό της το
+; ζωγράφισε το MENU.BIN, που μετά το πατούν τα αρχεία· εδώ μένει μόνο το
+; γέμισμα, οι γραμμές 1-6 της BAR_ROW, ένα byte (δύο pixels της πένας 5) τη
+; φορά. Τα αρχεία γεμίζουν τα BAR_FILES πρώτα bytes ανάλογα με τους τομείς
+; τους: μετά από κάθε αρχείο bt_acc += τομείς x BAR_K, και το γέμισμα φτάνει
+; ως το bt_acc >> 8. Το BAR_K = BAR_FILES x 256 / τομείς όλων των αρχείων του
+; παιχνιδιού, στρογγυλεμένο κάτω — το βγάζει το tools/mkdsk.py από τα ίδια τα
+; αρχεία (build/disc_tab.asm). Οι τομείς από το lf_len, όπως τους διαβάζει και
+; το AMSDOS: η κεφαλίδα (128) και το μήκος, ανά 512.
 ; ---------------------------------------------------------------------------
-mn_pick:
-        ld      b,10
-        ld      c,14
-        ld      hl,t_choose
-        call    pr_at
-        ld      b,23
-        ld      c,7
-        ld      hl,t_keys
-        call    pr_at
-        ld      hl,t_menu
-        ld      b,12                    ; οι πέντε γραμμές, ανά δύο σειρές
-mnp_row:
-        push    bc
-        ld      c,2
-        call    pr_at                   ; ο HL μένει στο 0 του κειμένου
-        inc     hl
-        pop     bc
-        inc     b
-        inc     b
-        ld      a,b
-        cp      12 + 2 * 5
-        jr      c,mnp_row
-mnp_flip:
-        call    mn_flip                 ; η διαλεγμένη ανάποδα
-mnp_wait:
-        call    MC_WAIT_FLYBACK
-        call    mn_keys                 ; E = τα πλήκτρα τώρα
-        ld      hl,mn_prev
-        ld      a,(hl)
-        ld      (hl),e
-        cpl
-        and     e                       ; όσα πατήθηκαν από το προηγούμενο frame
-        jr      z,mnp_wait
-        push    af
-        call    mn_flip                 ; η παλιά ξανά ίσια
-        pop     de                      ; D = τα καινούργια (το mn_flip χαλάει τα DE)
-        ld      a,(mn_sel)
-        rr      d
-        jr      c,mnp_up
-        rr      d
-        jr      c,mnp_dn
-        dec     a                       ; FIRE: 0 τυχαίος -> #FF, 1-4 -> 0-3
-        ret
-mnp_up:
-        dec     a
-        jp      p,mnp_set
-        ld      a,4                     ; από την κορυφή στον πάτο
-        jr      mnp_set
-mnp_dn:
-        inc     a
-        cp      5
-        jr      c,mnp_set
-        xor     a
-mnp_set:
-        ld      (mn_sel),a
-        jr      mnp_flip
-
-; mn_keys — Out: E = bit 0 πάνω, bit 1 κάτω, bit 2 FIRE. Το KM TEST KEY
-; χαλάει A, C, HL και τις σημαίες.
-mn_keys:
-        ld      hl,mn_ktab
-        ld      e,0
-mnk_lp:
-        ld      a,(hl)
-        inc     a
-        ret     z                       ; #FF: τέλος
-        dec     a
-        inc     hl
-        ld      d,(hl)
-        inc     hl
-        push    hl
-        push    de
-        call    KM_TEST_KEY
-        pop     de
-        pop     hl
-        jr      z,mnk_lp
-        ld      a,e
-        or      d
-        ld      e,a
-        jr      mnk_lp
-
-; mn_flip — αναποδογυρίζει τη γραμμή του mn_sel ΚΑΤΕΥΘΕΙΑΝ στην οθόνη.
-;
-; ΟΧΙ ΜΕ ΤΟ TXT INVERSE. Το firmware γράφει έναν χαρακτήρα σε ~3 ms: η γραμμή
-; των 38 κρατά 6 frames, και ξαναγράφοντας όλο το μενού σε κάθε πάτημα το
-; βελάκι άργησε 0,6 s. Στο MODE 1 η πένα 1 (τα γράμματα) είναι το bit 0 του
-; pixel, στο πάνω μισό του byte, και το χαρτί 0 μηδέν: XOR #F0 τα αλλάζει
-; μεταξύ τους, και το ίδιο XOR τα ξαναγυρίζει. 8 x 76 bytes, ~5 ms.
-;
-; Η ΠΑΝΩ ROM ΣΒΗΝΕΙ ΓΙΑ ΛΙΓΟ: ο φορτωτής ξεκίνησε με CALL από το BASIC, και
-; στο #C000 ο επεξεργαστής ΔΙΑΒΑΖΕΙ το BASIC (οι εγγραφές πάνε στη RAM, γι'
-; αυτό η μπάρα της γεννήτριας δεν το χρειάζεται). Η οθόνη είναι στο #C000
-; χωρίς μετατόπιση: τη μηδενίζει το SCR SET MODE.
-mn_flip:
-        ld      a,(mn_sel)
-        add     a,a
-        add     a,12 - 1                ; η σειρά, από το 0
-        ld      l,a
-        ld      h,0
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl                   ; x 16
-        ld      d,h
-        ld      e,l
-        add     hl,hl
-        add     hl,hl                   ; x 64
-        add     hl,de                   ; x 80
-        ld      de,#C000 + 2            ; η στήλη 2
+bt_bar:
+        ld      a,(bt_on)
+        or      a
+        ret     z                       ; το ίδιο το MENU.BIN: πριν από τη μπάρα
+        ld      hl,(lf_len)
+        ld      de,128 + 511
         add     hl,de
-        call    KL_U_ROM_DISABLE
-        push    af
+        ld      a,h
+        srl     a                       ; οι τομείς: >> 9
+        ld      b,a
+        ld      hl,(bt_acc)
+        ld      de,BAR_K
+btb_m:
+        add     hl,de
+        djnz    btb_m
+        ld      (bt_acc),hl
+        ld      a,h
+        cp      BAR_FILES
+        jr      c,bt_fill
+        ld      a,BAR_FILES
+; bt_fill — A = ως πού: γεμίζει από το bt_end ως εκεί.
+bt_fill:
+        ld      c,a
+btf_lp:
+        ld      a,(bt_end)
+        cp      c
+        ret     nc
+        inc     a
+        ld      (bt_end),a
+        dec     a
+        ld      hl,BAR_SCR + #800       ; η γραμμή 1
+        add     a,l
+        ld      l,a
+        jr      nc,btf_nc
+        inc     h
+btf_nc:
+        ld      de,#800
+        ld      b,6
+btf_ln:
+        ld      (hl),BAR_INK
+        add     hl,de
+        djnz    btf_ln
+        jr      btf_lp
+
+; bt_lit — το BUILDING THE WORLD από την πένα 4 στην 5: σε κάθε pixel που
+; έχει το bit 2 (η 4) μπαίνει και το bit 0 — b7 από το b5, b6 από το b4 —
+; και τα μαύρα μένουν μαύρα. Το MENU.BIN το έγραψε σβηστό (src/menu.asm).
+bt_lit:
+        ld      hl,#C000 + WLD_ROW * 80 + WLD_COL * 2
         ld      c,8
-mnf_ln:
+btl_ln:
         push    hl
-        ld      b,76
-mnf_b:
+        ld      b,WLD_W * 2
+btl_b:
         ld      a,(hl)
-        xor     #F0
+        and     #30
+        add     a,a
+        add     a,a
+        or      (hl)
         ld      (hl),a
         inc     hl
-        djnz    mnf_b
+        djnz    btl_b
         pop     hl
         ld      a,h
         add     a,8
         ld      h,a
         dec     c
-        jr      nz,mnf_ln
-        pop     af
-        jp      KL_ROM_RESTORE
+        jr      nz,btl_ln
+        ret
 
-; bt_title — ο τίτλος και ο υπότιτλος, πάνω από το μενού και πάνω από τη
-; φόρτωση.
-bt_title:
-        ld      b,5
-        ld      c,17
-        ld      hl,t_title
-        call    pr_at
-        ld      b,7
-        ld      c,9
-        ld      hl,t_sub
-        jr      pr_at
-
-; ---------------------------------------------------------------------------
-; pr_at — B = γραμμή, C = στήλη (1-25 / 1-40), HL = κείμενο με τερματικό 0.
-;
-; Το TXT OUTPUT χαλάει τα πάντα εκτός από το IX/IY, γι' αυτό ο δείκτης του
-; κειμένου πηγαινοέρχεται από τη στοίβα σε κάθε χαρακτήρα.
-; ---------------------------------------------------------------------------
-pr_at:
-        push    hl
-        ld      h,c
-        ld      l,b
-        call    TXT_SET_CURSOR
-        pop     hl
-pr_str:
-        ld      a,(hl)
-        or      a
-        ret     z
-        inc     hl
-        push    hl
-        call    TXT_OUTPUT
-        pop     hl
-        jr      pr_str
 
 ; bd_border — A = hardware ink του περιγράμματος.
 bd_border:
@@ -988,37 +882,14 @@ bd_border:
         out     (c),a
         ret
 
-t_title:    db "H A B I T A T",0
-t_sub:      db "a colony on a dead world",0
-t_load:     db "LOADING ",0
-t_world:    db "BUILDING THE WORLD",0
-t_ready:    db "READY             ",0
-t_choose:   db "CHOOSE A WORLD",0
-t_keys:     db "UP/DOWN, THEN FIRE OR ENTER",0
-; Πέντε γραμμές των 38 χαρακτήρων: η ανάποδη μπάρα του mn_flip είναι 76 bytes.
-; Οι περιγραφές είναι μετρημένες, όχι του πίνακα του §5.7: 24 κόσμοι ανά
-; πλανήτη από το tools/worldgen_ref.py, νερό / γη για χτίσιμο (έδαφος και
-; σκόνη) / βουνό / φλέβες σε 16.384 πλακίδια — έρημος 3.274 / 7.342 / 3.984 /
-; 76, πάγος 6.006 / 4.245 / 4.252 / 76, θύελλα 2.114 / 5.778 / 5.444 / 121,
-; φεγγάρι 863 / 7.846 / 4.817 / 126. Το γόνιμο έδαφος δεν το διαβάζει τίποτα
-; (§3.5), γι' αυτό δεν το λένε.
-t_menu:     db " RANDOM      ANY OF THE FOUR          ",0
-t_menu1:    db " DESERT      WATER, LAND, SOME ORE    ",0
-            db " ICE         MUCH WATER, LESS LAND    ",0
-            db " STORM       MOUNTAINS, ORE, DRY      ",0
-            db " BARREN MOON DUST, ORE, LITTLE WATER  ",0
-t_menu_e:
-        assert  t_menu1 - t_menu == 39
-        assert  t_menu_e - t_menu == 5 * 39
-mn_ktab:    db 0,1, 72,1                ; πάνω: βελάκι, χειριστήριο
-            db 2,2, 73,2                ; κάτω
-            db 18,4, 6,4, 47,4          ; RETURN, το μικρό ENTER, SPACE
-            db 76,4, 77,4               ; τα δύο FIRE του χειριστηρίου
-            db #FF
-mn_sel:     db 0                        ; 0 τυχαίος, 1-4 οι πλανήτες 0-3
-mn_prev:    db #FF
+bt_on:      db 0                        ; 1 από το τέλος του μενού: η μπάρα μετρά
+bt_acc:     dw 0                        ; τομείς x BAR_K, το πάνω byte = bytes μπάρας
+bt_end:     db 0                        ; ως πού έχει γεμίσει
+
 bt_pl:      db #FF                      ; ό,τι διάλεξε, για τη γεννήτρια
 
+n_menu:     db "MENU.BIN"
+n_menu_e:
 n_bank1:    db "BANK1.BIN"
 n_bank1_e:
 n_bank6:    db "BANK6.BIN"

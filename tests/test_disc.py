@@ -8,23 +8,32 @@
 
 Τι ελέγχεται:
 
-  0. ΤΟ ΜΕΝΟΥ ΤΟΥ ΠΛΑΝΗΤΗ (βήμα 128). Πριν από το φόρτωμα ο φορτωτής ρωτά
-     ποιον κόσμο: τυχαίο ή έναν από τους τέσσερις του §5.7, με μία γραμμή
-     περιγραφής ο καθένας. Η οθόνη διαβάζεται γράμμα προς γράμμα με τη
-     γραμματοσειρά της ROM (tests/menuread.py): οι πέντε γραμμές, και ποια
-     είναι ανάποδα. Τα βελάκια και το χειριστήριο κινούν την επιλογή, και
-     γυρίζουν από τον πάτο στην κορυφή και ανάποδα. Ενα RETURN που κρατιέται
-     από το RUN"HABITAT δεν διαλέγει μόνο του (αρνητικό: το mn_prev να
-     ξεκινά από 0). Κάθε επιλογή φτάνει στο worldinfo: ο πλανήτης που
-     διάλεξε ο παίκτης, και ο τυχαίος από τον R όπως πριν, άλλος για άλλη
-     αναμονή. Και ο κώδικας του seed στη γεννήτρια, μόνος του, για 150
-     περιπτώσεις: αλλάζει μόνο τα δύο κάτω bits του L, δεν βγάζει ποτέ
-     μηδέν, και ο πλανήτης μένει ο διαλεγμένος (τρία αρνητικά).
+  0. ΤΟ ΜΕΝΟΥ ΤΟΥ ΠΛΑΝΗΤΗ (βήμα 128, πάνω σε κομμάτι κόσμου από το 130).
+     Πριν από το φόρτωμα ο φορτωτής ρωτά ποιον κόσμο: τυχαίο ή έναν από
+     τους τέσσερις του §5.7, με μία γραμμή περιγραφής για τη διαλεγμένη. Η
+     οθόνη είναι byte προς byte του tools/menuworld.py για τον κόσμο που
+     διάλεξε ο R (mw_k) και τη γραμμή που περιμένουμε, και τα χρώματά της
+     η παλέτα του παιχνιδιού με τα τέσσερα του πλανήτη του κόσμου (από το
+     framebuffer του εξομοιωτή). Πέντε εκκινήσεις με άλλη αναμονή πριν από
+     το RUN δείχνουν άλλους κόσμους, καθένας σωστός. Τα βελάκια και το
+     χειριστήριο κινούν την επιλογή, και γυρίζουν από τον πάτο στην κορυφή
+     και ανάποδα. Ενα RETURN που κρατιέται από το RUN"HABITAT δεν διαλέγει
+     μόνο του (αρνητικό: το mn_prev να ξεκινά από 0). Κάθε επιλογή φτάνει
+     στο worldinfo: ο πλανήτης που διάλεξε ο παίκτης, και ο τυχαίος από τον
+     R όπως πριν, άλλος για άλλη αναμονή. Και ο κώδικας του seed στη
+     γεννήτρια, μόνος του, για 150 περιπτώσεις: αλλάζει μόνο τα δύο κάτω
+     bits του L, δεν βγάζει ποτέ μηδέν, και ο πλανήτης μένει ο διαλεγμένος
+     (τρία αρνητικά).
   1. Το RUN"HABITAT φτάνει ΜΕΣΑ στον κώδικα του παιχνιδιού. Δύο εκδοχές του
      φορτωτή δεν έτρεξαν ποτέ ούτε μια εντολή (τα ROM σκεπάζουν το #0000-#3FFF
      και το #C000-#FFFF) και μια τρίτη κόλλησε στο «Press PLAY then any key»
      (το AMSDOS ξεκαρφώνεται όταν το BASIC τρέχει δυαδικό). Καμία δεν φαινόταν
      στην οθόνη ως σφάλμα.
+  1β. Η ΟΘΟΝΗ ΤΗΣ ΦΟΡΤΩΣΗΣ (βήμα 130): ανά 10 frames ως το παιχνίδι, ο ίδιος
+     κόσμος με το πάνελ της φόρτωσης byte προς byte, με τη μπάρα όσο τη
+     δείχνει η ίδια η οθόνη. Η μπάρα δεν γυρίζει ποτέ πίσω, τα αρχεία τη
+     γεμίζουν ως το BAR_FILES πριν ανάψει το BUILDING THE WORLD, και η
+     γεννήτρια μόνο μετά, ως το τέλος.
   2. Η κατάσταση εκκίνησης του §10.1 είναι εκεί — δηλαδή έτρεξε το game_new
      ΚΑΙ τα δεδομένα της τράπεζας 2 μεταφέρθηκαν σωστά από το πρόχειρο.
   3. Το HUD γράφτηκε, άρα ο renderer βρήκε τα γραφικά του σε 6 και 7.
@@ -58,14 +67,14 @@
      λάθος, η δεύτερη έκταση από την πρώτη εγγραφή.
   7. Η ΕΦΕΔΡΕΙΑ. Ενας δίσκος όπου η PAGE2.BIN είναι τύπου 0 (BASIC, με σωστό
      άθροισμα): ο αναγνώστης την αρνείται, το AMSDOS τη φορτώνει, και η
-     εκκίνηση φτάνει ίδια — και με το AMSDOS να πιστεύει ότι η κεφαλή είναι
-     στο track 0 (βήμα 128). Αρνητικό: χωρίς την επιστροφή της κεφαλής στο
-     track 0 πριν από το AMSDOS, με εκείνο στο «0».
+     εκκίνηση φτάνει ίδια — με το AMSDOS να πιστεύει ότι η κεφαλή είναι στο
+     track 0 και στο 1 (βήματα 128, 130). Αρνητικό: χωρίς την επιστροφή της
+     κεφαλής στο track 0 πριν από το AMSDOS, με εκείνο στο «0».
   8. Το «εντάξει» του ελεγκτή: IC = 01 με EN είναι επιτυχία στο CPC (το TC
      δεν είναι συνδεδεμένο), για τον φορτωτή (fl_ok) και για το σώσιμο
      (fd_ok). Αρνητικά: ο έλεγχος ως το βήμα 112, και ένας που δέχεται το ND.
 """
-import os, subprocess, sys
+import functools, os, subprocess, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -76,6 +85,7 @@ from sprites import load_map, load_bin                                  # noqa: 
 import world as W                                                       # noqa: E402
 sys.path.insert(0, HERE)
 import menuread as MR                                                   # noqa: E402
+import menuworld as MW                                                  # noqa: E402
 
 RASM = os.path.expanduser("~/rasm/rasm.exe")
 DSK = os.path.join(ROOT, "build", "habitat.dsk")
@@ -113,14 +123,9 @@ def build():
 
 
 def boot_syms():
-    """Τα σύμβολα του φορτωτή (build/boot.sym, από το tools/mkdsk.py)."""
-    bs = {}
-    for line in open(os.path.join(ROOT, "build", "boot.sym"),
-                     encoding="utf-8", errors="replace"):
-        p = line.split()
-        if len(p) >= 2 and p[1].startswith("#"):
-            bs[p[0].upper()] = int(p[1][1:], 16)
-    return bs
+    """Τα σύμβολα του φορτωτή και του μενού (build/boot.sym, build/menu.sym,
+    από το tools/mkdsk.py)."""
+    return MR.syms(ROOT)
 
 
 def sector_at(dsk, track, sid):
@@ -194,7 +199,7 @@ HANDOVER = {}                                   # ό,τι είδε το τελε
 AMSDOS_TRK = 0xA8A6     # το track όπου το AMSDOS 0.5 του 6128 πιστεύει ότι είναι η κεφαλή
 
 
-def handover(m, disc, eg, amsdos0=False):
+def handover(m, disc, eg, amsdos=None):
     """Από το BASIC ως το ΠΡΩΤΟ μισό χιλιοστό του παιχνιδιού: τη μνήμη όπως
     την παραδίδει το επίμετρο, πριν γράψει το παιχνίδι οτιδήποτε στις
     τράπεζες 1, 2 και 5. Γυρίζει (βασική RAM, τράπεζα 5) ή None.
@@ -214,11 +219,12 @@ def handover(m, disc, eg, amsdos0=False):
     if MR.pick(m, MR.syms(ROOT)) is None:
         return None
     # Πού πιστεύει το AMSDOS ότι άφησε την κεφαλή: στον τελευταίο τομέα του
-    # LOADER.BIN. Με το amsdos0 γίνεται 0, όπως όταν ο φορτωτής χωρούσε στο
-    # track 0 (ως το βήμα 127)· από εδώ ως το fl_quit το AMSDOS δεν τρέχει.
+    # LOADER.BIN. Με το amsdos γίνεται ό,τι λέει: 0 όπως όταν ο φορτωτής
+    # χωρά στο track 0 (ως το βήμα 127, και ξανά από το 130), 1 όπως όταν
+    # δεν χωρούσε (128-129)· από εδώ ως το fl_quit το AMSDOS δεν τρέχει.
     HANDOVER["amsdos_trk"] = m.peek(AMSDOS_TRK)
-    if amsdos0:
-        m.poke(AMSDOS_TRK, 0)
+    if amsdos is not None:
+        m.poke(AMSDOS_TRK, amsdos)
 
     def inside():
         return (ENDGAME <= m.pc < ENDGAME + len(eg)
@@ -269,25 +275,74 @@ def held(m, disc, hold=400):
     return ram
 
 
-MENU_ROWS = [(11 + 2 * i, " " + n.ljust(12) + d.ljust(24) + " ") for i, (n, d) in
-             enumerate((("RANDOM", "ANY OF THE FOUR"),
-                        ("DESERT", "WATER, LAND, SOME ORE"),
-                        ("ICE", "MUCH WATER, LESS LAND"),
-                        ("STORM", "MOUNTAINS, ORE, DRY"),
-                        ("BARREN MOON", "DUST, ORE, LITTLE WATER")))]
+G = MW.geom()
 
 
-def menu_shows(ram):
-    """(η οθόνη είναι το μενού, ποιες γραμμές είναι ανάποδα — ολόκληρες)."""
-    ok = (MR.text(ram, 9, 0, 40)[0].strip() == "CHOOSE A WORLD"
-          and MR.text(ram, 22, 0, 40)[0].strip() == "UP/DOWN, THEN FIRE OR ENTER")
-    inv = []
-    for i, (row, want) in enumerate(MENU_ROWS):
-        t, f = MR.text(ram, row, 1, 38)
-        ok = ok and t == want and f in ("I" * 38, "." * 38)
-        if f == "I" * 38:
-            inv.append(i)
-    return ok, inv
+@functools.lru_cache(maxsize=None)
+def ref_menu(k, sel):
+    """Η οθόνη του μενού για τον κόσμο k με τη γραμμή sel (tools/menuworld.py)."""
+    return bytes(MW.screen_menu(k, sel).to_screen_ram())
+
+
+def ref_loading(k, sel, files, gen, lit):
+    return bytes(MW.screen_loading(k, sel, files, gen, lit).to_screen_ram())
+
+
+def ndiff(a, b):
+    return sum(1 for x, y in zip(a, b) if x != y)
+
+
+def bar_state(ram):
+    """(bytes των αρχείων, bytes της γεννήτριας, αναμμένο το BUILDING THE
+    WORLD) όπως τα δείχνει η οθόνη: η γραμμή 1 της μπάρας, και ο τρόπος των
+    γραμμάτων στη σειρά WLD_ROW (tests/menuread.py)."""
+    base = 0x800 + G["BAR_ROW"] * 80 + G["BAR_X0"]
+    row = ram[base:base + G["BAR_W"]]
+    files = sum(1 for b in row[:G["BAR_FILES"]] if b == G["BAR_INK"])
+    gen = sum(1 for b in row[G["BAR_FILES"]:] if b == G["BAR_INK"])
+    mode = MR.text(ram, G["WLD_ROW"], G["WLD_COL"], len(MW.BUILDING))[1]
+    return files, gen, "d" not in mode
+
+
+def fw_to_hw():
+    """Ο πίνακας firmware -> hardware του src/hw.asm (fw_to_hw)."""
+    src = open(os.path.join(ROOT, "src", "hw.asm"), encoding="utf-8").read()
+    out = []
+    for line in src[src.index("fw_to_hw:"):].splitlines()[1:4]:
+        out += [int(v.strip().lstrip("#"), 16) for v in line.split("db")[1].split(";")[0].split(",")]
+    return out
+
+
+def colours(m, planets):
+    """Τι δείχνει ο εξομοιωτής: για κάθε πλανήτη του planets, πόσα pixels του
+    framebuffer διαφέρουν από ό,τι θα έδειχνε η μνήμη με την παλέτα του
+    (hardware χρώματα, ένα pixel του MODE 0 = 4 του framebuffer). Η εικόνα
+    βρίσκεται μέσα στο framebuffer από τη γραμμή της με τα περισσότερα
+    χρώματα, με την παλέτα του πρώτου· None αν δεν βρέθηκε. Ο,τι δεν ζωγράφισε
+    ο εξομοιωτής είναι 0 εκεί, όσο και το hardware χρώμα 0: μέτρημα ολόκληρου
+    του framebuffer δεν θα έλεγε τίποτα."""
+    hw = fw_to_hw()
+    pens = m.decode_screen_ram(mode=0)
+    fb = m.framebuffer()
+
+    def image(planet):
+        pen_hw = [hw[c] for c in MW.palette(planet)]
+        return [bytes(pen_hw[p] for p in row for _ in range(4)) for row in pens]
+    def bad(img, x0, y0):
+        return sum(sum(a != b for a, b in zip(fb[(y0 + r) * 1024 + x0:(y0 + r) * 1024 + x0 + 640],
+                                              img[r])) for r in range(200))
+    # ΟΙ ΓΡΑΜΜΕΣ ΤΟΥ ΕΔΑΦΟΥΣ ΕΙΝΑΙ ΔΙΠΛΕΣ: η ίδια γραμμή βρίσκεται και μία
+    # πάνω. Από όλες τις θέσεις όπου ταιριάζει, εκείνη με τα λιγότερα λάθη.
+    want = image(planets[0])
+    y = max(range(200), key=lambda r: sum(a != b for a, b in zip(want[r], want[r][1:])))
+    at = [(fb[fy * 1024:(fy + 1) * 1024].find(want[y]), fy - y)
+          for fy in range(y, len(fb) // 1024 - 200 + y + 1)]
+    at = [(x0, y0) for x0, y0 in at if 0 <= x0 <= 1024 - 640]
+    if not at:
+        return None
+    x0, y0 = min(at, key=lambda p: bad(want, *p))
+    out = [bad(image(pl), x0, y0) for pl in planets]
+    return out
 
 
 def worldinfo(m, b6off):
@@ -317,43 +372,61 @@ def main():
                                       encoding="utf-8")) if len(p) >= 3 and p[1] == "equ"}
     wi6 = lay0["G_worldinfo"] - 0x4000
 
-    # --- 0. το μενού του πλανήτη (βήμα 128) --------------------------------
-    # ΤΟ RETURN ΤΟΥ RUN ΚΡΑΤΙΕΤΑΙ ως να γραφτεί το μενού. Ο φορτωτής μετράει
+    # --- 0. το μενού του πλανήτη (βήμα 128, πάνω σε κόσμο από το 130) -------
+    # ΤΟ RETURN ΤΟΥ RUN ΚΡΑΤΙΕΤΑΙ ως να γραφτεί το μενού. Το μενού μετράει
     # μόνο ό,τι πατήθηκε ΑΦΟΥ ξεκίνησε· αλλιώς ένα δάχτυλο αργό στο RETURN θα
     # διάλεγε τον τυχαίο χωρίς να δει ο παίκτης την ερώτηση.
     m = CPC()
     ram = held(m, DSK)
-    shows, inv = menu_shows(ram)
-    check(shows and inv == [0] and m.peek(bs["MN_PREV"]) == 4,
-          f"με το RETURN κρατημένο 400 frames το μενού περιμένει: "
-          f"{'γραμμένο' if shows else 'ΔΕΝ είναι στην οθόνη'}, ανάποδα η "
-          f"{inv}, mn_prev #{m.peek(bs['MN_PREV']):02X}")
+    k0 = m.peek(bs["MW_K"])
+    nd = ndiff(ram, ref_menu(k0, 0))
+    check(nd == 0 and m.peek(bs["MN_PREV"]) == 4,
+          f"με το RETURN κρατημένο 400 frames το μενού περιμένει: ο κόσμος {k0} "
+          f"με το RANDOM διαλεγμένο, {nd} bytes διαφορετικά από το "
+          f"tools/menuworld.py, mn_prev #{m.peek(bs['MN_PREV']):02X}")
+    # Μετά το #FF του mn_ktab: mn_sel 0, mn_prev #FF, mf_y 0 (src/menu.asm).
     dsk = bytearray(open(DSK, "rb").read())
-    n = patch(dsk, bytes([76, 4, 77, 4, 0xFF, 0, 0xFF, 0xFF]),
-              bytes([76, 4, 77, 4, 0xFF, 0, 0, 0xFF]))
+    n = patch(dsk, bytes([76, 4, 77, 4, 0xFF, 0, 0xFF, 0]),
+              bytes([76, 4, 77, 4, 0xFF, 0, 0, 0]))
     k = CPC()
-    shows_bad = menu_shows(held(k, bytes(dsk)))[0] if n == 1 else True
+    bad = held(k, bytes(dsk)) if n == 1 else None
+    nd_bad = ndiff(bad, ref_menu(k.peek(bs["MW_K"]), 0)) if bad else 0
     del k
-    check(n == 1 and not shows_bad,
+    check(n == 1 and nd_bad > 0,
           f"ΑΡΝΗΤΙΚΟ: με το mn_prev να ξεκινά από 0 ({n} σημείο) το κρατημένο "
           f"RETURN διαλέγει μόνο του και το μενού "
-          f"{'έμεινε' if shows_bad else 'έφυγε'}")
+          f"{'έφυγε' if nd_bad else 'έμεινε'} ({nd_bad} bytes)")
     wait = MR.wait(m, bs)
-    shows, inv = menu_shows(m.read_ram(0xC000, 0x4000))
-    t = [MR.text(m.read_ram(0xC000, 0x4000), r, 1, 38)[0].strip() for r, _ in MENU_ROWS]
-    check(wait is not None and shows and inv == [0],
-          f"το μενού: «CHOOSE A WORLD», {t}, το RANDOM ανάποδα ({inv})")
+    nd = ndiff(m.read_ram(0xC000, 0x4000), ref_menu(k0, 0))
+    seed, pl = MW.worlds()[k0][:2]
+    check(wait is not None and nd == 0,
+          f"το μενού: ο κόσμος {k0} (seed {seed:04X}, {MW.MENU[pl + 1][0]}), ο "
+          f"τίτλος, «{MW.CHOOSE}», οι πέντε γραμμές με το RANDOM ανάποδα, η "
+          f"περιγραφή του, τα πλήκτρα — {nd} bytes διαφορετικά")
+    # ΤΑ ΧΡΩΜΑΤΑ: η μνήμη μόνη της δεν λέει τι βλέπει ο παίκτης. Το mw_inks
+    # βάζει την παλέτα του παιχνιδιού και τα τέσσερα του πλανήτη του κόσμου
+    # (pal_terrain)· ο εξομοιωτής ζωγραφίζει hardware χρώματα.
+    # Δύο frames ακόμη: το μενού είναι «έτοιμο» μία φορά μετά το mw_inks, και
+    # το τελευταίο frame του εξομοιωτή μπορεί να είναι μισό με τη μαύρη παλέτα.
+    m.run_frames(2)
+    bad = colours(m, (pl, (pl + 1) & 3))
+    check(bad is not None and bad[0] == 0 and bad[1] > 0,
+          f"τα χρώματα του μενού είναι του πλανήτη {pl}: "
+          + ("η εικόνα δεν βρέθηκε στο framebuffer" if bad is None else
+             f"{bad[0]} pixels διαφορετικά από τη μνήμη με την παλέτα του· "
+             f"ΑΡΝΗΤΙΚΟ: με του πλανήτη {(pl + 1) & 3} {bad[1]}"))
     moves = []
-    for keys, joy, want in (("dd", False, [2]), ("uuu", False, [4]),
-                            ("d", True, [0]), ("u", True, [4])):
+    for keys, joy, want in (("dd", False, 2), ("uuu", False, 4),
+                            ("d", True, 0), ("u", True, 4)):
         MR.press(m, keys, joy)
-        sh, inv = menu_shows(m.read_ram(0xC000, 0x4000))
-        moves.append((keys, joy, want, inv if sh else "χαλασμένο"))
+        scr0 = m.read_ram(0xC000, 0x4000)
+        got = next((s for s in range(5) if ndiff(scr0, ref_menu(k0, s)) == 0), None)
+        moves.append((keys, joy, want, got))
     check(all(w == i for _, _, w, i in moves),
-          "η επιλογή κινείται: " + ", ".join(
+          "η επιλογή κινείται, με την περιγραφή της: " + ", ".join(
               f"{'χειριστήριο' if j else 'βελάκια'} {k} -> "
-              f"{MR.ROWS[i[0]] if isinstance(i, list) and len(i) == 1 else i}"
-              f"{'' if w == i else ' (ΕΠΡΕΠΕ ' + MR.ROWS[w[0]] + ')'}"
+              f"{MR.ROWS[i] if i is not None else 'ΧΑΛΑΣΜΕΝΟ'}"
+              f"{'' if w == i else ' (ΕΠΡΕΠΕ ' + MR.ROWS[w] + ')'}"
               for k, j, w, i in moves))
     MR.press(m, "f")                     # BARREN MOON, ο πλανήτης 3
 
@@ -366,27 +439,26 @@ def main():
         return m.peek(a) | (m.peek(a + 1) << 8)
 
     # Στον δρόμο κρατάμε και την ΟΘΟΝΗ: ως το βήμα 21 ο παίκτης κοίταζε μισό
-    # λεπτό το «Ready» του BASIC (§13.2). Τώρα βλέπει τίτλο, τελείες ανά αρχείο
-    # και μπάρα που προχωρά — και αυτό ελέγχεται εδώ, γιατί υπάρχει μόνο στον
-    # δρόμο του δίσκου: το snapshot δεν περνά ποτέ από τον φορτωτή.
+    # λεπτό το «Ready» του BASIC (§13.2). Από το βήμα 130 βλέπει τον κόσμο του
+    # μενού με το πάνελ της φόρτωσης και μία μπάρα — και αυτό ελέγχεται εδώ,
+    # γιατί υπάρχει μόνο στον δρόμο του δίσκου: το snapshot δεν περνά ποτέ από
+    # τον φορτωτή.
     def scr():
         return m.read_ram(0xC000, 0x4000)
 
-    def bar_bytes(ram):
-        # πόσα από τα 64 bytes της μπάρας είναι γεμάτα (χαρακτηρο-σειρά 16)
-        base = 16 * 80 + 8
-        return sum(1 for i in range(64) if ram[base + i] == 0xFF)
+    def sample():
+        """(frames, αρχεία, γεννήτρια, αναμμένο, bytes διαφορετικά από την
+        αναφορά). Ενα δείγμα μπορεί να πέσει ΜΕΣΑ στο γέμισμα ενός byte της
+        μπάρας (έξι γραμμές, μία μία): τότε άλλο ένα, 200 µs μετά."""
+        for again in (0, 1):
+            ram = scr()
+            st = bar_state(ram)
+            nd = ndiff(ram, ref_loading(k0, 4, *st))
+            if nd == 0 or again:
+                return (frames,) + st + (nd,)
+            m.run_us(200)
 
-    def inked(ram, row, rows=1):
-        # μη μηδενικά bytes σε χαρακτηρο-σειρές
-        n = 0
-        for r in range(row, row + rows):
-            for line in range(8):
-                o = line * 0x800 + r * 80
-                n += sum(1 for i in range(80) if ram[o + i])
-        return n
-
-    running, frames, bars, seen_title, tones = False, 0, [], None, []
+    running, frames, samples, tones = False, 0, [], []
     mode_pl = m.peek(bs["BT_PL"])
     fl_seen = None
     # ΑΝΑ 10 FRAMES από το βήμα 112: η γεννήτρια κρατά πια ~5 s, και ανά 30 τα
@@ -395,18 +467,11 @@ def main():
         m.run_frames(10)
         frames += 10
         started = w16(g + 2) == 100 and m.peek(g + 58) == 6      # §10.1 (βήμα 120)
-        # 100 frames ΑΠΟ ΤΗΝ ΕΠΙΛΟΓΗ ΤΟΥ ΜΕΝΟΥ (βήμα 128): ο φορτωτής φορτώνει
-        # ακόμη, και η γεννήτρια ξεκινά στα ~170. Ως το βήμα 127 ήταν 300 από
-        # το ENTER, πριν από το φόρτωμα του ίδιου του φορτωτή.
-        if seen_title is None and frames >= 100:
-            ram = scr()
-            # ο φορτωτής μετράει σειρές από το 1 (firmware), η μνήμη από το 0
-            seen_title = (inked(ram, 4, 3), inked(ram, 0, 2))
-        # ΜΟΝΟ ΟΣΟ ΦΟΡΤΩΝΕΙ: μόλις ξεκινήσει το παιχνίδι, τα bytes της μπάρας
-        # είναι εικόνα του κάδρου. Το όριο ήταν σταθερός αριθμός frames και
-        # έσπασε μόλις μπήκε ένα ένατο αρχείο στον δίσκο (§4.2).
-        if frames >= 100 and not started:
-            bars.append(bar_bytes(scr()))
+        # ΜΟΝΟ ΟΣΟ ΦΟΡΤΩΝΕΙ: μόλις ξεκινήσει το παιχνίδι, η οθόνη είναι του
+        # κάδρου. Το όριο ήταν σταθερός αριθμός frames και έσπασε μόλις μπήκε
+        # ένα ένατο αρχείο στον δίσκο (§4.2).
+        if not started:
+            samples.append(sample())
         # Ο φορτωτής ζει ακόμη όσο τρέχει η γεννήτρια (τον σβήνει το επίμετρο):
         # τότε λέει αν κάποιο αρχείο πήγε στο AMSDOS (βήμα 113).
         if fl_seen is None and not started and 0x8000 <= m.pc < 0x8E00:
@@ -435,28 +500,38 @@ def main():
           f"εκκίνηση {frames} frames από την επιλογή του μενού ως την αποικία, "
           f"ταβάνι 450 (από το ENTER: 1.460 ως το βήμα 112, ~570 ως το 127)")
 
-    # --- 1β. η οθόνη φόρτωσης --------------------------------------------
-    title, basic = seen_title
-    check(title > 0 and basic == 0,
-          f"η οθόνη φόρτωσης έσβησε το BASIC: {title} bytes τίτλου, "
-          f"{basic} στις δύο πρώτες σειρές (εκεί έγραφε το «Amstrad 128K»)")
-    # Η μπάρα είναι το ΜΟΝΟ πράγμα που κινείται επί 5 δευτερόλεπτα (13,5 ως το βήμα 111): πρέπει
-    # να ξεκινά άδεια, να μη γυρίζει ποτέ πίσω, και να φτάνει ως το τέρμα.
-    # Η ΔΕΙΓΜΑΤΟΛΗΨΙΑ ΕΙΝΑΙ ΑΝΑ 30 FRAMES ΚΑΙ Η ΦΑΣΗ ΤΗΣ ΑΛΛΑΖΕΙ ΜΕ ΚΑΘΕ
-    # ΑΛΛΑΓΗ ΜΕΓΕΘΟΥΣ ΤΟΥ ΚΩΔΙΚΑ. Το «bars[0] == 0 και max == 64» έπεφτε σε
-    # άσχετα βήματα — πότε με ένα τελευταίο δείγμα ΜΕΤΑ το σβήσιμο της οθόνης
-    # (μπάρα 0, δηλαδή «πισωγύρισμα»), πότε με το τελευταίο δείγμα στο 51
-    # επειδή το παιχνίδι ξεκίνησε ανάμεσα σε δύο δείγματα. Η ιδιότητα που
-    # μετράει είναι: ξεκινά σχεδόν άδεια, δεν γυρίζει ΠΟΤΕ πίσω, και φτάνει
-    # ουσιαστικά ως το τέρμα. Τα μηδενικά μετά το γέμισμα δεν είναι μπάρα.
-    while len(bars) > 1 and bars[-1] == 0:
-        bars.pop()
-    mono = all(b <= c for b, c in zip(bars, bars[1:]))
-    check(bars and bars[0] <= 8 and mono and max(bars) >= 56,
-          f"η μπάρα προχώρησε {bars[0] if bars else '-'} -> "
-          f"{max(bars) if bars else 0} από 64, "
-          f"{'μονότονα' if mono else 'ΜΕ ΠΙΣΩΓΥΡΙΣΜΑ'} "
-          f"({len(bars)} δείγματα)")
+    # --- 1β. η οθόνη φόρτωσης (βήμα 130) -----------------------------------
+    # Ο κόσμος του μενού μένει, και στο πάνελ ο κόσμος που διάλεξε, LOADING,
+    # η μπάρα και το BUILDING THE WORLD: σε ΚΑΘΕ δείγμα byte προς byte όπως η
+    # αναφορά με τη μπάρα που δείχνει η ίδια η οθόνη. Ως ότου η γεννήτρια
+    # σχεδόν τελειώσει· μετά το επίμετρο και το game_new παίρνουν την οθόνη,
+    # και το πρώτο δείγμα που δεν ταιριάζει είναι εκείνο.
+    # Η μπάρα είναι το ΜΟΝΟ πράγμα που κινείται επί 8 δευτερόλεπτα: δεν
+    # γυρίζει ΠΟΤΕ πίσω, τα αρχεία τη γεμίζουν ως το BAR_FILES ΠΡΙΝ ανάψει το
+    # BUILDING THE WORLD, και η γεννήτρια μόνο μετά. Η ΦΑΣΗ ΤΗΣ
+    # ΔΕΙΓΜΑΤΟΛΗΨΙΑΣ ΑΛΛΑΖΕΙ ΜΕ ΚΑΘΕ ΑΛΛΑΓΗ ΜΕΓΕΘΟΥΣ ΤΟΥ ΚΩΔΙΚΑ (ως το βήμα
+    # 129 το «τέρμα» ήταν ≥ 56 από 64 για τον ίδιο λόγο): το τέλος της
+    # γεννήτριας είναι «τουλάχιστον BAR_GEN − 2».
+    take = next((i for i, sm in enumerate(samples) if sm[4]), len(samples))
+    shown = samples[:take]
+    end_ok = take == len(samples) or (shown and shown[-1][2] >= G["BAR_GEN"] - 2)
+    mono = all(a[1] <= b[1] and a[2] <= b[2] and a[3] <= b[3]
+               for a, b in zip(shown, shown[1:]))
+    order = all((not lit or fi == G["BAR_FILES"]) and (not ge or lit)
+                for _, fi, ge, lit, _ in shown)
+    top_f = max((sm[1] for sm in shown), default=0)
+    top_g = max((sm[2] for sm in shown), default=0)
+    steps = len({sm[1:4] for sm in shown})
+    check(shown and end_ok and mono and order and shown[0][1] < G["BAR_FILES"]
+          and top_f == G["BAR_FILES"] and top_g >= G["BAR_GEN"] - 2 and steps >= 10,
+          f"η οθόνη φόρτωσης σε {len(shown)} δείγματα, όλα byte προς byte "
+          f"(ο κόσμος {k0}, BARREN MOON, LOADING): η μπάρα από "
+          f"{shown[0][1] if shown else '-'} σε {top_f}/{G['BAR_FILES']} με τα αρχεία, "
+          f"μετά BUILDING THE WORLD αναμμένο και {top_g}/{G['BAR_GEN']} με τη "
+          f"γεννήτρια, {steps} διαφορετικές εικόνες, "
+          f"{'μονότονα' if mono else 'ΜΕ ΠΙΣΩΓΥΡΙΣΜΑ'}"
+          f"{'' if order else ', ΜΕ ΛΑΘΟΣ ΣΕΙΡΑ'}"
+          + ("" if end_ok else f" — ΤΟ ΔΕΙΓΜΑ {samples[take]} ΔΙΑΦΕΡΕΙ"))
 
     # --- 1γ. η μουσική της αναμονής --------------------------------------
     pitches = {t[0] for t in tones if t[0]}
@@ -614,30 +689,42 @@ def main():
     # worldinfo με το seed. Ο τυχαίος δύο φορές, με 37 frames αναμονής
     # παραπάνω τη δεύτερη: ο R τρέχει όσο περιμένει το μενού, και ο κόσμος
     # αλλάζει όπως άλλαζε και πριν.
-    seen = []
-    for pl, joy, extra in ((0, True, 0), (1, False, 0), (2, True, 0),
-                           (None, False, 0), (None, False, 37)):
+    # ΚΑΙ Ο ΚΟΣΜΟΣ ΤΟΥ ΜΕΝΟΥ (βήμα 130): ο φορτωτής τον διαλέγει με τον R πριν
+    # από το μενού, άρα αλλάζει με την ώρα του RUN — εδώ pre frames ακόμη στο
+    # BASIC. Σε ένα 6128 ο R στο ENTER είναι ό,τι έτυχε. Κάθε εκκίνηση δείχνει
+    # τον δικό της κόσμο, byte προς byte.
+    picks = []
+    for pl, joy, extra, pre in ((0, True, 0, 0), (1, False, 0, 7), (2, True, 0, 19),
+                                (None, False, 0, 31), (None, False, 37, 31)):
         k = CPC()
-        k.run_frames(300)
+        k.run_frames(300 + pre)
         k.insert_disc(DSK)
         k.type_text('|disc\n', hold_frames=4, gap_frames=8)
         k.run_frames(60)
         k.type_text('run"habitat\n', hold_frames=4, gap_frames=8)
+        kw = nd = None
         if MR.wait(k, bs) is not None:
+            kw = k.peek(bs["MW_K"])
+            nd = ndiff(k.read_ram(0xC000, 0x4000), ref_menu(kw, 0))
             k.run_frames(extra)
         got = to_gen(k, wi6) if MR.pick(k, bs, pl, joy) is not None else None
         del k
-        seen.append((pl, joy, got))
+        picks.append((pl, joy, got, kw, nd))
     ok = all(got and got[1] == ((got[0] >> 8) ^ got[0]) & 3 and got[0]
-             and (pl is None or got[1] == pl) for pl, _, got in seen)
-    rnd = [got[0] for pl, _, got in seen if pl is None and got]
+             and (pl is None or got[1] == pl) for pl, _, got, _, _ in picks)
+    rnd = [got[0] for pl, _, got, _, _ in picks if pl is None and got]
     check(ok and len(rnd) == 2 and rnd[0] != rnd[1],
           "κάθε επιλογή φτάνει στο worldinfo: " + ", ".join(
               f"{MR.ROWS[0 if pl is None else pl + 1]}"
               f"{' (χειριστήριο)' if joy else ''} -> "
               + (f"seed {got[0]:04X} πλανήτης {got[1]}" if got else "ΤΙΠΟΤΑ")
-              for pl, joy, got in seen)
+              for pl, joy, got, _, _ in picks)
           + f" — ο τυχαίος {'άλλος' if len(set(rnd)) == 2 else 'ΙΔΙΟΣ'} για άλλη αναμονή")
+    ks = [kw for *_, kw, _ in picks]
+    check(None not in ks and all(nd == 0 for *_, nd in picks) and len(set(ks)) >= 3,
+          f"ο κόσμος του μενού με άλλη ώρα του RUN: {ks}, "
+          f"{len(set(k for k in ks if k is not None))} διαφορετικοί, bytes "
+          f"διαφορετικά από την αναφορά {[nd for *_, nd in picks]}")
 
     # --- 0γ. ο κώδικας του seed στη γεννήτρια, μόνος του ------------------
     # Από το ld a,c μετά τις δύο αναγνώσεις του R: H, L και C τα βάζει ένα
@@ -733,12 +820,12 @@ def main():
     wi6 = lay["G_worldinfo"] - 0x4000
     game = img("game.bin")
 
-    def scratch_state(disc, eg, amsdos0=False):
+    def scratch_state(disc, eg, amsdos=None):
         """(διαφορές τράπεζας 2, μηχανών, εικονιδίων, μη μηδενικά του DIST
         και του NEXTHOP, διαφορές τράπεζας 6, τράπεζας 7, κώδικα της τράπεζας
         0) τη στιγμή της παράδοσης, ή None."""
         h = CPC()
-        got = handover(h, disc, eg, amsdos0)
+        got = handover(h, disc, eg, amsdos)
         del h
         if got is None:
             return None
@@ -869,12 +956,16 @@ def main():
     # το αρνητικό δεν έπιανε πια τίποτα. Γι' αυτό το byte του AMSDOS γίνεται 0
     # μετά την επιλογή του μενού — ο φορτωτής ενός track — και ελέγχονται και
     # οι δύο δρόμοι με αυτό.
+    # ΑΠΟ ΤΟ ΒΗΜΑ 130 ΑΝΑΠΟΔΑ: το μενού έγινε αρχείο, ο φορτωτής 1.188 bytes
+    # χωρά ξανά στο track 0, και το AMSDOS μένει μόνο του στο «0» — αυτόν τον
+    # δρόμο τον περπάτησε ήδη η εφεδρεία παραπάνω. Ο άλλος, ενός φορτωτή που
+    # θα ξαναμεγαλώσει, με το byte στο 1.
     left = HANDOVER.get("amsdos_trk")
-    st = scratch_state(bytes(fb), eg, amsdos0=True) if h is not None else None
+    st = scratch_state(bytes(fb), eg, amsdos=1) if h is not None else None
     ok = st is not None and not any(st[:4]) and not any(st[4:6]) and not any(st[6:])
-    check(ok and left == 1,
-          f"και με το AMSDOS να πιστεύει «track 0» (το άφησε στο {left}, τον "
-          f"τελευταίο τομέα του LOADER.BIN): {st if st else 'καμία παράδοση'}")
+    check(ok and left == 0,
+          f"και με το AMSDOS να πιστεύει «track 1» (μόνο του το άφησε στο {left}, "
+          f"τον τελευταίο τομέα του LOADER.BIN): {st if st else 'καμία παράδοση'}")
     # ΑΡΝΗΤΙΚΟ: χωρίς το SEEK στο track 0 του fl_quit, με το AMSDOS στο «0»:
     # δεν κινεί την κεφαλή, διαβάζει «κατάλογο» από το track 12 και γράφει
     # «.BIN not found».
@@ -882,7 +973,7 @@ def main():
     sk = bs["FL_SEEK"]
     n = patch(fb, bytes([0xAF, 0xCD, sk & 0xFF, sk >> 8, 0xFB, 0xC9]),
               bytes([0xAF, 0, 0, 0, 0xFB, 0xC9]))
-    st = scratch_state(bytes(fb), eg, amsdos0=True) if n == 1 else None
+    st = scratch_state(bytes(fb), eg, amsdos=0) if n == 1 else None
     bad = st is None or any(st[:4]) or any(st[6:])
     check(n == 1 and bad,
           f"ΑΡΝΗΤΙΚΟ: χωρίς την επιστροφή στο track 0 ({n} σημείο, fl_quit "

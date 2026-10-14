@@ -47,6 +47,7 @@ STUB = ('10 MEMORY &8FFF\r\n'
 # τομέων προχωρά track προς track, και η κεφαλή δεν πηγαινοέρχεται.
 FILES = [
     ("LOADER.BIN",  "boot.bin",  0x9000, 0x9000),
+    ("MENU.BIN",    "menu.bin",  0x4000, 0x0000),   # το μενού πάνω σε κόσμο (βήμα 130)
     ("BANK6.BIN",   "bank6.bin", 0x4000, 0x0000),
     ("BANK7.BIN",   "bank7.bin", 0x4000, 0x0000),
     ("TEXT.BIN",    "text.bin",  0,      0x0000),   # από το layout: G_text
@@ -76,10 +77,39 @@ def assemble():
     # Το main.asm γράφει ΚΑΙ το game.bin ΚΑΙ το game2.bin με save.
     run([RASM, "main.asm", "-oi", os.path.join(BUILD, "main.sna"), "-v2", "-s"], cwd=src)
     run([RASM, "gen.asm",  "-oi", os.path.join(BUILD, "gen.sna"),  "-v2"], cwd=src)
+    # Το μενού (βήμα 130): οι κόσμοι του από το tools/menuworld.py, και τα
+    # σύμβολά του για το tests/test_menu.py.
+    import menuworld
+    menuworld.write()
+    run([RASM, "menu.asm", "-oi", os.path.join(BUILD, "menu.sna"), "-v2",
+         "-s", "-os", os.path.join(BUILD, "menu.sym")], cwd=src)
+    write_disc_tab()
     # Τα σύμβολα του φορτωτή χωριστά (βήμα 113): το tests/test_disc.py δοκιμάζει
     # τις ρουτίνες του αναγνώστη τομέων μία μία.
     run([RASM, "boot.asm", "-oi", os.path.join(BUILD, "boot.sna"), "-v2",
          "-s", "-os", os.path.join(BUILD, "boot.sym")], cwd=src)
+
+
+def write_disc_tab():
+    """build/disc_tab.asm: το BAR_K του φορτωτή (βήμα 130). Η μπάρα των αρχείων
+    έχει BAR_FILES bytes· μετά από κάθε αρχείο ο φορτωτής προσθέτει τομείς x
+    BAR_K σε ένα 8.8, και το πάνω byte είναι ως πού γεμίζει. Οι τομείς ενός
+    αρχείου: η κεφαλίδα AMSDOS και το μήκος του, ανά 512 — όπως τους μετρά ο
+    φορτωτής από το lf_len. Μετριούνται τα αρχεία του ΠΑΙΧΝΙΔΙΟΥ: όχι ο
+    φορτωτής (τον φορτώνει το BASIC) και όχι το μενού (πριν από τη μπάρα)."""
+    import menuworld
+    files = menuworld.geom()["BAR_FILES"]
+    sect = 0
+    for name, src, _, _ in FILES:
+        if name in ("LOADER.BIN", "MENU.BIN"):
+            continue
+        sect += (os.path.getsize(os.path.join(BUILD, src)) + 128 + 511) // 512
+    k = files * 256 // sect
+    assert 0 < k < 256 and k * sect <= files * 256
+    with open(os.path.join(BUILD, "disc_tab.asm"), "w", encoding="utf-8") as f:
+        f.write("; ΠΑΡΑΓΕΤΑΙ από το tools/mkdsk.py (βήμα 130) — μην το επεξεργάζεσαι.\n"
+                f"; {sect} τομείς στα αρχεία του παιχνιδιού, {files} bytes μπάρας.\n"
+                f"BAR_K equ {k}\n")
 
 
 # Ο κώδικας της τράπεζας 0 δεν επιτρέπεται να φτάσει εδώ: στο #3F80 ο φορτωτής

@@ -1,26 +1,25 @@
-"""Το μενού του πλανήτη (βήμα 128, src/boot.asm) — για τις δοκιμές που ξεκινούν
-από τον δίσκο: τι γράφει η οθόνη του, και πώς διαλέγει κανείς.
+"""Το μενού του πλανήτη (βήμα 128, πάνω σε κομμάτι κόσμου από το 130:
+src/menu.asm, το MENU.BIN) — για τις δοκιμές που ξεκινούν από τον δίσκο: τι
+γράφει η οθόνη του, και πώς διαλέγει κανείς.
 
-Ο φορτωτής γράφει με το firmware, σε MODE 1, και η γραμματοσειρά του είναι της
-κάτω ROM (#3800 του cpc6128_os.bin): ο αναγνώστης τη διαβάζει από το ίδιο το
-αρχείο της ROM που τρέχει ο εξομοιωτής, όχι από κάποιο αντίγραφο του φορτωτή.
-Ενας χαρακτήρας είναι 2 bytes x 8 γραμμές: η πένα 1 είναι το bit 0 κάθε pixel,
-στο πάνω μισό του byte, οπότε τα δύο bytes μιας γραμμής είναι το πάνω και το
-κάτω μισό του byte του γλύφου, στη θέση των bits 7-4. Ανάποδα (το mn_flip) είναι
-τα ίδια XOR #F0.
+Από το βήμα 130 το μενού είναι σε MODE 0, με τη γραμματοσειρά 3x5 του
+παιχνιδιού (font_gfx των assets), και όχι με το firmware σε MODE 1. Ενας
+χαρακτήρας είναι πάλι 2 bytes x 8 γραμμές: οι γλύφοι είναι στις πένες 0 και
+5, ανάποδα (η διαλεγμένη γραμμή) XOR #F0, σβηστά (το BUILDING THE WORLD πριν
+από τη γεννήτρια) AND #3F. Ο αναγνώστης τους διαβάζει από τα ίδια τα assets,
+όχι από το MENU.BIN. Η θέση κάθε γραμμής είναι του src/menugeom.asm
+(tools/menuworld.py: geom).
 """
 import os
+import sys
 
-ROMS = "/home/vasilhs/cpcemu/roms"
-_FONT = None
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
+sys.path.insert(0, os.path.join(ROOT, "tools"))
 
+import menuworld as MW                                                  # noqa: E402
 
-def font():
-    global _FONT
-    if _FONT is None:
-        rom = open(os.path.join(ROMS, "cpc6128_os.bin"), "rb").read()
-        _FONT = rom[0x3800:0x4000]
-    return _FONT
+_TABLE = None
 
 
 def cell(ram, row, col):
@@ -30,24 +29,25 @@ def cell(ram, row, col):
                  for line in range(8) for k in (0, 1))
 
 
-def encode(ch, inverse=False):
-    f = font()[ord(ch) * 8:ord(ch) * 8 + 8]
-    x = 0xF0 if inverse else 0
-    return bytes(b for g in f for b in ((g & 0xF0) ^ x, ((g << 4) & 0xF0) ^ x))
-
-
-_TABLE = None
+def encode(ch, mode="."):
+    g = MW.glyph(ch)
+    if mode == "I":
+        return bytes(b ^ MW.INV for b in g)
+    if mode == "d":
+        return bytes(b & MW.DIM for b in g)
+    return bytes(g)
 
 
 def text(ram, row, col, n):
-    """(κείμενο, ανάποδα) για n χαρακτήρες· '?' όπου δεν ταιριάζει κανένας
-    γλύφος, και το «ανάποδα» είναι 'I' / '.' / '?' ανά χαρακτήρα."""
+    """(κείμενο, τρόπος) για n χαρακτήρες· '?' όπου δεν ταιριάζει κανένας
+    γλύφος, και ο τρόπος είναι 'I' (ανάποδα) / '.' (ίσια) / 'd' (σβηστά) /
+    '?' ανά χαρακτήρα. Το κενό ίσιο και σβηστό είναι το ίδιο: ίσιο."""
     global _TABLE
     if _TABLE is None:
         _TABLE = {}
-        for c in range(32, 127):
-            for inv in (True, False):              # το κενό: ίσιο κερδίζει
-                _TABLE[encode(chr(c), inv)] = (chr(c), "I" if inv else ".")
+        for c in range(32, 128):
+            for mode in ("d", "I", "."):            # το «.» κερδίζει στο κενό
+                _TABLE[encode(chr(c), mode)] = (chr(c), mode)
     s, f = "", ""
     for k in range(n):
         ch, iv = _TABLE.get(cell(ram, row, col + k), ("?", "?"))
@@ -56,25 +56,29 @@ def text(ram, row, col, n):
 
 
 def syms(root):
-    """Τα σύμβολα του φορτωτή (build/boot.sym, από το tools/mkdsk.py)."""
+    """Τα σύμβολα του φορτωτή και του μενού (build/boot.sym, build/menu.sym,
+    από το tools/mkdsk.py)."""
     bs = {}
-    for line in open(os.path.join(root, "build", "boot.sym"),
-                     encoding="utf-8", errors="replace"):
-        p = line.split()
-        if len(p) >= 2 and p[1].startswith("#"):
-            bs[p[0].upper()] = int(p[1][1:], 16)
+    for name in ("boot.sym", "menu.sym"):
+        for line in open(os.path.join(root, "build", name),
+                         encoding="utf-8", errors="replace"):
+            p = line.split()
+            if len(p) >= 2 and p[1].startswith("#"):
+                bs[p[0].upper()] = int(p[1][1:], 16)
     return bs
 
 
 def ready(m, bs):
     """Το μενού περιμένει πλήκτρο: είναι στην οθόνη, ο φορτωτής στη θέση του
     (bt_pl #FF όπως φορτώθηκε) και ο βρόχος έτρεξε μία φορά με τα πλήκτρα
-    ελεύθερα (mn_prev από #FF σε 0). Πριν φορτωθεί, στο #9000 είναι ό,τι
-    άφησε το BASIC — ή, μετά από reset, το προηγούμενο παιχνίδι: γι' αυτό
-    και η οθόνη."""
+    ελεύθερα (mn_prev από #FF σε 0). Το mn_prev είναι στο MENU.BIN: πριν
+    φορτωθεί, στη θέση του είναι ό,τι άφησε το BASIC (συνήθως 0) — γι' αυτό
+    και η οθόνη, που τη γράφει το ίδιο το μενού λίγο πριν από τον βρόχο."""
     if m.peek(bs["BT_PL"]) != 0xFF or m.peek(bs["MN_PREV"]) != 0:
         return False
-    return text(m.read_ram(0xC000, 0x4000), 9, 13, 14)[0] == "CHOOSE A WORLD"
+    g = MW.geom()
+    return text(m.read_ram(0xC000, 0x4000), g["CHO_ROW"], g["CHO_COL"],
+                len(MW.CHOOSE))[0] == MW.CHOOSE
 
 
 def wait(m, bs, limit=600):
@@ -103,7 +107,7 @@ def press(m, keys, joy=False):
             m.tap_key({"u": KEY_UP, "d": KEY_DOWN, "f": KEY_ENTER}[k], 4, 8)
 
 
-ROWS = ("RANDOM", "DESERT", "ICE", "STORM", "BARREN MOON")
+ROWS = tuple(name for name, _, _ in MW.MENU)
 
 
 def pick(m, bs, planet=None, joy=False):
