@@ -70,7 +70,10 @@ MINE_OPS, J_DRILL, RL_DRILL, RL_WORKER = 3, EC.J_DRILL, EC.RL_DRILL, 0
 K_MINE, K_SOLAR, DS_BUILDING, DS_ACTIVE = EC.K_MINE, EC.K_SOLAR, 1, 2
 ST_OPS, ST_OWED = EC.ST_OPS, EC.ST_OWED
 OUT = {0: 0, 1: 2, 2: 3, 3: 4}                       # ο ρυθμός της πρόζας
-MINE_AT = (-10, -8)                                  # μισά tiles: η φλέβα της δύσης
+# Μισά tiles: το 4x4 (-11..-8, -3..0), δύο tiles από τη φλέβα που στρώνει το
+# colony.sna (tools/balance.py, COLONY_VEIN). Ως το βήμα 131 (-10, -8), στη
+# φλέβα της δύσης όπως ήταν με πλατό 5.
+MINE_AT = (-18, -2)
 EC_MINES_OFS = 106
 DRILL_PRIO, DRILL_LOW, ST_DLOW = EC.DRILL_PRIO, EC.DRILL_LOW, EC.ST_DLOW   # βήμα 126
 

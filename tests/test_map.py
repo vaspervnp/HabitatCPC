@@ -79,13 +79,17 @@ def main():
         return m.peek(sym["UI_BAD"]), hud(4).strip()
 
     # --- οι θέσεις, από τον ίδιο κανόνα που ελέγχει το παιχνίδι -----------
-    pl = B.plane()
+    pl = B.colony_plane()
     shore = B.res_spots("water", 3, 1)
     # Η φλέβα ΜΑΚΡΙΑ από την όχθη: από το βήμα 86 και οι δύο είναι στο airlock
     # βόρεια της αποικίας, και η αντλία που χτίζεται πρώτη έπιανε το ορυχείο.
     vein = B.res_spots("ore", 4, 1, avoid=shore)
     dry3 = [s for s in B.clear_spots(4, 6) if not B.has_near(pl, *s, 3, "water")]
-    dry4 = [s for s in B.clear_spots(4, 6) if not B.has_near(pl, *s, 4, "ore")]
+    # Το δεύτερο ορυχείο ΧΤΙΖΕΤΑΙ στο dry4: όχι εκεί όπου το βήμα 4 θα ζητήσει
+    # θόλο και ηλιακό (dry3). Ως το βήμα 131 οι δύο πρώτες θέσεις έτυχαν άλλες·
+    # με το πλατό 8 έπεσαν στην ίδια, και ο θόλος έβρισκε το ορυχείο (BLOCKED).
+    dry4 = [s for s in B.clear_spots(4, 6) if not B.has_near(pl, *s, 4, "ore")
+            and max(abs(s[0] - dry3[0][0]), abs(s[1] - dry3[0][1])) >= 6] if dry3 else []
     if not (shore and vein and dry3 and dry4):
         print(f"ΛΑΘΟΣ δεν στήθηκε η δοκιμή: όχθη={shore} φλέβα={vein} "
               f"στεγνά={dry3[:1]}/{dry4[:1]}")

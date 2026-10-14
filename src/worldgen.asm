@@ -512,14 +512,14 @@ gpl_mid:
         ld      a,(gp_ay)
         cp      R_BLEND + 1
         jr      nc,gpl_plain
-        ld      a,64 - R_BLEND          ; u 8..53: 10 < |x| < 57
+        ld      a,64 - R_BLEND          ; u 8..47: 16 < |x| < 57
         ld      hl,gtN
         call    gt_seg
-        ld      a,64                    ; u 54..63: το κέντρο, ως τη μέση
+        ld      a,64                    ; u 48..63: το κέντρο, ως τη μέση
         ld      hl,gtG
         call    gt_seg
         call    wg_beat
-        ld      a,64 + R_BLEND + 1      ; u 64..74
+        ld      a,64 + R_BLEND + 1      ; u 64..80
         ld      hl,gtG
         call    gt_seg
         jr      gpl_right

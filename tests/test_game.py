@@ -75,6 +75,16 @@ def colony(sym):
     SNA v2 είναι κεφαλίδα 256 bytes και μετά η μνήμη, η βασική 64 KB πρώτα."""
     d = bytearray(open(SNA, "rb").read())
     d[0x100 + sym["NG_COLONY"]] = 1
+    # ΚΑΙ Η ΦΛΕΒΑ ΤΗΣ (βήμα 132, tools/balance.py, COLONY_VEIN): στην τράπεζα 4,
+    # μετά τη βασική μνήμη. Πάνω σε βράχο, αλλιώς ο κόσμος άλλαξε κάτω της.
+    import world as W
+    import balance as B
+    for x, y in B.COLONY_VEIN:
+        k = 0x100 + 0x10000 + W.index(x, y)
+        if W.cls_of(d[k]) != W.ROCK:
+            sys.exit(f"η φλέβα της αποικίας στο ({x}, {y}) δεν πέφτει σε βράχο: "
+                     f"#{d[k]:02X} — ο κόσμος του παιχνιδιού άλλαξε")
+        d[k] = d[k] & 0xC0 | W.byte(W.MOUNTAIN, res=1)
     open(COLONY, "wb").write(bytes(d))
 
 

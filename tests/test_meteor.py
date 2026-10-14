@@ -36,6 +36,8 @@ import econ as EC                                                  # noqa: E402
 import test_reveal as R                                            # noqa: E402
 import codeat                                                      # noqa: E402
 import world as W                                                  # noqa: E402
+import reach                                                       # noqa: E402
+import route                                                       # noqa: E402
 from test_route import hud_row                                     # noqa: E402
 
 FAIL = []
@@ -64,7 +66,7 @@ def predict(G, seed):
     e.dome = bytearray(b6[DOME_TBL:DOME_TBL + EC.MAX_DOME * EC.DOME_REC])
     e.struct = bytearray(b6[STRUCT_TBL:STRUCT_TBL + EC.MAX_STRUCT * EC.STRUCT_REC])
     e.meteor, e.mrnd, (e.mcx, e.mcy) = EC.METEOR_N, seed, CENTER
-    hits, craters = [], []
+    hits, craters, free = [], [], []
     for _ in range(EC.METEOR_N):
         b = EC._mbyte(e)
         tx = EC._s8(e.mcx + (b & 15) - 8)
@@ -79,12 +81,31 @@ def predict(G, seed):
                     hits.append(n)
                     break
         else:
+            free.append((tx, ty))
             v = b4[W.index(tx, ty)]
             if not v & 0x30 and (v & 7) in (W.GROUND, W.DUST, W.ROCK,
                                              W.FOUNDATION):
                 if (tx, ty) not in craters:
                     craters.append((tx, ty))
+    predict.free = free                  # κάθε πτώση έξω από κτίριο, πιασμένη ή όχι
     return hits, craters
+
+
+def half_tiles():
+    """Τα tiles του μισού πλάτους (βήμα 96, cr_stampx) των τριών διαδρόμων της
+    αποικίας δοκιμών, από τον θόλο 0 προς τον 1, τον 2 και το airlock
+    (src/colony.asm), όπως τα βγάζει το reach.half_tiles — όσα απέχουν δύο
+    tiles και πάνω από κάθε θόλο. Μετρημένο στο βήμα 132: μια πτώση στο (-1, 5),
+    δίπλα στον θόλο 2, άφησε την οθόνη σωστή (0 bytes)· μία στο (-2, 3) έσβησε
+    τη λωρίδα στα (-1, 3) και (-1, 4), 32 bytes, όπως στο βήμα 131."""
+    a, out = (0, 0, 0), set()
+    for z in ((16, 0, 0), (0, 16, 0), (0, -10, route.AIRLOCK)):
+        side, runs = route.plan(*a, *z)
+        f, t = (a, z) if side == 0 else (z, a)
+        out.update(reach.half_tiles(f, t, runs))
+    near = lambda x, y, cx, cy: cx - 3 <= x <= cx + 2 and cy - 3 <= y <= cy + 2
+    return {(x, y) for x, y in out
+            if not any(near(x, y, cx, cy) for cx, cy in ((0, 0), (8, 0), (0, 8)))}
 
 
 def seen(t):
@@ -121,10 +142,18 @@ def shower(sym, g, cut_push=False, no_half=False, cut_mark=False):
         G.m.run_frames(10)
     G.camera(*CAM)
     # Ο ΣΠΟΡΟΣ ΒΡΙΣΚΕΤΑΙ, ΔΕΝ ΚΑΡΦΩΝΕΤΑΙ: ο πρώτος που χτυπά την πίστα και
-    # τον θόλο οξυγόνου και αφήνει τουλάχιστον τρεις κρατήρες στο κάδρο.
+    # τον θόλο οξυγόνου και αφήνει τουλάχιστον τρεις κρατήρες στο κάδρο. ΚΑΙ
+    # ΜΙΑ ΠΤΩΣΗ ΩΣ ΕΝΑ TILE ΑΠΟ TILE ΤΟΥ ΜΙΣΟΥ ΠΛΑΤΟΥΣ, μέσα στο κάδρο (βήμα
+    # 132): ο κρατήρας ξαναζωγραφίζει και τα γύρω του, και εκεί η κατοχή του
+    # cr_stampx κρατά τη λωρίδα — μόνο εκεί πιάνει το αρνητικό του. Ως το
+    # βήμα 131 ο σπόρος 215 την είχε κατά τύχη· ο κόσμος με το πλατό 8 έδωσε
+    # πρώτο τον 53, χωρίς αυτήν, και το αρνητικό δεν έπιανε τίποτα.
+    half = half_tiles()
+    by = lambda t: any(max(abs(t[0] - x), abs(t[1] - y)) <= 1 for x, y in half)
     for seed in range(1, 4000):
         hits, craters = predict(G, seed)
-        if PAD_NODE in hits and 0 in hits and sum(map(seen, craters)) >= 3:
+        if (PAD_NODE in hits and 0 in hits and sum(map(seen, craters)) >= 3
+                and any(by(t) and seen(t) for t in predict.free)):
             break
     else:
         sys.exit("κανένας σπόρος δεν χτυπά πίστα, θόλο και έδαφος")

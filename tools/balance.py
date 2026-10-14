@@ -58,6 +58,27 @@ def plane():
     return open(os.path.join(ROOT, "build", "world_new.bin"), "rb").read()
 
 
+# Η ΦΛΕΒΑ ΤΗΣ ΑΠΟΙΚΙΑΣ ΔΟΚΙΜΩΝ (βήμα 132). Με πλατό 8 και ανάμειξη ως το 16 η
+# φλέβα της δύσης έφυγε στο 14, πίσω από δύο tiles βράχου, και το ορυχείο
+# βλέπει δύο tiles γύρω του (RES_NEAR): καμία θέση πάνω σε φλέβα δεν έμεινε
+# δίπλα στην αποικία — οι δύο που υπάρχουν πέφτουν στην πλατφόρμα της. Οι
+# δοκιμές του ορυχείου μετρούν τη γεώτρηση, όχι τη γεννήτρια, οπότε το
+# colony.sna στρώνει τη φλέβα μόνο του: η στήλη βράχου x = -13, y -4..1, στην
+# άκρη της κορυφογραμμής, γίνεται βουνό με φλέβα (tests/test_game.py, colony).
+# Το main.sna, το παιχνίδι, μένει ο κόσμος της γεννήτριας.
+COLONY_VEIN = [(-13, y) for y in range(-4, 2)]
+
+
+def colony_plane():
+    """Το plane() όπως το βλέπει το colony.sna: με τη φλέβα του COLONY_VEIN."""
+    import world as W
+    pl = bytearray(plane())
+    for x, y in COLONY_VEIN:
+        k = W.index(x, y)
+        pl[k] = pl[k] & 0xC0 | W.byte(W.MOUNTAIN, res=1)
+    return bytes(pl)
+
+
 RES_NEAR = 2                            # src/const.asm
 
 
@@ -113,7 +134,7 @@ def reachable(tx, ty, size, dome=False):
         from sprites import load_map, load_bin
         s = load_map()["struct_dims"]
         dims = load_bin()[s.off:s.off + s.size]
-        wl = bytearray(plane())
+        wl = bytearray(colony_plane())
         for x, y in colony_tiles():
             wl[reach.widx(x, y)] = wl[reach.widx(x, y)] & 0xC0 | 0x17
         domes = [[0, 0, 0, 2], [16, 0, 0, 2], [0, 16, 0, 2]] + [[0, 0, 0, 0]] * 61
@@ -140,7 +161,7 @@ def res_spots(kind, size=3, n=2, avoid=()):
     tiles φτάνει ως εκεί.
     """
     import world as W
-    pl = plane()
+    pl = colony_plane()
     ok = {W.GROUND, W.DUST, W.FOUNDATION}
     occ = colony_tiles()
     out = []
@@ -184,7 +205,7 @@ def clear_spots(size=3, n=4, dome=False):
     αυτό: εκεί δεν υπάρχει τίποτα κατειλημμένο που να μην το ξέρουμε.
     """
     import world as W
-    pl = plane()
+    pl = colony_plane()
     ok = {W.GROUND, W.DUST, W.FOUNDATION}
 
     occ = colony_tiles()
@@ -430,16 +451,25 @@ def live_spot(m, sym, item, at):
     rec = m.read_ram(sym["BLD_ITEMS"] + 8 * item, 4)
     kind, param, w, h = rec[0], rec[1], rec[2], rec[3]
 
+    tx0, ty0 = (at[0] - w) >> 1, (at[1] - h) >> 1
+    # ΤΟ ΟΡΥΧΕΙΟ ΘΕΛΕΙ ΦΛΕΒΑ ΜΟΝΟ ΑΝ ΖΗΤΗΘΗΚΕ ΔΙΠΛΑ ΣΕ ΦΛΕΒΑ (βήμα 132). Από το
+    # 123 μπαίνει και αλλού, με τη μισή απόδοση· ένα ορυχείο που ζητήθηκε στο
+    # στεγνό και δεν χωρά πήγαινε στην κοντινότερη φλέβα, και έχανε το ST_HALF
+    # που ήθελε η δοκιμή. Ως το 131 δεν υπήρχε φλέβα μέσα στην εμβέλεια της
+    # αποικίας, και η θέση έμενε ίδια κατά τύχη (tests/test_map.py).
+    need = NEED.get(item)
+    if need and need[0] == "ore" and not has_near(b4, tx0, ty0, w, "ore"):
+        need = None
+
     def ok(tx, ty):
         if not all(reach.ok_tile(b4[reach.widx(tx + i, ty + j)])
                    for i in range(w) for j in range(h)):
             return False
-        if item in NEED and not has_near(b4, tx, ty, w, NEED[item][0]):
+        if need and not has_near(b4, tx, ty, w, need[0]):
             return False
         return reach.plan(b4, domes, structs, dims, kind, param, w, h,
                           2 * tx + w, 2 * ty + h)["ok"]
 
-    tx0, ty0 = (at[0] - w) >> 1, (at[1] - h) >> 1
     if ok(tx0, ty0):
         return at
     # Αλλιώς από την ΑΠΟΙΚΙΑ προς τα έξω, όχι από τη θέση: μια θέση των

@@ -415,7 +415,14 @@ def chain_site(sym, g, patch=(), quiet=False, frames=40000):
     B.build(m, sym, 9, g + 6, at=TO.LOCK_AT, fit=False)
     if w.wait(lambda: w.lock()[4] == DS_ACTIVE, 30000) is None:
         return f"ΣΕ ΕΡΓΟΤΑΞΙΟ: το airlock δεν τελείωσε: {w.lock()}"
-    at = B.live_spot(m, sym, 0, (TO.DOME_AT[0] + 16, TO.DOME_AT[1]))
+    # ΝΟΤΙΟΔΥΤΙΚΑ, ΟΧΙ ΑΝΑΤΟΛΙΚΑ (βήμα 132). Ως το 131 το ανατολικό (+16, 0) δεν
+    # χωρούσε και το live_spot έδινε το (-2, 6)· εκεί ο θόλος τελειώνει στην
+    # ίδια επίσκεψη με το πρώτο στήσιμο (4 -> 36), το lk_done βγάζει τον χτίστη,
+    # και το jabi_go τον ξαναστέλνει μέσα. Με το πλατό 8 το ανατολικό χώρεσε, ο
+    # θόλος τελείωνε με τη μηχανή να χρωστά ακόμη (5), και το αρνητικό του
+    # jabi_go δεν έπιανε τίποτα. Τώρα η θέση ζητιέται, και η σκηνή ελέγχει ότι
+    # το τέλος του θόλου ήρθε μαζί με το πρώτο στήσιμο.
+    at = B.live_spot(m, sym, 0, (TO.DOME_AT[0] - 8, TO.DOME_AT[1] + 4))
     B.build(m, sym, 0, g + 6, at=at, room=0, fit=True)
     node = m.peek(sym["BD_NODE"])
     hp = lambda: w.b6(w.L["G_dome_tbl"] + 24 * node + 16)[0]
@@ -424,11 +431,16 @@ def chain_site(sym, g, patch=(), quiet=False, frames=40000):
                 f"{w.dome(node)}, υγεία {hp()} — η πρόζα λέει εργοτάξιο, 7")
     seen, out = [hp()], 0
     t = 0
+    inside, was = None, None            # το τέλος του θόλου μαζί με το πρώτο στήσιμο
     while t < frames and not (w.dome(node)[4] == DS_ACTIVE and hp() == HP):
         m.run_frames(TS.STEP)
         t += TS.STEP
         if hp() != seen[-1]:
             seen.append(hp())
+        if inside is None and w.dome(node)[4] == DS_ACTIVE:
+            inside = was == 4 and hp() > 4
+        elif w.dome(node)[4] != DS_ACTIVE:
+            was = hp()
         for j in w.jobs():
             if j[0] == J_BUILD and j[1] == node and j[2] != 255 and w.dome(node)[4] == DS_ACTIVE \
                     and w.agent(j[2])["node"] != node:
@@ -436,8 +448,13 @@ def chain_site(sym, g, patch=(), quiet=False, frames=40000):
     if hp() != HP:
         return (f"ΣΕ ΕΡΓΟΤΑΞΙΟ: σε {t} frames υγείες {seen}, θόλος {w.dome(node)}, "
                 f"εργασίες {w.jobs()} — η πρόζα λέει στήνεται ως το 200")
-    say(f"ΣΕ ΕΡΓΟΤΑΞΙΟ: ο δεύτερος θόλος (κόμβος {node}), υγείες {seen} σε {t} frames· ο "
-        f"χτίστης ήταν έξω με τη Build σε {out} δείγματα και ξαναμπήκε")
+    if not inside:
+        return (f"ΣΕ ΕΡΓΟΤΑΞΙΟ: ο θόλος στο {at} τελείωσε χωρίς στήσιμο στην ίδια "
+                f"επίσκεψη (υγείες {seen}) — η σκηνή δεν δοκιμάζει το lk_done με τον "
+                f"χτίστη, ούτε το αρνητικό του jabi_go")
+    say(f"ΣΕ ΕΡΓΟΤΑΞΙΟ: ο δεύτερος θόλος (κόμβος {node}, στο {at}), υγείες {seen} σε {t} "
+        f"frames· τελείωσε μαζί με το πρώτο στήσιμο, ο χτίστης ήταν έξω με τη Build σε "
+        f"{out} δείγματα και ξαναμπήκε")
     return None
 
 
