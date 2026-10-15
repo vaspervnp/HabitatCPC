@@ -242,7 +242,16 @@ class Game:
         self.alive_prev = ag
         self.watch()
         jobs = self.jobs()
+        # ΟΙ ΕΠΙΣΚΕΠΤΕΣ ΚΑΙ ΤΑ ΝΟΜΙΣΜΑΤΑ (βήμα 137): το EC_X, στο πάνω μισό του
+        # node_occ (τράπεζα 6) — νομίσματα, κύρος, εύνοια, συσσωρευτής.
+        b6, x = self.bank(6), self.L["G_node_occ"] - 0x4000 + 128 + 100
+        ds = self.domes()
         self.rows.append(dict(
+            vis=sum(1 for i in ag if 112 <= i < 120),
+            coins=b6[x + 6] | b6[x + 7] << 8, prest=b6[x + 8], good=b6[x + 9],
+            # οι μηχανές METAL (βήμα 137): ανά θόλο εργοστασίου, πόσες και πόσοι χειριστές
+            mm=[(sum(1 for j in range(8) if d[8 + j] == METAL), d[7]) for d in ds
+                if d[4] == DS_ACTIVE and d[3] != R_GREEN and METAL in d[8:16]],
             sol=self.sol(), alive=sum(1 for i in ag if i < 80),
             bots=sum(1 for i in ag if 80 <= i < 96),
             out=sum(1 for i, a in ag.items() if i < 80 and not a["flags"] & 2),
@@ -788,7 +797,9 @@ def o2_short(G):
 
 def water_short(G):
     w = [r["stock"][S_WATER] for r in last(G)]
-    return w[-1] < w[0] and w[-1] < 60 + 5 * G.rows[-1]["alive"]
+    # Και κολλημένο στο μηδέν (βήμα 137): δεν «πέφτει» πια, και ως τότε το
+    # σενάριο δεν έχτιζε αντλία με το νερό στο 0 για πάνω από δεκαπέντε sol.
+    return (w[-1] < w[0] or w[-1] < 5) and w[-1] < 60 + 5 * G.rows[-1]["alive"]
 
 
 def power_short(G, night):
@@ -808,7 +819,7 @@ def food_short(G, which):
     MEALS λείπει, ή «meals» αν υπάρχουν όλα (λείπει μάγειρας ή μηχανή)."""
     rows = last(G)
     f = [r["stock"][S_FOOD] for r in rows]
-    if not (f[-1] < f[0] and f[-1] < 5 * (rows[-1]["alive"] + 4)):
+    if not ((f[-1] < f[0] or f[-1] < 5) and f[-1] < 5 * (rows[-1]["alive"] + 4)):
         return False
     st = rows[-1]["stock"]
     low = min((st[S_STARCH_I], "starch"), (st[S_VEG_I], "veg"), (st[S_MEAT_I], "meat"))
@@ -899,16 +910,30 @@ def plan_big():
     return opening + more
 
 
+def plan_bigs():
+    """Το big με την αποθήκη πρώτη (βήμα 137, μέτρηση): ένας θόλος Storage
+    μόλις τα αγαθά πλησιάσουν το όριο, πριν από κάθε άλλο «ξανά» — στο big
+    ήταν τελευταίο, και κάθε ανάγκη που δεν πληρωνόταν το κρατούσε πίσω:
+    καμία αποθήκη σε 12 κόσμους, γεμάτη το 36% του χρόνου μετά το sol 15."""
+    plan = plan_big()
+    k = next(i for i, s in enumerate(plan) if s["name"] == "αποθήκη")
+    s = plan.pop(k)
+    plan.insert(next(i for i, t in enumerate(plan) if t["name"] == "πλοίο"), s)
+    return plan
+
+
 PLANS = {"base": plan_base, "lean": plan_lean, "spares": plan_spares, "mine": plan_mine,
          "mine_ns": plan_mine_ns, "grow": plan_grow, "store": plan_store, "long": plan_long,
-         "big": plan_big}
+         "big": plan_big, "bigs": plan_bigs}
 
 
 def tweak(G, spec):
     """Πειράγματα για τη μέτρηση, πάνω στο τρέχον παιχνίδι: spares=N, metal=N,
     bio=N, ore=N, food=N (αποθέματα), nofault (το ec_break = ret: ούτε βλάβες
     ούτε εκλάμψεις ούτε μηχανές από μετεωρίτες), fault=M (η μάσκα της βλάβης,
-    #7F = 1/128, #FF = 1/256)."""
+    #7F = 1/128, #FF = 1/256) — και από το βήμα 137 dig (το ορυχείο σκάβει
+    με γεμάτη αποθήκη), raw (και μετάλλευμα και μέταλλο έξω από την αποθήκη),
+    land=Ε:Μ:Β:Γ:Φ (τα ποσοστά των πλοίων)."""
     import codeat
     idx = dict(water=0, food=1, ore=2, metal=3, bio=4, spares=6)
     for t in [x for x in spec.split(",") if x]:
@@ -939,6 +964,33 @@ def tweak(G, spec):
             # από την αποθήκη: γεμάτη, σταματούν οι κήποι.
             fm, _, fb = v.partition(":")
             G.feed = (int(fm, 0), int(fb or "0", 0))
+        elif k in ("dig", "raw"):
+            # ΤΟ ΟΡΥΧΕΙΟ ΣΚΑΒΕΙ ΚΑΙ ΜΕ ΓΕΜΑΤΗ ΑΠΟΘΗΚΗ (βήμα 137, μέτρηση): το
+            # «ld a,(ec_full) / or a / jr nz,hlp_pile» του hl_pile χωρίς το jr.
+            f = G.sym["EC_FULL"]
+            a = codeat.find(G.m, G.sym["HL_PILE"], [0x3A, f & 255, f >> 8, 0xB7, 0x20], 40)
+            assert a, "δεν βρέθηκε το ec_full του hl_pile"
+            codeat.poke(G.m, a + 4, 0)
+            codeat.poke(G.m, a + 5, 0)
+            # raw: ΚΑΙ ΜΕΤΑΛΛΕΥΜΑ ΚΑΙ ΜΕΤΑΛΛΟ ΕΞΩ ΑΠΟ ΤΗΝ ΑΠΟΘΗΚΗ, όπως το νερό:
+            # το st_check δεν τα αθροίζει (τα «ld de,(EC_STOCK + 4|6) / add
+            # hl,de» του ξεδιπλωμένου αθροίσματος γίνονται nop). Το ορυχείο
+            # σκάβει με γεμάτη, αφού το μετάλλευμα δεν πιάνει χώρο.
+            s = G.g                         # EC_STOCK = G_econ_state
+            for off in (4, 6) if k == "raw" else ():
+                a = codeat.find(G.m, G.sym["ST_CHECK"],
+                                [0xED, 0x5B, (s + off) & 255, (s + off) >> 8, 0x19], 120)
+                assert a, f"δεν βρέθηκε το EC_STOCK + {off} του st_check"
+                for i in range(5):
+                    codeat.poke(G.m, a + i, 0)
+        elif k == "land":
+            # Η ΓΡΑΜΜΗ ΤΩΝ ΕΙΔΙΚΟΤΗΤΩΝ (βήμα 91) όπως θα την έβαζε ο παίκτης
+            # (βήμα 137, μέτρηση): land=Ε:Μ:Β:Γ:Φ σε δέκατα, άθροισμα 10 —
+            # εργάτης, μηχανικός, βιολόγος, γιατρός, φρουρός (EC_LAND, +92).
+            sh = [int(x) for x in v.split(":")]
+            assert len(sh) == 5 and sum(sh) == 10, "land=Ε:Μ:Β:Γ:Φ, άθροισμα 10"
+            for i, x in enumerate(sh):
+                G.m.poke(G.g + 92 + i, x)
         elif k == "fault":
             a = codeat.find(G.m, G.sym["EV_FAULT"], [0x7D, 0xE6, 0x7F], 40)
             assert a, "δεν βρέθηκε το and #7F του ev_fault"
@@ -1183,7 +1235,7 @@ def main():
     print(f"πλανήτης {a.planet}, seed #{a.seed:04X}, σχέδιο «{a.plan}», {a.sols} sols"
           + (f", πειράγματα {a.tweak}" if a.tweak else ""),
           flush=True)
-    G.zones = a.plan == "big"
+    G.zones = a.plan.startswith("big")
     left = play(G, PLANS[a.plan](), a.sols)
     report(G)
     deaths = [e for e in G.events if "ΘΑΝΑΤΟΣ" in e]
@@ -1202,7 +1254,10 @@ def main():
                        rows=[dict(sol=r["sol"], alive=r["alive"], popcap=r["popcap"],
                                   stock=r["stock"], cap=r["cap"], full=r["full"],
                                   storm=r["storm"], pok=r["pok"], o2ok=r["o2ok"],
-                                  mines=r["mines"], sites=r["sites"]) for r in G.rows],
+                                  mines=r["mines"], sites=r["sites"], vis=r["vis"],
+                                  coins=r["coins"], prest=r["prest"], good=r["good"],
+                                  mm=r["mm"], bots=r["bots"], jfree=r["jfree"],
+                                  jk=r["jk"]) for r in G.rows],
                        events=G.events, probes=G.probes), open(a.json, "w"))
     return 0
 

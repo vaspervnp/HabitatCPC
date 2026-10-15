@@ -414,7 +414,9 @@ def main():
 
     calm()
     shown = call_ship()
-    check("WRK 2" in shown and "GRD 2" in shown,
+    # τα ποσοστά του νέου παιχνιδιού, 50/10/20/10/10 από το βήμα 137 (20% η
+    # καθεμία ως τότε)
+    check("WRK 5" in shown and "BIO 2" in shown and "GRD 1" in shown,
           f"το C δείχνει τη γραμμή του πλοίου: |{shown.strip()}|")
     check(m.peek(g + 72) == 0,
           f"χωρίς αίθουσα ελέγχου δεν φεύγει πλοίο (κατάσταση "
