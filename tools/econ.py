@@ -236,6 +236,10 @@ class Econ:
         # ΚΑΙ ΤΑ ΝΟΜΙΣΜΑΤΑ ΤΟΥ ΕΜΠΟΡΟΥ (βήμα 135), σε δεκάδες: τα γράφει η
         # προσγείωσή του (land_merchant), τα πουλά στη γραμμή του.
         self.mcoins = 0
+        # ΟΙ ΕΠΙΣΚΕΠΤΕΣ ΠΟΥ ΕΙΝΑΙ ΜΕΣΑ (βήμα 136): το EC_VIN, στο byte του
+        # πράκτορα 120. Το μετρά το visit_tick (tools/entity.py) όσο είναι εδώ
+        # το πλοίο τους, και αναπνέουν (flow_balance).
+        self.vin = 0
         # ΓΕΜΑΤΗ ΑΠΟΘΗΚΗ (βήμα 122): το ec_full του Z80, στην τράπεζα 0 (src/stock.asm).
         self.full = 0
         # ΤΟ ΑΠΟΘΕΜΑ ΜΕΤΑΛΛΟΥ (βήμα 127): το ec_keep, δίπλα του.
@@ -434,7 +438,7 @@ def flow_balance(e, alive, inside):
         e.flow_div = FLOW_DIV
         flow_cycle(e)
     # Η μέτρηση ζωντανών είναι η συνθήκη ήττας (§10.3): κάθε περιστροφή.
-    e.o2_use = inside * O2_PER_COLONIST
+    e.o2_use = (inside + e.vin) * O2_PER_COLONIST       # και οι επισκέπτες (βήμα 136)
     e.o2_ok = 1 if e.o2_prod >= e.o2_use else 0
     e.alive = alive
     if alive == 0:
@@ -700,10 +704,16 @@ X_OFF = 128 + 96 + 4                    # AG_FOE0 + AG_NFOE στο πάνω μι
 X_N = 12                                # 6 ως το βήμα 133, 11 ως το 134
 
 
+VIN_OFF = 128 + 120                     # το EC_VIN (βήμα 136): μετά τους επισκέπτες 112-119
+
+
 def occ_hi(e):
     """Το πάνω μισό της σελίδας node_occ για το harness: τα σημάδια των
-    φιγούρων μηδέν, και τα πεδία του EC_X στη θέση τους."""
-    return bytes(X_OFF - 128) + x_bytes(e) + bytes(256 - X_OFF - X_N)
+    φιγούρων μηδέν, τα πεδία του EC_X στη θέση τους, και το EC_VIN."""
+    hi = bytearray(128)
+    hi[X_OFF - 128:X_OFF - 128 + X_N] = x_bytes(e)
+    hi[VIN_OFF - 128] = e.vin
+    return bytes(hi)
 
 
 # --- η βροχή μετεωριτών (§6.10) — το src/meteor.asm, γραμμή προς γραμμή -----
@@ -1799,11 +1809,12 @@ def ship_tick(e, a, spawn_node, F_ALIVE, occ):
         if e.ship_kind == SK_COLONIST:
             land_colonists(e, a, spawn_node, F_ALIVE, occ)
         elif e.ship_kind == SK_VISITOR:
-            visit(e, a, F_ALIVE)
+            land_visitors(e, a, spawn_node, F_ALIVE, occ)
         else:
             land_merchant(e)            # βήμα 93
         return
     e.ship_state = SHIP_NONE            # έφυγε
+    visitors_gone(e, a, occ)            # και όσοι επισκέπτες δεν γύρισαν (βήμα 136)
 
 
 def land_colonists(e, a, node, F_ALIVE, occ):
@@ -1943,21 +1954,41 @@ def pick_role(e, count):
     return r
 
 
-def visit(e, a, F_ALIVE):
-    """Επισκέπτες (βήμα 134): όσοι βρίσκουν κυλικείο, τρόφιμο και νερό τρώνε,
-    πίνουν και πληρώνουν· οι άλλοι φεύγουν πεινασμένοι, και η εύνοια πέφτει. Και
-    ανεβάζουν το ηθικό των αποίκων, όπως πριν."""
-    for _ in range(VIS_BASE + (e.prestige >> 6)):
-        if e.room_n[R_CANTEEN] and e.stock[S_FOOD] and e.stock[S_WATER]:
-            e.stock[S_FOOD] -= 1
-            e.stock[S_WATER] -= 1
-            e.coins = min(COIN_MAX, e.coins + COIN_MEAL + (COIN_FUN if e.amenity else 0))
-            e.goodwill = min(GOOD_MAX, e.goodwill + GOOD_UP)
-        else:
-            e.goodwill = max(0, e.goodwill - GOOD_DOWN)
+def land_visitors(e, a, node, F_ALIVE, occ):
+    """Το vi_land (βήμα 136, src/visit.asm): VIS_BASE + κύρος/64 επισκέπτες
+    στην πίστα, έξω, στις πρώτες ελεύθερες από τις θέσεις 112-119, όπως οι
+    εισβολείς (ag_land): εργασία T_VISIT, και στο byte της υγείας η φάση
+    VP_EAT. Μετά το ηθικό των αποίκων, όπως πριν, και μένει ως μισό sol, όπως
+    ο έμπορος. Ως το βήμα 135 έτρωγαν και πλήρωναν εδώ (visit)."""
+    n = VIS_BASE + (e.prestige >> 6)
+    for i in range(AG_VIS0, AG_VIS0 + AG_NVIS):
+        if not n:
+            break
+        if a.flags[i] & F_ALIVE:
+            continue
+        born(a, i, F_ALIVE, RL_VIS, node, occ)
+        a.task[i] = T_VISIT
+        a.health[i] = VP_EAT
+        n -= 1
     for i in range(AG_BOT0):            # οι άποικοι· τα ρομπότ δεν έχουν ηθικό (92)
         if a.flags[i] & F_ALIVE:
             a.morale[i] = min(255, a.morale[i] + VISITOR_MORALE)
+    e.ship_eta = e.sollen >> 5          # μισό sol, όπως ο έμπορος
+
+
+def visitors_gone(e, a, occ):
+    """Το vi_gone (βήμα 136): το πλοίο έφυγε, και όσοι επισκέπτες δεν
+    γύρισαν φεύγουν μαζί του — το nd_bury του καθενός. Κανείς δεν αναπνέει."""
+    e.vin = 0
+    for i in range(AG_VIS0, AG_VIS0 + AG_NVIS):
+        if a.flags[i] & 1:
+            if a.slot[i] != 255:
+                occ[a.node[i]] &= ~(1 << a.slot[i]) & 0xFF
+            a.flags[i] = 0
+            a.slot[i] = 255
+            a.edge[i] = 255
+            a.task[i] = 255
+            a.progress[i] = 0
 
 
 # --- οι εισβολείς (βήμα 111, §6.10) -----------------------------------------
@@ -1978,6 +2009,17 @@ FOE_HP = 160                # η υγεία του εισβολέα όταν κ�
 FOE_HIT = 32                # ό,τι παίρνει από έναν άποικο, ανά περιστροφή
 HAND_HIT = 32               # ό,τι του παίρνει ένας φρουρός με τα χέρια, δίπλα του
 GUN_HIT = 64                # ...και με όπλο, ως έναν κόμβο μακριά
+
+# --- οι επισκέπτες που περπατούν (βήμα 136, src/visit.asm) ------------------
+# Στις θέσεις 112-119, μετά το EC_X, με τον ρόλο 9 (η λευκή φιγούρα) και
+# εργασία T_VISIT. Η φάση στο byte της υγείας: VP_EAT (= FOE_HP: γεννιούνται με
+# το ag_land των εισβολέων) πάει να φάει, VP_FUN στο σαλόνι, VP_HOME στο πλοίο.
+# Αφού πληρώσουν κάθονται VIS_STAY περιστροφές, στο byte της προόδου.
+AG_VIS0, AG_NVIS = 112, 8
+RL_VIS = 9
+T_VISIT = 252
+VP_EAT, VP_FUN, VP_HOME = FOE_HP, FOE_HP + 1, FOE_HP + 2
+VIS_STAY = 32
 
 
 def unbidden(e, kind):

@@ -55,7 +55,9 @@
             ποτέ: ό,τι μαζεύεται βήμα με βήμα, μένει). Από το βήμα 134 η
             πλήρης σχεδίαση κρατά τη λίστα ίδια και με τη σειρά της, σβήνει τα
             σημάδια των πρακτόρων 0-99 και αφήνει ίδια τα bytes των 100-127
-            (το EC_X)· και με τη λίστα άδεια, τη φτιάχνει από την αρχή.
+            (το EC_X)· και με τη λίστα άδεια, τη φτιάχνει από την αρχή. Από
+            το βήμα 136 σβήνει και τα σημάδια των επισκεπτών 112-119, και
+            αφήνει ίδια τα 100-111 και 120-127 (το EC_VIN).
             Τουλάχιστον τέσσερα διαφορετικά κελιά στον δρόμο.
   ΓΩΝΙΑ     (βήμα 118) σε αντίγραφο με το ηλιακό του ΔΡΟΜΟΥ χτισμένο: ένας
             πράκτορας που δεν υπάρχει (ο 127) σε μια ακμή, και το fg_want για
@@ -431,16 +433,19 @@ class G:
         # 0-99 μόνο: τα 100-127 είναι το EC_X (src/const.asm), που ως το βήμα
         # 133 μηδενιζόταν σε κάθε view_draw. Μετά, με τη λίστα άδεια: το
         # fg_build τη φτιάχνει από την αρχή.
+        # ΚΑΙ ΟΙ ΕΠΙΣΚΕΠΤΕΣ (βήμα 136): τα σημάδια των 112-119 σβήνουν κι αυτά,
+        # και μένουν ίδια τα 100-111 (EC_X) και τα 120-127 (EC_VIN).
         c = self.clone()
         mk = self.L["G_node_occ"] + 128 - 0x4000
+        ag = [i for i in range(128) if i < 100 or 112 <= i < 120]
         for i in range(128):
-            c.bank(6)[mk + i] = 1 if i < 100 else 0x40 + i
+            c.bank(6)[mk + i] = 1 if i in ag else 0x40 + i
         other = c.full()
         kept = c.figs()
-        if kept != figs or any(c.bank(6)[mk + i] for i in range(100)):
+        if kept != figs or any(c.bank(6)[mk + i] for i in ag):
             return (f"{tag}: η πλήρης σχεδίαση δεν κρατά τη λίστα: {kept}, όχι {figs}, "
-                    f"σημάδια {[i for i in range(100) if c.bank(6)[mk + i]][:8]}"), set()
-        if any(c.bank(6)[mk + i] != 0x40 + i for i in range(100, 128)):
+                    f"σημάδια {[i for i in ag if c.bank(6)[mk + i]][:8]}"), set()
+        if any(c.bank(6)[mk + i] != 0x40 + i for i in range(100, 128) if i not in ag):
             return (f"{tag}: η πλήρης σχεδίαση σβήνει το EC_X: "
                     f"{bytes(c.bank(6)[mk + 100:mk + 128]).hex()}"), set()
         c.m.poke(self.sym["FG_N"], 0)
@@ -1152,11 +1157,12 @@ def main():
     # βήμα 134: η σειρά της λίστας, και το EC_X
     fo = find(sym["DHA_MV"], [0xCD] + w(sym["FG_ORD"]), 40)
     fz = find(sym["FG_BUILD"], [0xB7, 0x28], 20)                   # or a / jr z,fgb_all
-    fn = find(sym["FGB_ALL"], [0x06, 100], 2)                      # ld b,AG_FOE0 + AG_NFOE
+    # ld bc,(AG_FOE0 + AG_NFOE) * 256 + 255: το δεύτερο κομμάτι (βήμα 136)
+    fn = find(sym["FGB_ALL"], [0x01, 0xFF, 100], 80)
     for label, patch, fn_ in (
             ("χωρίς το fg_ord", fo and [(fo + k, 0) for k in range(3)], order),
             ("το fg_build με τη σειρά των πρακτόρων", fz and [(fz + 1, 0x18)], rebuild),
-            ("το fg_build σε όλους τους 128 πράκτορες", fn and [(fn + 1, 128)], scenario)):
+            ("το fg_build σε όλους τους 128 πράκτορες", fn and [(fn + 2, 128)], scenario)):
         if not patch:
             check(False, f"δεν βρέθηκε πού να πειραχτεί για «{label}»")
             continue

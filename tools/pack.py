@@ -21,7 +21,7 @@ from sprites import load_map, load_bin, ROOT
 import buttons
 
 TEXT_MAX = 2148                 # = TEXT_MAX του src/uitext.asm (assert εκεί)
-B6C_MAX = 5831                  # = B6C_MAX του src/bots.asm (assert στο main.asm)· 256 ως το 92, 1.280 ως το 93, 1.298 ως το 95, 1.554 ως το 109 (τα κελύφη, βήμα 110), 5.138 ως το 110 (οι εννιά φιγούρες, βήμα 111), 5.063 ως το 113 (το αδιαφανές τέλος των κελυφών, βήμα 114)
+B6C_MAX = 5767                  # = B6C_MAX του src/bots.asm (assert στο main.asm)· 256 ως το 92, 1.280 ως το 93, 1.298 ως το 95, 1.554 ως το 109 (τα κελύφη, βήμα 110), 5.138 ως το 110 (οι εννιά φιγούρες, βήμα 111), 5.063 ως το 113 (το αδιαφανές τέλος των κελυφών, βήμα 114), 5.831 ως το 135 (ο επισκέπτης, βήμα 136)
 B1C_MAX = 160                   # = B1C_MAX του src/commit.asm (assert στο main.asm), βήμα 94
 B5C_MAX = 248                   # = B5C_MAX του src/bend.asm (assert στο main.asm), βήμα 97· 272 ως το 99
 
@@ -145,7 +145,17 @@ FIG_NAMES = ["colonist", "biologist", "medic", "guard", "carrier", "driller",
 # (fig_grid το ελέγχει)· όλα τα άλλα του αποίκου γίνονται κόκκινα.
 FOE_FIG = "intruder"
 FOE_BLACK = {(1, 2), (1, 4), (0, 6), (2, 6)}                 # (x, y) στο 4x8
-FIG_ALL = FIG_NAMES + [FOE_FIG]
+# Ο ΕΠΙΣΚΕΠΤΗΣ (βήμα 136): ο άποικος ξαναβαμμένος κι αυτός, λευκός (pen 5) με
+# γαλάζια ζώνη και μπότες (pen 2) — καμία άλλη φιγούρα δεν είναι λευκή, και
+# στην άμμο, στο σκούρο έδαφος, στο δάπεδο του διαδρόμου και του θόλου
+# διαβάζεται με τη σκιά του. Χωρίς νέο σχέδιο στα assets, όπως ο εισβολέας.
+VIS_FIG = "visitor"
+VIS_BODY, VIS_ACCENT = 5, 2
+VIS_SKY = {(1, 4), (0, 6), (2, 6)}
+FIG_ALL = FIG_NAMES + [FOE_FIG, VIS_FIG]
+# ΔΕΚΑ ΦΙΓΟΥΡΕΣ ΑΠΟ ΤΟ ΒΗΜΑ 136: ο επισκέπτης μπαίνει πριν από τον εισβολέα
+# στην πρώτη σελίδα, στο 160, και το κομμάτι αρχίζει εκεί — 321 bytes, και οι
+# εννιά κωδικοί που υπήρχαν μένουν ίδιοι.
 # ΕΝΝΙΑ ΦΙΓΟΥΡΕΣ ΣΕ ΔΥΟ ΣΕΛΙΔΕΣ, ΚΑΙ Ο ΚΩΔΙΚΑΣ ΕΙΝΑΙ Η ΔΙΕΥΘΥΝΣΗ (βήμα 111).
 # Ως το 110 οκτώ φιγούρες γέμιζαν μία σελίδα, ο ρόλος έδινε τον αριθμό 1-8 και
 # ο renderer έκανε dec / rrca x 3 / ld l,a / ld h,σελίδα. Τώρα ο ρόλος δίνει
@@ -155,12 +165,19 @@ FIG_ALL = FIG_NAMES + [FOE_FIG]
 # πρώτης: το κομμάτι αρχίζει στο 192 μιας σελίδας (phase) και είναι 289 bytes
 # με μία τρύπα του ενός byte, όχι δύο σελίδες. Το 0 μένει «κενή θέση».
 FIG_LO = 7                                                   # στη δεύτερη σελίδα
-FIG_PHASE = 192
+FIG_PHASE = 256 - 32 * (len(FIG_ALL) - FIG_LO)               # 160 (192 ως το βήμα 135)
 
 
 def fig_code(j):
-    """Ο κωδικός της φιγούρας j (0 = colonist) — το L της, και το bit 0 η σελίδα."""
-    return 1 + 32 * j if j < FIG_LO else FIG_PHASE + 32 * (j - FIG_LO)
+    """Ο κωδικός της φιγούρας j (0 = colonist) — το L της, και το bit 0 η σελίδα.
+    Οι 7 πρώτες στη δεύτερη σελίδα, ο εισβολέας στο 192 και ο επισκέπτης στο
+    160 της πρώτης — από το τέλος της προς τα πίσω, ώστε ο εισβολέας να μείνει
+    εκεί που ήταν."""
+    if j < FIG_LO:
+        return 1 + 32 * j
+    if j < FIG_LO + 2:
+        return 192 + 32 * (j - FIG_LO)
+    return 192 - 32 * (j - FIG_LO - 1)
 
 
 def fig_off(j):
@@ -169,7 +186,7 @@ def fig_off(j):
     return c + 256 * (c & 1) - FIG_PHASE
 
 
-FIG_RUN = 256 - FIG_PHASE + 1 + 32 * FIG_LO                 # 289
+FIG_RUN = 256 - FIG_PHASE + 1 + 32 * FIG_LO                 # 321 (289 ως το βήμα 135)
 
 
 def _m0_pens(b):
@@ -198,6 +215,14 @@ def fig_grid(smap, blob, name):
         return [[None if grid[y][x] is None else
                  MARK_PEN["K" if (x, y) in FOE_BLACK else "R"] for x in range(4)]
                 for y in range(8)]
+    if name == VIS_FIG:
+        grid = fig_grid(smap, blob, "colonist")
+        for x, y in VIS_SKY:
+            if grid[y][x] is None:
+                raise Fail(f"επισκέπτης: το γαλάζιο ({x}, {y}) είναι έξω από τον άποικο")
+        return [[None if grid[y][x] is None else
+                 (VIS_ACCENT if (x, y) in VIS_SKY else VIS_BODY) for x in range(4)]
+                for y in range(8)]
     grid = [[None] * 4 for _ in range(8)]
     for size in "sml":
         for slot in range(8):
@@ -219,7 +244,7 @@ def fig_grid(smap, blob, name):
 
 
 def out_figs(smap, blob, shadow=True):
-    """9 φιγούρες x 8 γραμμές x (μάσκα, data, μάσκα, data), στη θέση του
+    """10 φιγούρες x 8 γραμμές x (μάσκα, data, μάσκα, data), στη θέση του
     fig_off: FIG_RUN bytes, οι δύο τρύπες μηδέν. Με σκιά για έξω (fig_gfx),
     χωρίς για τον δακτύλιο (fig_ring)."""
     data = bytearray(FIG_RUN)
@@ -725,14 +750,18 @@ def build_runs(smap, blob):
                      note="ΔΕΣΜΕΥΣΗ — 64 φιγούρες έξω: ux, uy, φιγούρα, πράκτορας"))
     bank6.append(Run("slot_empty", len(empty), empty,
                      note="οι 24 κενές θέσεις δακτυλίου, αδιαφανείς"))
-    bank6 += [spr("corr_dr"), spr("corr_dl"), ob6("struct_ptr")]
+    # ΑΠΟ ΤΟ ΒΗΜΑ 136 οι δύο ομάδες αρχίζουν στο 160 (δέκα φιγούρες, 321 bytes η
+    # καθεμία): ανάμεσα στις αρχές τους 512, άρα 191 bytes πινάκων ανάμεσα, και
+    # 32 πριν από την πρώτη. Τα 64 του struct_ptr πήγαν στο τέλος, κάτω από το
+    # b6code, που μίκρυνε κατά τα 64 των δύο νέων φιγούρων. Κενά 8 + 1.
+    bank6 += [spr("corr_dr"), spr("corr_dl"), ob6("icon_m_ptr")]
     bank6.append(Run("fig_gfx", FIG_RUN, out_figs(smap, blob), phase=FIG_PHASE,
-                     note="παράγεται από τα slot_*: οι 9 φιγούρες με μάσκα και σκιά (fig_code)"))
+                     note="παράγεται από τα slot_*: οι 10 φιγούρες με μάσκα και σκιά (fig_code)"))
     bank6 += [spr("corr_h"), ob6("corr_slots"), ob6("conn_points"),
-              ob6("icon_s_ptr"), ob6("icon_m_ptr"), ob6("interior_ofs")]
+              ob6("icon_s_ptr"), ob6("interior_ofs")]
     bank6.append(Run("fig_ring", FIG_RUN, ring, phase=FIG_PHASE,
-                     note="παράγεται από τα slot_*: οι 9 φιγούρες με μάσκα (fig_code)"))
-    bank6 += [spr("corr_v"), ob6("icon_l_ptr")]
+                     note="παράγεται από τα slot_*: οι 10 φιγούρες με μάσκα (fig_code)"))
+    bank6 += [spr("corr_v"), ob6("icon_l_ptr"), ob6("struct_ptr")]
     # ΟΙ ΠΟΡΤΕΣ (conn_{dir}, 8 x 32) ΕΦΥΓΑΝ ΣΤΟ ΒΗΜΑ 96: ο διάδρομος σταματά στο
     # εξωτερικό χείλος του δακτυλίου (ο παίκτης), και ό,τι ανοίγει τον
     # δακτύλιο δεν ζωγραφίζεται πια. Τα 256 bytes τους πήγαν στο b6code.

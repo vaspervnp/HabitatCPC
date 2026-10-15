@@ -281,6 +281,7 @@ mla_pok:
         ; ώστε ο λόγος να μη χαθεί μέσα στο build.asm.
         include "terrain.asm"
         include "mine.asm"                  ; βήμα 123: η τιμή και οι σημαίες του ορυχείου
+        include "visit0.asm"                ; βήμα 136: οι επισκέπτες, ό,τι δεν θέλει την 6
 zz_bank0_end:
         ; ΤΟ ΠΑΤΩΜΑ ΤΩΝ TESTS. Πάνω από τον κώδικα στήνουν stubs, ημερολόγια και
         ; probes: τα probes στο #3E00, το test_loop τα stubs του από το
@@ -447,6 +448,7 @@ zz_b5code_end:
         org     G_b6code, #8000 + G_b6code - #4000
         include "bots.asm"              ; βήμα 92: τα ρομπότ από το απόθεμα
         include "ship.asm"              ; βήμα 93: πλοία και ορόσημα, από την τράπεζα 0
+        include "visit.asm"             ; βήμα 136: οι επισκέπτες που περπατούν
         include "foe.asm"               ; βήμα 111: οι εισβολείς
         include "crew.asm"              ; βήμα 93: ποιοι έρχονται, από την τράπεζα 0
         include "flow.asm"              ; βήμα 93: η θέση 12, από την τράπεζα 0

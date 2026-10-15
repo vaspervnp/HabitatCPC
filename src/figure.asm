@@ -690,11 +690,17 @@ fgb_all:
         ; από τους 94 που δεν υπάρχουν έψαχνε τη λίστα (cpir), και κάθε φιγούρα
         ; περνούσε δύο φορές: 18,1 ms με έξι αποίκους έξω. Τώρα 5,3 (14,5 ως το
         ; βήμα 133, με το dh_agent για όλους τους 128).
-        ld      b,AG_FOE0 + AG_NFOE     ; όχι N_AGENT (src/entity.asm): EC_X
+        ;
+        ; ΔΥΟ ΚΟΜΜΑΤΙΑ ΑΠΟ ΤΟ ΒΗΜΑ 136: πρώτα οι επισκέπτες 112-119, μετά οι
+        ; 0-99. Ο πράκτορας είναι B + C, όχι B - 1: ίδιοι κύκλοι, και το C
+        ; κρατά το κομμάτι. Τα 100-111 (EC_X) και τα 120-127 (EC_VIN) δεν τα
+        ; αγγίζει κανείς.
+        ld      bc,AG_NVIS * 256 + AG_VIS0 - 1
         assert  EC_X - G_node_occ - 128 >= AG_FOE0 + AG_NFOE
+        assert  EC_MCOIN < G_node_occ + 128 + AG_VIS0 && EC_VIN >= G_node_occ + 128 + AG_VIS0 + AG_NVIS
 fgb_lp:
         ld      a,b
-        dec     a
+        add     a,c
         ld      l,a
         set     7,l
         ld      h,OCCPG
@@ -712,6 +718,12 @@ fgb_lp:
         pop     bc
 fgb_nx:
         djnz    fgb_lp
+        ld      a,c
+        inc     a
+        jr      z,fgb_end               ; και τα δύο κομμάτια
+        ld      bc,(AG_FOE0 + AG_NFOE) * 256 + 255      ; όχι N_AGENT (src/entity.asm): EC_X
+        jr      fgb_lp
+fgb_end:
         xor     a
         ld      (fg_q),a
         jp      ob_touch
@@ -727,7 +739,7 @@ fg_want:
         jr      z,fw_none
         set     7,l
         ld      a,(hl)                  ; ρόλος
-        and     15                      ; 0-8: ο εισβολέας είναι ο 8 (βήμα 111)
+        and     15                      ; 0-9: ο εισβολέας ο 8 (βήμα 111), ο επισκέπτης ο 9 (136)
         add     a,role_fig & 255        ; μία σελίδα (assert): χωρίς ob_addu
         ld      e,a
         ld      d,role_fig >> 8
@@ -1220,13 +1232,13 @@ fw_b:       dw 0                        ; by, bx
 
         assert  fg_ox == fg_oy + 1 && fg_nx == fg_ny + 1
         assert  fg_ny == fg_nf + 1 && fg_nf == fg_na + 1
-        assert  (G_fig_list & 255) == 0 && (G_fig_gfx & 255) == 192   ; FIG_PHASE (tools/pack.py)
+        assert  (G_fig_list & 255) == 0 && (G_fig_gfx & 255) == 160   ; FIG_PHASE (tools/pack.py· 192 ως το βήμα 135)
         assert  FG_CAP * 4 == 256 && SLOT_W == 2 && SLOT_H == 8
         assert  ((G_node_adj >> 3) & 255) + 128 <= 256
         assert  FG_SCAN_US == 24 && FG_CAP * 3 < 256
         assert  FGC_SCAN_US == 8 && FGC_XM_US == 24    ; οι ολισθήσεις του fg_cell
         assert  (role_fig & 255) + 16 <= 256   ; and 15
-        assert  FC_COLONIST & 1 && (FC_INTRUDER & 1) == 0   ; οι δύο σελίδες (tools/pack.py)
+        assert  FC_COLONIST & 1 && (FC_INTRUDER & 1) == 0 && (FC_VISITOR & 1) == 0   ; οι δύο σελίδες (tools/pack.py)
         assert  ((G_tile_ground | G_tile_dust | G_tile_rock | G_tile_mountain) & 63) == 0
         assert  ((G_tile_water | G_tile_deepwater | G_tile_crater | G_tile_foundation) & 63) == 0
         assert  (G_struct_dims & 255) + 64 <= 256          ; 64 bytes (build/layout.txt)

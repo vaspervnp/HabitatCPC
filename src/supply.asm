@@ -458,7 +458,9 @@ sp_noeng:
         ld      bc,GA_PORT + PAGE_B6
         out     (c),c
         ld      hl,G_agent_fields       ; οι σημαίες· ο ρόλος στο +128
-        ld      b,128
+        ; ΟΧΙ ΟΙ 128 (βήμα 136): ο επισκέπτης έχει ρόλο 9, και 9 & 7 είναι ο
+        ; μηχανικός. Αποικοι και ρομπότ είναι οι 0-95.
+        ld      b,AG_FOE0
 spn_ag:
         bit     0,(hl)                  ; F_ALIVE
         jr      z,spn_an

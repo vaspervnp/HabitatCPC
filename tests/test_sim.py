@@ -82,7 +82,8 @@ def z80_read(m, sym, frames):
             m.read_ram(sym["G_ECON_STATE"], EC.ECON_BYTES) +
             m.read_ram(STAGE_OCC + EC.X_OFF, EC.X_N) +  # EC_X (βήμα 121)
             bytes([m.peek(sym["EC_FULL"]),              # η αποθήκη (βήμα 122)
-                   m.peek(sym["EC_KEEP"])]),            # το μέταλλο (βήμα 127)
+                   m.peek(sym["EC_KEEP"]),              # το μέταλλο (βήμα 127)
+                   m.peek(STAGE_OCC + EC.VIN_OFF)]),    # οι επισκέπτες μέσα (βήμα 136)
             m.read_ram(sym["G_JOB_TBL"], EC.MAX_JOB * EC.JOB_REC),
             m.read_ram(sym["G_ROOM_N"], 12) +
             m.read_ram(sym["G_ROOM_LIST"], 96))
@@ -174,7 +175,7 @@ def econ_bytes(e):
     """Η οικονομία όπως τη διαβάζει το run_z80: τα ECON_BYTES της τράπεζας 2,
     από το βήμα 121 τα έξι του EC_X (η ησυχία) στην τράπεζα 6, και από το 122
     το ec_full της τράπεζας 0, από το 127 και το ec_keep."""
-    return EC.to_bytes(e) + EC.x_bytes(e) + bytes([e.full, e.keep])
+    return EC.to_bytes(e) + EC.x_bytes(e) + bytes([e.full, e.keep, e.vin])
 
 
 def fresh(g, nexthop, src):
@@ -201,7 +202,8 @@ def fresh(g, nexthop, src):
               "meteor", "mcx", "mcy", "mrnd", "nbuild", "markup", "lands",
               "ldis", "lev", "full", "keep",
               "coins", "prestige", "goodwill", "visacc",     # βήμα 134
-              "mcoins"):                                    # βήμα 135
+              "mcoins",                                     # βήμα 135
+              "vin"):                                       # βήμα 136
         setattr(s.e, f, getattr(src.e, f))
     return s
 
@@ -1857,17 +1859,36 @@ SHIP_CASES = (
 SHIP_CASES += FOE_SHIP_CASES             # βήμα 111
 
 
-# --- ΕΠΙΣΚΕΠΤΕΣ ΠΟΥ ΠΛΗΡΩΝΟΥΝ ΚΑΙ ΚΥΡΟΣ (βήμα 134) ---------------------------
+# --- ΕΠΙΣΚΕΠΤΕΣ ΠΟΥ ΠΛΗΡΩΝΟΥΝ ΚΑΙ ΚΥΡΟΣ (βήμα 134), ΠΟΥ ΠΕΡΠΑΤΟΥΝ (βήμα 136) ---
 
-def _visitors(prestige=0, canteen=1, food=50, water=50, amenity=1, coins=0, goodwill=50):
+def _visitors(prestige=0, canteen=1, food=50, water=50, amenity=1, coins=0, goodwill=50,
+              lounge=1, sollen=12000):
     """Το πλοίο επισκεπτών προσγειώνεται τώρα, με το κύρος, τα αποθέματα και τα
-    δωμάτια στις άκρες που θέλει η περίπτωση."""
+    δωμάτια στις άκρες που θέλει η περίπτωση. Από το βήμα 136 περπατούν, και
+    το sol είναι μεγάλο (το πλοίο μένει μισό sol): στην αποικία της δοκιμής η
+    επίσκεψη με σαλόνι κρατά 133 περιστροφές, χωρίς 44."""
     def f(e, a):
         e.ship_state, e.ship_kind, e.ship_eta = EC.SHIP_INCOMING, EC.SK_VISITOR, 0
         e.prestige, e.coins, e.goodwill, e.amenity = prestige, coins, goodwill, amenity
+        e.sollen = sollen
         e.room_n[EC.R_CANTEEN] = canteen
+        if not lounge:
+            e.room_n[EC.R_LOUNGE] = 0
         e.stock[EC.S_FOOD], e.stock[EC.S_WATER] = food, water
     return f
+
+
+def _lost(e, a):
+    """Το πλοίο εδώ, και δύο επισκέπτες στο κυλικείο 11 για το σαλόνι: ο 112
+    έχασε την εργασία του (NO_TASK, όπως μετά από κατεδάφιση) και την ξαναπαίρνει,
+    ο 113 κάθεται ακόμη τρεις περιστροφές."""
+    e.ship_state, e.ship_kind, e.ship_eta = EC.SHIP_LANDED, EC.SK_VISITOR, 300
+    e.sollen = 12000
+    for i, task, stay in ((112, E.NO_TASK, 0), (113, EC.T_VISIT, 3)):
+        a.flags[i], a.role[i] = E.F_ALIVE | E.F_INDOORS, EC.RL_VIS
+        a.node[i] = a.dest[i] = 11
+        a.edge[i], a.slot[i] = E.NO_EDGE, E.NO_SLOT
+        a.task[i], a.progress[i], a.health[i] = task, stay, EC.VP_FUN
 
 
 def _prestige(mile=0, alive=6, nodeath=0, amenity=0, goodwill=0, visacc=0,
@@ -1887,16 +1908,21 @@ def _prestige(mile=0, alive=6, nodeath=0, amenity=0, goodwill=0, visacc=0,
 
 
 VISIT_CASES = (
-    ("επισκέπτες: δύο, κυλικείο και σαλόνι", 1, _visitors()),
-    ("επισκέπτες: χωρίς σαλόνι ή δέντρο", 1, _visitors(amenity=0)),
-    ("επισκέπτες: χωρίς κυλικείο, η εύνοια ως το 0", 1, _visitors(canteen=0, goodwill=10)),
-    ("επισκέπτες: ένα τρόφιμο", 1, _visitors(food=1)),
-    ("επισκέπτες: χωρίς νερό", 1, _visitors(water=0)),
+    ("επισκέπτες: δύο κατεβαίνουν στην πίστα", 1, _visitors()),
+    ("επισκέπτες: στο κυλικείο, πληρώνουν, κάθονται, αναπνέουν", 12, _visitors()),
+    ("επισκέπτες: όλη η επίσκεψη, κυλικείο και σαλόνι, ανεβαίνουν", 136, _visitors()),
+    ("επισκέπτες: χωρίς σαλόνι, τα δέντρα πληρώνουν", 46, _visitors(lounge=0)),
+    ("επισκέπτες: χωρίς σαλόνι ή δέντρο", 46, _visitors(lounge=0, amenity=0)),
+    ("επισκέπτες: χωρίς κυλικείο, η εύνοια ως το 0", 6, _visitors(canteen=0, goodwill=10)),
+    ("επισκέπτες: ένα τρόφιμο", 12, _visitors(food=1)),
+    ("επισκέπτες: χωρίς νερό", 12, _visitors(water=0)),
     ("επισκέπτες: κύρος 63, δύο", 1, _visitors(prestige=63)),
     ("επισκέπτες: κύρος 64, τρεις", 1, _visitors(prestige=64)),
-    ("επισκέπτες: κύρος 250, πέντε, τα νομίσματα ως το 999", 1,
+    ("επισκέπτες: κύρος 250, πέντε, τα νομίσματα ως το 999", 12,
      _visitors(prestige=250, coins=990)),
-    ("επισκέπτες: η εύνοια ως το 100", 1, _visitors(goodwill=98)),
+    ("επισκέπτες: η εύνοια ως το 100", 12, _visitors(goodwill=98)),
+    ("επισκέπτες: το μισό sol, φεύγουν με το πλοίο", 14, _visitors(sollen=320)),
+    ("επισκέπτες: ένας χάνει τον δρόμο, ένας κάθεται", 3, _lost),
     ("κύρος: όλα στις άκρες", 1,
      _prestige(mile=31, alive=80, nodeath=255, amenity=9, goodwill=100)),
     ("κύρος: σερί 29, σαλόνια 5", 1, _prestige(nodeath=28, amenity=5, goodwill=1)),
@@ -1973,10 +1999,21 @@ def ship_branches(sym, g, nexthop, sim0):
     bad = [lab for ok, lab in (
         fault("η εύνοια δεν σβήνει", "SR_PRES", [0x28, 0x01, 0x35], 2, 0x00,
               "κύρος: σερί 29, σαλόνια 5"),
-        fault("τα νομίσματα χωρίς ταβάνι", "SV_PAY", [0x19, 0x30], 1, 0x18,
+        # βήμα 136: ret nc -> ret, χωρίς το ταβάνι (src/visit0.asm)
+        fault("τα νομίσματα χωρίς ταβάνι", "VI_PAY", [0x19, 0xD0], 1, 0xC9,
               "επισκέπτες: κύρος 250, πέντε, τα νομίσματα ως το 999"),
-        fault("ο έλεγχος του κυλικείου ανάποδα", "SV_ONE", [0xB7, 0x28], 1, 0x20,
-              "επισκέπτες: χωρίς κυλικείο, η εύνοια ως το 0"),
+        # cp e / ret z -> ret nz: «εδώ» όταν ΔΕΝ είναι
+        fault("ο έλεγχος του κυλικείου ανάποδα", "VIA_GO", [0xBB, 0xC8], 1, 0xC0,
+              "επισκέπτες: στο κυλικείο, πληρώνουν, κάθονται, αναπνέουν"),
+        fault("δεν κάθονται", "VIA_STAY", [0x36, EC.VIS_STAY], 1, 0,
+              "επισκέπτες: στο κυλικείο, πληρώνουν, κάθονται, αναπνέουν"),
+        fault("δεν ανεβαίνουν", "VIA_BOARD", [0xC3], 0, 0xC9,
+              "επισκέπτες: όλη η επίσκεψη, κυλικείο και σαλόνι, ανεβαίνουν"),
+        # ld a,c / ld (EC_VIN),a -> ld a,c / ld a,(EC_VIN): δεν μετριούνται
+        fault("όσοι είναι μέσα δεν μετριούνται", "VI_TICK", [0x79, 0x32], 1, 0x3A,
+              "επισκέπτες: στο κυλικείο, πληρώνουν, κάθονται, αναπνέουν"),
+        fault("το σαλόνι χωρίς τα δέντρα", "VIA_TREE", [0xB7, 0x28], 1, 0x18,
+              "επισκέπτες: χωρίς σαλόνι, τα δέντρα πληρώνουν"),
         fault("ο συσσωρευτής ξεχνά το πλοίο που δεν ήρθε", "SR_PRES", [0x3E, 0xFF], 1, 0x00,
               "κύρος: πάνω από 255 με πλοίο ήδη, μένει 255"),
         # βήμα 135: and 3 -> and 1 μετά τα δύο rlca, μόνο το bit 6
@@ -1984,13 +2021,16 @@ def ship_branches(sym, g, nexthop, sim0):
               [0x07, 0x07, 0xE6, 0x03], 3, 0x01, "έμπορος: 150 νομίσματα"),
     ) if not ok]
     if bad:
-        print(f"ΑΠΟΤΥΧΙΑ πλοία και sol: ΑΡΝΗΤΙΚΑ των βημάτων 134-135 που δεν πιάστηκαν: {bad}")
+        print(f"ΑΠΟΤΥΧΙΑ πλοία και sol: ΑΡΝΗΤΙΚΑ των βημάτων 134-136 που δεν πιάστηκαν: {bad}")
         return 1
-    print(f"OK επισκέπτες και κύρος (βήμα 134): {len(VISIT_CASES)} περιπτώσεις — κυλικείο, "
-          f"σαλόνι, τρόφιμο, νερό, 2-5 επισκέπτες από το κύρος, νομίσματα ως το 999, εύνοια "
-          f"0-100, το κύρος στις άκρες του, ο συσσωρευτής με πλοίο, χωρίς, με άλλο πλοίο, "
-          f"χωρίς πίστα, και εισβολείς. ΑΡΝΗΤΙΚΑ: η εύνοια που δεν σβήνει, νομίσματα χωρίς "
-          f"ταβάνι, το κυλικείο ανάποδα, ο συσσωρευτής που ξεχνά — διαφέρουν")
+    print(f"OK επισκέπτες και κύρος (βήματα 134, 136): {len(VISIT_CASES)} περιπτώσεις — "
+          f"κατεβαίνουν, περπατούν ως το κυλικείο και το σαλόνι, πληρώνουν, κάθονται, "
+          f"αναπνέουν, ανεβαίνουν, τα δέντρα, χωρίς κυλικείο, τρόφιμο, νερό, 2-5 επισκέπτες "
+          f"από το κύρος, νομίσματα ως το 999, εύνοια 0-100, το μισό sol, ένας χαμένος· το "
+          f"κύρος στις άκρες του, ο συσσωρευτής με πλοίο, χωρίς, με άλλο πλοίο, χωρίς πίστα, "
+          f"και εισβολείς. ΑΡΝΗΤΙΚΑ: η εύνοια που δεν σβήνει, νομίσματα χωρίς ταβάνι, το "
+          f"κυλικείο ανάποδα, ο συσσωρευτής που ξεχνά, δεν κάθονται, δεν ανεβαίνουν, δεν "
+          f"μετριούνται μέσα, το σαλόνι χωρίς δέντρα — διαφέρουν")
     print("OK τα νομίσματα του εμπόρου (βήμα 135): χωρίς, 50 και 150 στην προσγείωσή του, "
           "ίδια bytes στον Z80 και στην αναφορά. ΑΡΝΗΤΙΚΟ: μόνο από το bit 6 διαφέρουν")
     return 0
@@ -2421,7 +2461,7 @@ def slot15(sim, n):
             EC.sol_rollover(sim.e, sim.a, E.F_ALIVE, E.F_WORKING, E.NEED_LOW)
         EC.bot_tick(sim.e, sim.a, sim.occ)
         E.foe_tick(sim.e, sim.a, sim.g, sim.nexthop, sim.occ, sim.foe)   # βήμα 111
-        EC.ship_tick(sim.e, sim.a, sim.e.pad_node, E.F_ALIVE, sim.occ)
+        E.ship_tick(sim.e, sim.a, sim.g, sim.nexthop, sim.occ)  # βήμα 136: και οι επισκέπτες
 
 
 def edge_tiles(e):

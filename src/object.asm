@@ -897,7 +897,7 @@ obfo_have:                              ; από το ob_figures: το of_at έ�
         add     a,G_fig_ring >> 8
         ld      h,a
         jp      ob_fig                  ; src/figure.asm
-        assert  SLOT_SIZE == 16 && SLOT_FIGS <= 9 && (G_fig_ring & 255) == 192
+        assert  SLOT_SIZE == 16 && SLOT_FIGS <= 9 && (G_fig_ring & 255) == 160
 
 ; ---------------------------------------------------------------------------
 ; ob_corr — ένας διάδρομος. In: A = id διαδρόμου. Απαιτεί τράπεζα 6.
@@ -1302,7 +1302,7 @@ ofs_lp:
         ld      h,AG_FLAGS >> 8
         set     7,l
         ld      a,(hl)                  ; role
-        and     15                      ; 0-8: ο εισβολέας είναι ο 8 (βήμα 111)
+        and     15                      ; 0-9: ο εισβολέας ο 8 (βήμα 111), ο επισκέπτης ο 9 (136)
         ld      l,a
         ld      h,0
         ld      de,role_fig
@@ -1656,6 +1656,7 @@ dome_geo:
 ; τον ΜΗΧΑΝΙΚΟ ΑΝΘΡΩΠΟ. Ο μηχανικός παίρνει τη φιγούρα 7 (κυανό) γιατί σε 6x6
 ; pixel το χρώμα είναι η ταυτότητα. Από το βήμα 111 ο ΚΩΔΙΚΑΣ της φιγούρας,
 ; όχι ο αριθμός της (build/layout.asm, FC_*), και ο ένατος ρόλος: ο εισβολέας.
+; Από το βήμα 136 και ο δέκατος, ο επισκέπτης (RL_VIS).
 ; Σε μία σελίδα (το assert του src/figure.asm, που διαβάζει με and 15). Τα
 ; τρία builds που έχουν το object.asm (το παιχνίδι, tests/objtest.asm,
 ; uitest.asm) το βάζουν σε άλλη διεύθυνση το καθένα, και στο βήμα 129 έπεσε
@@ -1666,7 +1667,8 @@ dome_geo:
         endif
 role_fig:
         db      FC_COLONIST, FC_ENGINEER, FC_BIOLOGIST, FC_MEDIC, FC_GUARD
-        db      FC_CONSTRUCTOR, FC_CARRIER, FC_DRILLER, FC_INTRUDER
+        db      FC_CONSTRUCTOR, FC_CARRIER, FC_DRILLER, FC_INTRUDER, FC_VISITOR
+        assert  RL_FOE == 8 && RL_VIS == 9
 
 ; Ανά κατεύθυνση: sprite, w, h, βήμα x, βήμα y, μετατόπιση αρχής x, y, διαγώνιος;
 ; (Τα βήματα 0, ±4, ±16: το ob_box τα πολλαπλασιάζει με ολισθήσεις.)

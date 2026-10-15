@@ -22,7 +22,8 @@ VIS_MORALE  equ 24
 ; ΕΠΙΣΚΕΠΤΕΣ ΠΟΥ ΠΛΗΡΩΝΟΥΝ (βήμα 134, tools/econ.py): VIS_BASE + κύρος/64 ανά
 ; πλοίο· με κυλικείο, τρόφιμο και νερό ο καθένας τρώει, πίνει και δίνει
 ; COIN_MEAL, και COIN_FUN ακόμη αν η αποικία έχει σαλόνι ή δέντρα. Ως το βήμα
-; 133 το πλοίο έτρωγε έξι τρόφιμα (VIS_FOOD) και δεν έδινε τίποτα.
+; 133 το πλοίο έτρωγε έξι τρόφιμα (VIS_FOOD) και δεν έδινε τίποτα. Από το 136
+; τα ίδια, εκεί όπου περπατούν: src/visit.asm.
 VIS_BASE    equ 2
 COIN_MEAL   equ 5
 COIN_FUN    equ 3
@@ -62,6 +63,18 @@ ship_tick:
         ld      a,(EC_SHSTATE)
         or      a
         ret     z
+        ; ΟΙ ΕΠΙΣΚΕΠΤΕΣ ΠΕΡΠΑΤΟΥΝ (βήμα 136, src/visit.asm) όσο είναι
+        ; προσγειωμένο το πλοίο τους: αυτή είναι η πύλη τους. Χωρίς πλοίο η
+        ; θέση δεν πληρώνει τίποτα, με πλοίο που έρχεται 19 T, με άλλο
+        ; προσγειωμένο 44. (Η πρώτη γραφή, μία σύγκριση 16 bits, ήταν 51 T και
+        ; για το πλοίο που έρχεται, το συνηθέστερο: η θέση 15 του
+        ; tests/test_sim.py πέρασε τα 500 us.)
+        cp      SHIP_LANDED
+        jr      nz,st_eta
+        ld      a,(EC_SHKIND)
+        cp      SK_VISITOR
+        call    z,vi_tick
+st_eta:
         ld      hl,(EC_SHETA)
         ld      a,h
         or      l
@@ -73,9 +86,9 @@ st_here:
         ld      hl,EC_SHSTATE
         ld      a,(hl)
         add     a,a                     ; ΕΡΧΕΤΑΙ -> ΠΡΟΣΓΕΙΩΜΕΝΟ, και
-        and     3                       ; ΠΡΟΣΓΕΙΩΜΕΝΟ -> ΤΙΠΟΤΑ: έφυγε
-        ld      (hl),a
-        ret     z
+        and     3                       ; ΠΡΟΣΓΕΙΩΜΕΝΟ -> ΤΙΠΟΤΑ: έφυγε, και
+        ld      (hl),a                  ; όσοι επισκέπτες δεν γύρισαν μαζί του
+        jp      z,vi_gone               ; (βήμα 136, src/visit.asm)
         ld      a,SFX_SHIP
         call    snd_ping
         ld      hl,SHIP_STAY
@@ -95,59 +108,10 @@ st_disp:
         jp      z,ship_crew             ; jp από το βήμα 134: τα νομίσματα στη μέση
         cp      SK_VISITOR
         jp      nz,sm_land              ; ο έμπορος (βήμα 93), πιο κάτω
-        ; --- επισκέπτες (βήμα 134): όσοι βρίσκουν κυλικείο, τρόφιμο και νερό
-        ; τρώνε, πίνουν και πληρώνουν· οι άλλοι φεύγουν και η εύνοια πέφτει ---
-        ld      a,(EC_PREST)
-        rlca
-        rlca
-        and     3                       ; κύρος / 64
-        add     a,VIS_BASE
-        ld      b,a
-sv_one:
-        ld      a,(G_room_n + R_CANTEEN)
-        or      a
-        jr      z,sv_no
-        ld      hl,(EC_STOCK + 2*S_FOOD)
-        ld      a,h
-        or      l
-        jr      z,sv_no
-        ld      de,(EC_STOCK + 2*S_WATER)
-        ld      a,d
-        or      e
-        jr      z,sv_no
-        dec     hl
-        ld      (EC_STOCK + 2*S_FOOD),hl
-        dec     de
-        ld      (EC_STOCK + 2*S_WATER),de
-        ld      a,(EC_AMENITY)
-        or      a
-        ld      a,COIN_MEAL
-        jr      z,sv_pay
-        add     a,COIN_FUN
-sv_pay: ld      hl,(EC_COINS)
-        add     a,l
-        ld      l,a
-        adc     a,h
-        sub     l
-        ld      h,a
-        ld      (EC_COINS),hl
-        ld      de,-(COIN_MAX + 1)
-        add     hl,de                   ; CY: πάνω από το COIN_MAX
-        jr      nc,sv_up
-        ld      hl,COIN_MAX
-        ld      (EC_COINS),hl
-sv_up:  ld      a,(EC_GOOD)
-        add     a,GOOD_UP
-        cp      GOOD_MAX + 1
-        jr      c,sv_gst
-        ld      a,GOOD_MAX
-        jr      sv_gst
-sv_no:  ld      a,(EC_GOOD)
-        sub     GOOD_DOWN
-        jr      nc,sv_gst
-        xor     a
-sv_gst: ld      (EC_GOOD),a
-        djnz    sv_one
+        ; --- ΕΠΙΣΚΕΠΤΕΣ (βήμα 136): κατεβαίνουν στην πίστα και περπατούν ως
+        ; το κυλικείο και το σαλόνι (src/visit.asm), και πληρώνουν εκεί. Ως το
+        ; 135 έτρωγαν και πλήρωναν εδώ, όλοι μαζί, τη στιγμή της προσγείωσης.
+        call    vi_land
         ; --- και ανεβάζουν το ηθικό, όπως πριν ---
         ld      hl,G_agent_fields       ; σελίδα flags
         ld      b,AG_BOT0               ; οι άποικοι: τα ρομπότ δεν έχουν ηθικό
@@ -168,7 +132,7 @@ sv_st:
 sv_n:
         inc     l
         djnz    sv_lp
-        ret
+        jp      sm_stay                 ; και μένει ως μισό sol, όπως ο έμπορος
 
 ; vs_coins — HL = τα νομίσματα (βήμα 134). Για το HUD, με το hd_b6.
 vs_coins:
@@ -271,6 +235,45 @@ sb_lp:
 sb_tab:     db 0, 255, 0, 255, 0, 255, 200, 200, 200, 200, 200, 160
             db SUIT_TRIP, 0             ; στολή, φορτίο (βήμα 90): κατεβαίνει έξω
 
+; ag_land — HL = η πρώτη θέση (σημαίες), B = θέσεις, C = πόσοι, D = ρόλος,
+; E = εργασία: C καινούργιοι έξω, στην πίστα, στις πρώτες ελεύθερες από τις B,
+; γεννημένοι όπως ο άποικος (sb_rest), με την εργασία τους και υγεία FOE_HP.
+; Οι εισβολείς (βήμα 111, fo_land), και από το βήμα 136 οι επισκέπτες
+; (vi_land), για τους οποίους το FOE_HP είναι η φάση VP_EAT.
+ag_land:
+        ld      a,(EC_PADNODE)
+        ld      (sb_tab),a              ; κόμβος και προορισμός: η πίστα
+        ld      (sb_tab + 2),a
+agl_lp:
+        bit     0,(hl)                  ; F_ALIVE
+        jr      nz,agl_nx
+        push    bc
+        push    de
+        push    hl
+        ld      (hl),F_ALIVE            ; έξω
+        set     7,l
+        ld      (hl),d
+        call    sb_rest
+        pop     hl
+        pop     de
+        push    de
+        push    hl
+        ld      h,AG_PG + 3
+        set     7,l
+        ld      (hl),e                  ; η εργασία
+        ld      h,AG_PG + 6
+        res     7,l
+        ld      (hl),FOE_HP             ; η υγεία
+        pop     hl
+        pop     de
+        pop     bc
+        dec     c
+        ret     z
+agl_nx:
+        inc     l
+        djnz    agl_lp
+        ret
+
 ; --- ο έμπορος (βήμα 93): το φορτίο του, και μένει μισό sol ----------------
 ; ΟΠΩΣ ΣΤΟ PLANETBASE: τρία ή τέσσερα αγαθά, άλλα κάθε φορά, 1-4 μονάδες από
 ; το καθένα (tr_lot, src/stock.asm), και το κέρδος του, 35-65%. Τρία bytes από
@@ -371,7 +374,9 @@ sml_n:  ld      e,a
         djnz    sml_lp
         ; ΜΙΣΟ SOL, ΟΧΙ SHIP_STAY: οκτώ περιστροφές είναι 2,6 δευτερόλεπτα, και
         ; η ανταλλαγή θέλει χρόνο. Από το μήκος του sol, που είναι δεδομένο: 32
-        ; = 16 frames ανά περιστροφή x 2.
+        ; = 16 frames ανά περιστροφή x 2. Και του πλοίου επισκεπτών (βήμα
+        ; 136), που φεύγει νωρίτερα αν ανέβουν όλοι (vi_tick).
+sm_stay:
         ld      hl,(EC_SOLLEN)
         ld      b,5
 sml_h:  srl     h

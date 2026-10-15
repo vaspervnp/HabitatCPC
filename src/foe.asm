@@ -554,9 +554,6 @@ fo_land:
         ld      (EC_LANDS),a
         ld      a,SFX_ALERT
         call    snd_ping
-        ld      a,(EC_PADNODE)
-        ld      (sb_tab),a              ; κόμβος και προορισμός: η πίστα
-        ld      (sb_tab + 2),a
         ld      a,(EC_ALIVE)
         ld      c,2
         cp      40
@@ -567,31 +564,9 @@ fol_40:  cp      60
         inc     c                       ; C = πόσοι
 fol_60:
         ld      hl,G_agent_fields + AG_FOE0
+        ld      de,RL_FOE * 256 + T_FIGHT
         ld      b,AG_NFOE
-fol_lp:
-        bit     0,(hl)                  ; F_ALIVE
-        jr      nz,fol_nx
-        push    bc
-        push    hl
-        ld      (hl),F_ALIVE            ; έξω
-        set     7,l
-        ld      (hl),RL_FOE
-        call    sb_rest                 ; src/ship.asm
-        pop     hl
-        push    hl
-        ld      h,AG_PG + 3
-        set     7,l
-        ld      (hl),T_FIGHT
-        ld      h,AG_PG + 6
-        res     7,l
-        ld      (hl),FOE_HP
-        pop     hl
-        pop     bc
-        dec     c
-        jr      z,fol_end
-fol_nx:
-        inc     l
-        djnz    fol_lp
+        call    ag_land                 ; src/ship.asm (βήμα 136: κοινό με τους επισκέπτες)
 fol_end:
         ld      a,#80                   ; ο τροχός τους μετρά στην επόμενη περιστροφή
         ld      (fo_n),a

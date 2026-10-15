@@ -455,6 +455,98 @@ def foe_tick(e, a, g, nexthop, occ, st=FOE_STATE):
         foe_free(a)
 
 
+# --- οι επισκέπτες που περπατούν (βήμα 136, src/visit.asm) ----------------
+#
+# Μία φορά ανά περιστροφή, όσο είναι προσγειωμένο πλοίο επισκεπτών: στη θέση
+# 15, στην αρχή του ship_tick. Με τη σειρά του Z80:
+#
+#   1. κινούνται (move_slice 112, 8).
+#   2. ο καθένας που ζει: μετριέται (και αν είναι μέσα, για το οξυγόνο), η
+#      εργασία του ξαναγίνεται T_VISIT (τη σβήνει μια απρόσιτη διαδρομή ή μια
+#      κατεδάφιση), και αν στέκεται εκεί που πήγαινε, αποφασίζει (visit_at) —
+#      κι αυτός που βρήκε τον δρόμο απρόσιτο: το move_one κάνει προορισμό
+#      τον κόμβο του.
+#   3. EC_VIN = όσοι ήταν μέσα· αν δεν ζούσε κανείς, το πλοίο φεύγει τώρα.
+
+def visit_tick(e, a, g, nexthop, occ):
+    move_slice(a, g, nexthop, occ, EC.AG_VIS0, EC.AG_NVIS, e)
+    alive = inside = 0
+    for i in range(EC.AG_VIS0, EC.AG_VIS0 + EC.AG_NVIS):
+        if not a.flags[i] & F_ALIVE:
+            continue
+        alive += 1
+        if a.flags[i] & F_INDOORS:
+            inside += 1
+        a.task[i] = EC.T_VISIT
+        if a.edge[i] == NO_EDGE and a.dest[i] == a.node[i]:
+            visit_at(e, a, occ, i)
+    e.vin = inside
+    if not alive:
+        e.ship_eta = 0
+
+
+def visit_at(e, a, occ, i):
+    """Το vi_at: όσο κάθεται (η πρόοδος) μένει. Μετά, κατά τη φάση: στο
+    κυλικείο τρώει, πίνει, πληρώνει και κάθεται· στο σαλόνι πληρώνει και
+    κάθεται· αλλιώς πάει στο κοντινότερο, και αν δεν φτάνει σε κανένα, ή στο
+    κυλικείο δεν έχει τι να φάει, γυρίζει στο πλοίο — όπου ανεβαίνει."""
+    if a.progress[i]:
+        a.progress[i] -= 1
+        return
+    node = a.node[i]
+
+    def go(room):
+        if node < EC.MAX_DOME and e.dome[node * EC.DOME_REC + EC.D_ROOM] == room:
+            return "εδώ"
+        d = EC.nearest_room(e, room, node)
+        if d == 255:
+            return None
+        a.dest[i] = d
+        return "πάει"
+
+    def pay(n):
+        e.coins = min(EC.COIN_MAX, e.coins + n)
+
+    def stay():
+        a.health[i] += 1
+        a.progress[i] = EC.VIS_STAY
+
+    def home():
+        a.health[i] = EC.VP_HOME
+        if node == e.pad_node:
+            bury(a, occ, i)             # ανέβηκε
+        else:
+            a.dest[i] = e.pad_node
+
+    ph = a.health[i]
+    if ph == EC.VP_EAT:
+        r = go(EC.R_CANTEEN)
+        if r == "πάει":
+            return
+        if r == "εδώ" and e.stock[EC.S_FOOD] and e.stock[EC.S_WATER]:
+            e.stock[EC.S_FOOD] -= 1
+            e.stock[EC.S_WATER] -= 1
+            e.goodwill = min(EC.GOOD_MAX, e.goodwill + EC.GOOD_UP)
+            pay(EC.COIN_MEAL)
+            stay()
+            return
+        e.goodwill = max(0, e.goodwill - EC.GOOD_DOWN)
+        home()
+    elif ph == EC.VP_FUN:
+        r = go(EC.R_LOUNGE)
+        if r == "πάει":
+            return
+        if r == "εδώ":
+            pay(EC.COIN_FUN)
+            stay()
+            return
+        if e.amenity:                   # δέντρα: πληρώνει εκεί που έφαγε (βήμα 134)
+            pay(EC.COIN_FUN)
+        home()
+    else:
+        home()
+
+
 T_NEED = 254        # «πάω για φαγητό» — δεν είναι δείκτης εργασίας (§6.7)
 
 
@@ -576,9 +668,17 @@ class Sim:
                 EC.sol_rollover(self.e, self.a, F_ALIVE, F_WORKING, NEED_LOW)
             EC.bot_tick(self.e, self.a, self.occ)
             foe_tick(self.e, self.a, self.g, self.nexthop, self.occ, self.foe)
-            EC.ship_tick(self.e, self.a, self.e.pad_node, F_ALIVE, self.occ)
+            ship_tick(self.e, self.a, self.g, self.nexthop, self.occ)
         # 13 πίνακας εργασιών, 14 ελεύθερη — δεν έχουν γραφτεί, ούτε εδώ ούτε
         # στον Z80.
+
+
+def ship_tick(e, a, g, nexthop, occ):
+    """Το ship_tick του Z80 (src/ship.asm): με πλοίο επισκεπτών προσγειωμένο
+    πρώτα οι επισκέπτες (βήμα 136), και μετά το πλοίο."""
+    if e.ship_state == EC.SHIP_LANDED and e.ship_kind == EC.SK_VISITOR:
+        visit_tick(e, a, g, nexthop, occ)
+    EC.ship_tick(e, a, e.pad_node, F_ALIVE, occ)
 
 
 def air_out(a, n, g):
