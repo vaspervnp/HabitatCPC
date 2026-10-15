@@ -150,6 +150,9 @@ class Game:
         self.zones = False                      # το σχέδιο big: διάταξη με ζώνες
         self.feed = None                        # --tweak feed=M:B
         self.plast = None                       # --tweak skeep=N / bmax=N (βήμα 138)
+        self.trader = False                     # το εμπόριο (βήμα 139): τα σχέδια big*
+        self.lands_seen = None
+        self.trades = []                        # (sol, net, έγινε)
         self.probes = []                        # (sol, ζωντανοί, x1, x4) ανά δύο sol
         self.m.poke(sym["UI_SPD"], 4)
 
@@ -533,6 +536,44 @@ class Game:
         self.look()
         return left if any(x is not None for x in left) else []
 
+    def trade(self, net):
+        """Η γραμμή του εμπόρου (ΜΕΤΑΦΟΡΑ, M), ένα αγαθό τη φορά: δεξιά ώσπου το
+        tr_g να είναι αυτό, και ΠΑΝΩ ή ΚΑΤΩ ώσπου το TR_NET του να είναι όσο
+        θέλει — με επαλήθευση μετά από κάθε πάτημα, όπως ο κατάλογος του
+        tools/balance.py. Μετά SPACE. -> True αν έγινε η συμφωνία, αλλιώς γιατί όχι."""
+        from cpc import KEY_UP, KEY_DOWN, KEY_RIGHT, KEY_SPACE
+        m, sym = self.m, self.sym
+        tn = self.L["G_crew"]                       # TR_NET (src/lines.asm)
+        sgn = lambda v: v - 256 if v > 127 else v
+        self.look()
+        self.tap("T")
+        self.tap("M")
+        if m.peek(sym["UI_STATE"]) != 7 or m.peek(sym["AC_MODE"]) != 3:
+            self.look()
+            return "η γραμμή δεν άνοιξε"
+        for g, n in enumerate(net):
+            if not n:
+                continue
+            for _ in range(15):
+                if m.peek(sym["TR_G"]) == g:
+                    break
+                self.tap(KEY_RIGHT)
+            if m.peek(sym["TR_G"]) != g:
+                break
+            for _ in range(40):
+                have = sgn(m.peek(tn + g))
+                if have == n:
+                    break
+                self.tap(KEY_UP if have < n else KEY_DOWN)
+        ok = all(sgn(m.peek(tn + g)) == n for g, n in enumerate(net)) \
+            and m.peek(sym["UI_STATE"]) == 7
+        if ok:
+            self.tap(KEY_SPACE)
+            m.run_frames(6)
+        done = m.peek(self.X["EC_SHKIND"]) == 3      # SK_DEALT
+        self.look()
+        return True if done else "SPACE χωρίς συμφωνία" if ok else "η γραμμή δεν δέχτηκε τα ποσά"
+
     def call_ship(self):
         from cpc import JOY_FIRE
         self.look()
@@ -544,6 +585,77 @@ class Game:
         self.m.run_frames(30)
         self.look()
         return self.m.peek(self.X["EC_SHSTATE"]) != 0
+
+
+# --------------------------------------------------------------------------
+# ΤΟ ΕΜΠΟΡΙΟ (βήμα 139): ο παίκτης αγοράζει ό,τι του λείπει με ό,τι του περισσεύει
+# --------------------------------------------------------------------------
+TRADE_NAMES = ["COINS", "FOOD", "ORE", "METAL", "BIOPL", "PROC", "SPARES", "MEDI", "GUNS",
+               "BOTS", "STARCH", "VEG", "HERBS", "MEAT"]
+
+
+def trade_plan(G):
+    """Ο,τι θα έκανε ένας παίκτης με τον έμπορο: net[απόθεμα] σε μονάδες — >0
+    παίρνει, <0 δίνει — και τα νομίσματα στη θέση 0 σε δεκάδες, όπως η γραμμή
+    (src/lines.asm). None αν δεν αξίζει.
+
+    ΠΑΙΡΝΕΙ, με αυτή τη σειρά: μέταλλο ως τα 200· μετάλλευμα ως τα 60, όσο το
+    μέταλλο είναι κάτω από 100 και υπάρχει μηχανή METAL (2 -> 2, και φθηνότερο:
+    αξία 10 έναντι 15)· όπλα ως τρία από τους δώδεκα αποίκους (οι εισβολείς
+    έρχονται στους είκοσι)· ανταλλακτικά ως δέκα· βιοπλαστικό ως 40· και τρόφιμα
+    όταν τα γεύματα είναι κάτω από πέντε sol. ΔΙΝΕΙ: πρώτα τα νομίσματα, που
+    αλλιώς δεν κάνουν τίποτα· μετά ό,τι περισσεύει πάνω από ένα απόθεμα — το
+    βιοπλαστικό πάνω από 60, άμυλο, λαχανικά και κρέας πάνω από έξι ανά άποικο
+    (και 60), τα βότανα πάνω από 20. Οσα δίνει κουβαλιούνται σε φορτία των
+    δέκα (βήμα 98): τα νομίσματα όχι."""
+    import econ as EC
+    p, b6 = G.m.peek, G.bank(6)
+    x = G.L["G_node_occ"] - 0x4000 + 128 + 100           # EC_X
+    mk = p(G.X["EC_MARKUP"])
+    c0 = G.X["EC_MARKUP"] + 1                            # EC_CARGO
+    cargo = {p(c0 + 2 * k): p(c0 + 2 * k + 1) for k in range(EC.MER_SLOTS) if p(c0 + 2 * k)}
+    cargo[0] = b6[x + 11]                                # EC_MCOIN, σε δεκάδες
+    coins = b6[x + 6] | b6[x + 7] << 8
+    st = [G.stock(k) for k in range(14)]
+    alive = G.rows[-1]["alive"]
+    V, LOT = EC.TRADE_VALUE, EC.TRADE_LOT
+    price = lambda g: V[g] + (V[g] * mk + 50) // 100
+    net = [0] * 14
+    # ό,τι μπορεί να δώσει, σε αξία
+    keep = max(60, 6 * alive)
+    spare = {4: st[4] - 60, 10: st[10] - keep, 11: st[11] - keep, 13: st[13] - keep,
+             12: st[12] - 20}
+    spare = {g: min(99, max(0, n)) // LOT[g] * LOT[g] for g, n in spare.items()}
+    budget = 10 * min(coins // 10, 99) + sum(n * V[g] for g, n in spare.items())
+    # ό,τι θέλει
+    metal_mach = any(METAL in d[3] for d in G.rows[-1].get("dm", []))
+    want = [(3, 200 - st[3])]
+    if st[3] < 100 and metal_mach:
+        want.append((2, 60 - st[2]))
+    if alive >= 12:
+        want.append((8, 3 - st[8]))
+    want += [(6, 10 - st[6]), (4, 40 - st[4])]
+    if st[1] < 5 * alive:
+        want.append((1, 5 * alive - st[1]))
+    take = 0
+    for g, n in want:
+        while n > 0 and net[g] + LOT[g] <= cargo.get(g, 0) \
+                and take + LOT[g] * price(g) <= budget:
+            net[g] += LOT[g]
+            take += LOT[g] * price(g)
+            n -= LOT[g]
+    if not take:
+        return None
+    # ό,τι δίνει: πρώτα νομίσματα, μετά τα περισσεύματα, το μεγαλύτερο πρώτο
+    give = 0
+    while give < take and -net[0] < min(coins // 10, 99):
+        net[0] -= 1
+        give += 10
+    for g, n in sorted(spare.items(), key=lambda t: -t[1] * V[t[0]]):
+        while give < take and -net[g] + LOT[g] <= n:
+            net[g] -= LOT[g]
+            give += LOT[g] * V[g]
+    return net if give >= take else None
 
 
 def cause(a):
@@ -1041,6 +1153,9 @@ def tweak(G, spec):
             # 255 και δεν τρέχει· αλλιώς 2. Η PLASTIC έτρωγε όλο το άμυλο: στο
             # C0DE·1 203 -> 0 σε 18 sol, βιοπλαστικό 8 -> 298, γεύματα 0.
             G.plast = (k, int(v, 0))
+        elif k == "notrade":
+            # χωρίς εμπόριο (βήμα 139): ο παίκτης του 138, για σύγκριση
+            G.trader = False
         elif k == "foehit":
             # Ο,ΤΙ ΠΑΙΡΝΕΙ ΕΝΑΣ ΕΙΣΒΟΛΕΑΣ ΑΠΟ ΕΝΑΝ ΑΠΟΙΚΟ ανά περιστροφή (βήμα
             # 138, μέτρηση): FOE_HIT, 32 στο παιχνίδι («sub FOE_HIT / jr nc» του
@@ -1179,6 +1294,25 @@ def play(G, plan, sols):
             k, n = G.plast
             stop = G.stock(S_STARCH_I) < n if k == "skeep" else G.stock(S_BIOPL) >= n
             G.m.poke(G.L["G_recipes"] + 10 * 2 + 1, 255 if stop else 2)
+        # ΤΟ ΕΜΠΟΡΙΟ (βήμα 139): μία φορά ανά έμπορο που προσγειώθηκε.
+        # Η κατάσταση ζωντανά, όχι από το δείγμα: στο 2024 0 ένα πλοίο
+        # επισκεπτών έφυγε και ο έμπορος ερχόταν ανάμεσα σε δύο δείγματα, και
+        # το «προσγειώθηκε» του δείγματος ήταν των επισκεπτών.
+        if G.trader and G.m.peek(G.X["EC_SHSTATE"]) == 2 and G.m.peek(G.X["EC_SHKIND"]) == 1 \
+                and G.lands_seen != G.m.peek(G.X["EC_LANDS"]):
+            G.lands_seen = G.m.peek(G.X["EC_LANDS"])
+            net = trade_plan(G)
+            if net:
+                before = [G.stock(k) for k in range(14)]
+                why = G.trade(net)
+                ok = why is True
+                G.trades.append((round(G.sol(), 2), net, ok))
+                G.event("εμπόριο: " + ("έγινε" if ok else f"ΔΕΝ ΕΓΙΝΕ ({why})") + " — παίρνει "
+                        + ", ".join(f"{TRADE_NAMES[g]} {10 * n if not g else n}"
+                                    for g, n in enumerate(net) if n > 0)
+                        + " · δίνει " + ", ".join(f"{TRADE_NAMES[g]} {-10 * n if not g else -n}"
+                                                  for g, n in enumerate(net) if n < 0)
+                        + f" (μέταλλο {before[3]})")
         if not G.rows[-1]["alive"]:
             G.event("ΤΕΛΟΣ: κανείς ζωντανός")
             break
@@ -1301,6 +1435,7 @@ def main():
             return 0
     sym, g = syms()
     G = Game(sym, g, sna_path(a.seed, a.planet))
+    G.trader = a.plan.startswith("big")         # το εμπόριο (βήμα 139)· notrade το σβήνει
     tweak(G, a.tweak)
     print(f"πλανήτης {a.planet}, seed #{a.seed:04X}, σχέδιο «{a.plan}», {a.sols} sols"
           + (f", πειράγματα {a.tweak}" if a.tweak else ""),
@@ -1330,7 +1465,7 @@ def main():
                                   jk=r["jk"], pp=r["pp"], pu=r["pu"], bat=r["bat"],
                                   bcap=r["bcap"], o2p=r["o2p"], o2u=r["o2u"], sk=r["sk"],
                                   dm=r["dm"]) for r in G.rows],
-                       events=G.events, probes=G.probes), open(a.json, "w"))
+                       events=G.events, probes=G.probes, trades=G.trades), open(a.json, "w"))
     return 0
 
 
