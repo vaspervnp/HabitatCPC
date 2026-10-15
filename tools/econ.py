@@ -66,7 +66,9 @@ RECIPE = [
     (S_METAL, 2, S_PROC, 1, NO_STOCK, 0, S_GUN, 1, 5, MF_OPERATOR),     # weapons
     (S_METAL, 2, NO_STOCK, 0, NO_STOCK, 0, S_PROC, 1, 5, MF_OPERATOR),
     (S_METAL, 2, S_PROC, 1, S_BIOPL, 1, S_BOT, 1, 8, MF_OPERATOR),      # robots
-    (S_STARCH, 1, S_VEG, 1, S_MEAT, 1, S_FOOD, 1, 4, MF_OPERATOR),      # food
+    # Τα λαχανικά πρώτα, το άμυλο δεύτερο (βήμα 138): η PLASTIC μένει η μόνη με
+    # το άμυλο πρώτο, και το όριο του βιοπλαστικού σταματά μόνο αυτήν (BIO_MAX).
+    (S_VEG, 1, S_STARCH, 1, S_MEAT, 1, S_FOOD, 1, 4, MF_OPERATOR),      # food
     (S_METAL, 1, S_BIOPL, 1, NO_STOCK, 0, S_SPARE, 1, 3, MF_OPERATOR),
     (S_MEDPLANT, 2, NO_STOCK, 0, NO_STOCK, 0, S_MEDI, 1, 3, MF_OPERATOR),
     # ΔΥΟ ΚΡΕΑΤΑ ΑΝΑ ΓΥΡΟ, όχι ένα: το mach_food θέλει άμυλο ΚΑΙ λαχανικά ΚΑΙ
@@ -105,6 +107,12 @@ RECIPE = [r[:9] + (r[9] | (MF_ADDS if _adds(r) else 0),) for r in RECIPE]
 KEEP_METAL = 30
 assert all(r[0] == S_METAL for r in RECIPE
            if S_METAL in (r[0], r[2], r[4])), "το μέταλλο όχι πρώτη είσοδος"
+# ΤΟ ΟΡΙΟ ΤΟΥ ΒΙΟΠΛΑΣΤΙΚΟΥ (βήμα 138, src/econ.asm, erm_inb): η PLASTIC σταματά
+# όσο το βιοπλαστικό είναι BIO_MAX ή πάνω. Ο Z80 την ξέρει από την ΠΡΩΤΗ είσοδο,
+# το άμυλο: καμία άλλη δεν πρέπει να το έχει πρώτο.
+BIO_MAX = 100
+assert [RECIPE.index(r) for r in RECIPE if r[0] == S_STARCH] == [2] \
+    and RECIPE[2][6] == S_BIOPL, "το άμυλο πρώτη είσοδος όχι μόνο της PLASTIC"
 
 # --- θόλοι ----------------------------------------------------------------
 DOME_REC = 24
@@ -247,7 +255,8 @@ class Econ:
         self.vin = 0
         # ΓΕΜΑΤΗ ΑΠΟΘΗΚΗ (βήμα 122): το ec_full του Z80, στην τράπεζα 0 (src/stock.asm).
         self.full = 0
-        # ΤΟ ΑΠΟΘΕΜΑ ΜΕΤΑΛΛΟΥ (βήμα 127): το ec_keep, δίπλα του.
+        # ΤΟ ΑΠΟΘΕΜΑ ΜΕΤΑΛΛΟΥ (βήμα 127, bit 1) ΚΑΙ ΤΟ ΟΡΙΟ ΤΟΥ ΒΙΟΠΛΑΣΤΙΚΟΥ
+        # (βήμα 138, bit 0): το ec_keep, δίπλα του.
         self.keep = 0
         self.amenity = 0            # δέντρα και σαλόνια — παρηγοριά (§6.6)
         # Το μήκος του sol είναι ΔΕΔΟΜΕΝΟ και όχι σταθερά: μια δοκιμή που
@@ -386,8 +395,10 @@ def run_dome(e, d, plant_class=None):
             k += 1
             if k > ops:
                 continue
-        if e.keep and r[0] == S_METAL:              # βήμα 127: το μέταλλο κάτω από
+        if e.keep & 2 and r[0] == S_METAL:          # βήμα 127: το μέταλλο κάτω από
             continue                                # KEEP_METAL, ούτε τρώει ούτε ζητά
+        if e.keep & 1 and r[0] == S_STARCH:         # βήμα 138: το βιοπλαστικό στο
+            continue                                # BIO_MAX, η PLASTIC σταματά
         ins = ((r[0], r[1]), (r[2], r[3]), (r[4], r[5]))
         if any(st != NO_STOCK and e.stock[st] < q for st, q in ins):
             continue                                # λείπει είσοδος: δεν καίει
@@ -564,7 +575,8 @@ def store_check(e):
         d = e.room_list[R_STORAGE * ROOM_MAX + k]
         cap += STORE_SIZE[e.dome[d * DOME_REC + D_SIZE]]
     e.full = 1 if sum(e.stock[1:]) >= cap else 0
-    e.keep = 1 if e.stock[S_METAL] < KEEP_METAL else 0     # βήμα 127
+    e.keep = (2 if e.stock[S_METAL] < KEEP_METAL else 0) \
+        | (1 if e.stock[S_BIOPL] >= BIO_MAX else 0)         # βήματα 127, 138
 
 
 def break_one(e, x):
@@ -2011,7 +2023,7 @@ RL_FOE = 8
 T_FIGHT = 253               # εισβολέας, ή φρουρός στη μάχη: όχι δείκτης εργασίας
 F_GUN = 128                 # ο φρουρός έχει όπλο, για πάντα
 FOE_HP = 160                # η υγεία του εισβολέα όταν κατεβαίνει
-FOE_HIT = 32                # ό,τι παίρνει από έναν άποικο, ανά περιστροφή
+FOE_HIT = 16                # ό,τι παίρνει από έναν άποικο, ανά περιστροφή (32 ως το 138)
 HAND_HIT = 32               # ό,τι του παίρνει ένας φρουρός με τα χέρια, δίπλα του
 GUN_HIT = 64                # ...και με όπλο, ως έναν κόμβο μακριά
 

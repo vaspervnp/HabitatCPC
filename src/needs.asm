@@ -606,16 +606,22 @@ stc_k = stc_k + 1
 stc_full:
         inc     a
 stc_set:
-        ; ΚΑΙ ΤΟ ΑΠΟΘΕΜΑ ΜΕΤΑΛΛΟΥ (βήμα 127): ec_keep = μέταλλο < KEEP_METAL.
+        ; ΚΑΙ ΤΟ ΑΠΟΘΕΜΑ ΜΕΤΑΛΛΟΥ (βήμα 127): μέταλλο < KEEP_METAL.
         ; Εδώ, μία φορά ανά κύκλο ροής — όσο τρέχει κάθε μηχανή μία φορά — και
         ; όχι σε κάθε μηχανή της θέσης 11: μέσα σε έναν γύρο το μέταλλο πέφτει
         ; ως όσα τρώνε μαζί οι μηχανές του, λίγο κάτω από τα 30.
+        ; ΚΑΙ ΤΟ ΒΙΟΠΛΑΣΤΙΚΟ (βήμα 138): το bit 0, BIO_MAX ή πάνω — η PLASTIC
+        ; σταματά. Το μέταλλο πάει στο bit 1.
         ld      c,a
         ld      hl,(EC_STOCK + 2 * S_METAL)
         ld      de,-KEEP_METAL
         add     hl,de                   ; CY αν φτάνει
         sbc     a,a
         inc     a                       ; 0 αν φτάνει, 1 αν όχι
+        ld      hl,(EC_STOCK + 2 * S_BIOPL)
+        ld      de,-BIO_MAX
+        add     hl,de                   ; CY αν έφτασε το BIO_MAX
+        rla                             ; bit 1 το μέταλλο, bit 0 το βιοπλαστικό
         ld      (ec_keep),a
         ld      a,c
         jp      ec_setfull              ; src/econ.asm, τράπεζα 0

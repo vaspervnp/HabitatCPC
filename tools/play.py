@@ -48,6 +48,7 @@ COST = {DOME_S: (12, 8), DOME_M: (24, 14), DOME_L: (40, 24), SOLAR: (15, 0),
         AIRLOCK: (10, 6), PAD: (45, 0)}
 DS_BUILDING, DS_ACTIVE = 1, 2
 MINE_K = 4                         # K_MINE, το είδος της δομής
+K_SOLAR, K_COLLECT = 0, 2          # τα K_* του src/const.asm
 R_GREEN = 5                        # D_ROOM του θερμοκηπίου: οι υποδοχές του είναι φυτά
 R_STORAGE = 6                      # D_ROOM της αποθήκης (το ROOM είναι η σειρά του καταλόγου)
 STRUCT_NAMES = ["ηλιακός", "ανεμογ.", "συλλέκτης", "αντλία", "ορυχείο", "airlock", "πίστα",
@@ -148,6 +149,7 @@ class Game:
         self.lastb = {}                         # όνομα σταδίου -> sol του τελευταίου
         self.zones = False                      # το σχέδιο big: διάταξη με ζώνες
         self.feed = None                        # --tweak feed=M:B
+        self.plast = None                       # --tweak skeep=N / bmax=N (βήμα 138)
         self.probes = []                        # (sol, ζωντανοί, x1, x4) ανά δύο sol
         self.m.poke(sym["UI_SPD"], 4)
 
@@ -193,6 +195,12 @@ class Game:
         return 500 + sum((100, 300, 600)[d[2]] for d in self.domes()
                          if d[4] == DS_ACTIVE and d[3] == R_STORAGE)
 
+    def batcap(self):
+        """Η μπαταρία (βήμα 138): 40/160/360 ανά συλλέκτη έτοιμο, κατά μέγεθος
+        (DESIGN §6.5)· ο συλλέκτης του καταλόγου είναι ο μεγάλος, 360."""
+        return sum((40, 160, 360)[t[3]] for t in self.structs()
+                   if t[2] == K_COLLECT and t[4] == DS_ACTIVE)
+
     def total(self):
         return sum(self.stock(k) for k in range(1, 14))
 
@@ -236,9 +244,15 @@ class Game:
     def sample(self):
         X, w, p = self.X, self.w16, self.m.peek
         ag = self.agents()
+        if any(96 <= j < 100 for j in ag) or self.m.peek(self.X["EC_SHKIND"]) == 4:
+            self.foe_seen = self.sol()          # εισβολείς ζωντανοί, ή το πλοίο τους
         for i, a in self.alive_prev.items():
             if i not in ag and i < 80:
-                self.event(f"ΘΑΝΑΤΟΣ {i} ({ROLES[a['role'] & 7]}): {cause(a)}")
+                # Με εισβολείς ζωντανούς (96-99) ο θάνατος είναι δικός τους (βήμα
+                # 138): το cause() διάβαζε τις ανάγκες και έγραφε «δίψα» με νερό 200.
+                foe = self.sol() - getattr(self, "foe_seen", -9) < 0.5
+                why = "ΕΙΣΒΟΛΕΙΣ" if foe and min(a["o2"], a["water"], a["food"]) > 24 else cause(a)
+                self.event(f"ΘΑΝΑΤΟΣ {i} ({ROLES[a['role'] & 7]}): {why}")
         self.alive_prev = ag
         self.watch()
         jobs = self.jobs()
@@ -258,6 +272,12 @@ class Game:
             popcap=p(X["EC_POPCAP"]), ship=p(X["EC_SHSTATE"]),
             stock=[self.stock(k) for k in range(14)],
             pp=w(X["EC_PPROD"]), pu=w(X["EC_PUSE"]), bat=w(X["EC_PSTORE"]),
+            bcap=self.batcap(),
+            # οι δομές και οι θόλοι (βήμα 138): είδος ανά δομή έτοιμη, και ανά
+            # θόλο έτοιμο δωμάτιο, μέγεθος, χειριστές, μηχανές
+            sk=[t[2] for t in self.structs() if t[4] == DS_ACTIVE],
+            dm=[(d[3], d[2], d[7], [c for c in d[8:16] if c != 255]) for d in ds
+                if d[4] == DS_ACTIVE],
             o2p=w(X["EC_O2PROD"]), o2u=w(X["EC_O2USE"]),
             pok=p(X["EC_POK"]), o2ok=p(X["EC_O2OK"]), storm=p(X["EC_STORM"]),
             cap=self.capacity(), full=p(self.sym["EC_FULL"]),
@@ -560,8 +580,13 @@ def ship_ok(G):
         return False
     want = rows[-1]["alive"] + 4
     food = [r["stock"][S_FOOD] for r in rows]
+    # Η ΤΡΟΦΗ ΝΑ ΑΝΕΒΑΙΝΕΙ ΟΣΟ ΘΑ ΦΑΝΕ ΟΙ ΤΕΣΣΕΡΙΣ (βήμα 138), περίπου ένα
+    # γεύμα ο καθένας το sol — όχι απλώς να μην πέφτει: ένα κυλικείο φτάνει
+    # για έξι, και μετά το πλοίο η τροφή έπεφτε ως την πείνα. Με γεμάτη
+    # αποθήκη τροφίμων (δέκα sol) δεν μπορεί να ανέβει, και φτάνει.
+    grows = food[-1] - food[0] >= 4 or food[-1] >= 10 * want
     return (min(r["o2p"] for r in rows) >= O2_PER_COL * want
-            and food[-1] >= 5 * want and food[-1] >= food[0])
+            and food[-1] >= 5 * want and grows)
 
 
 def plan_base():
@@ -805,13 +830,23 @@ def water_short(G):
 def power_short(G, night):
     """Το ρεύμα κόπηκε στο τελευταίο μισό sol, τη μέρα (λείπει παραγωγή) ή τη
     νύχτα (λείπει αποθήκη), και καμία δομή ρεύματος δεν χτίζεται ήδη. Με
-    όλο το sol, νύχτες που είχαν περάσει έχτιζαν ξανά και ξανά."""
+    όλο το sol, νύχτες που είχαν περάσει έχτιζαν ξανά και ξανά.
+
+    ΚΑΙ Η ΝΥΧΤΑ ΜΕ ΜΠΑΤΑΡΙΑ ΠΟΥ ΔΕΝ ΓΕΜΙΣΕ ΘΕΛΕΙ ΗΛΙΑΚΟ, ΟΧΙ ΣΥΛΛΕΚΤΗ (βήμα
+    138): αν στο τελευταίο sol η μπαταρία δεν έφτασε το 90% της χωρητικότητας,
+    η μέρα δεν αφήνει περίσσευμα, και ένας ακόμη συλλέκτης μένει άδειος. Ως
+    τότε το σενάριο έχτιζε συλλέκτες στη σειρά — πέντε στο 1048·0 του 136 —
+    με δύο ηλιακούς για 28-35 κατανάλωση."""
     rows = last(G, 4)
     if any(r["storm"] for r in rows):
         return False                        # η θύελλα σκεπάζει τα πάνελ: περνά
     if any(t[4] == DS_BUILDING and t[2] in (0, 1, 2) for t in G.structs()):
         return False
-    return any(r["pok"] != 1 and ((r["pp"] == 0) == night) for r in rows)
+    filled = max(r["bat"] for r in last(G)) >= 0.9 * max(1, G.rows[-1]["bcap"])
+    cut = lambda dark: any(r["pok"] != 1 and ((r["pp"] == 0) == dark) for r in rows)
+    if night:
+        return cut(True) and filled
+    return cut(False) or (cut(True) and not filled)
 
 
 def food_short(G, which):
@@ -872,6 +907,14 @@ def plan_big():
     ]
     more = [
         step("πλοίο", "ship", None, after=["πίστα", "έλεγχος"], when=ship_ok, again=True),
+        # ΤΟ ΡΕΥΜΑ ΠΡΩΤΟ (βήμα 138): κομμένο, σταματά κάθε μηχανή εκτός από την
+        # υποστήριξη ζωής — και τη MEALS. Μετά την τροφή, ένας ηλιακός 15 μετάλλων
+        # περίμενε πίσω από ένα κυλικείο 20 που δεν πληρωνόταν, και η αποικία
+        # πεινούσε με 190 άμυλο στην αποθήκη (BEEF·3, ρεύμα 36 για 50-56 τη μέρα).
+        step("ηλιακός+", SOLAR, None, zone="edge", after=["ηλιακός 2"],
+             when=demand("ηλιακός+", lambda G: power_short(G, False)), again=True),
+        step("συλλέκτης+", COLLECTOR, None, zone="edge", after=["συλλέκτης"],
+             when=demand("συλλέκτης+", lambda G: power_short(G, True)), again=True),
         step("οξυγόνο+", DOME_S, None, "oxygen", [OXYGEN], zone="core", after=["οξυγόνο"],
              when=demand("οξυγόνο+", o2_short), again=True),
         step("αντλία+", EXTRACTOR, "water", after=["αντλία"],
@@ -884,10 +927,12 @@ def plan_big():
              when=demand("λαχανικά+", lambda G: food_short(G, "veg")), again=True),
         step("εργαστήριο+", DOME_S, None, "lab", [MEAT], zone="core", after=["εργαστήριο"],
              when=demand("εργαστήριο+", lambda G: food_short(G, "meat")), again=True),
-        step("ηλιακός+", SOLAR, None, zone="edge", after=["ηλιακός 2"],
-             when=demand("ηλιακός+", lambda G: power_short(G, False)), again=True),
-        step("συλλέκτης+", COLLECTOR, None, zone="edge", after=["συλλέκτης"],
-             when=demand("συλλέκτης+", lambda G: power_short(G, True)), again=True),
+        # Η ΑΠΟΘΗΚΗ ΜΕΤΑ ΤΗΝ ΤΡΟΦΗ ΚΑΙ ΤΟ ΡΕΥΜΑ (βήμα 138), όχι τελευταία: εκεί
+        # την κρατούσε πίσω κάθε στάδιο που δεν πληρωνόταν, και σε 12 κόσμους
+        # δεν χτίστηκε καμία — με την αποθήκη γεμάτη το 36% του χρόνου και το
+        # ορυχείο σταματημένο μαζί της.
+        step("αποθήκη", DOME_S, None, "storage", zone="core", after=["οξυγόνο"],
+             when=storage_due, again=True),
         step("κοιτώνες+", DOME_S, None, "quarters", zone="core", after=["κοιτώνες"],
              when=demand("κοιτώνες+", lambda G: need_low(G, 3) >= max(2, alive(G) / 4)),
              again=True),
@@ -902,8 +947,6 @@ def plan_big():
                          and len(G.rows[-1]["mines"]) < 1 + alive(G) // 10, 2.0), again=True),
         step("ανταλλακτικά", DOME_S, None, "factory", [SPARES], zone="core",
              after=["εργοστάσιο"], when=lambda G: st(G, S_SPARE_I) < 6),
-        step("αποθήκη", DOME_S, None, "storage", zone="core", after=["οξυγόνο"],
-             when=storage_due, again=True),
         step("ιατρείο", DOME_S, None, "medbay", zone="core", after=["κοιτώνες"],
              when=lambda G: alive(G) >= 16),
     ]
@@ -935,7 +978,7 @@ def tweak(G, spec):
     με γεμάτη αποθήκη), raw (και μετάλλευμα και μέταλλο έξω από την αποθήκη),
     land=Ε:Μ:Β:Γ:Φ (τα ποσοστά των πλοίων)."""
     import codeat
-    idx = dict(water=0, food=1, ore=2, metal=3, bio=4, spares=6)
+    idx = dict(water=0, food=1, ore=2, metal=3, bio=4, spares=6, guns=8)
     for t in [x for x in spec.split(",") if x]:
         k, _, v = t.partition("=")
         if k in idx:
@@ -991,6 +1034,29 @@ def tweak(G, spec):
             assert len(sh) == 5 and sum(sh) == 10, "land=Ε:Μ:Β:Γ:Φ, άθροισμα 10"
             for i, x in enumerate(sh):
                 G.m.poke(G.g + 92 + i, x)
+        elif k in ("skeep", "bmax"):
+            # Η PLASTIC ΣΤΑΜΑΤΑ (βήμα 138, μέτρηση): σε κάθε δείγμα, όσο το άμυλο
+            # είναι κάτω από N (skeep) ή το βιοπλαστικό N και πάνω (bmax), η
+            # ποσότητα αμύλου της συνταγής της (G_recipes + 10 * 2 + 1) γίνεται
+            # 255 και δεν τρέχει· αλλιώς 2. Η PLASTIC έτρωγε όλο το άμυλο: στο
+            # C0DE·1 203 -> 0 σε 18 sol, βιοπλαστικό 8 -> 298, γεύματα 0.
+            G.plast = (k, int(v, 0))
+        elif k == "foehit":
+            # Ο,ΤΙ ΠΑΙΡΝΕΙ ΕΝΑΣ ΕΙΣΒΟΛΕΑΣ ΑΠΟ ΕΝΑΝ ΑΠΟΙΚΟ ανά περιστροφή (βήμα
+            # 138, μέτρηση): FOE_HIT, 32 στο παιχνίδι («sub FOE_HIT / jr nc» του
+            # fo_tick).
+            a = codeat.find(G.m, G.sym["FO_TICK"], [0xD6, 32, 0x30], 400)
+            assert a, "δεν βρέθηκε το sub FOE_HIT"
+            codeat.poke(G.m, a + 1, int(v, 0))
+        elif k == "reserve":
+            # Η ΡΕΖΕΡΒΑ ΤΗΣ ΜΠΑΤΑΡΙΑΣ (βήμα 138, μέτρηση): RESERVE_CYC κύκλοι
+            # υποστήριξης ζωής, 8 στο παιχνίδι (τρία add hl,hl στο ef_balance)·
+            # reserve=4 ή 2 σβήνει ένα ή δύο. Μια νύχτα είναι 4,7 κύκλοι.
+            e = G.X["EC_EPOWER"]
+            a = codeat.find(G.m, G.sym["EF_BALANCE"], [0x2A, e & 255, e >> 8, 0x29, 0x29, 0x29, 0xEB], 80)
+            assert a, "δεν βρέθηκε η ρεζέρβα του ef_balance"
+            for i in range({8: 0, 4: 1, 2: 2}[int(v)]):
+                codeat.poke(G.m, a + 3 + i, 0)
         elif k == "fault":
             a = codeat.find(G.m, G.sym["EV_FAULT"], [0x7D, 0xE6, 0x7F], 40)
             assert a, "δεν βρέθηκε το and #7F του ev_fault"
@@ -1109,6 +1175,10 @@ def play(G, plan, sols):
                 if G.stock(k) < top:
                     G.m.poke(G.g + 2 * k, top & 255)
                     G.m.poke(G.g + 2 * k + 1, top >> 8)
+        if G.plast:
+            k, n = G.plast
+            stop = G.stock(S_STARCH_I) < n if k == "skeep" else G.stock(S_BIOPL) >= n
+            G.m.poke(G.L["G_recipes"] + 10 * 2 + 1, 255 if stop else 2)
         if not G.rows[-1]["alive"]:
             G.event("ΤΕΛΟΣ: κανείς ζωντανός")
             break
@@ -1257,7 +1327,9 @@ def main():
                                   mines=r["mines"], sites=r["sites"], vis=r["vis"],
                                   coins=r["coins"], prest=r["prest"], good=r["good"],
                                   mm=r["mm"], bots=r["bots"], jfree=r["jfree"],
-                                  jk=r["jk"]) for r in G.rows],
+                                  jk=r["jk"], pp=r["pp"], pu=r["pu"], bat=r["bat"],
+                                  bcap=r["bcap"], o2p=r["o2p"], o2u=r["o2u"], sk=r["sk"],
+                                  dm=r["dm"]) for r in G.rows],
                        events=G.events, probes=G.probes), open(a.json, "w"))
     return 0
 

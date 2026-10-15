@@ -345,15 +345,28 @@ esf_put:
         ld      (erm_c3 + 1),hl
         ld      a,c
         ld      (erp_full),a
-        ; ΚΑΙ ΤΟ ΑΠΟΘΕΜΑ ΜΕΤΑΛΛΟΥ (βήμα 127): με το ec_keep η πρώτη είσοδος
-        ; περνά από το erm_ink. Οσο υπάρχει μέταλλο, τίποτα δεν κοστίζει.
-        ld      hl,erm_in
+        ; ΚΑΙ ΤΟ ΑΠΟΘΕΜΑ ΜΕΤΑΛΛΟΥ (βήμα 127) ΚΑΙ ΤΟ ΟΡΙΟ ΤΟΥ ΒΙΟΠΛΑΣΤΙΚΟΥ (βήμα
+        ; 138): τα δύο bits του ec_keep διαλέγουν την πρώτη κλήση εισόδου από
+        ; τις τέσσερις. Οσο υπάρχει μέταλλο και το βιοπλαστικό είναι κάτω από
+        ; BIO_MAX, τίποτα δεν κοστίζει· με το ένα από τα δύο, όσο κόστιζε το
+        ; απόθεμα μετάλλου μόνο του.
+        ; Πρόσθεση 16 bits, όχι σελίδα: οι δοκιμές βάζουν τον κώδικα αλλού.
         ld      a,(ec_keep)
-        or      a
-        jr      z,esf_k
-        ld      hl,erm_ink
-esf_k:  ld      (erm_c1 + 1),hl
+        add     a,a
+        ld      hl,esf_tab
+        add     a,l
+        ld      l,a
+        adc     a,h
+        sub     l
+        ld      h,a
+        ld      a,(hl)
+        inc     hl
+        ld      h,(hl)
+        ld      l,a
+        ld      (erm_c1 + 1),hl
         ret
+esf_tab:
+        dw      erm_in, erm_inb, erm_ink, erm_inkb      ; ec_keep 0-3
 
 ; erm_ink — η πρώτη είσοδος όταν το μέταλλο είναι κάτω από KEEP_METAL (βήμα
 ; 127, η επιλογή του χρήστη): CY, και η μηχανή σταματά — ούτε τρώει ούτε ζητά
@@ -368,6 +381,23 @@ esf_k:  ld      (erm_c1 + 1),hl
 erm_ink:
         cp      S_METAL
         jp      nz,erm_in
+        scf
+        ret
+
+; erm_inkb, erm_inb — η πρώτη είσοδος με το βιοπλαστικό στο BIO_MAX ή πάνω
+; (βήμα 138, η επιλογή του χρήστη, όπως το «manufacture limit» του
+; Planetbase): CY, και η PLASTIC σταματά — η μόνη με το άμυλο πρώτο (assert στο
+; tools/econ.py· η MEALS το έχει δεύτερο από τότε). Χωρίς αυτό έτρωγε όλο το
+; άμυλο: βιοπλαστικό ως 300 και πάνω, άμυλο 0, και οι άποικοι πεινούσαν με
+; λαχανικά και κρέας στην αποθήκη (DESIGN §6.5). Το erm_inkb και με λίγο
+; μέταλλο.
+erm_inkb:
+        cp      S_METAL
+        jr      z,erk_stop
+erm_inb:
+        cp      S_STARCH
+        jp      nz,erm_in
+erk_stop:
         scf
         ret
 

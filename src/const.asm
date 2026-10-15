@@ -83,6 +83,7 @@ ST_FREE     equ 3           ; το bit του ST_OPS ενός ορυχείου: 
 ST_DLOW     equ 4           ; το bit του ST_OPS ενός ορυχείου: η Drill του περιμένει χαμηλά (βήμα 126, src/drill.asm)
 DRILL_PRIO  equ 4           ; η Drill του πρώτου που σκάβει (job_prio)
 KEEP_METAL  equ 30          ; βήμα 127: όσες τρώνε μέταλλο το αφήνουν ως εδώ (src/econ.asm, erm_ink)
+BIO_MAX     equ 100         ; βήμα 138: η PLASTIC σταματά από εδώ και πάνω (src/econ.asm, erm_inb)
 DRILL_LOW   equ 2           ; του δεύτερου και του τρίτου: κάτω από κάθε Operate (room_prio >= 3)
 ST_OWED     equ 7           ; εργοτάξιο: φορτία που χρωστιούνται, μέταλλο<<4 | βιοπλ. (βήμα 88)· έτοιμο ορυχείο: ο σωρός (βήμα 95, src/haul.asm)
 CORR_REC    equ 5
