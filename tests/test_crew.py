@@ -60,7 +60,7 @@ FAIL = []
 UI_LOOK, UI_ACT = 0, 7
 NAMES = ["WRK", "ENG", "BIO", "MED", "GRD"]
 KEYS = "SHIP UP/DN=10% FIRE=CALL ESC=BACK"
-PROBE, FLAG = 0x3E00, 0x3EFF
+PROBE, FLAG = 0x3E80, 0x3EFF
 SHIP_LANDED = 2
 R_CONTROL, VOY_DOME = 1, 2                  # src/const.asm· ο θόλος 2 του colony.sna
 
@@ -452,7 +452,7 @@ def main():
                  [0xCD, sym["UI_DIRTY"] & 255, sym["UI_DIRTY"] >> 8])
     space = find(m, sym["CW_TICK"], sym["CW_TICK"] + 8, [0xE6, 0x50])
     cw = sym["CW_OPEN"]
-    jc = find(m, 0x0100, 0x3D40, [0xC3, cw & 255, cw >> 8]) + \
+    jc = find(m, 0x0100, sym["ZZ_BANK0_END"], [0xC3, cw & 255, cw >> 8]) + \
         find(m, 0x8000, 0xC000, [0xC3, cw & 255, cw >> 8])
     ship = sym["UI_SHIP"]
     ui_negs = (

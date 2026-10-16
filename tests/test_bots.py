@@ -59,7 +59,7 @@ import econ as EC                                        # noqa: E402
 import entity as E                                       # noqa: E402
 
 FAIL = []
-PROBE, FLAG = 0x3E00, 0x3EFF
+PROBE, FLAG = 0x3E80, 0x3EFF
 BOT0, NBOT = EC.AG_BOT0, EC.AG_NBOT
 CBOT, CARRY = EC.RL_CBOT, EC.RL_CARRY
 R_FACTORY, R_CONTROL = EC.R_FACTORY, EC.R_CONTROL

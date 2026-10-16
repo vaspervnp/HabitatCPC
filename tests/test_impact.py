@@ -58,7 +58,7 @@ import codeat                                            # noqa: E402
 import cpc                                               # noqa: E402
 import econ as EC                                        # noqa: E402
 
-PROBE = 0x3E00
+PROBE = 0x3E80
 DK_MACH, DK_TILE, DIRTY_N = 1, 4, 32
 K_SHIP = 7                               # src/const.asm: δεν είναι κτίριο (βήμα 87)
 FT_CLS = 250                             # src/const.asm: τα φυτά δεν είναι «χαλασμένα» (βήμα 119)
@@ -381,7 +381,7 @@ def run(sym, patch=(), n=400, times=None):
                 continue
             for off in range(0x4000):
                 if got[off] != want[k][off]:
-                    if k == 0 and (0x00A0 <= off < 0x0100 or 0x3E00 <= off < 0x3F00):
+                    if k == 0 and (0x00A0 <= off < 0x0100 or PROBE <= off < 0x3F00):
                         continue
                     a = off + (0x8000 if k == 2 else 0x4000 if k in (4, 6) else 0)
                     return (f"περίπτωση {case} ({what}): τράπεζα {k} #{a:04X} = "

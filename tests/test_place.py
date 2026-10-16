@@ -57,7 +57,7 @@ import test_game as TG                                   # noqa: E402
 import cpc                                               # noqa: E402
 from test_terrain import model, HALF                     # noqa: E402
 
-PROBE, OUT = 0x3E00, 0x3EF0
+PROBE, OUT = 0x3E80, 0x3EF0
 # Τα stubs ΠΑΝΩ από το PROBE, στο #3F00 (βήμα 95· ως τότε στο #3D60, ακριβώς πάνω
 # από τον κώδικα της τράπεζας 0, που κρατούσε έτσι 160 bytes άδεια για τις
 # δοκιμές). Το #3F00-#3FBF δεν το αγγίζει το παιχνίδι· το #3FC0 είναι το

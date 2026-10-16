@@ -46,7 +46,7 @@ sys.path.insert(0, "/home/vasilhs/cpcemu")
 import test_game as TG                                   # noqa: E402
 import cpc                                               # noqa: E402
 
-PROBE, OUT = 0x3E00, 0x3EF0
+PROBE, OUT = 0x3E80, 0x3EF0
 SND_CH, SND_REC = 3, 4
 FX = ["MOVE", "MENU", "DENY", "BUILD", "DONE", "SHIP", "ALERT", "DEATH", "METEOR"]
 SFX = {n: k for k, n in enumerate(FX)}
@@ -191,7 +191,7 @@ class Rig:
                 continue
             for off in range(0x4000):
                 if now[off] != before[n][off]:
-                    if n == 0 and (0x00A0 <= off < 0x0100 or 0x3E00 <= off < 0x3F00):
+                    if n == 0 and (0x00A0 <= off < 0x0100 or PROBE <= off < 0x3F00):
                         continue
                     if n == 2 and off + 0x8000 in mine:
                         continue

@@ -37,7 +37,7 @@ import cpc                                               # noqa: E402
 import route                                             # noqa: E402
 
 FAIL = []
-PROBE = 0x3E00
+PROBE = 0x3E80
 I_CORR, UI_LINK = 3, 3
 CORR_BYTES = 96 * 5
 

@@ -96,7 +96,7 @@ import cpc                                               # noqa: E402
 
 FAIL = []
 UI_LOOK, UI_ACT, TR_MODE = 0, 7, 3
-PROBE, FLAG = 0x3E00, 0x3EFF
+PROBE, FLAG = 0x3E80, 0x3EFF
 UP, DOWN, LEFT, RIGHT = cpc.KEY_UP, cpc.KEY_DOWN, cpc.KEY_LEFT, cpc.KEY_RIGHT
 KNAME = {UP: "ΠΑΝΩ", DOWN: "ΚΑΤΩ", LEFT: "ΑΡΙΣΤΕΡΑ", RIGHT: "ΔΕΞΙΑ"}
 

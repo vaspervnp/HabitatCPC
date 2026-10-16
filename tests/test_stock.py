@@ -29,7 +29,7 @@ sys.path.insert(0, "/home/vasilhs/cpcemu")
 import test_game as TG                                   # noqa: E402
 import cpc                                               # noqa: E402
 
-PROBE = 0x3E00
+PROBE = 0x3E80
 EC_CAP = 600                                             # src/const.asm
 # µs ανά ec_make με το probe, απόθεμα 0..13, κάτω από το ταβάνι (βήμα 69)
 CEIL = [99, 104, 109, 114, 119, 124, 129, 134, 100, 105, 110, 115, 120, 125]

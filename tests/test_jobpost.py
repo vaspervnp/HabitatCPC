@@ -48,7 +48,7 @@ sys.path.insert(0, "/home/vasilhs/cpcemu")
 import test_game as TG                                   # noqa: E402
 import cpc                                               # noqa: E402
 
-PROBE, AROUND = 0x3E00, 64
+PROBE, AROUND = 0x3E80, 64
 MAX_JOB, JOB_REC, NO_JOB, J_BUILD, J_SUPPLY = 32, 5, 255, 0, 7   # src/const.asm
 # µs με το probe: θέση 0, θέση 31 (βήμα 70), γεμάτος (βήμα 115· 502 ως το 114)
 CEIL = (47, 512, 1400)

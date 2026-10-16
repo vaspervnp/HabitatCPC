@@ -63,7 +63,7 @@ import codeat                                            # noqa: E402
 import cpc                                               # noqa: E402
 from test_outside import layout                          # noqa: E402
 
-PROBE = 0x3E00
+PROBE = 0x3E80
 MAX_JOB, JOB_REC, NO_JOB = 32, 5, 255
 J_BUILD, J_OPERATE, J_DRILL, J_SUPPLY = 0, 1, 3, 7
 DOME_REC, STRUCT_REC = 24, 8

@@ -79,7 +79,7 @@ F_ALIVE, F_INDOORS, F_SUITPH = 1, 2, 64
 T_NEED, NO_TASK = 254, 255
 SU_TTL = 10                 # τικ του HUD (src/suit.asm)
 QUARTERS = 2                # σειρά στον κατάλογο δωματίων (rm_list, src/rooms.asm)
-PROBE, FLAG = 0x3E00, 0x3EFF
+PROBE, FLAG = 0x3E80, 0x3EFF
 FAIL = []
 
 

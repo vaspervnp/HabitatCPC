@@ -83,7 +83,7 @@ import econ as EC                                        # noqa: E402
 from test_route import tiles_of                          # noqa: E402
 from test_corridor import Ends                           # noqa: E402
 
-PROBE = 0x3E00
+PROBE = 0x3E80
 ECON_N = EC.ECON_BYTES                                   # ως και το EC_NBUILD (βήμα 88)
 CEIL = 480535                                            # µs, βήμα 74· στο 73: 482229
 # §10.1 και src/const.asm

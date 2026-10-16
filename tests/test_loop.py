@@ -48,7 +48,7 @@ sys.path.insert(0, "/home/vasilhs/cpcemu")
 import test_game as TG                                   # noqa: E402
 import cpc                                               # noqa: E402
 
-# Ο ελεύθερος χώρος της τράπεζας 0 κάτω από τη σκαλωσιά (#3F80): stubs και
+# Ο ελεύθερος χώρος της τράπεζας 0 κάτω από τη σκαλωσιά (#3FE0): stubs και
 # ημερολόγιο. ΑΠΟ ΤΟ ΒΗΜΑ 91 ΤΑ STUBS ΑΡΧΙΖΟΥΝ ΕΚΕΙ ΠΟΥ ΤΕΛΕΙΩΝΕΙ Ο ΚΩΔΙΚΑΣ
 # (ZZ_BANK0_END, στρογγυλεμένο στα 16) και το ημερολόγιο αμέσως μετά: ως τότε
 # ήταν σταθερά στο #3C00 και #3D00, και ο κώδικας του παιχνιδιού δεν μπορούσε
@@ -61,9 +61,21 @@ import cpc                                               # noqa: E402
 # επίμετρο του φορτωτή (#3FC0), δεν πατά ούτε το παιχνίδι ούτε άλλη δοκιμή. Τα
 # stubs και το ημερολόγιο έχουν έτσι 192 bytes ακόμη, και ο κώδικας του
 # παιχνιδιού ανέβηκε από το #3D60 στο #3E00 χωρίς να τα στριμώξει.
-LOG_TOP = 0x3F80
+#
+# ΑΠΟ ΤΟ ΒΗΜΑ 141 ΣΤΟ #3FE0. Το πάτωμα του main.asm ανέβηκε στο #3E80, και τα
+# stubs είναι 225 bytes: από το #3E80 θα έφταναν στο #3F61, και ως το #3F80 το
+# ημερολόγιο θα κρατούσε πέντε εγγραφές. Το #3FC0-#3FFF είναι το επίμετρο του
+# φορτωτή, που στο main.sna δεν υπάρχει και στον δίσκο έχει τρέξει πριν από
+# την πρώτη εντολή του παιχνιδιού (το παιχνίδι δεν το αγγίζει μετά). Η σκαλωσιά
+# είναι 21 bytes και χωρά στο #3FE0-#3FFC· το ημερολόγιο έχει 127 bytes ακόμη
+# και με τον κώδικα ως το πάτωμα, 21 εγγραφές.
+LOG_TOP = 0x3FE0
 LOG_MIN = 20 * 6                                         # ένας γύρος, με περιθώριο
-HOOK, GO, PTR, CNT = 0x3F80, 0x3FB0, 0x3FB2, 0x3FB4
+HOOK, GO, PTR, CNT = 0x3FE0, 0x3FF8, 0x3FFA, 0x3FFC
+# Μια εγγραφή γράφεται ολόκληρη ή καθόλου: το stub δέχεται L <= LOG_TOP - 6. Ως
+# το βήμα 140 δεχόταν L < LOG_TOP, και μια εγγραφή που άρχιζε ως πέντε bytes
+# κάτω από το LOG_TOP έγραφε πάνω στο hook (από το #3EE1, η 27η: #3F7D-#3F82).
+assert (LOG_TOP - 5) >> 8 == LOG_TOP >> 8, "το όριο του stub κοιτά μία σελίδα"
 SFX_ALERT, SFX_METEOR = 6, 8                             # src/sound.asm
 TARGETS = ["WHEEL_TICK", "SND_PLAY", "DIRTY_RESET", "UI_HIDE", "VIEW_DRAW", "UI_SHOW",
            "ML_ALERT", "HUD_DRAW", "UI_PANEL", "SND_TICK", "DIRTY_TICK", "UI_TICK"]
@@ -149,7 +161,7 @@ class Loop:
                + [0x21] + w(-sym["MAIN_LOOP"]) + [0x19, 0x30, "out"]    # < main_loop: έξω
                + [0x21, 9, 0, 0x39, 0x46,                       # B = το A του καλούντα
                   0x2A] + w(PTR) + [0x7C, 0xFE, LOG_TOP >> 8, 0x38, 5,   # H < σελίδα: εντάξει
-                                    0x7D, 0xFE, LOG_TOP & 255, 0x30, "out",   # L >= LOG_TOP: έξω
+                                    0x7D, 0xFE, (LOG_TOP - 5) & 255, 0x30, "out",   # δεν χωρά: έξω
                   0x71, 0x23, 0x70, 0x23, 0x73, 0x23, 0x72, 0x23,         # id, A, επιστροφή
                   0x3A] + w(pok) + [0x77, 0x23, 0x3A] + w(o2) + [0x77, 0x23,
                   0x22] + w(PTR)
@@ -181,7 +193,7 @@ class Loop:
         end = m.peek(PTR) | m.peek(PTR + 1) << 8
         raw = m.read_ram(self.log, end - self.log)
         recs = [raw[i:i + 6] for i in range(0, len(raw), 6)]
-        self.full = end >= LOG_TOP
+        self.full = end > LOG_TOP - 6
         return [(TARGETS[r[0]], r[1], r[4], r[5]) for r in recs]
 
     def go(self, timing=False):

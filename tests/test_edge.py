@@ -37,7 +37,7 @@ sys.path.insert(0, "/home/vasilhs/cpcemu")
 import test_game as TG                                   # noqa: E402
 from cpc import CPC, KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_SPACE  # noqa: E402
 
-PROBE = 0x3E00
+PROBE = 0x3E80
 CAM_X, CAM_Y = (-64, 44), (-64, 54)
 FAIL = []
 

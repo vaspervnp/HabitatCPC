@@ -60,6 +60,7 @@ DOME_S, SOLAR, AIRLOCK = 0, 4, 9                         # σειρές του b
 K_SHIP, K_PAD = 7, 6
 J_HAUL, S_ORE, NO_JOB = 2, 2, 255
 BUILT_IN = 20_000                                        # frames ως να χτιστεί ο θόλος
+PROBE = 0x3E80                                           # όπως του tests/test_bots.py
 
 
 def check(ok, msg):
@@ -216,9 +217,9 @@ def ancestors(sym, patch=()):
         # di · ld sp · ld bc,#7FC0 · out (c),c · ld a,A · call dm_up · ld (dm_n),a · jr $
         code = [0xF3, 0x31, 0x00, 0x01, 0x01, 0xC0, 0x7F, 0xED, 0x49, 0x3E, a,
                 0xCD, up & 255, up >> 8, 0x32, res & 255, res >> 8, 0x18, 0xFE]
-        m.write_ram(0x3E00, bytes(code))
-        m.set_pc(0x3E00)
-        end, t = 0x3E00 + len(code) - 2, 0
+        m.write_ram(PROBE, bytes(code))
+        m.set_pc(PROBE)
+        end, t = PROBE + len(code) - 2, 0
         while not (end <= m.pc <= end + 2) and t < 20_000:
             m.run_us(20)
             t += 20
@@ -255,9 +256,9 @@ def sites_cost(sym, patch=()):
         a = sym["DM_SITES"]
         code = [0xF3, 0x31, 0x00, 0x01, 0x01, 0xC0, 0x7F, 0xED, 0x49,
                 0xCD, a & 255, a >> 8, 0x18, 0xFE]
-        m.write_ram(0x3E00, bytes(code))
-        m.set_pc(0x3E00)
-        end, t = 0x3E00 + len(code) - 2, 0
+        m.write_ram(PROBE, bytes(code))
+        m.set_pc(PROBE)
+        end, t = PROBE + len(code) - 2, 0
         while not (end <= m.pc <= end + 2) and t < 400_000:
             m.run_us(1)
             t += 1

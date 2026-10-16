@@ -75,7 +75,7 @@ import hudread                                           # noqa: E402
 import econ as EC                                        # noqa: E402
 
 FAIL = []
-PROBE, FLAG = 0x3E00, 0x3EFF                             # όπως του tests/test_bots.py
+PROBE, FLAG = 0x3E80, 0x3EFF                             # όπως του tests/test_bots.py
 J_BUILD, J_OPERATE, J_REPAIR, NO_JOB = 0, 1, 4, 255
 DS_BUILDING, DS_ACTIVE = 1, 2
 OWED, READY, HP = 7, 4, 200

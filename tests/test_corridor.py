@@ -71,7 +71,7 @@ import route                                             # noqa: E402
 import scene as S                                        # noqa: E402
 from test_route import tiles_of                          # noqa: E402
 
-PROBE, OUT, CB, CBRET, PTR, LOG = 0x3E00, 0x3EF0, 0x3E80, 0x3EA0, 0x3EF8, 0x3400
+PROBE, OUT, CB, CBRET, PTR, LOG = 0x3E80, 0x3EF0, 0x3EC0, 0x3EE0, 0x3EF8, 0x3400
 SA, SB = 50, 51
 W_OCC_MASK, W_DUST, W_FOUNDATION = 0x30, 1, 7            # src/const.asm
 MAX_CORR, CORR_REC, MAX_DEGREE = 96, 5, 8

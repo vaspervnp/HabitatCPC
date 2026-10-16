@@ -74,7 +74,7 @@ import test_game as TG                                   # noqa: E402
 import cpc                                               # noqa: E402
 import scene as S                                        # noqa: E402
 
-PROBE = 0x3E00
+PROBE = 0x3E80
 OI_REC = 5
 OI_DOME = 0x4000 + 96 * 128             # πάνω από το NEXTHOP[96][128]
 OI_CORR = OI_DOME + S.MAX_DOME * OI_REC
@@ -415,7 +415,7 @@ def expect(R, a, before, col, mask):
         poke("JTD_SW", 0xC3 if any(bends(col)) else 0xC9)   # jp jtb_dome ή ret
     poke("OB_IDX", 0)
     free = {(0, off) for off in range(0x00A0, 0x0100)}                 # η στοίβα
-    free |= {(0, off) for off in range(0x3E00, 0x3F00)}                # το probe
+    free |= {(0, off) for off in range(PROBE, 0x3F00)}                 # το probe
     free |= {(0, off) for off in range(sym["OB_X"], sym["ST_ORD"])} - {(0, sym["ST_N"])}
     free |= {(0, sym["OIW_FN"]), (0, sym["OIW_FN"] + 1)}
     free |= {(0, sym["D_ID"])}                  # η μνήμη του ob_corr (από το βήμα 82 εδώ)
