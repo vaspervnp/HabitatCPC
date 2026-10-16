@@ -654,7 +654,12 @@ def trade_plan(G):
     budget = 10 * min(coins // 10, 99) + sum(n * V[g] for g, n in spare.items())
     # ό,τι θέλει
     metal_mach = any(METAL in d[3] for d in G.rows[-1].get("dm", []))
-    want = [(3, 200 - st[3])]
+    # ΤΑ ΑΝΤΑΛΛΑΚΤΙΚΑ ΠΡΩΤΑ ΚΑΤΩ ΑΠΟ ΤΟ ΑΠΟΘΕΜΑ (βήμα 143): πίσω από το μέταλλο
+    # ως τα 200 δεν έμενε τίποτα γι' αυτά, και οι 1048 και C0DE δεν αγόρασαν
+    # κανένα σε 60 sol.
+    res = 4 + alive // 8                                 # spare_res
+    want = [(6, res + 4 - st[6])] if st[6] < res else []
+    want += [(3, 200 - st[3])]
     if st[3] < 100 and metal_mach:
         want.append((2, 60 - st[2]))
     if alive >= 12:
@@ -697,9 +702,13 @@ def cause(a):
 # το σχέδιο
 # --------------------------------------------------------------------------
 def step(name, item, near, room=None, codes=(), after=(), when=None, again=False, zone=None,
-         fill=False, grow=False):
+         fill=False, grow=False, aside=False):
+    """aside (βήμα 143): το στάδιο δοκιμάζεται σε κάθε δείγμα, έξω από τη σειρά —
+    ούτε το κρατά πίσω ένα στάδιο που δεν πληρώνεται, ούτε κρατά αυτό τα
+    επόμενα όταν δεν πληρώνεται."""
     return dict(name=name, item=item, near=near, room=room, codes=list(codes),
-                after=list(after), when=when, again=again, zone=zone, fill=fill, grow=grow)
+                after=list(after), when=when, again=again, zone=zone, fill=fill, grow=grow,
+                aside=aside)
 
 
 def room_free(G, upto=80):
@@ -944,6 +953,15 @@ def cool(G, name, sols=1.0):
     return G.sol() - G.lastb.get(name, -99) >= sols
 
 
+def spare_res(G):
+    """ΤΟ ΑΠΟΘΕΜΑ ΤΩΝ ΑΝΤΑΛΛΑΚΤΙΚΩΝ (βήμα 143, η επιλογή του χρήστη: μόνο ο
+    παίκτης): τέσσερα, και ένα ακόμη ανά οκτώ αποίκους. Στο g142 τέσσερις
+    αποικίες έμειναν χωρίς αέρα μέσα σε δύο sol από μια βλάβη OXYGEN με 0
+    ανταλλακτικά — 90 θάνατοι — και μόνο 2 από τις 24 είχαν μηχανή SPARES: το
+    στάδιο ήταν προτελευταίο, και ό,τι δεν πληρωνόταν πιο πάνω το κρατούσε."""
+    return 4 + G.rows[-1]["alive"] // 8
+
+
 def machines(G, code):
     """Οσες μηχανές code έχουν μπει (ή περιμένουν υλικά) σε θόλους."""
     n = sum(d[8:16].count(code) for d in G.domes() if d[4] and d[3] != D_GREEN)
@@ -1094,6 +1112,19 @@ def plan_big():
         # ΜΕΣΑΙΑ ΑΠΟ ΤΗΝ ΠΕΜΠΤΗ (βήμα 140, try_step): 300 αντί για 100, και το
         # παιχνίδι μετρά ως οκτώ θόλους Storage (ROOM_MAX) — το σενάριο είχε
         # φτάσει τους δέκα μικρούς σε τέσσερις κόσμους.
+        # ΤΑ ΑΝΤΑΛΛΑΚΤΙΚΑ ΕΞΩ ΑΠΟ ΤΗ ΣΕΙΡΑ (βήμα 143): ως τότε το στάδιο ήταν
+        # προτελευταίο και χτίστηκε σε 2 κόσμους από τους 24 (g142: 90 θάνατοι από
+        # αέρα). Πριν από την αποθήκη, μέσα στη σειρά: σε 13 κόσμους, αλλά στο sol
+        # 50-58 — το κρατούσε ό,τι δεν πληρωνόταν πιο πάνω (g143: 63). Εξω από τη
+        # σειρά (aside), σε κάθε δείγμα, κάτω από το απόθεμα: 0 θάνατοι από βλάβη
+        # χωρίς ανταλλακτικά, 35 θάνατοι αντί για 159 (g143c). ΟΧΙ από τους
+        # δεκατέσσερις: τότε χτίστηκε σε 21 κόσμους, και μια SPARES δεν σταματά
+        # ποτέ — 1 μέταλλο τον γύρο, ~10 το sol, 200-270 ανταλλακτικά με το μέταλλο
+        # στο 30 του KEEP_METAL, και πάνω από είκοσι μόνο 5 αποικίες αντί για 18
+        # (g143b). Και γέμισμα πρώτα: μια υποδοχή ενός μεσαίου εργοστασίου.
+        step("ανταλλακτικά", DOME_S, None, "factory", [SPARES], zone="core", fill=True,
+             after=["εργοστάσιο"], aside=True,
+             when=lambda G: st(G, S_SPARE_I) < spare_res(G)),
         step("αποθήκη", DOME_S, None, "storage", zone="core", after=["οξυγόνο"],
              when=storage_due, again=True),
         step("κοιτώνες+", DOME_S, None, "quarters", zone="core", after=["κοιτώνες"], grow=True,
@@ -1108,13 +1139,12 @@ def plan_big():
         step("ορυχείο+", MINE, "ore", after=["ορυχείο"],
              when=demand("ορυχείο+", lambda G: st(G, S_ORE) < 10 and st(G, S_METAL) < 40
                          and len(G.rows[-1]["mines"]) < 1 + alive(G) // 10, 2.0), again=True),
-        step("ανταλλακτικά", DOME_S, None, "factory", [SPARES], zone="core",
-             after=["εργοστάσιο"], when=lambda G: st(G, S_SPARE_I) < 6),
         # ΚΑΙ ΞΑΝΑ (βήμα 140): στο 1048 3 τα ανταλλακτικά ήταν μηδέν για δέκα sol,
-        # και κάθε χαλασμένη μηχανή έμεινε χαλασμένη.
+        # και κάθε χαλασμένη μηχανή έμεινε χαλασμένη. Από το βήμα 143 κάτω από
+        # το απόθεμα (spare_res), όχι κάτω από 6.
         step("ανταλλακτικά+", DOME_S, None, "factory", [SPARES], zone="core",
              after=["ανταλλακτικά"], fill=True, grow=True, again=True,
-             when=demand("ανταλλακτικά+", lambda G: G.grow and st(G, S_SPARE_I) < 6
+             when=demand("ανταλλακτικά+", lambda G: G.grow and st(G, S_SPARE_I) < spare_res(G)
                          and machines(G, SPARES) < 1 + alive(G) // 15, 2.0)),
         step("ιατρείο", DOME_S, None, "medbay", zone="core", after=["κοιτώνες"],
              when=lambda G: alive(G) >= 16),
@@ -1455,14 +1485,14 @@ def play(G, plan, sols):
         held = False
         for s in list(todo):
             cheap = s["item"] in ("ship", "fit")
-            if held and not cheap:
+            if held and not cheap and not s.get("aside"):
                 continue
             if not ready(G, s):
                 continue
             if s["when"] and not s["when"](G):
                 continue
             if not cheap and G.sites() >= open_sites(G):
-                held = True
+                held = held or not s.get("aside")
                 continue
             r = try_step(G, s)
             if r is None:
@@ -1475,7 +1505,8 @@ def play(G, plan, sols):
                 if not s["again"]:
                     todo.remove(s)
                 break                       # ένα πράγμα ανά δείγμα
-            held = True
+            if not s.get("aside"):
+                held = True
     return todo
 
 
