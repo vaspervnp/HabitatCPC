@@ -54,8 +54,11 @@ DROOM = dict(oxygen=4, canteen=3, quarters=2, green=5, factory=8, lab=9, medbay=
 MACHINE_COUNT = (1, 4, 8)          # υποδοχές ανά μέγεθος s/m/l (tools/econ.py)
 GROW_AT = 14                       # από τόσους αποίκους τα «+» χτίζουν μεσαίο θόλο
 CORE_R = (14, 20, 26)              # tiles γύρω από το κέντρο των θόλων, με τη σειρά
+SHORE_AHEAD = 1                    # βήμα 145: ελεύθερες θέσεις αντλίας που κρατά
+SHORE_R = 16                       # ως τόσα tiles από το σκάφος
+SHORE_AT = GROW_AT                 # από τόσους αποίκους
 MINE_K = 4                         # K_MINE, το είδος της δομής
-K_SOLAR, K_COLLECT = 0, 2          # τα K_* του src/const.asm
+K_SOLAR, K_COLLECT, K_EXTRACT = 0, 2, 3   # τα K_* του src/const.asm
 R_GREEN = 5                        # D_ROOM του θερμοκηπίου: οι υποδοχές του είναι φυτά
 R_STORAGE = 6                      # D_ROOM της αποθήκης (το ROOM είναι η σειρά του καταλόγου)
 STRUCT_NAMES = ["ηλιακός", "ανεμογ.", "συλλέκτης", "αντλία", "ορυχείο", "airlock", "πίστα",
@@ -155,6 +158,8 @@ class Game:
         self.spot_cache = {}
         self.lastb = {}                         # όνομα σταδίου -> sol του τελευταίου
         self.zones = False                      # το σχέδιο big: διάταξη με ζώνες
+        self.shore, self.shore_key = [], None   # βήμα 145: οι θέσεις των αντλιών (Game.keep_shore)
+        self.shore_path = set()                 # και τα tiles των μονοπατιών τους
         self.feed = None                        # --tweak feed=M:B
         self.plast = None                       # --tweak skeep=N / bmax=N (βήμα 138)
         self.trader = False                     # το εμπόριο (βήμα 139): τα σχέδια big*
@@ -399,11 +404,15 @@ class Game:
                         continue
                     if need and item in B.NEED and not B.has_near(b4, tx, ty, w, B.NEED[item][0]):
                         continue
+                    if item != EXTRACTOR and self.on_shore(tx, ty, w, h):
+                        continue
                     p = reach.plan(b4, domes, structs, dims, kind, param, w, h,
                                    2 * tx + w, 2 * ty + h)
                     if not p["ok"]:
                         k = f"λόγος {p['reason']}"
                         self.why[k] = self.why.get(k, 0) + 1
+                        continue
+                    if item != EXTRACTOR and self.shore_cut(p):
                         continue
                     score = (p["pieces"], r)
                     if best is None or score < best[0]:
@@ -417,6 +426,84 @@ class Game:
         sb = lambda v: v - 256 if v > 127 else v
         return ([(sb(d[0]), sb(d[1])) for d in self.domes() if d[4]],
                 [(sb(t[0]), sb(t[1])) for t in self.structs() if t[4]])
+
+    def keep_shore(self):
+        """ΚΡΑΤΑ ΤΗΝ ΟΧΘΗ ΓΙΑ ΤΙΣ ΑΝΤΛΙΕΣ (βήμα 145): από SHORE_AT αποίκους,
+        SHORE_AHEAD θέσεις 3x3 που περνούν τον κανόνα του bd_res και που μια
+        αντλία φτάνει τώρα, όσο πιο κοντά στις αντλίες (αλλιώς στο σκάφος), ως
+        SHORE_R tiles από το σκάφος. Κανένας θόλος, δομή, διάδρομος ή μονοπάτι
+        δεν πατά τη θέση ή το μονοπάτι της (on_shore, shore_cut). Στον 1048 0 οι
+        θόλοι του big είχαν πιάσει όλη την όχθη της λίμνης δίπλα στο σκάφος ως
+        το sol 41: από εκατό όχθες ως τα 40 tiles χωρούσαν αντλία μόνο δύο, 25
+        tiles βόρεια, και με 34 αποίκους και τρεις αντλίες το νερό έμεινε κάτω
+        από 20 πέντε sol (στο g144 του βήματος 144, 23 νεκροί από αέρα).
+        Μία φορά ανά αλλαγή της αποικίας."""
+        if not self.zones:
+            return
+        # ΑΠΟ ΤΟΥΣ ΔΕΚΑΤΕΣΣΕΡΙΣ: κρατημένη από την αρχή, η όχθη έπαιρνε τη γη του
+        # πυρήνα — στο C0DE 2 το δεύτερο οξυγόνο έπεσε τρία κομμάτια διαδρόμου
+        # μακριά, και στο sol 40 οι αποικίες είχαν κατά μέσο 15,2 αντί για 17,1.
+        if not self.rows or self.rows[-1]["alive"] < SHORE_AT:
+            self.shore, self.shore_key, self.shore_path = [], None, set()
+            return
+        key = (sum(1 for d in self.domes() if d[4]), sum(1 for t in self.structs() if t[4]))
+        if key == self.shore_key:
+            return
+        self.shore_key = key
+        b4 = self.world()
+        domes = [d[:4] for d in self.domes()]
+        structs = [t[:7] for t in self.structs()]
+        dims = self.m.read_ram(self.L["G_struct_dims"], 64)
+        kind, param, w, h = self.m.read_ram(self.sym["BLD_ITEMS"] + 8 * EXTRACTOR, 4)
+
+        def fits(tx, ty):
+            """-> τα tiles του μονοπατιού της, ή None.
+            ΚΑΙ ΝΑ ΦΤΑΝΕΙ (C0DE 1): μια θέση μόνο με το έδαφος ήταν σε λίμνη
+            όπου δεύτερη αντλία δεν έβρισκε μονοπάτι, και το νερό έμεινε στο 5."""
+            if not (all(reach.ok_tile(b4[reach.widx(tx + i, ty + j)])
+                        for i in range(3) for j in range(3))
+                    and B.has_near(b4, tx, ty, 3, "water")):
+                return None
+            if any((tx + i, ty + j) in self.shore_path for i in range(3) for j in range(3)):
+                return None
+            p = reach.plan(b4, domes, structs, dims, kind, param, w, h, 2 * tx + w, 2 * ty + h)
+            return (p["path"][2] if p["path"] else []) if p["ok"] else None
+        # ΑΠΟ ΤΗΝ ΑΡΧΗ ΚΑΘΕ ΦΟΡΑ, όχι κολλημένες: ως το πρώτο airlock μια αντλία
+        # δίπλα στο σκάφος δεν φτάνει (το σκάφος δεν είναι άγκυρα, ship0), και
+        # οι κολλημένες έμεναν δίπλα στον πρώτο ηλιακό, 13 tiles μακριά.
+        # ΚΑΙ ΤΟ ΜΟΝΟΠΑΤΙ ΤΗΣ: στο C0DE 2 η κρατημένη θέση έμεινε χωρίς μονοπάτι
+        # όταν θόλοι το έκλεισαν, ελευθερώθηκε, και στο sol 51 καμία όχθη ως τα
+        # 40 tiles δεν δεχόταν αντλία.
+        self.shore, self.shore_path = [], set()
+        # ΔΙΠΛΑ ΣΤΙΣ ΑΝΤΛΙΕΣ, αλλιώς στο σκάφος: η αντλία είναι δομή, και το
+        # μονοπάτι της επόμενης είναι ένα ή δύο tiles ως αυτήν.
+        sb = lambda v: v - 256 if v > 127 else v
+        pumps = [((sb(t[0]) - 3) >> 1, (sb(t[1]) - 3) >> 1)
+                 for t in self.structs() if t[4] and t[2] == K_EXTRACT] or [(-1, -1)]
+        R = SHORE_R
+        for _, tx, ty in sorted((min(max(abs(tx - x), abs(ty - y)) for x, y in pumps), tx, ty)
+                                for ty in range(-R - 1, R) for tx in range(-R - 1, R)):
+            if any(abs(tx - x) < 3 and abs(ty - y) < 3 for x, y in self.shore):
+                continue
+            tl = fits(tx, ty)
+            if tl is not None:
+                self.shore.append((tx, ty))
+                self.shore_path.update(tl)
+                if len(self.shore) >= SHORE_AHEAD:
+                    break
+
+    def on_shore(self, tx, ty, w, h):
+        """Το αποτύπωμα πατά μια κρατημένη θέση αντλίας ή το μονοπάτι της."""
+        return (any(tx < x + 3 and x < tx + w and ty < y + 3 and y < ty + h
+                    for x, y in self.shore)
+                or any((tx + i, ty + j) in self.shore_path for i in range(w) for j in range(h)))
+
+    def shore_cut(self, p):
+        """Οι διάδρομοι ή το μονοπάτι του reach.plan περνούν από μια κρατημένη θέση
+        ή από το μονοπάτι της."""
+        tl = [t for c in p["corridors"] for t in c[4]] + (p["path"][2] if p["path"] else [])
+        return any(t in self.shore_path or any(x <= t[0] < x + 3 and y <= t[1] < y + 3
+                                               for x, y in self.shore) for t in tl)
 
     def spot_zone(self, item, zone, R=None):
         """Η ΔΙΑΤΑΞΗ (βήμα 131). zone «core»: ένας θόλος στη σειρά ενός άλλου
@@ -447,6 +534,8 @@ class Game:
             if not all(reach.ok_tile(b4[reach.widx(tx + i, ty + j)])
                        for i in range(w) for j in range(h)):
                 continue
+            if self.on_shore(tx, ty, w, h):
+                continue
             hx, hy = 2 * tx + w, 2 * ty + h
             dist = max(abs(hx - cx), abs(hy - cy))
             if zone == "core":
@@ -466,6 +555,8 @@ class Game:
             if not p["ok"]:
                 k = f"λόγος {p['reason']}"
                 self.why[k] = self.why.get(k, 0) + 1
+                continue
+            if self.shore_cut(p):
                 continue
             key = (p["pieces"],) + key[1:]
             if zone == "core":
@@ -1352,6 +1443,7 @@ def try_step(G, s):
     near = s["near"]
     got = None
     G.why = {}
+    G.keep_shore()
     if s.get("zone"):
         # ΟΛΟ ΚΑΙ ΠΙΟ ΜΑΚΡΙΑ (βήμα 140): στα 14 tiles από το κέντρο οι αποικίες
         # των τριάντα δεν έβρισκαν θέση για τροφή, και πέθαιναν ως το sol 60.
@@ -1374,6 +1466,8 @@ def try_step(G, s):
         cands = []
     elif isinstance(near, str):
         cands = G.res_near(near)[:40]
+        if near == "water":                 # πρώτα οι κρατημένες (βήμα 145)
+            cands = [(2 * x + 3, 2 * y + 3) for x, y in G.shore] + cands
     else:
         # ο στόχος, και αν εκεί δεν χωρά, γύρω από ό,τι έχει χτιστεί, από το
         # κοντινότερο στον στόχο
