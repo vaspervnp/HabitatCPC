@@ -1260,6 +1260,39 @@ def order_machine(e, node):
             post_supply(e, node, kind)
 
 
+def post_jobs(e, jb):
+    """Η δημοσίευση της θέσης 13 (το jb_post του src/jobs.asm): JOB_SCAN θόλοι από
+    το e.job_dome. Χωριστά από τη jobs_tick για το tests/test_brokenop.py."""
+    # Μία εργασία ανά θόλο ανά επίσκεψη: μια σταματημένη μηχανή δεν χρειάζεται
+    # χειριστή, χρειάζεται μηχανικό. ΟΙ ΑΛΛΕΣ ΟΜΩΣ ΧΡΕΙΑΖΟΝΤΑΙ (βήμα 140): ένας
+    # θόλος με χαλασμένη ζητά τη Repair στα ζυγά σαρώματα των 64 και την
+    # Operate για όσες δουλεύουν στα μονά. Ο δείκτης τρέχει 0-255· ο θόλος
+    # είναι τα έξι χαμηλά του bits και το σάρωμα το bit 6, μετά το +1.
+    for _ in range(JOB_SCAN):
+        j = e.job_dome
+        d = j % MAX_DOME
+        e.job_dome = (j + 1) & 255
+        if broken_slot(e, d) is not None and not e.job_dome & MAX_DOME:
+            kind = J_REPAIR
+        elif e.dome[d * DOME_REC + D_OPS] < needs_operators(e, d):
+            kind = J_OPERATE
+        else:
+            continue
+        if any(jb[k * JOB_REC + J_KIND] == kind
+               and jb[k * JOB_REC + J_NODE] == d for k in range(MAX_JOB)):
+            continue
+        for k in range(MAX_JOB):
+            if jb[k * JOB_REC + J_KIND] == NO_JOB:
+                jb[k * JOB_REC + J_KIND] = kind
+                jb[k * JOB_REC + J_NODE] = d
+                jb[k * JOB_REC + J_AGENT] = 255
+                jb[k * JOB_REC + J_PRIO] = (
+                    ROOM_PRIO[e.dome[d * DOME_REC + D_ROOM]]
+                    if kind == J_OPERATE else JOB_PRIO[kind])
+                jb[k * JOB_REC + J_SITE] = d
+                break
+
+
 def jobs_tick(e, a, F_ALIVE, F_WORKING):
     """Θέση 13: μάζεψε, ολοκλήρωσε, δημοσίευσε, ανάθεσε — με αυτή τη σειρά."""
     jb = e.job
@@ -1438,31 +1471,8 @@ def jobs_tick(e, a, F_ALIVE, F_WORKING):
         a.task[i] = NO_TASK
         jb[b + J_KIND] = NO_JOB
 
-    # 3. δημοσίευση, JOB_SCAN θόλοι ανά επίσκεψη. Μία εργασία ανά θόλο ανά
-    #    επίσκεψη, και η επισκευή προηγείται: μια σταματημένη μηχανή δεν
-    #    χρειάζεται χειριστή, χρειάζεται μηχανικό.
-    for _ in range(JOB_SCAN):
-        d = e.job_dome
-        e.job_dome = (d + 1) % MAX_DOME
-        if broken_slot(e, d) is not None:
-            kind = J_REPAIR
-        elif e.dome[d * DOME_REC + D_OPS] < needs_operators(e, d):
-            kind = J_OPERATE
-        else:
-            continue
-        if any(jb[k * JOB_REC + J_KIND] == kind
-               and jb[k * JOB_REC + J_NODE] == d for k in range(MAX_JOB)):
-            continue
-        for k in range(MAX_JOB):
-            if jb[k * JOB_REC + J_KIND] == NO_JOB:
-                jb[k * JOB_REC + J_KIND] = kind
-                jb[k * JOB_REC + J_NODE] = d
-                jb[k * JOB_REC + J_AGENT] = 255
-                jb[k * JOB_REC + J_PRIO] = (
-                    ROOM_PRIO[e.dome[d * DOME_REC + D_ROOM]]
-                    if kind == J_OPERATE else JOB_PRIO[kind])
-                jb[k * JOB_REC + J_SITE] = d
-                break
+    # 3. δημοσίευση (post_jobs)
+    post_jobs(e, jb)
 
     # 4. ανάθεση: ως JOB_ASSIGN, με αύξουσα σειρά ταυτότητας από περιστροφική
     #    αρχή. Ισοπαλία προτεραιότητας σπάει με το DIST (§6.7).
