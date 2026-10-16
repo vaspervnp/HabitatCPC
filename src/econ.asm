@@ -277,7 +277,7 @@ erm_c1: call    erm_in                  ; erm_ink με λίγο μέταλλο (
         ret     c
         ld      a,(ix+2)
         ld      c,(ix+3)
-        call    erm_in
+erm_c2: call    erm_in                  ; erm_inp με αρκετά ανταλλακτικά (ec_setfull, βήμα 144)
         ret     c
         ld      a,(ix+4)
         ld      c,(ix+5)
@@ -366,6 +366,16 @@ ec_need     equ erm_need + 1
 ; είναι μεταβλητή: είναι το immediate του erm_inf, που το διαβάζει (4 bytes
 ; λιγότερα). Χαλάει όσα και το ec_setfull, και τα B, DE.
 st_need:
+        ; ΚΑΙ ΤΟ ΟΡΙΟ ΤΩΝ ΑΝΤΑΛΛΑΚΤΙΚΩΝ (βήμα 144): το bit 2 του ec_keep, που το
+        ; st_check μόλις έγραψε με τα δύο κάτω. Εδώ, στην τράπεζα 0, για τον ίδιο
+        ; λόγο με το ec_need. Κρατά το A.
+        ld      hl,(EC_STOCK + 2 * S_SPARE)
+        ld      de,-SPARES_MAX
+        add     hl,de                   ; CY αν έφτασαν
+        jr      nc,stn_sp
+        ld      hl,ec_keep
+        set     2,(hl)
+stn_sp:
         or      a
         jr      z,ec_setfull            ; χωρά
         ld      bc,256 * NEED_MIN + NO_STOCK    ; B = το όριο, C = κανένα
@@ -418,7 +428,16 @@ esf_put:
         ; BIO_MAX, τίποτα δεν κοστίζει· με το ένα από τα δύο, όσο κόστιζε το
         ; απόθεμα μετάλλου μόνο του.
         ; Πρόσθεση 16 bits, όχι σελίδα: οι δοκιμές βάζουν τον κώδικα αλλού.
+        ; ΚΑΙ ΤΟ ΟΡΙΟ ΤΩΝ ΑΝΤΑΛΛΑΚΤΙΚΩΝ (βήμα 144): το bit 2 διαλέγει τη δεύτερη
+        ; κλήση, erm_in ή erm_inp. Τα δύο κάτω την πρώτη, όπως ως τώρα.
         ld      a,(ec_keep)
+        ld      hl,erm_in
+        bit     2,a
+        jr      z,esf_c2
+        ld      hl,erm_inp
+esf_c2:
+        ld      (erm_c2 + 1),hl
+        and     3
         add     a,a
         ld      hl,esf_tab
         add     a,l
@@ -485,6 +504,18 @@ erm_inb:
 erk_stop:
         scf
         ret
+
+; erm_inp — η ΔΕΥΤΕΡΗ είσοδος με τα ανταλλακτικά στο SPARES_MAX ή πάνω (βήμα 144,
+; η επιλογή του χρήστη, όπως το όριο της PLASTIC): CY, και η SPARES σταματά — η
+; μόνη με το βιοπλαστικό δεύτερο (assert στο tools/econ.py· την πρώτη της, το
+; μέταλλο, την έχουν και οι WEAPONS, CHIPS, ROBOTS). Χωρίς αυτό δεν σταματούσε
+; ποτέ: ένα μέταλλο τον γύρο, ~10 το sol, 200-270 ανταλλακτικά με το μέταλλο
+; στο KEEP_METAL, και οι αποικίες δεν μεγάλωναν (DESIGN §10.1, βήμα 143). Πέφτει
+; στο erm_in: 4 us σε κάθε μηχανή, μόνο όσο φτάνουν τα ανταλλακτικά.
+erm_inp:
+        cp      S_BIOPL
+        jr      z,erk_stop
+        ; fall through
 
 ; erm_in — μία είσοδος: A = απόθεμα (NO_STOCK = καμία), C = ποσότητα, HL -> η
 ; θέση της στο ed_in. CY αν δεν φτάνει· αλλιώς γράφει (δείκτης, ποσότητα) και

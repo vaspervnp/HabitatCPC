@@ -1082,7 +1082,11 @@ def calm_branches(sym, g, nexthop, sim0):
 # Βήμα 142: το st_need με χώρο στην αποθήκη, «or a · jr z», και ο διακόπτης του
 # κήπου δύο bytes στο ec_setfull: +6 us (test_drill.py) — 8.740 ίδιο, 9.110 ->
 # 9.120 σε ακρίβεια 10 us, στο ταβάνι. Με γεμάτη αποθήκη: meal_branches.
-STORE_FLOW_US, STORE_FLOW8_US = 8750, 9120
+# Βήμα 144: και το όριο των ανταλλακτικών — το bit 2 του ec_keep στο st_need
+# (~16 us, 20 με τα 40 ανταλλακτικά της αποικίας της δοκιμής) και η δεύτερη
+# κλήση στο ec_setfull (~20): 8.740 -> 8.780, 9.120 -> 9.160. Ως το 143 τα
+# ταβάνια ήταν 8.750 και 9.120.
+STORE_FLOW_US, STORE_FLOW8_US = 8790, 9170
 # Οι βαριές επισκέψεις της θέσης 11 με το απόθεμα μετάλλου ενεργό (βήμα 127):
 # το erm_ink περνά 5 us σε κάθε μηχανή που δεν τρώει μέταλλο, και οι τέσσερις
 # που το τρώνε σταματούν. Εδώ 7.090 και 12.160 us, χωρίς το απόθεμα 8.390 και
@@ -1093,6 +1097,11 @@ KEEP_SWEEP_US = 12170
 # σε κάθε μηχανή, και η PLASTIC σταματά: 7.100 και 12.230 us, απέναντι σε 7.090 και
 # 12.160 με το απόθεμα μόνο και 8.390 και 12.520 χωρίς κανένα.
 KEEP3_SWEEP_US = 12240
+# Και με το όριο των ανταλλακτικών (βήμα 144): το erm_inp περνά μια σύγκριση στη
+# δεύτερη είσοδο κάθε μηχανής (4 us) και η SPARES σταματά — 8.410 και 12.210 us
+# μόνο του, 7.120 και 12.300 με τα άλλα δύο (12.230 χωρίς αυτό). Ολες κάτω από
+# τις 12.520 χωρίς κανένα όριο.
+KEEP4_SWEEP_US, KEEP7_SWEEP_US = 12220, 12310
 
 
 def store_branches(sym, g, nexthop, sim0):
@@ -1294,7 +1303,9 @@ def store_branches(sym, g, nexthop, sim0):
 # σταματούσαν όλα. Ακριβότερες επειδή ΞΑΝΑΤΡΕΧΟΥΝ τα φυτά του σπάνιου, συν ~17
 # us ο έλεγχος σε κάθε φυτό· και όλες κάτω από τις ίδιες χωρίς γεμάτη αποθήκη,
 # 8.440 και 12.750, που μένουν ίδιες.
-MEAL_FLOW_US, MEAL_FLOW8_US, MEAL_SWEEP_US = 8800, 9180, 12080
+# Βήμα 144: και το όριο των ανταλλακτικών, +40 και +30 (8.830 και 9.200· ως
+# το 143 τα ταβάνια ήταν 8.800 και 9.180).
+MEAL_FLOW_US, MEAL_FLOW8_US, MEAL_SWEEP_US = 8840, 9210, 12080
 
 
 def meal_branches(sym, g, nexthop, sim0):
@@ -1483,12 +1494,12 @@ def meal_branches(sym, g, nexthop, sim0):
                  a and [(a + 1, sym["ERM_IN"] & 255), (a + 2, sym["ERM_IN"] >> 8)]))
     a = code_at("ERM_NEED", [0xFE, NO, 0xC8], 4)
     negs.append(("το VITROMEAT σταματά πάντα", "κρέας 0", a and [(a + 2, 0)]))
-    a = code_at("ST_NEED", [0x01, NO, EC.NEED_MIN], 8)
+    a = code_at("ST_NEED", [0x01, NO, EC.NEED_MIN], 30)        # μετά το όριο των ανταλλακτικών (144)
     negs.append(("το όριο 31", "όλα 30", a and [(a + 2, 31)]))
     negs.append(("το όριο 29", "άμυλο 29", a and [(a + 2, 29)]))
     a = code_at("ESN_ONE", [0x14, 0x15, 0xC0], 8)
     negs.append(("χωρίς το υψηλό byte", "άμυλο 260", a and [(a + 2, 0)]))
-    a = code_at("ST_NEED", [0x1C, 0x1C, 0xCD, es & 255, es >> 8], 30)
+    a = code_at("ST_NEED", [0x1C, 0x1C, 0xCD, es & 255, es >> 8], 60)
     negs.append(("το κρέας δεν μετρά", "κρέας 0", a and [(a + 2, 0), (a + 3, 0), (a + 4, 0)]))
     a = code_at("ERP_CHK", [0xBE, 0xC0], 16)
     negs.append(("ο κήπος τρέχει όλος", "άμυλο 0", a and [(a + 1, 0)]))
@@ -1535,9 +1546,12 @@ def keep_branches(sym, g, nexthop, sim0):
                       econ_bytes(z.e), bytes(z.e.job), bytes(z.occ[:128]))
     SWEEP = 4 * EC.ECON_DIV
 
-    def metal(n, bio=None):
+    def metal(n, bio=None, spares=10):
         def set_(e):
             e.stock[EC.S_METAL] = n
+            # Τα ανταλλακτικά κάτω από SPARES_MAX (βήμα 144: η αποικία της δοκιμής
+            # έχει 40, και το bit 2 θα άναβε σε κάθε σκηνή), εκτός αν ζητηθούν.
+            e.stock[EC.S_SPARE] = spares
             if bio is not None:
                 # Η PLASTIC να μπορεί να τρέξει: άμυλο, και οκτώ χειριστές στους
                 # θόλους της — στην αποικία της δοκιμής δεν είχε κανέναν, και
@@ -1549,7 +1563,11 @@ def keep_branches(sym, g, nexthop, sim0):
         return set_
     cases = (("29", metal(29), 2), ("30", metal(30), 0), ("200", metal(200), 0),
              ("βιο 99", metal(100, 99), 0), ("βιο 100", metal(100, 100), 1),
-             ("29 και βιο 100", metal(29, 100), 3))
+             ("29 και βιο 100", metal(29, 100), 3),
+             # ΤΟ ΟΡΙΟ ΤΩΝ ΑΝΤΑΛΛΑΚΤΙΚΩΝ (βήμα 144), το bit 2: με 19 η SPARES του
+             # θόλου 14 φτιάχνει, με 20 όχι, και με μέταλλο 29 και τα δύο bits.
+             ("ανταλλ. 19", metal(100, spares=19), 0), ("ανταλλ. 20", metal(100, spares=20), 4),
+             ("ανταλλ. 20 και μέταλλο 29", metal(29, spares=20), 6))
     PLASTIC = 2                                     # η μόνη με το άμυλο πρώτο
     plastic = lambda e: [d for d in range(EC.MAX_DOME)
                          if e.dome[d * EC.DOME_REC + EC.D_STATE] == EC.DS_ACTIVE
@@ -1569,7 +1587,7 @@ def keep_branches(sym, g, nexthop, sim0):
     if not plastic(base.e):
         print("ΑΠΟΤΥΧΙΑ βιοπλαστικό: η αποικία της δοκιμής δεν έχει PLASTIC")
         return 1
-    starts, made, starch = {}, {}, {}
+    starts, made, starch, spare = {}, {}, {}, {}
     for name, setup, keep in cases:
         st = fresh(g, nexthop, base)
         setup(st.e)
@@ -1586,6 +1604,11 @@ def keep_branches(sym, g, nexthop, sim0):
         after = want.e.stock
         made[name] = sum(after[k] - before[k] for k in EATEN)
         starch[name] = after[EC.S_STARCH]
+        spare[name] = after[EC.S_SPARE] - before[EC.S_SPARE]
+        if keep & 4 and spare[name] > 0:
+            print(f"ΑΠΟΤΥΧΙΑ ανταλλακτικά: «{name}» — με τα ανταλλακτικά στο "
+                  f"{before[EC.S_SPARE]} η SPARES έφτιαξε {spare[name]}")
+            return 1
         if keep & 2 and (made[name] or after[EC.S_METAL] < before[EC.S_METAL]):
             print(f"ΑΠΟΤΥΧΙΑ μέταλλο: «{name}» — με το απόθεμα φτιάχτηκαν {made[name]} "
                   f"από όσα τρώνε μέταλλο, μέταλλο {before[EC.S_METAL]} -> {after[EC.S_METAL]}")
@@ -1600,6 +1623,10 @@ def keep_branches(sym, g, nexthop, sim0):
         starts[name] = (st, keys(want))
     # Η PLASTIC: με το βιοπλαστικό στο 100 δεν τρώει άμυλο, με 99 τρώει — δύο
     # ανά μηχανή — αλλιώς η δοκιμή δεν δοκιμάζει τίποτα.
+    # Η SPARES: με 19 φτιάχνει — αλλιώς η δοκιμή δεν δοκιμάζει τίποτα (βήμα 144).
+    if spare["ανταλλ. 19"] <= 0:
+        print(f"ΑΠΟΤΥΧΙΑ ανταλλακτικά: με 19 η SPARES δεν έφτιαξε τίποτα ({spare['ανταλλ. 19']})")
+        return 1
     if starch["βιο 100"] <= starch["βιο 99"]:
         print(f"ΑΠΟΤΥΧΙΑ βιοπλαστικό: το άμυλο μετά το σάρωμα {starch['βιο 100']} με "
               f"βιοπλαστικό 100 και {starch['βιο 99']} με 99 — η PLASTIC δεν σταμάτησε")
@@ -1621,6 +1648,12 @@ def keep_branches(sym, g, nexthop, sim0):
     hi = visits(starts["29"][0], 0)
     lo = visits(starts["29"][0], 2)
     lo3 = visits(starts["29"][0], 3)
+    lo4, lo7 = visits(starts["29"][0], 4), visits(starts["29"][0], 7)    # βήμα 144
+    if max(lo4) > KEEP4_SWEEP_US or max(lo7) > KEEP7_SWEEP_US or max(lo4 + lo7) > max(hi):
+        print(f"ΑΠΟΤΥΧΙΑ ανταλλακτικά: οι βαριές επισκέψεις με το όριο των ανταλλακτικών "
+              f"{lo4} us (ταβάνι {KEEP4_SWEEP_US}), με τα τρία {lo7} ({KEEP7_SWEEP_US}), "
+              f"χωρίς κανένα {hi}")
+        return 1
     if max(lo) > KEEP_SWEEP_US or max(lo3) > KEEP3_SWEEP_US:
         print(f"ΑΠΟΤΥΧΙΑ μέταλλο: οι βαριές επισκέψεις με το απόθεμα {lo} us, ταβάνι "
               f"{KEEP_SWEEP_US}, και με το όριο του βιοπλαστικού {lo3}, ταβάνι "
@@ -1660,6 +1693,15 @@ def keep_branches(sym, g, nexthop, sim0):
     a = code_at("ERM_INKB", [0xFE, EC.S_METAL, 0x28], 6)
     negs.append(("με τα δύο, όσες τρώνε μέταλλο περνούν", "29 και βιο 100",
                  a and [(a + 1, 0xFE)]))
+    # και των ανταλλακτικών (βήμα 144)
+    a = code_at("ST_NEED", [0x11, (-EC.SPARES_MAX) & 255, 0xFF], 8)
+    negs.append(("το όριο των ανταλλακτικών 21", "ανταλλ. 20", a and [(a + 1, (-21) & 255)]))
+    negs.append(("το όριο των ανταλλακτικών 19", "ανταλλ. 19", a and [(a + 1, (-19) & 255)]))
+    a = code_at("ERM_INP", [0xFE, EC.S_BIOPL, 0x28], 6)
+    negs.append(("η SPARES περνά", "ανταλλ. 20", a and [(a + 1, 0xFE)]))
+    a = code_at("EC_SETFULL", [0x21, sym["ERM_INP"] & 255, sym["ERM_INP"] >> 8], 60)
+    negs.append(("η δεύτερη κλήση μένει erm_in", "ανταλλ. 20",
+                 a and [(a + 1, sym["ERM_IN"] & 255), (a + 2, sym["ERM_IN"] >> 8)]))
     for what, case, patch in negs:
         st, want = starts[case]
         if not patch or chain(st, patch) == want:
@@ -1672,10 +1714,12 @@ def keep_branches(sym, g, nexthop, sim0):
           f"{len(EATERS)} που τρώνε μέταλλο σταματούν (0 προϊόντα, το μέταλλο δεν πέφτει), "
           f"με 30 και 200 φτιάχνουν {made['30']} και {made['200']}· με βιοπλαστικό 100 η "
           f"PLASTIC σταματά: άμυλο {starch['βιο 100']} μετά το σάρωμα, {starch['βιο 99']} "
-          f"με 99")
+          f"με 99; με τα ανταλλακτικά στο 20 η SPARES σταματά ({spare['ανταλλ. 20']} "
+          f"μετά το σάρωμα), με 19 φτιάχνει {spare['ανταλλ. 19']}")
     print(f"              οι βαριές επισκέψεις της θέσης 11 με το απόθεμα {lo} us, και με το "
           f"όριο του βιοπλαστικού {lo3}, χωρίς κανένα {hi} (ταβάνια {KEEP_SWEEP_US}, "
-          f"{KEEP3_SWEEP_US})")
+          f"{KEEP3_SWEEP_US}); με το όριο των ανταλλακτικών {lo4}, με τα τρία {lo7} "
+          f"(ταβάνια {KEEP4_SWEEP_US}, {KEEP7_SWEEP_US})")
     print(f"OK μέταλλο:  ΑΡΝΗΤΙΚΑ — " + ", ".join(w for w, _, _ in negs) +
           ": ο Z80 διαφέρει από την αναφορά")
     return 0
@@ -3399,8 +3443,12 @@ def wheel_check(sym, g, nexthop, base, patch=()):
         m.poke(at, v)
     # και το απόθεμα μετάλλου (βήμα 127): το ec_keep και η πρώτη κλήση
     ink, c1 = sym["ERM_INK"], sym["ERM_C1"] + 1
-    keep = lambda: (m.peek(sym["EC_KEEP"]), m.peek(c1) | m.peek(c1 + 1) << 8)
-    for at, v in ((sym["EC_KEEP"], 1), (c1, ink & 255), (c1 + 1, ink >> 8)):
+    # και το όριο των ανταλλακτικών (βήμα 144): το bit 2 και η δεύτερη κλήση
+    inp, c2 = sym["ERM_INP"], sym["ERM_C2"] + 1
+    keep = lambda: (m.peek(sym["EC_KEEP"]), m.peek(c1) | m.peek(c1 + 1) << 8,
+                    m.peek(c2) | m.peek(c2 + 1) << 8)
+    for at, v in ((sym["EC_KEEP"], 5), (c1, ink & 255), (c1 + 1, ink >> 8),
+                  (c2, inp & 255), (c2 + 1, inp >> 8)):
         m.poke(at, v)
     run("WHEEL_RESET")
     if (m.peek(sym["WH_SLOT"]), m.peek(sym["RT_DIRTY"])) != (0, 0):
@@ -3409,9 +3457,9 @@ def wheel_check(sym, g, nexthop, base, patch=()):
     if full() != (0, 0x3E | EC.S_WATER << 8, sym["ERM_IN"]):
         return "μετά το wheel_reset η αποθήκη μένει γεμάτη: ec_full, κήπος, τρίτη κλήση " \
                + ", ".join(f"#{v:02X}" for v in full())
-    if keep() != (0, sym["ERM_IN"]):
-        return "μετά το wheel_reset μένει το απόθεμα μετάλλου: ec_keep, πρώτη κλήση " \
-               + ", ".join(f"#{v:02X}" for v in keep())
+    if keep() != (0, sym["ERM_IN"], sym["ERM_IN"]):
+        return "μετά το wheel_reset μένει το απόθεμα μετάλλου ή το όριο των ανταλλακτικών: " \
+               "ec_keep, πρώτη κλήση, δεύτερη κλήση " + ", ".join(f"#{v:02X}" for v in keep())
     return None
 
 

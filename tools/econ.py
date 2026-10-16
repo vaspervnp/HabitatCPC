@@ -111,6 +111,11 @@ assert all(r[0] == S_METAL for r in RECIPE
 # όσο το βιοπλαστικό είναι BIO_MAX ή πάνω. Ο Z80 την ξέρει από την ΠΡΩΤΗ είσοδο,
 # το άμυλο: καμία άλλη δεν πρέπει να το έχει πρώτο.
 BIO_MAX = 100
+# ΤΟ ΟΡΙΟ ΤΩΝ ΑΝΤΑΛΛΑΚΤΙΚΩΝ (βήμα 144, src/econ.asm, erm_inp): η SPARES σταματά
+# όσο τα ανταλλακτικά είναι SPARES_MAX ή πάνω. Ο Z80 την ξέρει από τη ΔΕΥΤΕΡΗ
+# είσοδο, το βιοπλαστικό: καμία άλλη δεν πρέπει να το έχει δεύτερο (assert πιο
+# κάτω, μαζί με του αμύλου).
+SPARES_MAX = 20
 # ΤΟ ΣΠΑΝΙΟΤΕΡΟ ΥΛΙΚΟ ΤΟΥ ΓΕΥΜΑΤΟΣ (βήμα 142, η επιλογή του χρήστη): με γεμάτη
 # αποθήκη τρέχει μόνο ό,τι βγάζει το λιγότερο από άμυλο, λαχανικά και κρέας, όσο
 # αυτό είναι κάτω από NEED_MIN — τα φυτά του και το VITROMEAT (src/econ.asm,
@@ -119,6 +124,8 @@ NEED_MIN = 30
 NEED_OF = (S_STARCH, S_VEG, S_MEAT)
 assert [RECIPE.index(r) for r in RECIPE if r[0] == S_STARCH] == [2] \
     and RECIPE[2][6] == S_BIOPL, "το άμυλο πρώτη είσοδος όχι μόνο της PLASTIC"
+assert [RECIPE.index(r) for r in RECIPE if r[2] == S_BIOPL] == [7] \
+    and RECIPE[7][6] == S_SPARE, "το βιοπλαστικό δεύτερη είσοδος όχι μόνο της SPARES"
 
 # --- θόλοι ----------------------------------------------------------------
 DOME_REC = 24
@@ -407,6 +414,8 @@ def run_dome(e, d, plant_class=None):
             continue                                # KEEP_METAL, ούτε τρώει ούτε ζητά
         if e.keep & 1 and r[0] == S_STARCH:         # βήμα 138: το βιοπλαστικό στο
             continue                                # BIO_MAX, η PLASTIC σταματά
+        if e.keep & 4 and r[2] == S_BIOPL:          # βήμα 144: τα ανταλλακτικά στο
+            continue                                # SPARES_MAX, η SPARES σταματά
         ins = ((r[0], r[1]), (r[2], r[3]), (r[4], r[5]))
         if any(st != NO_STOCK and e.stock[st] < q for st, q in ins):
             continue                                # λείπει είσοδος: δεν καίει
@@ -586,7 +595,8 @@ def store_check(e):
         cap += STORE_SIZE[e.dome[d * DOME_REC + D_SIZE]]
     e.full = 1 if sum(e.stock[1:]) >= cap else 0
     e.keep = (2 if e.stock[S_METAL] < KEEP_METAL else 0) \
-        | (1 if e.stock[S_BIOPL] >= BIO_MAX else 0)         # βήματα 127, 138
+        | (1 if e.stock[S_BIOPL] >= BIO_MAX else 0) \
+        | (4 if e.stock[S_SPARE] >= SPARES_MAX else 0)      # βήματα 127, 138, 144
     if e.full:                                              # βήμα 142 (st_need):
         e.need = need_of(e)                                 # μόνο με γεμάτη
 
