@@ -624,7 +624,7 @@ stc_set:
         rla                             ; bit 1 το μέταλλο, bit 0 το βιοπλαστικό
         ld      (ec_keep),a
         ld      a,c
-        jp      ec_setfull              ; src/econ.asm, τράπεζα 0
+        jp      st_need                 ; src/econ.asm, τράπεζα 0: και το ec_need (142)
 stc_caps:    dw 100, 300, 600
         assert  (stc_caps & 255) <= 256 - 6 && S_WATER == 0 && S_MEAT == 13 && DOME_REC == 24 && EC_CAP * 13 < 65536
 

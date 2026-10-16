@@ -14,6 +14,7 @@ NO_STOCK    equ 255
 MF_OPERATOR equ 1
 MF_FLOW     equ 2
 MF_ADDS     equ 4           ; προσθέτει στην αποθήκη: σταματά όταν γεμίσει (βήμα 124)
+NEED_MIN    equ 30          ; και το σπανιότερο υλικό του γεύματος κάτω από αυτό, όχι (142)
 PROD_DOMES  equ 16
 
 ; ΤΡΕΙΣ ΣΤΑΘΜΕΣ ΡΕΥΜΑΤΟΣ, ΟΧΙ ΔΥΟ. Ο πίνακας του §6.5 γράφει για την αστοχία
@@ -175,12 +176,12 @@ ec_run_plant:
         ; πέθαινε από πείνα με γεμάτη σιταποθήκη. Ο κήπος είναι ένας κήπος:
         ; όποιος τον φροντίζει, τον φροντίζει όλο.
         ld      a,(ed_ops)
+        or      a
+        ret     z
 erp_full:
-        or      a                       ; xor a με γεμάτη αποθήκη (ec_setfull):
-        ret     z                       ; ο κήπος σταματά (βήμα 122)
-
-        ld      a,S_WATER               ; ένα νερό
-        ld      c,1
+        ld      a,S_WATER               ; ένα νερό· «jr erp_chk» με γεμάτη αποθήκη
+erp_go:                                 ; (ec_setfull, βήμα 142· ως τότε το «or a»
+        ld      c,1                     ; πιο πάνω γινόταν «xor a», βήμα 122)
         call    ec_have                 ; DE = &νερό
         ret     c
 
@@ -214,6 +215,28 @@ erp_full:
         jp      ec_make
 
 plant_out:  db S_STARCH,3, S_VEG,2, S_MEDPLANT,2, NO_STOCK,0
+
+; erp_chk — ο κήπος με γεμάτη αποθήκη (βήμα 142, η επιλογή του χρήστη): τρέχει
+; μόνο το φυτό που βγάζει το σπανιότερο υλικό του γεύματος, όσο αυτό είναι κάτω
+; από NEED_MIN (ec_need, src/stock.asm)· τα άλλα σταματούν όπως από το βήμα 122,
+; ούτε νερό ούτε ρεύμα. Ως τότε σταματούσαν όλα: το MEALS θέλει άμυλο ΚΑΙ
+; λαχανικά ΚΑΙ κρέας, και αν ένα έλειπε με την αποθήκη γεμάτη από τα άλλα, δεν
+; ξαναφτιαχνόταν ποτέ — 7 αποικίες στις 24 πέθαναν έτσι (DESIGN §10.1, βήμα
+; 140). C = το φυτό (από το ec_run_one), και υπάρχει βιολόγος. Το erp_cls + 1
+; είναι η κατηγορία που τρέχει (0 άμυλο, 1 λαχανικά) ή #FF, από το ec_setfull.
+; Μόνο με γεμάτη αποθήκη: χωρίς, ο κήπος δεν περνά από εδώ και δεν πληρώνει
+; τίποτα — το SMC είναι το «ld a,S_WATER» του, 2 bytes όσο και το jr.
+erp_chk:
+        ld      a,c
+        add     a,G_plant_class & 255
+        ld      l,a
+        ld      h,G_plant_class >> 8
+erp_cls:
+        ld      a,#FF                   ; η κατηγορία που τρέχει (ec_setfull)
+        cp      (hl)
+        ret     nz
+        xor     a                       ; S_WATER
+        jr      erp_go
 
 ; --- μία μηχανή ------------------------------------------------------------
 ; A = τύπος μηχανής. IX = η συνταγή, G_recipes + 10*A: το 10*A χωράει σε byte
@@ -317,14 +340,49 @@ erm_tk:
 ; αποικία πέθαινε από πείνα με την αποθήκη γεμάτη άμυλο και λαχανικά, και
 ; τίποτα δεν την άδειαζε (tools/play.py, DESIGN §6.5). Μετά τις εισόδους: μια
 ; μηχανή χωρίς αυτές σταματούσε ήδη.
+; ΚΑΙ ΤΡΕΧΕΙ ΑΝ ΒΓΑΖΕΙ ΤΟ ΣΠΑΝΙΟΤΕΡΟ ΥΛΙΚΟ ΤΟΥ ΓΕΥΜΑΤΟΣ (βήμα 142, όπως ο κήπος
+; στο erp_chk): το VITROMEAT όταν το κρέας είναι το λιγότερο των τριών και κάτω
+; από NEED_MIN. Το erm_need + 1 ΕΙΝΑΙ το ec_need: το γράφει το st_need.
 erm_inf:
         call    erm_in
         ret     c
         ld      a,(ix+9)
         and     MF_ADDS                 ; NC
         ret     z                       ; μετατροπή, ροή, κρεβάτια: συνεχίζει
+        ld      a,(ix+6)
+erm_need:
+        cp      NO_STOCK                ; το ec_need: Z και NC, συνεχίζει
+        ret     z
         scf
         ret
+ec_need     equ erm_need + 1
+
+; st_need — το τέλος του st_check (βήμα 142, src/needs.asm), A = 0 ή 1 όπως στο
+; ec_setfull: με γεμάτη αποθήκη το ec_need, το σπανιότερο από άμυλο, λαχανικά
+; και κρέας αν είναι κάτω από NEED_MIN, αλλιώς NO_STOCK· στην ισοπαλία το πρώτο
+; της σειράς. Μία φορά ανά κύκλο ροής, όπως το ec_keep — και στην τράπεζα 0,
+; γιατί το b6code του st_check έχει 1 byte. ΜΟΝΟ ΜΕ ΓΕΜΑΤΗ: χωρίς, κανείς δεν το
+; διαβάζει, και ο κύκλος ροής πλήρωνε 90 us για τίποτα (4 τώρα). Το ec_need δεν
+; είναι μεταβλητή: είναι το immediate του erm_inf, που το διαβάζει (4 bytes
+; λιγότερα). Χαλάει όσα και το ec_setfull, και τα B, DE.
+st_need:
+        or      a
+        jr      z,ec_setfull            ; χωρά
+        ld      bc,256 * NEED_MIN + NO_STOCK    ; B = το όριο, C = κανένα
+        ld      hl,EC_STOCK + 2 * S_STARCH
+        ld      e,S_STARCH
+        call    esn_one
+        inc     e                       ; τα λαχανικά, αμέσως μετά
+        call    esn_one
+        inc     hl                      ; όχι τα βότανα
+        inc     hl
+        inc     e
+        inc     e
+        call    esn_one                 ; το κρέας
+        ld      a,c
+        ld      (ec_need),a
+        ld      a,1                     ; γεμάτη
+        ; fall through
 
 ; ec_setfull — A = 0 ή 1: το ec_full (src/stock.asm) και ο κώδικας που το
 ; ακούει χωρίς να το διαβάζει (βήμα 122). Ενα «ld a,(ec_full) / or a» σε κάθε
@@ -335,16 +393,25 @@ erm_inf:
 ; st_check (src/needs.asm) και το wheel_reset. Χαλάει AF, C, HL.
 ec_setfull:
         ld      (ec_full),a
-        ld      hl,erm_in
-        ld      c,#B7                   ; or a
         or      a
+        ld      hl,erm_in
+        ld      de,256 * S_WATER + #3E  ; ld a,S_WATER: ο κήπος όπως ήταν
         jr      z,esf_put
+        ; ΓΕΜΑΤΗ (βήμα 142): το σπανιότερο υλικό του γεύματος — το ec_need, που
+        ; το erm_inf το διαβάζει ως απόθεμα — και στο erp_chk ως κατηγορία φυτού
+        ; (άμυλο 0, λαχανικά 1· το κρέας δεν το βγάζει κανένα φυτό, #FF).
+        ld      a,(ec_need)
+        sub     S_STARCH
+        cp      2
+        jr      c,esf_cls
+        ld      a,#FF
+esf_cls:
+        ld      (erp_cls + 1),a
         ld      hl,erm_inf
-        ld      c,#AF                   ; xor a
+        ld      de,#18 + 256 * (erp_chk - erp_full - 2)   ; jr erp_chk
 esf_put:
         ld      (erm_c3 + 1),hl
-        ld      a,c
-        ld      (erp_full),a
+        ld      (erp_full),de
         ; ΚΑΙ ΤΟ ΑΠΟΘΕΜΑ ΜΕΤΑΛΛΟΥ (βήμα 127) ΚΑΙ ΤΟ ΟΡΙΟ ΤΟΥ ΒΙΟΠΛΑΣΤΙΚΟΥ (βήμα
         ; 138): τα δύο bits του ec_keep διαλέγουν την πρώτη κλήση εισόδου από
         ; τις τέσσερις. Οσο υπάρχει μέταλλο και το βιοπλαστικό είναι κάτω από
@@ -367,6 +434,24 @@ esf_put:
         ret
 esf_tab:
         dw      erm_in, erm_inb, erm_ink, erm_inkb      ; ec_keep 0-3
+
+; esn_one — HL = &απόθεμα, E = ο δείκτης του: αν είναι κάτω από το B, το B
+; γίνεται αυτό και το C ο E. HL μετά το απόθεμα. Για το st_need.
+esn_one:
+        ld      a,(hl)
+        inc     hl
+        ld      d,(hl)
+        inc     hl
+        inc     d
+        dec     d
+        ret     nz                      ; 256 ή πάνω
+        cp      b
+        ret     nc
+        ld      b,a
+        ld      c,e
+        ret
+        assert  S_VEG == S_STARCH + 1 && S_MEDPLANT == S_STARCH + 2 && S_MEAT == S_STARCH + 3
+        assert  erp_chk - erp_full - 2 < 128 && NEED_MIN < 256 && S_WATER == 0
 
 ; erm_ink — η πρώτη είσοδος όταν το μέταλλο είναι κάτω από KEEP_METAL (βήμα
 ; 127, η επιλογή του χρήστη): CY, και η μηχανή σταματά — ούτε τρώει ούτε ζητά

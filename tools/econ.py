@@ -111,6 +111,12 @@ assert all(r[0] == S_METAL for r in RECIPE
 # όσο το βιοπλαστικό είναι BIO_MAX ή πάνω. Ο Z80 την ξέρει από την ΠΡΩΤΗ είσοδο,
 # το άμυλο: καμία άλλη δεν πρέπει να το έχει πρώτο.
 BIO_MAX = 100
+# ΤΟ ΣΠΑΝΙΟΤΕΡΟ ΥΛΙΚΟ ΤΟΥ ΓΕΥΜΑΤΟΣ (βήμα 142, η επιλογή του χρήστη): με γεμάτη
+# αποθήκη τρέχει μόνο ό,τι βγάζει το λιγότερο από άμυλο, λαχανικά και κρέας, όσο
+# αυτό είναι κάτω από NEED_MIN — τα φυτά του και το VITROMEAT (src/econ.asm,
+# erp_chk και erm_inf). Στην ισοπαλία το πρώτο της σειράς.
+NEED_MIN = 30
+NEED_OF = (S_STARCH, S_VEG, S_MEAT)
 assert [RECIPE.index(r) for r in RECIPE if r[0] == S_STARCH] == [2] \
     and RECIPE[2][6] == S_BIOPL, "το άμυλο πρώτη είσοδος όχι μόνο της PLASTIC"
 
@@ -258,6 +264,8 @@ class Econ:
         # ΤΟ ΑΠΟΘΕΜΑ ΜΕΤΑΛΛΟΥ (βήμα 127, bit 1) ΚΑΙ ΤΟ ΟΡΙΟ ΤΟΥ ΒΙΟΠΛΑΣΤΙΚΟΥ
         # (βήμα 138, bit 0): το ec_keep, δίπλα του.
         self.keep = 0
+        # ΚΑΙ ΤΟ ΣΠΑΝΙΟΤΕΡΟ ΥΛΙΚΟ ΤΟΥ ΓΕΥΜΑΤΟΣ (βήμα 142): το ec_need, δίπλα τους.
+        self.need = NO_STOCK
         self.amenity = 0            # δέντρα και σαλόνια — παρηγοριά (§6.6)
         # Το μήκος του sol είναι ΔΕΔΟΜΕΝΟ και όχι σταθερά: μια δοκιμή που
         # θέλει να δει πέντε sols δεν μπορεί να περιμένει 60.000 frames.
@@ -379,8 +387,8 @@ def run_dome(e, d, plant_class=None):
                 continue
             if not ops:                         # ΕΝΑΣ βιολόγος ποτίζει όλο
                 continue                        # τον κήπο (βλ. src/econ.asm)
-            if e.full:                          # γεμάτη αποθήκη (βήμα 122)
-                continue
+            if e.full and PLANT_OUT[plant_class[p] & 3][0] != e.need:
+                continue                        # γεμάτη αποθήκη (βήματα 122, 142)
             run_plant(e, base, s, p, plant_class)
             continue
         m = e.dome[base + D_MACH + s]
@@ -402,9 +410,11 @@ def run_dome(e, d, plant_class=None):
         ins = ((r[0], r[1]), (r[2], r[3]), (r[4], r[5]))
         if any(st != NO_STOCK and e.stock[st] < q for st, q in ins):
             continue                                # λείπει είσοδος: δεν καίει
-        if e.full and r[9] & MF_ADDS:               # γεμάτη αποθήκη (βήμα 122): ό,τι
-            continue                                # προσθέτει (βήμα 124) ούτε τρώει
-                                                    # ούτε ζητά ρεύμα
+        if e.full and r[9] & MF_ADDS and r[6] != e.need:
+            continue                                # γεμάτη αποθήκη (βήμα 122): ό,τι
+                                                    # προσθέτει (βήμα 124) ούτε τρώει
+                                                    # ούτε ζητά ρεύμα, εκτός από το
+                                                    # σπανιότερο υλικό (βήμα 142)
         # Το ρεύμα μετράει ως ΖΗΤΗΣΗ: όσα θα έτρεχαν αν υπήρχε. Με «όσα κάηκαν»
         # το μπλακάουτ μηδένιζε τη ζήτηση και το ρεύμα ξαναγύριζε μόνο του.
         e.acc_power += r[8]
@@ -577,6 +587,15 @@ def store_check(e):
     e.full = 1 if sum(e.stock[1:]) >= cap else 0
     e.keep = (2 if e.stock[S_METAL] < KEEP_METAL else 0) \
         | (1 if e.stock[S_BIOPL] >= BIO_MAX else 0)         # βήματα 127, 138
+    if e.full:                                              # βήμα 142 (st_need):
+        e.need = need_of(e)                                 # μόνο με γεμάτη
+
+
+def need_of(e):
+    """st_need (src/econ.asm): το λιγότερο από άμυλο, λαχανικά και κρέας, αν
+    είναι κάτω από NEED_MIN, αλλιώς NO_STOCK. Στην ισοπαλία το πρώτο."""
+    low = min(NEED_OF, key=lambda k: e.stock[k])            # το min κρατά το πρώτο
+    return low if e.stock[low] < NEED_MIN else NO_STOCK
 
 
 def break_one(e, x):
