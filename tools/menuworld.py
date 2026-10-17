@@ -39,7 +39,7 @@ PER_PLANET = 8              # κόσμοι ανά πλανήτη: MW_N = 32 στ
 SEED0 = 0x3A5D              # η αρχή της ακολουθίας των seeds (seeds())
 MENU = [("RANDOM", "ANY OF THE FOUR", "RANDOM WORLD"),
         ("DESERT", "WATER, LAND, SOME ORE", "DESERT"),
-        ("ICE", "MUCH WATER, LESS LAND", "ICE"),
+        ("ICE", "MOST WATER, SOME ORE", "ICE"),
         ("STORM", "MOUNTAINS, ORE, DRY", "STORM"),
         ("BARREN MOON", "DUST, ORE, LITTLE WATER", "BARREN MOON")]
 SUBTITLE = "a colony on a dead world"
