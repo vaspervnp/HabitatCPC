@@ -53,12 +53,16 @@ DROOM = dict(oxygen=4, canteen=3, quarters=2, green=5, factory=8, lab=9, medbay=
              control=1, storage=6, lounge=11)
 MACHINE_COUNT = (1, 4, 8)          # υποδοχές ανά μέγεθος s/m/l (tools/econ.py)
 GROW_AT = 14                       # από τόσους αποίκους τα «+» χτίζουν μεσαίο θόλο
-CORE_R = (14, 20, 26)              # tiles γύρω από το κέντρο των θόλων, με τη σειρά
+CORE_R = (14, 20, 26, 32)          # tiles γύρω από το κέντρο των θόλων, με τη σειρά
 SHORE_AHEAD = 1                    # βήμα 145: ελεύθερες θέσεις αντλίας που κρατά
 SHORE_R = 16                       # ως τόσα tiles από το σκάφος
 SHORE_AT = GROW_AT                 # από τόσους αποίκους
+FAR_R = 40                         # βήμα 147: όχθες ως τόσα tiles, όταν κοντά δεν χωρά
+FAR_N = 12                         # οι τόσες κοντινότερες, μία ανά 4x4
+FAR_ANCHORS = 6                    # σκαλοπάτια (airlock) για νερό και ρεύμα, το πολύ
+SLOT_KEEP = 2                      # θέσεις δομών (32) που μένουν για αντλίες
 MINE_K = 4                         # K_MINE, το είδος της δομής
-K_SOLAR, K_COLLECT, K_EXTRACT = 0, 2, 3   # τα K_* του src/const.asm
+K_SOLAR, K_COLLECT, K_EXTRACT, K_AIRLOCK = 0, 2, 3, 5   # τα K_* του src/const.asm
 R_GREEN = 5                        # D_ROOM του θερμοκηπίου: οι υποδοχές του είναι φυτά
 R_STORAGE = 6                      # D_ROOM της αποθήκης (το ROOM είναι η σειρά του καταλόγου)
 STRUCT_NAMES = ["ηλιακός", "ανεμογ.", "συλλέκτης", "αντλία", "ορυχείο", "airlock", "πίστα",
@@ -160,6 +164,7 @@ class Game:
         self.zones = False                      # το σχέδιο big: διάταξη με ζώνες
         self.shore, self.shore_key = [], None   # βήμα 145: οι θέσεις των αντλιών (Game.keep_shore)
         self.shore_path = set()                 # και τα tiles των μονοπατιών τους
+        self.anchors = 0                        # βήμα 147: σκαλοπάτια προς μακρινό νερό
         self.feed = None                        # --tweak feed=M:B
         self.plast = None                       # --tweak skeep=N / bmax=N (βήμα 138)
         self.trader = False                     # το εμπόριο (βήμα 139): τα σχέδια big*
@@ -380,7 +385,7 @@ class Game:
         out.sort()
         return [(2 * tx + 1, 2 * ty + 1) for _, tx, ty in out]
 
-    def spot(self, item, near, room=None, need=True):
+    def spot(self, item, near, room=None, need=True, dry=False):
         """(θέση σε μισά tiles, κομμάτια διαδρόμου) για το item: η φθηνότερη
         που περνά τον κανόνα, κοντά στο near. None αν δεν υπάρχει σε 8 tiles.
         `need` = False: το ορυχείο και χωρίς φλέβα (βήμα 123, μισή απόδοση)."""
@@ -406,6 +411,8 @@ class Game:
                         continue
                     if item != EXTRACTOR and self.on_shore(tx, ty, w, h):
                         continue
+                    if dry and B.has_near(b4, tx, ty, w, "water"):
+                        continue                # το σκαλοπάτι δεν πατά όχθη (βήμα 147)
                     p = reach.plan(b4, domes, structs, dims, kind, param, w, h,
                                    2 * tx + w, 2 * ty + h)
                     if not p["ok"]:
@@ -480,17 +487,165 @@ class Game:
         sb = lambda v: v - 256 if v > 127 else v
         pumps = [((sb(t[0]) - 3) >> 1, (sb(t[1]) - 3) >> 1)
                  for t in self.structs() if t[4] and t[2] == K_EXTRACT] or [(-1, -1)]
-        R = SHORE_R
-        for _, tx, ty in sorted((min(max(abs(tx - x), abs(ty - y)) for x, y in pumps), tx, ty)
-                                for ty in range(-R - 1, R) for tx in range(-R - 1, R)):
-            if any(abs(tx - x) < 3 and abs(ty - y) < 3 for x, y in self.shore):
+        # ΚΑΙ ΩΣ ΤΑ FAR_R ΑΝ ΚΟΝΤΑ ΔΕΝ ΧΩΡΑ, ΜΕΤΑ ΑΠΟ ΣΚΑΛΟΠΑΤΙ (βήμα 147): οι
+        # αντλίες της μακρινής όχθης (far_shore) θέλουν κι αυτές τη θέση της
+        # επόμενης. Ως τα 40 από την αρχή, μια μακρινή κράτηση έστειλε στο
+        # 5A5A 2 έναν ηλιακό αλλού στο sol 30, και στο sol 60 ήταν 22 αντί 32.
+        for R in ((SHORE_R, FAR_R) if self.anchors else (SHORE_R,)):
+            for _, tx, ty in sorted((min(max(abs(tx - x), abs(ty - y)) for x, y in pumps), tx, ty)
+                                    for ty in range(-R - 1, R) for tx in range(-R - 1, R)):
+                if any(abs(tx - x) < 3 and abs(ty - y) < 3 for x, y in self.shore):
+                    continue
+                tl = fits(tx, ty)
+                if tl is not None:
+                    self.shore.append((tx, ty))
+                    self.shore_path.update(tl)
+                    if len(self.shore) >= SHORE_AHEAD:
+                        break
+            if self.shore:
+                break
+
+    def far_shore(self):
+        """ΟΤΑΝ Η ΟΧΘΗ ΤΕΛΕΙΩΣΕΙ (βήμα 147). Στο g147, 120 sol, ο 1048 0 με 64
+        αποίκους και ο 5A5A 2 με 36 δεν βρήκαν θέση για αντλία από το sol 57-59:
+        οι κοντινές όχθες είχαν πιάσει, και μια αντλία θέλει δομή ως 12 tiles
+        (το σκάφος δεν μετρά). Το νερό τελείωσε, οι μηχανές OXYGEN σταμάτησαν,
+        και στο sol 74-75 πέθαναν 56 και 28 από αέρα.
+        Οι όχθες ως FAR_R, μία ανά 4x4, από την πιο κοντινή σε μια δομή: πρώτα
+        μια αντλία σε όποια από τις FAR_N φτάνει. Αλλιώς ένα σκαλοπάτι: ένα
+        airlock ως 10 tiles από μια όχθη, που με αυτό χωρά εκεί αντλία.
+        -> ("pump" ή "anchor", (θέση, κομμάτια)) ή None."""
+        b4 = self.world()
+        sb = lambda v: v - 256 if v > 127 else v
+        own = [((sb(t[0]) - 3) >> 1, (sb(t[1]) - 3) >> 1) for t in self.structs()[reach.ship0(
+               [u[:7] for u in self.structs()]):] if t[4]]
+        if not own:
+            return None
+        ground = lambda tx, ty: all(reach.ok_tile(b4[reach.widx(tx + i, ty + j)])
+                                    for i in range(3) for j in range(3))
+        far = lambda tx, ty: min(max(abs(tx - x), abs(ty - y)) for x, y in own)
+        R = FAR_R
+        shores, seen = [], set()
+        for ty in range(-R - 1, R):
+            for tx in range(-R - 1, R):
+                k = (tx >> 2, ty >> 2)
+                if k in seen or not ground(tx, ty) or not B.has_near(b4, tx, ty, 3, "water"):
+                    continue
+                seen.add(k)
+                shores.append((far(tx, ty), tx, ty))
+        if not shores:
+            return None
+        shores.sort()
+        for _, tx, ty in shores[:FAR_N]:
+            g = self.spot(EXTRACTOR, (2 * tx + 3, 2 * ty + 3))
+            if g:
+                return "pump", g
+        if self.anchors >= FAR_ANCHORS or self.free_structs() < 2:
+            return None                         # το σκαλοπάτι και η αντλία του
+        # ΤΟ ΣΚΑΛΟΠΑΤΙ ΕΙΝΑΙ AIRLOCK (with_airlock).
+        ek, ep, ew, eh = self.m.read_ram(self.sym["BLD_ITEMS"] + 8 * EXTRACTOR, 4)
+        X = self.anchor_ctx()
+        domes, dims = X["domes"], X["dims"]
+
+        def ground_in(b, tx, ty):
+            return all(reach.ok_tile(b[reach.widx(tx + i, ty + j)]) for i in range(3) for j in range(3))
+
+        # ΜΕ ΠΡΟΒΛΕΨΗ: ένα airlock ως 10 tiles από την όχθη μετρά μόνο αν με
+        # αυτό χωρά αντλία ως 4 tiles από αυτήν. «Οσο πιο κοντά στην όχθη»
+        # σκέτο έβρισκε μόνο νερό και όχθη γύρω της.
+        for d0, gx, gy in shores[:FAR_N]:
+            for d, tx, ty in sorted((max(abs(tx - gx), abs(ty - gy)), tx, ty)
+                                    for ty in range(gy - 10, gy + 11) for tx in range(gx - 10, gx + 11)):
+                a = self.with_airlock(tx, ty, X)
+                if a is None:
+                    continue
+                at, pieces, b, sl = a
+                for py in range(gy - 4, gy + 5):
+                    for px in range(gx - 4, gx + 5):
+                        if ground_in(b, px, py) and B.has_near(b, px, py, 3, "water") and \
+                                reach.plan(b, domes, sl, dims, ek, ep, ew, eh,
+                                           2 * px + ew, 2 * py + eh)["ok"]:
+                            return "anchor", (at, pieces)
+        return None
+
+    def free_structs(self):
+        """Οι ελεύθερες από τις 32 θέσεις δομών (MAX_STRUCT)."""
+        return sum(1 for t in self.structs() if not t[4])
+
+    def anchor_ctx(self):
+        """Ο,τι διαβάζει το with_airlock, μία φορά ανά αναζήτηση."""
+        structs = [t[:7] for t in self.structs()]
+        kind, param, w, h = self.m.read_ram(self.sym["BLD_ITEMS"] + 8 * AIRLOCK, 4)
+        return dict(b4=self.world(), domes=[d[:4] for d in self.domes()], structs=structs,
+                    dims=self.m.read_ram(self.L["G_struct_dims"], 64), lock=(kind, param, w, h),
+                    slot=next((k for k in range(reach.ship0(structs), 32) if not structs[k][4]), None),
+                    size=next((t[3] for t in structs if t[4] and t[2] == K_AIRLOCK), 0))
+
+    def with_airlock(self, tx, ty, X):
+        """ΤΟ ΣΚΑΛΟΠΑΤΙ (βήμα 147): ένα airlock στο (tx, ty) που μπαίνει τώρα,
+        και η αποικία με αυτό — ο κόσμος με το αποτύπωμα και τον διάδρομό του,
+        οι δομές με αυτό. Στον 1048 0 στο sol 58 κανένας ηλιακός ως 16 tiles
+        από τις δομές δεν έφτανε μια δομή: οι θόλοι, οι διάδρομοι και τα
+        μονοπάτια είχαν περιφράξει την αποικία. Το airlock δεν θέλει μονοπάτι·
+        κουμπώνει με διάδρομο σε θόλο, και είναι δομή, η άγκυρα των επόμενων.
+        Εκεί 22 θέσεις του έφταναν. -> (θέση, κομμάτια, κόσμος, δομές) ή None."""
+        b4, domes, structs, dims, slot = X["b4"], X["domes"], X["structs"], X["dims"], X["slot"]
+        kind, param, w, h = X["lock"]
+        if slot is None or not (-60 <= tx and tx + w <= 60 and -60 <= ty and ty + h <= 60):
+            return None
+        if not all(reach.ok_tile(b4[reach.widx(tx + i, ty + j)]) for i in range(w) for j in range(h)) \
+                or self.on_shore(tx, ty, w, h):
+            return None
+        at = (2 * tx + w, 2 * ty + h)
+        p = reach.plan(b4, domes, structs, dims, kind, param, w, h, *at)
+        if not p["ok"] or self.shore_cut(p):
+            return None
+        b = bytearray(b4)
+        for j in range(h):
+            for i in range(w):
+                b[reach.widx(tx + i, ty + j)] |= 0x10
+        for c in p["corridors"]:
+            for x, y in c[4]:
+                b[reach.widx(x, y)] |= 0x20             # ο διάδρομός του πιάνει κι αυτός
+        sl = [list(t) for t in structs]
+        sl[slot] = [at[0] & 255, at[1] & 255, K_AIRLOCK, X["size"], 2, 255, 0]
+        return at, p["pieces"], b, sl
+
+    def struct_anchor(self, item):
+        """ΚΑΙ ΓΙΑ ΤΟ ΡΕΥΜΑ (βήμα 147): με την ακτίνα 32 ο 1048 0 έφτασε τους 53
+        θόλους, και από το sol 52 κανένας ηλιακός δεν έβρισκε θέση. Η
+        κατανάλωση πήγε στα 253 με 162 παραγωγή, οι αντλίες σταματούσαν, και
+        το σενάριο έχτισε 14. Ενα airlock στην άκρη της αποικίας, από το κέντρο
+        των θόλων προς τα έξω, που με αυτό χωρά το item ως 8 tiles γύρω του.
+        -> ("anchor", (θέση, κομμάτια)) ή None."""
+        sb = lambda v: v - 256 if v > 127 else v
+        X = self.anchor_ctx()
+        domes, dims = X["domes"], X["dims"]
+        own = [(sb(d[0]) >> 1, sb(d[1]) >> 1) for d in domes if d[3]]
+        if not own:
+            return None
+        cx = sum(x for x, _ in own) // len(own)
+        cy = sum(y for _, y in own) // len(own)
+        kind, param, w, h = self.m.read_ram(self.sym["BLD_ITEMS"] + 8 * item, 4)
+        tries = 0
+        for _, tx, ty in sorted((max(abs(tx - cx), abs(ty - cy)), tx, ty)
+                                for ty in range(cy - FAR_R, cy + FAR_R)
+                                for tx in range(cx - FAR_R, cx + FAR_R)):
+            a = self.with_airlock(tx, ty, X)
+            if a is None:
                 continue
-            tl = fits(tx, ty)
-            if tl is not None:
-                self.shore.append((tx, ty))
-                self.shore_path.update(tl)
-                if len(self.shore) >= SHORE_AHEAD:
-                    break
+            at, pieces, b, sl = a
+            for qy in range(ty - 8, ty + 9):
+                for qx in range(tx - 8, tx + 9):
+                    if not all(reach.ok_tile(b[reach.widx(qx + i, qy + j)]) for i in range(w) for j in range(h)) \
+                            or self.on_shore(qx, qy, w, h):
+                        continue
+                    if reach.plan(b, domes, sl, dims, kind, param, w, h, 2 * qx + w, 2 * qy + h)["ok"]:
+                        return "anchor", (at, pieces)
+            tries += 1
+            if tries >= 40:
+                break
+        return None
 
     def on_shore(self, tx, ty, w, h):
         """Το αποτύπωμα πατά μια κρατημένη θέση αντλίας ή το μονοπάτι της."""
@@ -1079,6 +1234,11 @@ def water_short(G):
     w = [r["stock"][S_WATER] for r in last(G)]
     # Και κολλημένο στο μηδέν (βήμα 137): δεν «πέφτει» πια, και ως τότε το
     # σενάριο δεν έχτιζε αντλία με το νερό στο 0 για πάνω από δεκαπέντε sol.
+    # ΟΧΙ ΑΝ ΛΕΙΠΕΙ ΤΟ ΡΕΥΜΑ (βήμα 147): χωρίς όλο το ρεύμα οι αντλίες
+    # σταματούν, και στον 1048 0 το σενάριο έχτισε 14, έξι ρεύματος η καθεμία,
+    # με το ρεύμα κομμένο τα δύο τρίτα του χρόνου. Οι νύχτες είναι το ένα τρίτο.
+    if sum(1 for r in last(G) if r["pok"] != 1) * 2 > len(last(G)):
+        return False
     return (w[-1] < w[0] or w[-1] < 5) and w[-1] < 60 + 5 * G.rows[-1]["alive"]
 
 
@@ -1437,11 +1597,18 @@ def try_step(G, s):
         m = 0                               # το πρώτο ορυχείο δωρεάν (βήμα 123)
     if G.stock(S_METAL) < m or G.stock(S_BIOPL) < bp:
         return False                        # ούτε χωρίς διαδρόμους: μην ψάξεις
+    # ΟΙ ΔΥΟ ΤΕΛΕΥΤΑΙΕΣ ΘΕΣΕΙΣ ΔΟΜΩΝ ΓΙΑ ΤΙΣ ΑΝΤΛΙΕΣ (βήμα 147): στον 1048 0 οι 32
+    # γέμισαν (11 ηλιακοί, 8 airlock, 7 αντλίες) και η όγδοη αντλία δεν έμπαινε·
+    # το νερό τελείωσε, οι φρουροί πήγαιναν στις ανάγκες τους και δεν πολεμούσαν,
+    # και δύο επιδρομές σκότωσαν 78 στα sol 94 και 102.
+    if item in (SOLAR, TURBINE, COLLECTOR, MINE, AIRLOCK, PAD) and G.free_structs() <= SLOT_KEEP:
+        return None
     key = (s["name"], item, sum(1 for d in G.domes() if d[4]) + sum(1 for t in G.structs() if t[4]))
     if G.spot_cache.get(key, 0) is None:
         return None                         # ίδια αποικία, ίδια απάντηση
     near = s["near"]
     got = None
+    anchor = False
     G.why = {}
     G.keep_shore()
     if s.get("zone"):
@@ -1449,6 +1616,8 @@ def try_step(G, s):
         # των τριάντα δεν έβρισκαν θέση για τροφή, και πέθαιναν ως το sol 60.
         # ΚΑΙ Ο ΜΙΚΡΟΣ ΟΤΑΝ Ο ΜΕΣΑΙΟΣ ΔΕΝ ΧΩΡΑ: στο 1048 1 τα «+» έμειναν χωρίς
         # θέση στους δεκατέσσερις, ενώ έξι αποθήκες βρήκαν.
+        # ΚΑΙ ΣΤΑ 32 (βήμα 147): στα 120 sol τέσσερις αποικίες των 47-54 δεν
+        # έβρισκαν θέση για δεύτερο Control ως τα 26, και το ταβάνι έμενε 54.
         for it in ((DOME_M, DOME_S) if item == DOME_M else (item,)):
             for R in (CORE_R if s["zone"] == "core" and G.grow else (None,)):
                 got = G.spot_zone(it, s["zone"], R)
@@ -1460,6 +1629,12 @@ def try_step(G, s):
                     m, bp = COST[item]
                     m += reserve(G, s)
                 break
+        if got is None and item in (SOLAR, COLLECTOR, TURBINE) and G.zones \
+                and G.anchors < FAR_ANCHORS and G.free_structs() > SLOT_KEEP + 1:
+            f = G.struct_anchor(item)       # βήμα 147: η αποικία περιφραγμένη
+            if f:
+                got, anchor, item = f[1], True, AIRLOCK
+                m, bp = COST[AIRLOCK]
         G.spot_cache[key] = got
         if got is None:
             return None
@@ -1501,6 +1676,13 @@ def try_step(G, s):
             if got and not got[1]:
                 break
         half = got is not None
+    if got is None and s["item"] == EXTRACTOR and G.zones:
+        f = G.far_shore()                   # βήμα 147: η μακρινή όχθη
+        if f and f[0] == "pump":
+            got = f[1]
+        elif f:
+            got, anchor, item = f[1], True, AIRLOCK
+            m, bp = COST[AIRLOCK]
     G.spot_cache[key] = got
     if got is None:
         return None                         # καμία θέση ακόμη: ίσως μετά από άλλα
@@ -1514,6 +1696,12 @@ def try_step(G, s):
         G.event(f"«{s['name']}» δεν μπήκε στο {at} (μέταλλο {G.stock(S_METAL)}, "
                 f"θέλει {m}/{bp})")
         return False
+    if anchor:
+        # Το στάδιο μένει: η αντλία στο επόμενο δείγμα, με την άγκυρα.
+        G.anchors += 1
+        G.event(f"χτίζεται σκαλοπάτι για «{s['name']}», «airlock» (κόμβος {node}, {at}, {pieces} διάδρ.) -> "
+                f"μέταλλο {G.stock(S_METAL)}")
+        return None
     G.built[s["name"]] = (node, at)
     G.event(f"χτίζεται «{s['name']}»{' ΜΕΣΑΙΟΣ' if item == DOME_M else ''} (κόμβος {node}, {at}, {pieces} διάδρ.) -> "
             f"μέταλλο {G.stock(S_METAL)}, βιοπλ. {G.stock(S_BIOPL)}"
