@@ -86,6 +86,13 @@ isi_lp: ld      a,(hl)
         ; δεν αλλάζει ποτέ.
         call    snd_init
         call    ov_install              ; ο κώδικας του GH_BUF στις τρύπες (βήμα 101)
+        ; ΚΟΣΜΟΣ ΤΟΥ TUTORIAL; Η ΓΡΑΜΜΗ ΤΟΥ ΠΡΩΤΟΥ ΒΗΜΑΤΟΣ (βήμα 149). ΠΡΙΝ από το
+        ; game_new: εκείνο τελειώνει δείχνοντας τον κέρσορα (ui_init), που
+        ; γράφει το αρχείο του στο GH_BUF, όπου τρέχει το tutorial — μετά, το
+        ; πρώτο ui_hide ξανάγραφε σκουπίδια και το UI δεν άκουγε κανένα πλήκτρο.
+        ; Το game_new μηδενίζει το EC_TU, και το επόμενο γεγονός το ξαναβρίσκει
+        ; από το worldinfo (src/tutor.asm).
+        call    tu_run
         call    game_new
         ; fall through
 
@@ -351,6 +358,25 @@ zz_ov3_end:
         assert  zz_ov3_end <= GH_BUF + GH_LOG
         assert  OV1_PAD + OV2_PAD + zz_ov3_end - GH_BUF <= OV_MAX
         save    "../build/ovl3.bin", OV_LOAD + OV1_PAD + OV2_PAD, zz_ov3_end - GH_BUF
+; --- ΚΑΙ ΤΟ TUTORIAL (βήμα 149): ο κώδικάς του, τέταρτο κομμάτι στο GH_BUF, και
+; μετά οι γραμμές του, μία ανά τρύπα, που δεν έρχονται ποτέ στο GH_BUF: τις
+; φέρνει μία-μία το ίδιο (src/tutor.asm). Τις χωρούν οι τρύπες από το βήμα 148
+; (OV_LOAD). ---
+OV3_PAD     equ ((zz_ov3_end - GH_BUF + 31) >> 5) << 5
+OV4_AT      equ OV_LOAD + OV1_PAD + OV2_PAD + OV3_PAD
+        org     GH_BUF, OV4_AT
+zz_ov4:
+        include "tutor.asm"
+zz_ov4_end:
+        assert  tuo_buf + 32 <= GH_BUF + GH_LOG
+OV4_PAD     equ ((zz_ov4_end - GH_BUF + 31) >> 5) << 5
+        org     GH_BUF + OV4_PAD, OV4_AT + OV4_PAD
+zz_tut:
+        include "tutext.asm"
+zz_tut_end:
+        assert  zz_tut_end - zz_tut == (TU_YOURS + 1) * 32   ; TU_TROWS (src/demolish.asm)
+        assert  OV4_AT + OV4_PAD + zz_tut_end - zz_tut <= OV_LOAD + OV_MAX
+        save    "../build/ovl4.bin", OV4_AT, OV4_PAD + zz_tut_end - zz_tut
 
         org     PAGE2_CODE - 256
 zz_colony:

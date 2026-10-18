@@ -86,11 +86,11 @@ def syms():
     return sym, layout()["G_econ_state"]
 
 
-def sna_path(seed, planet):
-    return os.path.join(ROOT, "build", f"play_{seed:04x}_{planet}.sna")
+def sna_path(seed, planet, tut=False):
+    return os.path.join(ROOT, "build", f"play_{seed:04x}_{planet}{'_tu' if tut else ''}.sna")
 
 
-def make(pairs):
+def make(pairs, tut=False):
     """build/play_SSSS_P.sna: το main.sna με τον κόσμο (seed, planet). Το
     build/world_new.bin ξαναγίνεται ο κανονικός στο τέλος."""
     import test_game as TG
@@ -101,7 +101,7 @@ def make(pairs):
     try:
         for seed, planet in pairs:
             open(world, "wb").write(bytes(Wg.generate(seed, planet).buf))
-            out = sna_path(seed, planet)
+            out = sna_path(seed, planet, tut)
             r = subprocess.run([RASM, "main.asm", "-oi", out, "-v2", "-s",
                                 "-eo"], cwd=os.path.join(ROOT, "src"), capture_output=True,
                                text=True)
@@ -115,6 +115,10 @@ def make(pairs):
             d = bytearray(open(out, "rb").read())
             at = 0x100 + 0x10000 + 2 * 0x4000 + wi
             d[at:at + 3] = bytes([seed & 255, seed >> 8, planet])
+            if tut:
+                # ...και το bit 7 του τέταρτου, όπως για την έκτη γραμμή του μενού
+                # (βήμα 149): ο κόσμος του tutorial, και το πρώτο βήμα στην εκκίνηση.
+                d[at + 3] = Wg.GEN_VERSION | 0x80
             open(out, "wb").write(bytes(d))
     finally:
         mknew.build()
@@ -162,6 +166,7 @@ class Game:
         self.spot_cache = {}
         self.lastb = {}                         # όνομα σταδίου -> sol του τελευταίου
         self.zones = False                      # το σχέδιο big: διάταξη με ζώνες
+        self.tut = False                        # το σχέδιο tutorial (βήμα 149)
         self.shore, self.shore_key = [], None   # βήμα 145: οι θέσεις των αντλιών (Game.keep_shore)
         self.shore_path = set()                 # και τα tiles των μονοπατιών τους
         self.anchors = 0                        # βήμα 147: σκαλοπάτια προς μακρινό νερό
@@ -948,13 +953,15 @@ def cause(a):
 # το σχέδιο
 # --------------------------------------------------------------------------
 def step(name, item, near, room=None, codes=(), after=(), when=None, again=False, zone=None,
-         fill=False, grow=False, aside=False):
+         fill=False, grow=False, aside=False, seq=False):
     """aside (βήμα 143): το στάδιο δοκιμάζεται σε κάθε δείγμα, έξω από τη σειρά —
     ούτε το κρατά πίσω ένα στάδιο που δεν πληρώνεται, ούτε κρατά αυτό τα
-    επόμενα όταν δεν πληρώνεται."""
+    επόμενα όταν δεν πληρώνεται.
+    seq (βήμα 149): τα after φτάνει να ΜΠΗΚΑΝ, όχι να χτίστηκαν — τα βήματα του
+    tutorial, όπου το εργοτάξιο μετράει."""
     return dict(name=name, item=item, near=near, room=room, codes=list(codes),
                 after=list(after), when=when, again=again, zone=zone, fill=fill, grow=grow,
-                aside=aside)
+                aside=aside, seq=seq)
 
 
 def room_free(G, upto=80):
@@ -1295,8 +1302,36 @@ def need_low(G, k):
 
 
 def open_sites(G):
-    """Εργοτάξια ταυτόχρονα: δύο, τρία από τους δώδεκα (βήμα 131)."""
+    """Εργοτάξια ταυτόχρονα: δύο, τρία από τους δώδεκα (βήμα 131). Στο tutorial
+    (βήμα 149) όσα ζητούν τα βήματα: ο παίκτης χτίζει μόλις του το πουν."""
+    if G.tut:
+        return 99
     return OPEN if not G.rows or G.rows[-1]["alive"] < 12 else OPEN + 1
+
+
+def plan_tutorial():
+    """Τα δεκατέσσερα βήματα του tutorial (βήμα 149, src/tutor.asm), με τη σειρά
+    τους: το καθένα μόλις ΜΠΕΙ το προηγούμενο — το εργοτάξιο μετράει. Οι μηχανές
+    που λέει η γραμμή: OXYGEN, MEALS, METAL, άμυλο και λαχανικά, MEAT. Το πλοίο
+    θέλει τον έλεγχο και την πίστα χτισμένα (ship_call). Δεκατρία ήταν, χωρίς τον
+    δεύτερο ηλιακό: το ρεύμα κομμένο το 60% του χρόνου ως το πλοίο (DESIGN §9.6)."""
+    return [
+        step("ηλιακός", SOLAR, (10, -6)),
+        step("οξυγόνο", DOME_S, (6, 2), "oxygen", [OXYGEN], after=["ηλιακός"], seq=True),
+        step("airlock", AIRLOCK, (6, 12), after=["οξυγόνο"], seq=True),
+        step("αντλία", EXTRACTOR, "water", after=["airlock"], seq=True),
+        step("κυλικείο", DOME_S, (18, 2), "canteen", [MEALS], after=["αντλία"], seq=True),
+        step("ηλιακός 2", SOLAR, (-8, 6), after=["κυλικείο"], seq=True),
+        step("συλλέκτης", COLLECTOR, (-8, -6), after=["ηλιακός 2"], seq=True),
+        step("ορυχείο", MINE, "ore", after=["συλλέκτης"], seq=True),
+        step("εργοστάσιο", DOME_S, (6, -10), "factory", [METAL], after=["ορυχείο"], seq=True),
+        step("θερμοκήπιο", DOME_M, (20, 14), "green", [STARCH, STARCH, VEG, VEG],
+             after=["εργοστάσιο"], seq=True),
+        step("εργαστήριο", DOME_S, (18, -10), "lab", [MEAT], after=["θερμοκήπιο"], seq=True),
+        step("έλεγχος", DOME_S, (30, -10), "control", after=["εργαστήριο"], seq=True),
+        step("πίστα", PAD, (-14, -14), after=["έλεγχος"], seq=True),
+        step("πλοίο", "ship", None, after=["πίστα", "έλεγχος"]),
+    ]
 
 
 def plan_big():
@@ -1430,7 +1465,7 @@ def plan_bigs():
     return plan
 
 
-PLANS = {"base": plan_base, "lean": plan_lean, "spares": plan_spares, "mine": plan_mine,
+PLANS = {"tutorial": plan_tutorial, "base": plan_base, "lean": plan_lean, "spares": plan_spares, "mine": plan_mine,
          "mine_ns": plan_mine_ns, "grow": plan_grow, "store": plan_store, "long": plan_long,
          "big": plan_big, "bigs": plan_bigs}
 
@@ -1538,6 +1573,8 @@ def tweak(G, spec):
 
 
 def ready(G, s):
+    if s.get("seq"):
+        return all(a in G.built for a in s["after"])
     return all(a in G.built and G.state(G.built[a][0]) == DS_ACTIVE for a in s["after"])
 
 
@@ -1864,15 +1901,17 @@ def main():
     ap.add_argument("--dump", action="store_true")
     ap.add_argument("--tweak", default="", help="π.χ. spares=12,metal=250,nofault,fault=0xFF")
     ap.add_argument("--json", default=None, help="τα δείγματα και τα συμβάντα, για διαγράμματα")
+    ap.add_argument("--tutorial", action="store_true",
+                    help="ο κόσμος ως κόσμος του tutorial (βήμα 149): για --make και για το τρέξιμο")
     a = ap.parse_args()
     if a.make:
         pairs = ([(int(x.split(":")[0], 0), int(x.split(":")[1])) for x in a.pairs.split(",")]
                  if a.pairs else [(a.seed, a.planet)])
-        make(pairs)
+        make(pairs, a.tutorial)
         if a.pairs:
             return 0
     sym, g = syms()
-    G = Game(sym, g, sna_path(a.seed, a.planet))
+    G = Game(sym, g, sna_path(a.seed, a.planet, a.tutorial))
     G.trader = a.plan.startswith("big")         # το εμπόριο (βήμα 139)· notrade το σβήνει
     G.grow = a.plan.startswith("big")           # βήμα 140· nogrow το σβήνει
     tweak(G, a.tweak)
@@ -1880,6 +1919,7 @@ def main():
           + (f", πειράγματα {a.tweak}" if a.tweak else ""),
           flush=True)
     G.zones = a.plan.startswith("big")
+    G.tut = a.plan == "tutorial"
     left = play(G, PLANS[a.plan](), a.sols)
     report(G)
     deaths = [e for e in G.events if "ΘΑΝΑΤΟΣ" in e]

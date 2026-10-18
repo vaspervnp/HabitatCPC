@@ -120,7 +120,7 @@ def main():
     show, load = sym["MW_SHOW_E"], sym["MW_LOAD_E"]
     bad = []
     for k in range(g["MW_N"]):
-        sel = k % 5
+        sel = k % g["OPT_N"]             # έξι γραμμές από το βήμα 149
         _, got = rig.call(show, k, sel)
         n = diff(got, MW.screen_menu(k, sel).to_screen_ram())
         if n:
@@ -128,8 +128,8 @@ def main():
     check(not bad, f"ο Z80 ζωγραφίζει και τους {g['MW_N']} κόσμους με το μενού όπως "
                    f"η αναφορά, byte προς byte" + (f" — λάθος {bad[:6]}" if bad else ""))
     bad = []
-    for sel in range(5):
-        k = 7 * sel + 3
+    for sel in range(g["OPT_N"]):
+        k = (7 * sel + 3) % g["MW_N"]
         rig.call(show, k, sel)
         _, got = rig.call(load, sel)
         n = diff(got, MW.screen_loading(k, sel).to_screen_ram())
@@ -179,11 +179,13 @@ def main():
          [(find("MW_TITLE", [0x3D, 0x28]) + k, 0) for k in (1, 2)], None),
         ("το BUILDING THE WORLD αναμμένο από την αρχή",
          [(find("MW_LOAD", [0x06, 0x3F]) + 1, 0xFF)], "load"),
+        ("πέντε γραμμές, χωρίς το TUTORIAL (ld b,5· βήμα 149)",
+         [(find("MW_SHOW", [0x06, g["OPT_N"]]) + 1, 5)], None),
     ]
     for label, patch, what in negs:
         n = 0
         for k in (2, 13, 21, 30):
-            sel = k % 5
+            sel = k % g["OPT_N"]
             if what == "load":
                 rig.call(show, k, sel)
                 _, got = rig.call(load, sel, patch=patch)

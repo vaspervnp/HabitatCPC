@@ -29,18 +29,20 @@ SUB_COL     equ 8
 SUB_ROW     equ 4
 SUB_W       equ 24
 
-; Το πάνελ: πλαίσιο στην πένα 4, μέσα μαύρο.
+; Το πάνελ: πλαίσιο στην πένα 4, μέσα μαύρο. Μία σειρά ψηλότερο από το βήμα
+; 149, για την έκτη γραμμή: ως τότε από τη 11, 13 σειρές.
 PNL_COL     equ 7
-PNL_ROW     equ 11
+PNL_ROW     equ 10
 PNL_W       equ 26
-PNL_H       equ 13
+PNL_H       equ 14
 
 ; Το μενού μέσα στο πάνελ.
 CHO_COL     equ 13          ; CHOOSE A WORLD
-CHO_ROW     equ 12
-OPT_COL     equ 8           ; οι πέντε γραμμές, η διαλεγμένη ανάποδα σε
-OPT_ROW     equ 14          ; όλο το OPT_W
+CHO_ROW     equ 11
+OPT_COL     equ 8           ; οι γραμμές, η διαλεγμένη ανάποδα σε
+OPT_ROW     equ 13          ; όλο το OPT_W
 OPT_W       equ 24
+OPT_N       equ 6           ; πέντε ως το βήμα 148· η έκτη το TUTORIAL (βήμα 149)
 DSC_COL     equ 9           ; η περιγραφή της διαλεγμένης
 DSC_ROW     equ 20
 DSC_W       equ 23

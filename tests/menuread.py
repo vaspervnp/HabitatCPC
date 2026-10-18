@@ -111,13 +111,13 @@ ROWS = tuple(name for name, _, _ in MW.MENU)
 
 
 def pick(m, bs, planet=None, joy=False):
-    """Περιμένει το μενού και διαλέγει: planet 0-3, ή None για τον τυχαίο.
-    Ως τον πάτο πηγαίνει από πάνω (ένα βελάκι πάνω από τον τυχαίο), αλλιώς
-    κάτω. Γυρίζει τα frames της αναμονής, ή None."""
+    """Περιμένει το μενού και διαλέγει: planet 0-3, 4 το TUTORIAL (βήμα 149), ή
+    None για τον τυχαίο. Ως τον πάτο πηγαίνει από πάνω (ένα βελάκι πάνω από τον
+    τυχαίο), αλλιώς κάτω. Γυρίζει τα frames της αναμονής, ή None."""
     f = wait(m, bs)
     if f is None:
         return None
     n = 0 if planet is None else planet + 1
-    keys = "u" if n == 4 else "d" * n
+    keys = "u" if n == len(MW.MENU) - 1 else "d" * n
     press(m, keys + "f", joy)
     return f

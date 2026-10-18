@@ -38,9 +38,9 @@ DEEPWATER       equ 5
 
 ; Οι είσοδοι, σε σταθερές θέσεις: ο φορτωτής καλεί την πρώτη, οι δοκιμές και
 ; τις άλλες δύο (tests/test_menu.py), που δεν αγγίζουν το firmware.
-mw_entry:   jp      mw_run              ; A = κόσμος. Out: A = πλανήτης 0-3, #FF τυχαίος
-mw_show_e:  jp      mw_show             ; A = κόσμος, B = η διαλεγμένη 0-4
-mw_load_e:  jp      mw_load             ; A = η διαλεγμένη 0-4: το πάνελ της φόρτωσης
+mw_entry:   jp      mw_run              ; A = κόσμος. Out: A = πλανήτης 0-3, #FF τυχαίος, 4 το tutorial
+mw_show_e:  jp      mw_show             ; A = κόσμος, B = η διαλεγμένη 0-5
+mw_load_e:  jp      mw_load             ; A = η διαλεγμένη 0-5: το πάνελ της φόρτωσης
 
 ; ---------------------------------------------------------------------------
 ; mw_run — όλο το μενού. MODE 0 και τα χρώματα του πλανήτη του κόσμου, ο
@@ -63,11 +63,11 @@ mw_run:
         call    mw_show
         ld      a,(mw_k)
         call    mw_inks
-        call    mw_pick                 ; A = 0-4
+        call    mw_pick                 ; A = 0-5
         push    af
         call    mw_load
         pop     af
-        dec     a                       ; 0 τυχαίος -> #FF, 1-4 -> 0-3
+        dec     a                       ; 0 τυχαίος -> #FF, 1-4 -> 0-3, 5 το tutorial -> 4
         ret
 
 ; ---------------------------------------------------------------------------
@@ -163,7 +163,7 @@ mw_show:
         ld      hl,s_key
         ld      de,KEY_ROW * 256 + KEY_COL
         call    mw_text
-        ld      b,5
+        ld      b,OPT_N
 ms_opt:
         push    bc
         ld      a,b
@@ -173,7 +173,7 @@ ms_opt:
         djnz    ms_opt
         jp      mw_desc
 
-; mw_opt — A = γραμμή 0-4: γραμμένη ίσια, ή ανάποδα αν είναι η mn_sel.
+; mw_opt — A = γραμμή 0-5: γραμμένη ίσια, ή ανάποδα αν είναι η mn_sel.
 mw_opt:
         ld      c,a
         ld      a,(mn_sel)
@@ -244,11 +244,11 @@ mw_pick:
 mp_up:
         dec     a
         jp      p,mp_set
-        ld      a,4                     ; από την κορυφή στον πάτο
+        ld      a,OPT_N - 1             ; από την κορυφή στον πάτο
         jr      mp_set
 mp_dn:
         inc     a
-        cp      5
+        cp      OPT_N
         jr      c,mp_set
         xor     a
 mp_set:

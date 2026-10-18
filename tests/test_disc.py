@@ -352,6 +352,20 @@ def worldinfo(m, b6off):
     return b6[b6off] | (b6[b6off + 1] << 8), b6[b6off + 2]
 
 
+def wi_byte3(m, b6off):
+    """Το τέταρτο byte του worldinfo: η έκδοση της γεννήτριας, και το bit 7 για
+    τον κόσμο του tutorial (βήμα 149, src/gen.asm)."""
+    import cpc
+    return cpc._lib.cpcemu_ram_ptr(m._h, 6)[b6off + 3]
+
+
+def tu_seed():
+    """Το TU_SEED του src/gen.asm."""
+    import re
+    src = open(os.path.join(ROOT, "src", "gen.asm"), encoding="utf-8").read()
+    return int(re.search(r"^TU_SEED\s+equ\s+#([0-9A-Fa-f]+)", src, re.M).group(1), 16)
+
+
 def to_gen(m, b6off, limit=900):
     """Τρέχει ως να μπει η γεννήτρια (που γράφει το worldinfo στην αρχή της)·
     γυρίζει (seed, πλανήτης) ή None."""
@@ -405,7 +419,7 @@ def main():
     seed, pl = MW.worlds()[k0][:2]
     check(wait is not None and nd == 0,
           f"το μενού: ο κόσμος {k0} (seed {seed:04X}, {MW.MENU[pl + 1][0]}), ο "
-          f"τίτλος, «{MW.CHOOSE}», οι πέντε γραμμές με το RANDOM ανάποδα, η "
+          f"τίτλος, «{MW.CHOOSE}», οι {len(MW.MENU)} γραμμές με το RANDOM ανάποδα, η "
           f"περιγραφή του, τα πλήκτρα — {nd} bytes διαφορετικά")
     # ΤΑ ΧΡΩΜΑΤΑ: η μνήμη μόνη της δεν λέει τι βλέπει ο παίκτης. Το mw_inks
     # βάζει την παλέτα του παιχνιδιού και τα τέσσερα του πλανήτη του κόσμου
@@ -420,11 +434,15 @@ def main():
              f"{bad[0]} pixels διαφορετικά από τη μνήμη με την παλέτα του· "
              f"ΑΡΝΗΤΙΚΟ: με του πλανήτη {(pl + 1) & 3} {bad[1]}"))
     moves = []
-    for keys, joy, want in (("dd", False, 2), ("uuu", False, 4),
-                            ("d", True, 0), ("u", True, 4)):
+    # ΕΞΙ ΓΡΑΜΜΕΣ από το βήμα 149: από την κορυφή πάνω είναι το TUTORIAL, και ένα
+    # πάνω ακόμη η BARREN MOON — όπου μένει, για το FIRE πιο κάτω.
+    last = len(MW.MENU) - 1
+    for keys, joy, want in (("dd", False, 2), ("uuu", False, last),
+                            ("d", True, 0), ("u", True, last), ("u", False, last - 1)):
         MR.press(m, keys, joy)
         scr0 = m.read_ram(0xC000, 0x4000)
-        got = next((s for s in range(5) if ndiff(scr0, ref_menu(k0, s)) == 0), None)
+        got = next((s for s in range(len(MW.MENU)) if ndiff(scr0, ref_menu(k0, s)) == 0),
+                   None)
         moves.append((keys, joy, want, got))
     check(all(w == i for _, _, w, i in moves),
           "η επιλογή κινείται, με την περιγραφή της: " + ", ".join(
@@ -453,14 +471,18 @@ def main():
     def sample():
         """(frames, αρχεία, γεννήτρια, αναμμένο, bytes διαφορετικά από την
         αναφορά). Ενα δείγμα μπορεί να πέσει ΜΕΣΑ στο γέμισμα ενός byte της
-        μπάρας (έξι γραμμές, μία μία): τότε άλλο ένα, 200 µs μετά."""
-        for again in (0, 1):
+        μπάρας (έξι γραμμές, μία μία): τότε άλλο ένα, 200 µs μετά. Ή μέσα στο
+        άναμμα του BUILDING THE WORLD, που ο φορτωτής το κάνει γραμμή-γραμμή σε
+        όλο το πλάτος του (bt_lit): τότε ως τέσσερα ακόμη, ανά 1 ms. Στο βήμα
+        149 ο R έδωσε άλλον κόσμο και ένα δείγμα έπεσε εκεί, με τις γραμμές 0-3
+        αναμμένες και τις 4-5 όχι ακόμη: 53 bytes, και το επόμενο το ίδιο."""
+        for again in range(6):
             ram = scr()
             st = bar_state(ram)
             nd = ndiff(ram, ref_loading(k0, 4, *st))
-            if nd == 0 or again:
+            if nd == 0 or again == 5:
                 return (frames,) + st + (nd,)
-            m.run_us(200)
+            m.run_us(200 if again == 0 else 1000)
 
     running, frames, samples, tones = False, 0, [], []
     mode_pl = m.peek(bs["BT_PL"])
@@ -639,13 +661,22 @@ def main():
     holes2 = bytes(b1[128 * (r2 + (k >> 5)) + 96 + (k & 31)] for k in range(len(ovl2)))
     r3 = r2 + (len(ovl2) + 31) // 32
     holes3 = bytes(b1[128 * (r3 + (k >> 5)) + 96 + (k & 31)] for k in range(len(ovl3)))
+    # Και από το βήμα 149 το tutorial, ο κώδικας και οι δεκαέξι γραμμές του
+    # (build/ovl4.bin): από τη γραμμή μετά τη βοήθεια ως τη 87η, μέσα στην εικόνα
+    # του OV_LOAD πια, που κρατά από το βήμα 148 όσο όλες οι τρύπες.
+    ovl4 = open(os.path.join(ROOT, "build", "ovl4.bin"), "rb").read()
+    r4 = r3 + (len(ovl3) + 31) // 32
+    holes4 = bytes(b1[128 * (r4 + (k >> 5)) + 96 + (k & 31)] for k in range(len(ovl4)))
     check(len(ovl) > 512 and holes == ovl and len(ovl2) > 512 and holes2 == ovl2
-          and len(ovl3) > 128 and holes3 == ovl3,
-          f"ο κώδικας της κατεδάφισης, του σωσίματος και της βοήθειας ήρθε από τον "
-          f"δίσκο στις τρύπες του DIST: {len(ovl)}, {len(ovl2)} και {len(ovl3)} bytes, "
+          and len(ovl3) > 128 and holes3 == ovl3 and len(ovl4) > 512 and holes4 == ovl4
+          and r4 + len(ovl4) // 32 > 80,
+          f"ο κώδικας της κατεδάφισης, του σωσίματος, της βοήθειας και του tutorial ήρθε "
+          f"από τον δίσκο στις τρύπες του DIST: {len(ovl)}, {len(ovl2)}, {len(ovl3)} και "
+          f"{len(ovl4)} bytes (ως τη γραμμή {r4 + len(ovl4) // 32 - 1}), "
           f"{sum(x != y for x, y in zip(holes, ovl))}, "
-          f"{sum(x != y for x, y in zip(holes2, ovl2))} και "
-          f"{sum(x != y for x, y in zip(holes3, ovl3))} διαφορετικά")
+          f"{sum(x != y for x, y in zip(holes2, ovl2))}, "
+          f"{sum(x != y for x, y in zip(holes3, ovl3))} και "
+          f"{sum(x != y for x, y in zip(holes4, ovl4))} διαφορετικά")
 
     # --- 4. ο κόσμος είναι παραγμένος ------------------------------------
     m.run_code(0x3EC0, open(os.path.join(ROOT, "build", "plane.bin"), "rb").read())
@@ -698,9 +729,14 @@ def main():
     # από το μενού, άρα αλλάζει με την ώρα του RUN — εδώ pre frames ακόμη στο
     # BASIC. Σε ένα 6128 ο R στο ENTER είναι ό,τι έτυχε. Κάθε εκκίνηση δείχνει
     # τον δικό της κόσμο, byte προς byte.
+    # ΚΑΙ ΤΟ TUTORIAL (βήμα 149): ο πλανήτης 4 του MR.pick, η έκτη γραμμή. Το
+    # seed του είναι πάντα το TU_SEED, η σελήνη, και το bit 7 του τέταρτου byte
+    # του worldinfo το λέει στο παιχνίδι· σε καμία άλλη επιλογή.
     picks = []
+    TU = tu_seed()
     for pl, joy, extra, pre in ((0, True, 0, 0), (1, False, 0, 7), (2, True, 0, 19),
-                                (None, False, 0, 31), (None, False, 37, 31)):
+                                (None, False, 0, 31), (None, False, 37, 31),
+                                (4, False, 0, 43)):
         k = CPC()
         k.run_frames(300 + pre)
         k.insert_disc(DSK)
@@ -713,18 +749,23 @@ def main():
             nd = ndiff(k.read_ram(0xC000, 0x4000), ref_menu(kw, 0))
             k.run_frames(extra)
         got = to_gen(k, wi6) if MR.pick(k, bs, pl, joy) is not None else None
+        if got:
+            got = got + (wi_byte3(k, wi6),)
         del k
         picks.append((pl, joy, got, kw, nd))
     ok = all(got and got[1] == ((got[0] >> 8) ^ got[0]) & 3 and got[0]
-             and (pl is None or got[1] == pl) for pl, _, got, _, _ in picks)
+             and (pl is None or got[1] == (3 if pl == 4 else pl))
+             and (got[0] == TU) == (pl == 4) and bool(got[2] & 0x80) == (pl == 4)
+             for pl, _, got, _, _ in picks)
     rnd = [got[0] for pl, _, got, _, _ in picks if pl is None and got]
     check(ok and len(rnd) == 2 and rnd[0] != rnd[1],
           "κάθε επιλογή φτάνει στο worldinfo: " + ", ".join(
               f"{MR.ROWS[0 if pl is None else pl + 1]}"
               f"{' (χειριστήριο)' if joy else ''} -> "
-              + (f"seed {got[0]:04X} πλανήτης {got[1]}" if got else "ΤΙΠΟΤΑ")
+              + (f"seed {got[0]:04X} πλανήτης {got[1]} #{got[2]:02X}" if got else "ΤΙΠΟΤΑ")
               for pl, joy, got, _, _ in picks)
-          + f" — ο τυχαίος {'άλλος' if len(set(rnd)) == 2 else 'ΙΔΙΟΣ'} για άλλη αναμονή")
+          + f" — ο τυχαίος {'άλλος' if len(set(rnd)) == 2 else 'ΙΔΙΟΣ'} για άλλη αναμονή, "
+          f"το TUTORIAL το #{TU:04X} με το bit 7")
     ks = [kw for *_, kw, _ in picks]
     check(None not in ks and all(nd == 0 for *_, nd in picks) and len(set(ks)) >= 3,
           f"ο κόσμος του μενού με άλλη ώρα του RUN: {ks}, "
@@ -743,16 +784,17 @@ def main():
             [(rng.randrange(256), rng.randrange(256)) for _ in range(20)]
 
     def seeds(code):
-        """Οι περιπτώσεις που ο κώδικας code (στο #8000) κάνει λάθος."""
-        at = code.find(bytes([0x79, 0xFE, 0x04, 0x30]))
+        """Οι περιπτώσεις που ο κώδικας code (στο #8000) κάνει λάθος. Από το βήμα
+        149 από το ld d,0 πριν από το ld a,c: το D κρατά το bit 7 του tutorial."""
+        at = code.find(bytes([0x16, 0x00, 0x79, 0xFE, 0x04, 0x38]))
         if at < 0:
-            at = code.find(bytes([0x79, 0xFE, 0x00, 0x30]))
+            at = code.find(bytes([0x16, 0x00, 0x79, 0xFE, 0x00, 0x38]))
         if at < 0:
-            return ["δεν βρέθηκε το ld a,c · cp 4"]
+            return ["δεν βρέθηκε το ld d,0 · ld a,c · cp 4"]
         k = CPC()
         k.run_frames(60)
         bad = []
-        for c in (0, 1, 2, 3, 0xFF):
+        for c in (0, 1, 2, 3, 4, 0xFF):
             for h, l in pairs:
                 k.write_ram(0x8000, code)
                 k.write_ram(0x9000, bytes([0xF3, 0x31, 0x00, 0x98,
@@ -762,12 +804,15 @@ def main():
                 k.set_pc(0x9000)
                 k.run_us(500)
                 sd, pl = worldinfo(k, wi6)
+                tut = wi_byte3(k, wi6) & 0x80
                 old = h << 8 | l
-                good = sd != 0 and pl == ((sd >> 8) ^ sd) & 3
+                good = sd != 0 and pl == ((sd >> 8) ^ sd) & 3 and bool(tut) == (c == 4)
                 if c < 4:
                     # μόνο τα δύο κάτω bits του L· ή #AC00, αν θα έβγαινε μηδέν
                     good = good and pl == c and (
                         (sd ^ old) & ~3 == 0 or (sd == 0xAC00 and old & ~3 == 0))
+                elif c == 4:
+                    good = good and sd == TU    # το tutorial: πάντα το ίδιο
                 else:
                     good = good and sd == (old or 0xAC00)
                 if not good:
@@ -775,12 +820,14 @@ def main():
         del k
         return bad
     bad = seeds(gen)
-    check(not bad, f"ο κώδικας του seed: {5 * len(pairs)} περιπτώσεις (H, L, "
-                   f"πλανήτης 0-3 ή #FF), μηδέν δεν βγαίνει, αλλάζουν μόνο τα δύο "
-                   f"κάτω bits του L, ο πλανήτης ο διαλεγμένος"
+    check(not bad, f"ο κώδικας του seed: {6 * len(pairs)} περιπτώσεις (H, L, "
+                   f"πλανήτης 0-3, 4 το tutorial ή #FF), μηδέν δεν βγαίνει, αλλάζουν "
+                   f"μόνο τα δύο κάτω bits του L, ο πλανήτης ο διαλεγμένος, το "
+                   f"tutorial το #{TU:04X} με το bit 7 και μόνο αυτό"
                    + (f" — λάθος {bad[:4]}" if bad else ""))
     for old, new, what in (
             ([0x79, 0xFE, 0x04], [0x79, 0xFE, 0x00], "χωρίς το ταίριασμα (cp 0)"),
+            ([0x16, 0x80], [0x16, 0x00], "το tutorial χωρίς το bit 7 (ld d,0)"),
             ([0x20, 0x02, 0x26, 0xAC], [0x20, 0x02, 0x26, 0xAD], "με H = #AD στο μηδέν"),
             ([0x20, 0x02, 0x26, 0xAC], [0x18, 0x02, 0x26, 0xAC], "χωρίς τον έλεγχο του μηδενός")):
         i = gen.find(bytes(old))

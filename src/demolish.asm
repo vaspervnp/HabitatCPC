@@ -79,7 +79,11 @@ OV2_ROWS    equ (zz_ov2_end - SV_ORG + 31) >> 5     ; το σώσιμο, μετ�
 OV2_HOLE    equ OV_HOLE + OV_ROWS * 128
 OV3_ROWS    equ (zz_ov3_end - GH_BUF + 31) >> 5     ; η βοήθεια (βήμα 108)
 OV3_HOLE    equ OV2_HOLE + OV2_ROWS * 128
-OV_ALL      equ OV_ROWS + OV2_ROWS + OV3_ROWS
+TU_ROWS     equ (zz_ov4_end - GH_BUF + 31) >> 5     ; το tutorial (βήμα 149)
+TU_HOLE     equ OV3_HOLE + OV3_ROWS * 128
+TU_TROWS    equ TU_YOURS + 1                        ; και οι γραμμές του, μία ανά τρύπα
+TU_TXT      equ TU_HOLE + TU_ROWS * 128
+OV_ALL      equ OV_ROWS + OV2_ROWS + OV3_ROWS + TU_ROWS + TU_TROWS
         assert  OV_ALL <= RT_NODES && RT_NODES + 32 == 128
         assert  OV1_PAD == OV_ROWS * 32 && OV2_PAD == OV2_ROWS * 32
         ; ΤΟ ov_install ΔΕΝ ΣΒΗΝΕΙ Ο,ΤΙ ΘΑ ΔΙΑΒΑΣΕΙ. Ως το βήμα 147 το OV_LOAD
@@ -117,6 +121,7 @@ sv_load:
         call    sv_ovl
         call    svo_load
         ret     nz
+        call    tu_run                  ; το βήμα του tutorial που ήρθε (βήμα 149)
         call    ui_show
         xor     a
         ret
@@ -128,6 +133,23 @@ sv_ovl:
         call    ov_copy
         pop     af
         ret
+
+; ---------------------------------------------------------------------------
+; tu_ev — ένα γεγονός που μπορεί να τελειώνει βήμα του tutorial (βήμα 149):
+; τοποθέτηση, εξοπλισμός, πλοίο. Το πρώτο byte είναι ret όσο δεν τρέχει
+; tutorial — το γράφει το ίδιο (src/tutor.asm) — και τότε ένα γεγονός κοστίζει
+; ένα call και ένα ret. tu_run — ό,τι κι αν λέει: στην εκκίνηση και μετά από
+; κάθε φόρτωμα. Το φάντασμα κρυμμένο, όπως για κάθε κομμάτι των τρυπών.
+; Χαλάει τα πάντα· γυρίζει με την 1.
+; ---------------------------------------------------------------------------
+tu_ev:
+        ret
+tu_run:
+        ld      hl,TU_HOLE
+        ld      a,TU_ROWS
+        call    ov_cpgh
+        jp      tuo_go                  ; src/tutor.asm, στο GH_BUF
+        assert  tuo_go == GH_BUF
 
 ; ov_copy — A γραμμές των 32 bytes από τις τρύπες (HL, τράπεζα 1) στο DE.
 ; Γυρίζει με την 1. ov_cpgh — το ίδιο στο GH_BUF (βήμα 148): το ld de τριών

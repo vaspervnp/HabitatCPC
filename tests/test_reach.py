@@ -1033,10 +1033,14 @@ def negatives(sym, g):
         ("το airlock που δεν σημειώνεται ST_JOINED", first_lock,
          [(find(m, sym["ALC_JOIN"], [0x36, 1], 30) + 1, 0)]),
         # Η σειρά ως το test_fit: al_commit πριν από το bd_redraw, χωρίς push/pop.
+        # Από το βήμα 149 το call tu_ev του tutorial είναι ανάμεσα στο al_commit
+        # και στο pop af, και μένει εκεί.
         ("οι διάδρομοι πριν από το εργοτάξιο", "fire",
          list(zip(range(find(m, sym["UIP_FIRE"], [0xCD] + w(sym["BD_REDRAW"]) + [0xF5, 0xCD]
-                             + w(sym["AL_COMMIT"]) + [0xF1], 60), 10**6),
-                  [0xCD] + w(sym["AL_COMMIT"]) + [0, 0xCD] + w(sym["BD_REDRAW"]) + [0]))),
+                             + w(sym["AL_COMMIT"]) + [0xCD] + w(sym["TU_EV"]) + [0xF1], 60),
+                        10**6),
+                  [0xCD] + w(sym["AL_COMMIT"]) + [0, 0xCD] + w(sym["BD_REDRAW"])
+                  + [0xCD] + w(sym["TU_EV"]) + [0]))),
         # --- βήμα 94 ---
         # ld a,(bd_kind) · or a · jr nz,bst_rl στο bd_link γίνεται jr: θεμέλιο και ο θόλος
         ("ο θόλος με θεμέλιο, όπως ως το 93", "fire",

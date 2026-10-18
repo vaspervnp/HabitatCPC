@@ -278,9 +278,10 @@ ui_ship:
         jr      z,ush_say
         ld      a,SK_COLONIST
         call    ship_call
-        ld      hl,t_ship
-        jr      c,ush_say
         ld      hl,t_shipno             ; ένα τη φορά
+        jr      nc,ush_say
+        call    tu_ev                   ; το τελευταίο βήμα του tutorial (βήμα 149)
+        ld      hl,t_ship
 ush_say:
         jr      ui_say                  ; το ui_msg ζει στο μπλοκ του δίσκου:
         endif                           ; HAS_SIM χωρίς HAS_DISC δεν υπάρχει
@@ -560,6 +561,9 @@ uip_fire:
         ; πρώτες στη λίστα, η γωνία θα έσβηνε (test_fit, βήμα 85).
         push    af
         call    al_commit               ; οι διάδρομοι, ή το μονοπάτι (src/link.asm)
+        ifdef HAS_DISC                  ; το tutorial ζει στις τρύπες του παιχνιδιού,
+        call    tu_ev                   ; όχι στο tests/uitest.asm (βήμα 149)
+        endif
         pop     af
 uip_late:
         jr      z,uip_after
@@ -614,9 +618,14 @@ uil_fire:
         ld      a,e
 uil_set:
         ld      (ln_a),a                ; το ui_hide (gh_undo) δεν το διαβάζει
-; ui_redo — το φάντασμα από την αρχή. Και για τον εξοπλισμό (src/fit.asm).
+; ui_redo — το φάντασμα από την αρχή. Και για τον εξοπλισμό (src/fit.asm),
+; που καταλήγει εδώ μετά από κάθε πλήκτρο: εκεί και το βήμα του tutorial που
+; ζητά μηχανή (βήμα 149), με το φάντασμα σβηστό.
 ui_redo:
         call    ui_hide
+        ifdef HAS_DISC
+        call    tu_ev
+        endif
         jp      ui_show
 uil_second:
         call    ln_plan                 ; A = 0 μόνο με διαδρομή (cr_n >= 1)

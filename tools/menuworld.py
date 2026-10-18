@@ -41,7 +41,10 @@ MENU = [("RANDOM", "ANY OF THE FOUR", "RANDOM WORLD"),
         ("DESERT", "WATER, LAND, SOME ORE", "DESERT"),
         ("ICE", "MOST WATER, SOME ORE", "ICE"),
         ("STORM", "MOUNTAINS, ORE, DRY", "STORM"),
-        ("BARREN MOON", "DUST, ORE, LITTLE WATER", "BARREN MOON")]
+        ("BARREN MOON", "DUST, ORE, LITTLE WATER", "BARREN MOON"),
+        # βήμα 149: ο ίδιος κόσμος της σελήνης κάθε φορά (TU_SEED, src/gen.asm), και
+        # η γραμμή κάτω από τα κουμπιά λέει τι να χτίσει (src/tutor.asm)
+        ("TUTORIAL", "LEARN TO BUILD A COLONY", "TUTORIAL, BARREN MOON")]
 SUBTITLE = "a colony on a dead world"
 CHOOSE = "CHOOSE A WORLD"
 KEYS = "UP/DOWN, FIRE OR ENTER"
@@ -257,6 +260,7 @@ def data_lines():
     smap, blob, pal, pp, var = assets()
     g = geom()
     assert len(worlds()) == g["MW_N"] and g["MW_N"] & (g["MW_N"] - 1) == 0
+    assert len(MENU) == g["OPT_N"]          # οι γραμμές που ζωγραφίζει το src/menu.asm
     out = ["; ΠΑΡΑΓΕΤΑΙ από το tools/menuworld.py (βήμα 130) — μην το επεξεργάζεσαι."]
 
     def db(vals, per=16):

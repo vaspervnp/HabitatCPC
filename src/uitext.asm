@@ -65,6 +65,9 @@ x_t_x2:       db "  x2 ",0
 x_t_x4:       db "  x4 ",0
 x_t_look:     db "SPACE=MENU I=INFO FIRE=FIT C=SHIP",0
 x_t_keys:     db "FIRE=PLACE ESC=BACK ",0
+        ; Το tutorial γράφει εδώ τις γραμμές του (βήμα 149, src/tutor.asm): 32
+        ; χαρακτήρες από τις τρύπες και ο 33ος, κενό ή το «P» αυτού εδώ.
+        assert  x_t_keys - x_t_look == 34
 x_t_ok:       db "READY  FIRE TO BUILD",0
 x_t_block:    db "BLOCKED",0
 x_t_poor:     db "NOT ENOUGH MATERIAL",0
