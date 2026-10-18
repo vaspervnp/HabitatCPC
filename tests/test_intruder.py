@@ -23,11 +23,17 @@
   ΦΡΟΥΡΟΙ    δύο φρουροί και δύο Gun: τα παίρνουν (F_GUN, απόθεμα 0) και οι
              εισβολείς πέφτουν. Μετά οι φρουροί έχουν ξανά εργασία NO_TASK (ή πάνε
              για ανάγκη), το fo_n είναι 0 και το HUD δεν λέει INTRUDERS.
+  ΔΙΨΑ       (βήμα 150) ένας φρουρός διψασμένος μέσα, νερό 40 και το απόθεμα
+             νερού 0 (το κυλικείο δεν δίνει): με τον συναγερμό αφήνει το T_NEED
+             για τη μάχη, με το νερό του ακόμη κάτω από 64, και ως να πέσουν οι
+             εισβολείς δεν κάνει κανένα βήμα με T_NEED, σε κανένα frame — ας του
+             το ξαναγράφουν οι ανάγκες: η θέση 15 τρέχει πριν από την κίνηση.
 
 Αρνητικά, με τον κώδικα πειραγμένο: το πλοίο τους χωρίς το cp SK_FOE του
 st_here (ΠΛΟΙΟ)· ο ρόλος 8 με τη φιγούρα του αποίκου (ΚΟΚΚΙΝΟΙ)· το HUD χωρίς το
 INTRUDERS (ΠΛΟΙΟ)· οι φρουροί χωρίς το set 7,(hl) του όπλου, και χωρίς το
-NO_TASK του fo_over (ΦΡΟΥΡΟΙ).
+NO_TASK του fo_over (ΦΡΟΥΡΟΙ)· ο κανόνας ως το βήμα 149, όποιος πάει για ανάγκη
+δεν πολεμά (το and F_INDOORS του fg_need -> and 0) (ΔΙΨΑ).
 """
 import os, re, sys
 
@@ -248,9 +254,54 @@ def guards(sym, g, patch=(), patch6=(), quiet=False):
     return None
 
 
+def thirst(sym, g, patch=(), patch6=(), quiet=False):
+    """ΔΙΨΑ: ο 2 φρουρός, νερό 40, απόθεμα νερού 0. Η πρώτη διαφορά, ή None."""
+    say = (lambda s: None) if quiet else (lambda s: print("    " + s))
+    G = Game(sym, g, patch, patch6)
+    b6, c = G.b6(), 2
+    b6[G.ag + 128 + c] = EC.RL_GUARD
+    water = g + 2 * EC.S_WATER
+    G.m.poke(water, 0)
+    G.m.poke(water + 1, 0)
+    b6[G.ag + 1024 + 128 + c] = 40                  # AG_O2 + 128: το νερό του
+    if not b6[G.ag + c] & E.F_INDOORS:
+        return "ΔΙΨΑ: ο φρουρός δεν είναι μέσα"
+    if not G.until(lambda: G.b6()[G.ag + 768 + 128 + c] == E.T_NEED, 200, 1):
+        return f"ΔΙΨΑ: δεν πήγε για νερό (εργασία {G.b6()[G.ag + 768 + 128 + c]})"
+    G.land()
+    if not G.until(lambda: G.alive(96, 100), 64):
+        return "ΔΙΨΑ: δεν κατέβηκαν"
+    pos = lambda b: (b[G.ag + 256 + c], b[G.ag + 512 + 128 + c], b[G.ag + 768 + c])
+    fought, back, frames, tried = None, None, 0, 0
+    was = pos(G.b6())
+    while G.alive(96, 100) and frames < 3000:
+        G.m.run_frames(1)
+        frames += 1
+        b = G.b6()
+        if not b[G.ag + c] & E.F_ALIVE:
+            break
+        t, w, now = b[G.ag + 768 + 128 + c], b[G.ag + 1024 + 128 + c], pos(b)
+        if fought is None and t == EC.T_FIGHT and w < 64:
+            fought = (frames, w)
+        elif fought is not None and t == E.T_NEED and G.alive(96, 100):
+            tried += 1
+            if now != was and back is None:
+                back = (frames, w, was, now)
+        was = now
+    if fought is None:
+        return f"ΔΙΨΑ: σε {frames} frames ο φρουρός δεν πήγε στη μάχη με νερό κάτω από 64"
+    if back is not None:
+        return (f"ΔΙΨΑ: στο frame {back[0]} ο φρουρός έκανε βήμα με T_NEED (νερό {back[1]}, "
+                f"{back[2]} -> {back[3]}), με εισβολείς ζωντανούς")
+    say(f"ΔΙΨΑ: ο φρουρός με νερό {fought[1]} στη μάχη από το frame {fought[0]} ως το "
+        f"τέλος της, {frames} frames· T_NEED από τις ανάγκες σε {tried} frames, κανένα "
+        f"βήμα με αυτό· ζουν εισβολείς {len(G.alive(96, 100))}")
+    return None
+
+
 def main():
     sym, g = R.T.build()
-    for name, fn in (("ΠΛΟΙΟ ως ΧΤΥΠΟΥΝ", ship), ("ΦΡΟΥΡΟΙ", guards)):
+    for name, fn in (("ΠΛΟΙΟ ως ΧΤΥΠΟΥΝ", ship), ("ΦΡΟΥΡΟΙ", guards), ("ΔΙΨΑ", thirst)):
         why = fn(sym, g)
         check(why is None, f"{name}: όπως λέει η πρόζα" + (f" — {why}" if why else ""))
 
@@ -263,12 +314,14 @@ def main():
     hf = at("HUD_ALERT", [0x3D, 0xFE, EC.AG_NFOE, 0x21], 200)     # dec a / cp 4 / ld hl,txt_foe
     gn = at("FO_GUARD", [0xCB, 0xFE], 80)                          # set 7,(hl): το όπλο
     nt = at("FOO_LP", [0x36, E.NO_TASK], 12)                       # ld (hl),NO_TASK
+    fi = at("FG_NEED", [0xE6, E.F_INDOORS], 16)                    # and F_INDOORS
     for label, fn, patch in (
             ("το πλοίο τους χωρίς το cp SK_FOE", ship, sk and [(sk + 1, 99)]),
             ("ο ρόλος 8 με τη φιγούρα του αποίκου", ship, [(rf, FC_COLONIST)]),
             ("το HUD χωρίς το INTRUDERS", ship, hf and [(hf + 7, 0)]),     # jr c,hd_say
             ("οι φρουροί χωρίς όπλο", guards, gn and [(gn, 0), (gn + 1, 0)]),
-            ("οι φρουροί μένουν στη μάχη", guards, nt and [(nt, 0), (nt + 1, 0)])):
+            ("οι φρουροί μένουν στη μάχη", guards, nt and [(nt, 0), (nt + 1, 0)]),
+            ("όποιος πάει για ανάγκη δεν πολεμά", thirst, fi and [(fi + 1, 0)])):
         if not patch:
             check(False, f"δεν βρέθηκε πού να πειραχτεί για «{label}»")
             continue

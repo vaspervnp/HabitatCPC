@@ -289,6 +289,7 @@ mla_pok:
         include "terrain.asm"
         include "mine.asm"                  ; βήμα 123: η τιμή και οι σημαίες του ορυχείου
         include "visit0.asm"                ; βήμα 136: οι επισκέπτες, ό,τι δεν θέλει την 6
+        include "fight0.asm"                ; βήμα 150: ο φρουρός αφήνει την ανάγκη για τη μάχη
 zz_bank0_end:
         ; ΤΟ ΠΑΤΩΜΑ ΤΩΝ TESTS. Πάνω από τον κώδικα στήνουν stubs, ημερολόγια και
         ; probes: τα probes στο #3E80, το test_loop τα stubs του από το

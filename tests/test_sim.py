@@ -2391,7 +2391,8 @@ def foe_state(g, nexthop, sim0):
     κόμβο του φρουρού 4 και ενός ακόμη, ο 97 στον κόμβο του φρουρού 44, ο 98 σε
     γειτονικό κόμβο του φρουρού 12 που έχει ήδη όπλο, ο 99 περπατά προς κόμβο
     με κόσμο. Δύο Gun στο απόθεμα για τους υπόλοιπους εννέα φρουρούς, ο 36 πάει
-    για ανάγκη (T_NEED), ο 28 περπατά."""
+    για ανάγκη έξω (T_NEED: μένει, η στολή), ο 60 μέσα (στη μάχη από το βήμα
+    150, και ο ύπνος του, 30, περιμένει), ο 28 περπατά."""
     st = fresh(g, nexthop, sim0)
     a, e = st.a, st.e
 
@@ -2409,6 +2410,8 @@ def foe_state(g, nexthop, sim0):
     put(99, 6, edge=0, prog=200)
     a.flags[12] |= EC.F_GUN
     a.task[36] = E.T_NEED
+    a.task[60] = E.T_NEED
+    assert not a.flags[36] & E.F_INDOORS and a.flags[60] & E.F_INDOORS and a.sleep[60] < 64
     E.release(st.occ, a.node[28], a.slot[28])
     a.slot[28], a.edge[28], a.progress[28] = E.NO_SLOT, 0, 50
     e.stock[EC.S_GUN] = 2
@@ -2441,8 +2444,9 @@ def foe_battle(sym, g, nexthop, sim0):
     need = ("χτυπήματα εισβολέων", "άποικοι έπεσαν", "εισβολείς έπεσαν", "όπλα",
             "με όπλο, από γειτονικό", "με όπλο, στον κόμβο", "με τα χέρια")
     if any(not n.get(k) for k in need) or want.e.stock[EC.S_GUN] != 0 \
-            or want.a.task[36] != E.T_NEED:
-        print(f"ΑΠΟΤΥΧΙΑ μάχη: η σκηνή δεν περνά από όλους τους κλάδους: {n}")
+            or want.a.task[36] != E.T_NEED or want.a.task[60] != EC.T_FIGHT:
+        print(f"ΑΠΟΤΥΧΙΑ μάχη: η σκηνή δεν περνά από όλους τους κλάδους: {n}, "
+              f"ο 36 {want.a.task[36]}, ο 60 {want.a.task[60]}")
         return 1
     def find(label, pat, span=80):
         code = run_peek(sym, sym[label], span)
@@ -2479,14 +2483,16 @@ def foe_battle(sym, g, nexthop, sim0):
     gh = find("FOG_TGT", [0x06, EC.GUN_HIT], 80)            # ld b,GUN_HIT
     nb = find("FO_ZONE", [0x0C, 0x0D, 0xC8], 30)            # inc c / dec c / ret z
     fv = find("FOV_H", [0x2F, 0xA1, 0x4F], 10)              # cpl / and c / ld c,a
-    tn = find("FO_GUARD", [0xFE, E.T_NEED])                 # cp T_NEED
+    tn = find("FG_NEED", [0xE6, E.F_INDOORS], 12)          # and F_INDOORS
+    to = find("FG_NEED", [0xC0, 0xD1, 0xC9], 16)            # ret nz / pop de / ret
     pk = find("FOS_GO", [0x32] + w(sym["FO_PK"]))           # ld (fo_pk),a
     mv = find("FO_TICK", [0xCD] + w(sym["ENT_MOVE_SLICE"]), 40)
     for label, patch in (
             ("το όπλο όσο τα χέρια", gh and [(gh + 1, EC.HAND_HIT)]),
             ("κανείς γειτονικός", nb and [(nb, 0xC9)]),
             ("ο εισβολέας χτυπά όλους στον κόμβο", fv and [(fv + 2, 0)]),
-            ("και όποιος πάει για ανάγκη στη μάχη", tn and [(tn + 1, 0)]),
+            ("όποιος πάει για ανάγκη μέσα δεν πολεμά", tn and [(tn + 1, 0)]),
+            ("και όποιος πάει μέσα από έξω στη μάχη", to and [(to + 1, 0xC9)]),
             ("ο επόμενος στόχος πάντα από τον πρώτο", pk and [(pk + k, 0) for k in range(3)]),
             ("οι εισβολείς δεν κινούνται", mv and [(mv + k, 0) for k in range(3)])):
         if not patch:
@@ -2499,11 +2505,36 @@ def foe_battle(sym, g, nexthop, sim0):
     # και ο πίνακας εργασιών ανάμεσα.
     if same(sym, g, nexthop, st, FOE_TICKS, "μάχη, ολόκληρος ο τροχός") is None:
         return 1
+    # ΟΙ ΑΝΑΓΚΕΣ ΔΕΝ ΤΟΝ ΚΟΥΝΟΥΝ ΑΠΟ ΤΗ ΜΑΧΗ (βήμα 150), χωρίς κανέναν έλεγχο στο
+    # src/needs.asm: η θέση 15 τρέχει μετά τις ανάγκες (8-10) και πριν από την
+    # κίνηση (0-7), και ξαναστρατολογεί κάθε φρουρό. Στην αναφορά, tick προς
+    # tick: ο 60 (ύπνος 30) παίρνει T_NEED από τις ανάγκες, και από την πρώτη
+    # θέση 15 (πριν, η σκηνή τον αφήνει με T_NEED και η κίνηση έρχεται πρώτη)
+    # ΔΕΝ κάνει ποτέ βήμα με αυτό όσο ζουν εισβολείς. Ο Z80 είναι ίσος με την
+    # αναφορά (πάνω).
+    sim = fresh(g, nexthop, st)
+    tried = moved = 0
+    drafted = False
+    pos = lambda z: (z.a.node[60], z.a.edge[60], z.a.progress[60])
+    for _ in range(FOE_TICKS):
+        was = pos(sim)
+        sim.tick()
+        if not any(sim.a.flags[i] & E.F_ALIVE for i in range(96, 100)):
+            break
+        drafted = drafted or sim.a.task[60] == EC.T_FIGHT
+        if drafted and sim.a.task[60] == E.T_NEED:
+            tried += 1
+            moved += pos(sim) != was
+    if not tried or moved:
+        print(f"ΑΠΟΤΥΧΙΑ μάχη: ο 60 με T_NEED στη μάχη {tried} ticks, βήματα με αυτό {moved}")
+        return 1
     print(f"OK μάχη: {FOE_PIN} περιστροφές της θέσης 15 — "
           + ", ".join(f"{k} {v}" for k, v in sorted(n.items()))
           + f" — και {FOE_TICKS // 16} ολόκληρες· ίδια bytes στον Z80 και στην "
           f"αναφορά. ΑΡΝΗΤΙΚΑ: όπλο = χέρια, χωρίς γειτονικούς, χτυπά όλους, "
-          f"και η ανάγκη στη μάχη, ο στόχος από την αρχή, ακίνητοι — διαφέρουν")
+          f"η ανάγκη μέσα χωρίς μάχη, και η έξω στη μάχη, ο στόχος από την αρχή, "
+          f"ακίνητοι — διαφέρουν. Ο 60 με T_NEED από τις ανάγκες {tried} ticks "
+          f"στη μάχη, και κανένα βήμα με αυτό")
     print(f"              η θέση 15 με τέσσερις εισβολείς, 80 αποίκους και 10 "
           f"φρουρούς: ως {pin_us} us (μέση {sum(per) // len(per)}, ταβάνι "
           f"{FOE_PIN_US})· χωρίς εισβολείς {calm[1:]} us (ταβάνι {FOE_CALM_US}), "

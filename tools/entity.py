@@ -340,7 +340,8 @@ def bury(a, occ, i):
 #   4. οι άποικοι 0-79 με τη σειρά. Οποιος ΣΤΕΚΕΤΑΙ σε κόμβο όπου στέκεται
 #      εισβολέας που δεν χτύπησε ακόμη, τρώει FOE_HIT από αυτόν — ο καθένας
 #      χτυπά τον πρώτο που βρίσκει, μία φορά. Στο μηδέν πεθαίνει (die).
-#      Ο φρουρός που ζει και δεν πάει για ανάγκη (T_NEED): T_FIGHT, ένα όπλο
+#      Ο φρουρός που ζει, και δεν είναι έξω στον δρόμο για μέσα (T_NEED χωρίς
+#      F_INDOORS: η στολή· βήμα 150, ως τότε κάθε T_NEED): T_FIGHT, ένα όπλο
 #      αν δεν έχει και υπάρχει στο απόθεμα, ο στόχος του κατά σειρά (gi mod
 #      ζωντανοί), και αν στέκεται: χτυπά τον πρώτο που φτάνει — με τα χέρια
 #      όποιον στέκεται στον κόμβο του, με όπλο και όποιον είναι στον κόμβο
@@ -403,7 +404,7 @@ def foe_tick(e, a, g, nexthop, occ, st=FOE_STATE):
             continue
         here = a.node[c]
         stand = a.edge[c] == NO_EDGE
-        if a.role[c] != EC.RL_GUARD or a.task[c] == T_NEED:
+        if a.role[c] != EC.RL_GUARD or (a.task[c] == T_NEED and not a.flags[c] & F_INDOORS):
             continue
         a.task[c] = EC.T_FIGHT
         if not a.flags[c] & EC.F_GUN and e.stock[EC.S_GUN]:

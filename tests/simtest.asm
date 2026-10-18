@@ -157,6 +157,7 @@ rtr_lp:
         include "../src/ship.asm"
         include "../src/visit.asm"          ; βήμα 136: οι επισκέπτες που περπατούν
         include "../src/visit0.asm"         ; ...και ό,τι στο παιχνίδι είναι στην τράπεζα 0
+        include "../src/fight0.asm"         ; βήμα 150: οι φρουροί και οι ανάγκες (τράπεζα 0)
         include "../src/foe.asm"            ; βήμα 111: οι εισβολείς (στο παιχνίδι στην τράπεζα 6)
         include "../src/crew.asm"           ; βήμα 91: οι ειδικότητες
         include "../src/bots.asm"           ; βήμα 92: τα ρομπότ (στο παιχνίδι στην τράπεζα 6)
