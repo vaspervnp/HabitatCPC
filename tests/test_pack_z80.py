@@ -83,7 +83,7 @@ def reference():
     c.opaque(rows("slot_s_0_colonist"), DOME_X + sx, DOME_Y + sy)
 
     # 4. εξωτερική δομή από την τράπεζα 7 (με μάσκα)
-    c.masked(rows("solar_m"), STRUCT_X, STRUCT_Y)
+    c.masked(rows("solar_l"), STRUCT_X, STRUCT_Y)        # το m ως το βήμα 150
 
     # 5. εικονίδιο greenhouse μέσω icon_m_ptr[5]
     c.opaque(rows("icon_m_greenhouse"), ICON_X, ICON_Y)

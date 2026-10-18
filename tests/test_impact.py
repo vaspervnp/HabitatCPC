@@ -61,6 +61,7 @@ import econ as EC                                        # noqa: E402
 PROBE = 0x3E80
 DK_MACH, DK_TILE, DIRTY_N = 1, 4, 32
 K_SHIP = 7                               # src/const.asm: δεν είναι κτίριο (βήμα 87)
+K_AIRLOCK = 5                            # src/const.asm: η κρούση του βγάζει τον κόσμο έξω
 FT_CLS = 250                             # src/const.asm: τα φυτά δεν είναι «χαλασμένα» (βήμα 119)
 # µs ανά κλήση, μαζί με τη σκαλωσιά του probe· βήμα 76, και στο 75
 CEIL = {
@@ -68,9 +69,15 @@ CEIL = {
     "αρχή": 7041,       # ξεκινά βροχή (ή δεν βρίσκει κτίριο)           8451
     "ησυχία": 193,      # η ζαριά έπεσε, η ησυχία λέει όχι (βήμα 121)
     "έξω": 285,         # κρούση έξω από τον κόσμο                       299
-    "κτίριο": 5270,     # κρούση σε κτίριο                              6440
-    "έδαφος": 5170,     # κρούση στο έδαφος, με ή χωρίς κρατήρα         6389
+    "κτίριο": 6330,     # κρούση σε κτίριο                              6440
+    "έδαφος": 5450,     # κρούση στο έδαφος, με ή χωρίς κρατήρα         6389
 }
+# ΤΟ ΚΤΙΡΙΟ ΚΑΙ ΤΟ ΕΔΑΦΟΣ ΑΠΟ ΤΟ ΒΗΜΑ 151, 5270 και 5170 ως τότε: οι σκηνές
+# έχουν τα ενεργειακά στο μέγεθος που φτιάχνει το παιχνίδι, μεγαλύτερα από τα 0
+# και 1 που είχαν ως τότε, και ένα από αυτά τα κέντρα χτυπά για πρώτη φορά ένα
+# έτοιμο airlock (lk_air_out, ~1,1 ms· το tests/test_suit.py το κρατά κάτω από
+# 7.100 από το βήμα 104). Με τον κώδικα του βήματος 150 οι ίδιες σκηνές μετρούν
+# ακριβώς το ίδιο, 6.327 και 5.445: δεν άλλαξε το παιχνίδι, άλλαξε το δείγμα.
 
 
 def layout():
@@ -177,8 +184,11 @@ def scene(R, rnd, case):
     st = bytearray(rnd.randrange(256) for _ in range(EC.MAX_STRUCT * EC.STRUCT_REC))
     for s in range(EC.MAX_STRUCT):
         b = s * EC.STRUCT_REC
-        kind = rnd.randrange(8)            # 0-3: μεγέθη 0-2 (και 3, χωρίς σχήμα)
-        st[b + 2], st[b + 3] = kind, rnd.choice([0, 1, 2, 2, 3] if kind < 4 else [0])
+        # 0-3: το μέγεθος 2, και το 3 χωρίς σχήμα. Ως το βήμα 150 και τα 0 και 1,
+        # που το παιχνίδι δεν φτιάχνει ποτέ: από το 151 είναι χωρίς σχήμα κι αυτά
+        # (tools/pack.py). Η ίδια ζαριά (max): το δείγμα μένει όπως ήταν.
+        kind = rnd.randrange(8)
+        st[b + 2], st[b + 3] = kind, max(2, rnd.choice([0, 1, 2, 2, 3])) if kind < 4 else 0
         k = st[b + 2] * 8 + st[b + 3] * 2
         w, h = dims[k] // 4, dims[k + 1] // 16
         if rnd.random() < ds:
@@ -205,10 +215,26 @@ def scene(R, rnd, case):
                 dom[b + 4] = rnd.choice([1, 2, 2, 2])
             else:
                 b = (n_ - EC.MAX_DOME) * EC.STRUCT_REC
-                st[b + 2], st[b + 3] = rnd.randrange(4), rnd.randrange(3)
+                st[b + 2], st[b + 3] = rnd.randrange(4), max(2, rnd.randrange(3))  # βήμα 151
                 k = st[b + 2] * 8 + st[b + 3] * 2
                 place(st, b, dims[k] // 4, dims[k + 1] // 16)
                 st[b + 4] = rnd.choice([1, 2, 2])
+    # ΚΑΝΕΝΑ AIRLOCK ΟΠΟΥ ΣΤΕΚΕΤΑΙ Ή ΦΤΑΝΕΙ ΑΠΟΙΚΟΣ (βήμα 151). Η κρούση σε
+    # έτοιμο airlock βγάζει όσους είναι μέσα του έξω (lk_air_out, src/door.asm),
+    # και τους δείχνει στο εργοτάξιο (fg_mark) — αυτό το μετρά το
+    # tests/test_suit.py. Εδώ ο κανόνας ξέρει μόνο τα δύο bytes του lk_each. Ως
+    # το βήμα 150 κανένα έτοιμο airlock δεν χτυπήθηκε σε αυτές τις 400 σκηνές:
+    # τα ενεργειακά ήταν και στα μεγέθη 0 και 1, μικρότερα, και τα κέντρα
+    # έπεφταν αλλού. Χωρίς rnd: οι σκηνές μένουν όσες ήταν.
+    ag, adj = R.bank(6)[L["G_agent_fields"] - 0x4000:], R.bank(2)[L["G_node_adj"] - 0x8000:]
+    near = set()
+    for i in range(128):
+        if ag[i] & 1:                                       # F_ALIVE
+            node, edge = ag[256 + i], ag[512 + 128 + i]
+            near.add(node if edge == 255 else adj[node * 8 + edge] if ag[i] & 2 else node)
+    for s_ in range(EC.MAX_STRUCT):
+        if EC.MAX_DOME + s_ in near and st[s_ * EC.STRUCT_REC + 2] == K_AIRLOCK:
+            st[s_ * EC.STRUCT_REC + 2] = K_SHIP             # ίδιο σχήμα, δεν χτυπιέται
     R.put(6, L["G_dome_tbl"] - 0x4000, dom)
     R.put(6, L["G_struct_tbl"] - 0x4000, st)
     R.put(4, 0, bytes(rnd.choice([0, 1, 2, 3, 4, 5, 6, 7, 0x10, 0x21, 0x08, 0x0A, 0x41,
@@ -346,6 +372,12 @@ def expect(R, before, r1):
                     b[0][sym["AL_BRK"] + 1] = node   # όχι για φυτό
         if node >= EC.MAX_DOME:
             r = (node - EC.MAX_DOME) * EC.STRUCT_REC
+            if struct0[r + 4] == EC.DS_ACTIVE and struct0[r + 2] == K_AIRLOCK:
+                # το lk_air_out (βήμα 90): το lk_n, και η κλήση του lk_each που
+                # γράφεται στη δική της διεύθυνση — κανείς μέσα (scene)
+                poke("LK_N", node)
+                a = sym["LKE_CALL"] + 1
+                b[2][a & 0x3FFF], b[2][(a + 1) & 0x3FFF] = sym["LKS_OUT"] & 255, sym["LKS_OUT"] >> 8
             if struct0[r + 4] == EC.DS_ACTIVE and struct0[r + 2] != K_SHIP:
                 # ξανά εργοτάξιο: τα 3x3 γύρω από το tile του κέντρου (βήμα 109)
                 push(DK_TILE, s8(struct0[r]) >> 1, s8(struct0[r + 1]) >> 1)
@@ -432,9 +464,14 @@ def main():
             [(find("MSC_LP", [0x90, 0xFE, 0x09]) + 2, 8)]),
            # βήμα 87: cp K_SHIP στο mth_struct γίνεται cp 255 — το σκάφος ξανά
            # εργοτάξιο. Οι τυχαίες σκηνές έχουν σκάφος σε 1 στις 8 δομές.
-           ("το σκάφος σαν κτίριο", [(find("MTH_STRUCT", [0xFE, 7]) + 1, 255)])]
+           ("το σκάφος σαν κτίριο", [(find("MTH_STRUCT", [0xFE, 7]) + 1, 255)]),
+           # βήμα 151: το airlock που χτυπά χωρίς το call z,lk_air_out — το
+           # χτυπά μία σκηνή από τις 400, η 150
+           ("το airlock χωρίς το lk_air_out",
+            [(find("MT_TICK", [0xCC, sym["LK_AIR_OUT"] & 255, sym["LK_AIR_OUT"] >> 8], 600) + k, 0)
+             for k in range(3)])]
     for label, patch in neg:
-        why = run(sym, patch, n=400 if "σκάφος" in label else 120)
+        why = run(sym, patch, n=400 if "σκάφος" in label or "airlock" in label else 120)
         if why:
             print(f"OK ΑΡΝΗΤΙΚΟ: με {label} αποτυγχάνει ({why[:90]})")
         else:

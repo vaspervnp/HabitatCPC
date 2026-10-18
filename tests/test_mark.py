@@ -160,16 +160,16 @@ def dome_here(sym, g, room, patch=()):
 # --------------------------------------------------------------------------
 def tables(sym, g):
     G = R.Game(sym, g)
-    b5 = G.bank(5)
+    b7 = G.bank(7)                      # στην 5 ως το βήμα 150, με τις μηχανές
     L = TO.layout()
-    got = bytes(b5[L["G_marks"] - 0x4000 + k] for k in range(2 * P.MARK_W * P.MARK_H))
+    got = bytes(b7[L["G_marks"] - 0x4000 + k] for k in range(2 * P.MARK_W * P.MARK_H))
     pens = {"R": 8, "W": 5, "Y": 6, "K": 0}
     prose = (["RWWR", "RWWR", "RWWR", "RRRR", "RWWR", "RRRR"],
              ["YYKK", "YKKY", "KKYY", "KYYK", "YYKK", "YKKY"])
     data = bytes(P._m0_byte(pens[r[2 * k]], pens[r[2 * k + 1]])
                  for m in prose for r in m for k in range(2))
     if got != data or P.marks() != data:
-        return (f"ΠΙΝΑΚΕΣ: τα σήματα στην τράπεζα 5 {got.hex()}, του pack.py "
+        return (f"ΠΙΝΑΚΕΣ: τα σήματα στην τράπεζα 7 {got.hex()}, του pack.py "
                 f"{P.marks().hex()} — η πρόζα λέει {data.hex()}")
     return None
 

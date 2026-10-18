@@ -83,9 +83,9 @@ start:
         ld      c,STRUCT_X
         ld      a,STRUCT_Y
         call    scr_addr
-        ld      hl,G_solar_m
-        ld      b,8                     ; solar_m: 16x32 px -> 8 bytes δεδομένων
-        ld      c,32
+        ld      hl,G_solar_l            ; το m έφυγε από την τράπεζα 7 (βήμα 151)
+        ld      b,12                    ; solar_l: 24x48 px -> 12 bytes δεδομένων
+        ld      c,48
         call    blit_mask
 
         ; --- πίσω στη βασική, και ένα εικονίδιο της τράπεζας 1. Ο δείκτης του

@@ -155,7 +155,9 @@ def scene(rnd, G, sym):
         domes[d] = [(bx + dx) & 255, (by + dy) & 255, size, rnd.choice([1, 2])]
     for s_ in rnd.sample(range(32), ns):
         kd = rnd.choice([0, 1, 2, 3, 4, 5, 5, 5, 6])
-        size = rnd.randrange(3) if kd < 4 else 0
+        # τα ενεργειακά στο 2, το μόνο που φτιάχνει το παιχνίδι: τα 0 και 1, ως το
+        # βήμα 150 εδώ, από το 151 δεν έχουν σχήμα. Η ίδια ζαριά (max).
+        size = max(2, rnd.randrange(3)) if kd < 4 else 0
         if kd == reach.K_AIRLOCK and rnd.random() < 0.6:
             # Ενα airlock στην ίδια στήλη με τον κέρσορα, ή κοντά της: εκεί
             # ένας νέος θόλος του φτάνει κάθετα (το μόνο σχήμα που δέχεται).

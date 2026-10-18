@@ -531,8 +531,11 @@ def build_runs(smap, blob):
     PLANTS = ["peas", "rice", "potatoes", "wheat", "maize", "tomatoes",
               "lettuce", "onions", "radishes", "mushrooms", "medicinal", "tree"]
     DIRS = ["n", "ne", "e", "se", "s", "sw", "w", "nw"]
-    STRUCTS = ([f"{k}_{s}" for k in ("solar", "turbine", "collector", "extractor")
-                for s in ("s", "m", "l")] + ["mine", "airlock", "pad", "ship"])
+    # ΜΟΝΟ ΤΟ ΜΕΓΑΛΟ ΜΕΓΕΘΟΣ ΤΩΝ ΤΕΣΣΑΡΩΝ ΕΝΕΡΓΕΙΑΚΩΝ (βήμα 151): ο κατάλογος
+    # δίνει μόνο αυτό (bds_sz, src/build.asm), και τα s και m, 4 x 640 bytes της
+    # τράπεζας 7, δεν τα ζωγράφισε ποτέ το παιχνίδι — μόνο οι δοκιμές.
+    STRUCTS = ([f"{k}_l" for k in ("solar", "turbine", "collector", "extractor")]
+               + ["mine", "airlock", "pad", "ship"])
 
     arena, bank1, bank5, bank6, bank7 = [], [], [], [], []
     ptr = {}            # όνομα πίνακα -> λίστα ονομάτων run, για 2ο πέρασμα
@@ -555,12 +558,18 @@ def build_runs(smap, blob):
     # τράπεζα 2, όπως οι μηχανές στο 85. Το ob_icon (src/object.asm) διαλέγει
     # τράπεζα κατά μέγεθος. Οι πίνακες δεικτών διαβάζονται όσο το παράθυρο
     # έχει την 6 μέσα: ως το βήμα 89 στη 2, από το 90 στην ίδια την 6 (OB6).
+    # ΒΗΜΑ 151: τα s στην ΤΡΑΠΕΖΑ 7, όπου πήγαν και οι μηχανές, για να μείνει η
+    # 5 στο NEXTHOP των 48 δομών. Και ΧΩΡΙΣ τα τρία του airlock (400 bytes): το
+    # airlock είναι δομή από το βήμα 86, κανένας θόλος δεν έχει πια το δωμάτιο
+    # 7 (rm_list, src/rooms.asm), και ο δείκτης του δείχνει το εικονίδιο του
+    # άδειου, ώστε οι δείκτες των άλλων να μένουν όπου ήταν.
     for size in ("s", "m", "l"):
-        names = [f"icon_{size}_{r}" for r in ROOMS]
-        dest = bank5 if size == "s" else bank1
+        names = [f"icon_{size}_{r}" for r in ROOMS if r != "airlock"]
+        dest = bank7 if size == "s" else bank1
         for n in names:
             dest.append(spr(n))
-        ptr[f"icon_{size}_ptr"] = names
+        ptr[f"icon_{size}_ptr"] = [f"icon_{size}_{'empty' if r == 'airlock' else r}"
+                                   for r in ROOMS]
     # ΚΑΙ ΚΩΔΙΚΑΣ ΠΑΝΩ ΑΠΟ ΤΑ ΕΙΚΟΝΙΔΙΑ (βήμα 94): η τράπεζα 1 είναι η
     # προεπιλογή του παραθύρου, οπότε ό,τι τρέχει μόνο με αυτήν μέσα — το UI,
     # όταν ό,τι καλεί γυρίζει με την 1 — μπορεί να ζει εδώ. Το γράφει το
@@ -573,17 +582,20 @@ def build_runs(smap, blob):
     # το πέρασμα αντικειμένων (om_prep, src/object.asm), που σελιδοποιεί ήδη
     # την 7 για τα φυτά του θερμοκηπίου στις ίδιες υποδοχές: τώρα σελιδοποιεί
     # την 5 για τις μηχανές.
+    # ΚΑΙ ΣΤΗΝ ΤΡΑΠΕΖΑ 7 από το βήμα 151, δίπλα στα φυτά που μπαίνουν στις ίδιες
+    # υποδοχές: το om_prep σελιδοποιεί πια την 7 και για τα δύο, και η 5 κρατά
+    # τον χώρο για το NEXTHOP των 48 δομών.
     for m in MACH:
-        bank5.append(spr(f"mach_{m}"))
+        bank7.append(spr(f"mach_{m}"))
     ptr["mach_ptr"] = [f"mach_{m}" for m in MACH]
     # Ο ΠΙΝΑΚΑΣ ΔΕΙΚΤΩΝ ΜΑΖΙ ΤΟΥΣ από το βήμα 90: το ob_mach_one τον διαβάζει
     # ΑΦΟΥ το om_prep σελιδοποιήσει την 5 (τα φυτά έχουν τον δικό τους στην 7).
-    bank5.append(Run("mach_ptr", len(MACH) * 2, bytes(len(MACH) * 2),
+    bank7.append(Run("mach_ptr", len(MACH) * 2, bytes(len(MACH) * 2),
                      note="παράγεται", page=len(MACH) * 2))
     # ΟΙ ΑΡΜΟΙ (βήμα 96): ο διάδρομος μπαίνει ΕΝΑ pixel στον δακτύλιο. Τα
     # pixels του λευκού περιγράμματος δίπλα στο γκρι του διαδρόμου γίνονται
     # γκρι, πάνω από το κέλυφος (src/joint.asm). Τα ζωγραφίζει το ob_put_in
-    # με την 5 μέσα, όπως τις μηχανές.
+    # με την 5 μέσα, όπως τις μηχανές ως το βήμα 150.
     jdata = joints(smap, blob)
     corners()
     bank5.append(Run("joints", len(jdata), jdata,
@@ -592,8 +604,9 @@ def build_runs(smap, blob):
     # ζωγραφίζει το ob_mach_one με την 5 μέσα, και για τα φυτά. Πήραν 24 bytes
     # από τη δέσμευση του b5code, που είχε 43 ελεύθερα.
     mdata = marks()
-    bank5.append(Run("marks", len(mdata), mdata,
-                     note="παράγεται: χαλασμένη, περιμένει (βήμα 100)"))
+    # Στην 7 από το βήμα 151, με τις μηχανές.
+    bank7.append(Run("marks", len(mdata), mdata,
+                     note="παράγεται: χαλασμένη, περιμένει (βήμα 100)", page=len(mdata)))
     # ΚΑΙ ΚΩΔΙΚΑΣ ΠΑΝΩ ΤΟΥΣ (βήμα 97): οι κοντές στροφές (src/bend.asm), με
     # τις σημαίες τους ανά θόλο. Τρέχει με την 5 στο παράθυρο, μέσα από το
     # jt_b5 (src/object.asm), και ζωγραφίζει με το ob_put τα σχέδια των αρμών
@@ -619,6 +632,15 @@ def build_runs(smap, blob):
               "machine_slots", "machine_rules", "room_machines",
               "tile_variants", "planet_pens", "struct_dims", "palette_fw"):
         r = spr(n)
+        if n == "struct_dims":
+            # Τα μεγέθη 0 και 1 των τεσσάρων ενεργειακών ΜΗΔΕΝ (βήμα 151), όπως η
+            # τέταρτη θέση: τα sprites τους έφυγαν από την τράπεζα 7, και μια δομή
+            # τέτοια δεν ζωγραφίζεται (ob_struct, w = 0) αντί να ζωγραφίσει από
+            # το &0000. Ο κατάλογος δίνει μόνο το 2 (bds_sz, src/build.asm).
+            d = bytearray(r.data)
+            for k in range(4):
+                d[k * 8:k * 8 + 4] = bytes(4)
+            r = Run(n, len(d), bytes(d))
         if n in flat:
             r.page = r.size
         arena.append(r)
@@ -626,9 +648,11 @@ def build_runs(smap, blob):
     # struct_ptr[kind*4 + size]: τέσσερις θέσεις ανά είδος, με κενά. Το ορυχείο,
     # ο αεροθάλαμος, η πλατφόρμα και το σκάφος υπάρχουν σε ΕΝΑ μέγεθος — το 0 —
     # και οι άλλες τρεις θέσεις τους είναι μηδέν, όπως και στο struct_dims.
+    # Από το βήμα 151 μόνο το μέγεθος 2 (l) των ενεργειακών: τα 0 και 1 είναι
+    # μηδέν, όπως η τέταρτη θέση. Το παιχνίδι δεν φτιάχνει άλλο (bds_sz).
     sp = []
     for k in ("solar", "turbine", "collector", "extractor"):
-        sp += [f"{k}_{s}" for s in ("s", "m", "l")] + [None]
+        sp += [None, None, f"{k}_l", None]
     for k in ("mine", "airlock", "pad", "ship"):
         sp += [k, None, None, None]
     ptr["struct_ptr"] = sp

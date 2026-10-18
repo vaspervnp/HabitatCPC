@@ -81,9 +81,50 @@ def main():
             continue
         img, base = image_of(r)
         got = img[r.addr - base:r.addr - base + s.size]
-        check(got == blob[s.off:s.off + s.size],
+        want = bytearray(blob[s.off:s.off + s.size])
+        if name == "struct_dims":       # βήμα 151: τα s και m των ενεργειακών μηδέν
+            for k in range(4):
+                want[k * 8:k * 8 + 4] = bytes(4)
+        check(got == bytes(want),
               f"το {name} στο #{r.addr:04X} δεν είναι τα bytes του sprites.bin")
         checked += 1
+
+    # 5γ. ΒΗΜΑ 151: ό,τι δεν ζωγραφίζει ποτέ το παιχνίδι λείπει, και οι δείκτες
+    #     του δείχνουν όπως πρέπει. Τα μεγέθη 0 και 1 των τεσσάρων ενεργειακών:
+    #     κανένα sprite, struct_ptr 0, struct_dims 0 — και το 2 εκεί. Τα τρία
+    #     εικονίδια του airlock (δωμάτιο 7): κανένα, και ο δείκτης του δείχνει το
+    #     άδειο. Μηχανές, σήματα, εικονίδια s και mach_ptr στην τράπεζα 7.
+    def table(name):
+        r = by_name[name]
+        img, base = image_of(r)
+        return img[r.addr - base:r.addr - base + r.size]
+    w16 = lambda t, i: t[2 * i] | t[2 * i + 1] << 8
+    sp, sd = table("struct_ptr"), table("struct_dims")
+    for k, kind in enumerate(("solar", "turbine", "collector", "extractor")):
+        for z, size in enumerate("sml"):
+            name = f"{kind}_{size}"
+            if size == "l":
+                check(name in by_name and w16(sp, 4 * k + 2) == by_name[name].addr
+                      and sd[8 * k + 4] and sd[8 * k + 5],
+                      f"το {name}: struct_ptr #{w16(sp, 4 * k + 2):04X}, διαστάσεις "
+                      f"{sd[8 * k + 4]}x{sd[8 * k + 5]}")
+            else:
+                check(name not in by_name and w16(sp, 4 * k + z) == 0
+                      and sd[8 * k + 2 * z] == sd[8 * k + 2 * z + 1] == 0,
+                      f"το {name} δεν έπρεπε να υπάρχει: struct_ptr #{w16(sp, 4 * k + z):04X},"
+                      f" διαστάσεις {sd[8 * k + 2 * z]}x{sd[8 * k + 2 * z + 1]}")
+    for size in "sml":
+        t = table(f"icon_{size}_ptr")
+        check(f"icon_{size}_airlock" not in by_name
+              and w16(t, 7) == by_name[f"icon_{size}_empty"].addr,
+              f"icon_{size}_ptr[7] #{w16(t, 7):04X}, όχι το icon_{size}_empty")
+    # οι μηχανές και τα εικονίδια s με το όνομα του sprite τους· όχι το mach_op
+    # (συνταγές, τράπεζα 2) και το icon_s_ptr (δείκτες, τράπεζα 6)
+    moved = [n for n in by_name if n.startswith(("mach_", "icon_s_")) and n in smap] \
+        + ["mach_ptr", "marks"]
+    check(len(moved) == 12 + 11 + 2 and all(by_name[n] in bank7 for n in moved),
+          f"στην τράπεζα 7: {[n for n in moved if by_name[n] not in bank7]} λείπουν "
+          f"({len(moved)} από 25)")
 
     # 5β. και τα μέλη των ομάδων, στη ΣΕΙΡΑ τους — μια ομάδα μπορεί να έχει
     #     σωστά bytes συνολικά και λάθος σειρά μέσα της

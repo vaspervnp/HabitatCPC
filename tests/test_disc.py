@@ -846,8 +846,9 @@ def main():
     # Η BANK1.BIN από το βήμα 94 είναι το bank1c.bin: τα εικονίδια ΚΑΙ ο κώδικας
     # της τοποθέτησης στη δέσμευση b1code (src/commit.asm), όπως τα έγραψε το
     # src/main.asm — το bank1.bin του pack.py έχει τη δέσμευση άδεια. Το ίδιο η
-    # BANK5.BIN από το βήμα 97: bank5c.bin, οι μηχανές, οι αρμοί ΚΑΙ ο κώδικας
-    # των κοντών στροφών (src/bend.asm) στη δέσμευση b5code.
+    # BANK5.BIN από το βήμα 97: bank5c.bin, οι αρμοί ΚΑΙ ο κώδικας των κοντών
+    # στροφών (src/bend.asm) στη δέσμευση b5code — και οι μηχανές ως το βήμα
+    # 150, που τις πήρε η BANK7.BIN.
     mach, icons = img("bank5c.bin"), img("bank1c.bin")
     # ...ΚΑΙ ΑΠΟ ΤΟ ΒΗΜΑ 102 ο κώδικας των τρυπών του DIST από κάτω τους: το
     # bank1c.bin πάει από το OV_LOAD ως το #8000 (src/main.asm, tools/mkdsk.py).

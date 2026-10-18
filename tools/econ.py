@@ -780,7 +780,10 @@ def struct_dims():
     if _DIMS is None:
         from sprites import load_map, load_bin
         t = load_map()["struct_dims"]
-        _DIMS = load_bin()[t.off:t.off + t.size]
+        _DIMS = bytearray(load_bin()[t.off:t.off + t.size])
+        for k in range(4):              # όπως το tools/pack.py από το βήμα 151:
+            _DIMS[k * 8:k * 8 + 4] = bytes(4)   # τα ενεργειακά μόνο στο μέγεθος 2
+        _DIMS = bytes(_DIMS)
     return _DIMS
 
 

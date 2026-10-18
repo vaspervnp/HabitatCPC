@@ -105,6 +105,8 @@ class Assets:
         self.machine_count = t("machine_count")
         self.interior_ofs = t("interior_ofs")
         self.struct_dims = t("struct_dims")
+        for k in range(4):              # όπως το tools/pack.py από το βήμα 151:
+            self.struct_dims[k * 8:k * 8 + 4] = [0, 0, 0, 0]    # μόνο το l
         self.palette_fw = t("palette_fw")
 
     def _tab(self, name):

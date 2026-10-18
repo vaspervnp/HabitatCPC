@@ -356,7 +356,10 @@ def scene(R, a, rnd, case):
                 col.struct[b + 1] = col.struct[b + 1 - S.STRUCT_REC]
             kind = rnd.randrange(8)
             col.struct[b + 2] = kind
-            col.struct[b + 3] = (rnd.choice([0, 1, 2, 2, 3]) if kind < 4 else
+            # τα ενεργειακά στο 2, και το 3 χωρίς σχήμα: τα 0 και 1, ως το βήμα
+            # 150 εδώ, το παιχνίδι δεν τα φτιάχνει, και από το 151 δεν έχουν σχήμα.
+            # Η ίδια ζαριά (max): το δείγμα μένει όπως ήταν, μόνο μεγαλύτερο.
+            col.struct[b + 3] = (max(2, rnd.choice([0, 1, 2, 2, 3])) if kind < 4 else
                                  rnd.choice([0, 0, 0, 1]))          # 3, 1: χωρίς σχήμα
             col.struct[b + 4] = rnd.choice([S.DS_BUILDING, S.DS_ACTIVE])
         else:

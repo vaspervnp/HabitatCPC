@@ -160,7 +160,9 @@ def scene(G, a, rnd):
         spots.append((x, 40, side, side))
         x += side + 1
     x = -56
-    for k, (kind, size) in enumerate([(0, 0), (1, 1), (2, 2), (3, 0), (4, 0), (5, 0), (6, 0)]):
+    # Τα ενεργειακά στο μέγεθος 2, το μόνο που φτιάχνει το παιχνίδι: ως το βήμα
+    # 150 εδώ ήταν και τα 0 και 1, που από το 151 δεν έχουν σχήμα (tools/pack.py).
+    for k, (kind, size) in enumerate([(0, 2), (1, 2), (2, 2), (3, 2), (4, 0), (5, 0), (6, 0)]):
         s = s_free[k]
         b = STRUCTS - 0x4000 + 8 * s
         dk = kind * 8 + size * 2
