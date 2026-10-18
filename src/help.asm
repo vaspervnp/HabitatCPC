@@ -25,9 +25,8 @@ HP_TEXT     equ 6
 hp_show:
         call    ui_hide                 ; το GH_BUF αδειάζει: εκεί τρέχει η βοήθεια
         ld      hl,OV3_HOLE
-        ld      de,GH_BUF
         ld      a,OV3_ROWS
-        call    ov_copy                 ; src/demolish.asm· γυρίζει με την 1
+        call    ov_cpgh                 ; src/demolish.asm· γυρίζει με την 1
         call    hpo_show
         ; --- πίσω ---
         call    hw_clear
