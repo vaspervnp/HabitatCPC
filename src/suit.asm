@@ -126,14 +126,19 @@ su_full:
 ; άδειες είναι 208 us, όσο θα κοστίζουν ούτως ή άλλως στο βήμα 155. Ο κόμβος
 ; βγαίνει από το HL μόνο σε airlock. Οι δομές είναι στην τράπεζα 6 και το DIST
 ; στην 1, στο ίδιο παράθυρο: η 1 μπαίνει μόνο για την ανάγνωση μιας απόστασης,
-; και ξαναβγαίνει.
+; και ξαναβγαίνει. Από δομή, η γραμμή της στο μπλοκ των δομών (βήμα 155,
+; blk_row): το airlock είναι δομή, και στο μπλοκ έχει στήλη.
 ; ---------------------------------------------------------------------------
 su_lock:
+        ld      a,d
+        cp      MAX_DOME
+        jr      nc,sul_st               ; από δομή: η γραμμή της στο μπλοκ
         ld      h,d
         ld      l,0
         srl     h
         rr      l
         set     6,h                     ; DIST[κόμβος], στο &4000
+sul_set:
         ld      (sul_row + 1),hl
         ld      a,255
         ld      (su_best),a
@@ -174,7 +179,7 @@ sul_hit:
         ld      e,a                     ; E = ο κόμβος του
 sul_row:
         ld      hl,0                    ; DIST[κόμβος] (γράφεται πάνω)
-        or      l                       ; 0 ή 128, και ο κόμβος < 128
+        add     a,l                     ; 0 ή 128 και ο κόμβος < 128, ή blk_row
         ld      l,a
         ld      bc,GA_PORT + PAGE_B1
         out     (c),c
@@ -188,6 +193,9 @@ sul_row:
         ld      a,e
         ld      (su_best),a
         jr      sul_nx
+sul_st:
+        call    blk_row                  ; src/jobs.asm (βήμα 155)
+        jr      sul_set
 
 ; ---------------------------------------------------------------------------
 ; su_hud — ένα τικ του HUD, στην αρχή του hud_alert, όποιο μήνυμα κι αν
@@ -206,7 +214,7 @@ su_alarm:   db 0
 su_best:    db 0
 
         assert  SUIT_START <= 255 && SUIT_LOW < SUIT_TRIP
-        assert  MAX_DOME + MAX_STRUCT <= 128      ; L | κόμβος, χωρίς κρατούμενο
+        assert  NODE_CAP <= 128                 ; L + κόμβος, χωρίς κρατούμενο
         assert  F_SUITPH == 1 << 6               ; bit 6 στο su_tick
         assert  ((G_struct_tbl + 48 * STRUCT_REC) & 255) == 0 && (G_struct_tbl & 255) >= 128
         assert  STRUCT_REC == 8 && ST_KIND < 8 && ST_STATE == ST_KIND + 2

@@ -316,75 +316,112 @@ zz_bank0_end:
         ; και ως εδώ φτάνει μόνο ένα μεγάλο φάντασμα: ένα game_new της αποικίας
         ; μετά από αυτό δεν θα την έβρισκε. Στον δίσκο δεν γράφεται· το παιχνίδι
         ; δεν την καλεί ποτέ.
-; --- ΚΩΔΙΚΑΣ ΓΙΑ ΤΙΣ ΤΡΥΠΕΣ ΤΟΥ DIST (βήμα 101, src/demolish.asm): γράφεται
-; για το GH_BUF, όπου τρέχει, και ΦΤΑΝΕΙ στο OV_LOAD της βασικής τράπεζας 1,
-; κάτω από τα εικονίδια: στο snapshot εδώ, στον δίσκο με τη BANK1.BIN (βήμα
-; 102, tools/mkdsk.py). Το ov_install τον μοιράζει στις τρύπες στην εκκίνηση.
-; Ως το βήμα 101 ερχόταν στο ίδιο το GH_BUF, και έπρεπε να χωρά κάτω από την
+; --- ΚΩΔΙΚΑΣ ΓΙΑ ΤΙΣ ΤΡΥΠΕΣ (βήμα 101, src/demolish.asm): γράφεται για εκεί
+; που τρέχει, και ΦΤΑΝΕΙ στο OV_LOAD της βασικής τράπεζας 1, κάτω από τα
+; εικονίδια: στο snapshot εδώ, στον δίσκο με τη BANK1.BIN (βήμα 102,
+; tools/mkdsk.py). Στην εκκίνηση το ov_install τον μοιράζει στις τρύπες. Ως
+; το βήμα 101 ερχόταν στο ίδιο το GH_BUF, και έπρεπε να χωρά κάτω από την
 ; αποικία δοκιμών: 904 bytes. Τώρα ολόκληρο το GH_LOG, 1.160: η αποικία τρέχει
 ; στο game_new, πριν από κάθε κατεδάφιση, και ό,τι γράψει πάνω της το ov_run
-; δεν το ξαναζητά κανείς — όπως ένα μεγάλο φάντασμα. ---
+; δεν το ξαναζητά κανείς — όπως ένα μεγάλο φάντασμα.
 ;
-; ΚΑΙ ΤΟ ΣΩΣΙΜΟ ΜΕ ΤΟΝ ΟΔΗΓΟ ΤΟΥ ΔΙΣΚΟΥ (βήμα 103): ένα δεύτερο κομμάτι, από τη
-; γραμμή μετά την κατεδάφιση, που τρέχει στο SV_ORG = GH_BUF + 512 — τα πρώτα
-; 512 του GH_BUF είναι η κεφαλίδα του σωσίματος (SV_HDR, src/save.asm), όπως
-; ήταν πάντα. Το φέρνει το sv_ovl (src/demolish.asm) σε κάθε S και L. Ως το
-; βήμα 102 τα 633 bytes του ζούσαν στην τράπεζα 2. Το OV_LOAD κρατά 3 KB κάτω
-; από τα εικονίδια (2 ως το βήμα 147), τις 24 τελευταίες γραμμές του DIST: όσο
-; όλες οι τρύπες, 96 x 32, για όσα κομμάτια έρθουν. ---
+; ΤΡΕΙΣ ΠΕΡΙΟΧΕΣ ΑΠΟ ΤΟ ΒΗΜΑ 155 (src/ov_inst.asm, src/const.asm): ως το 154
+; όλα ήταν στις στήλες 96-127 των 96 γραμμών του DIST, σε κομμάτια των 32. Με
+; 112 κόμβους οι τρύπες έγιναν των 16, και η εικόνα κρατά, με τη σειρά:
+;   ο εγκαταστάτης (τρέχει στο GH_BUF), και μπροστά του το ov_install, που
+;     τον φέρνει εκεί και τρέχει στη θέση του;
+;   OV_R1, συνεχές: οι χειριστές της κατεδάφισης (τρέχουν στη θέση τους), οι
+;     δεκαέξι γραμμές του tutorial, ο κώδικάς του (για το GH_BUF);
+;   OV_R2, κομμάτια των 16 στις 64 γραμμές θόλων του DIST: το σώσιμο με τον
+;     οδηγό του δίσκου (για το SV_ORG = GH_BUF + 512, μετά τα 512 της
+;     κεφαλίδας, SV_HDR), η βοήθεια (για το GH_BUF);
+;   OV_R3, κομμάτια των 16 στις 112 γραμμές του NEXTHOP, τράπεζα 5: η
+;     κατεδάφιση (για το GH_BUF).
+; Κάθε κομμάτι στα 16 του (ή στο byte του, στο OV_R1). Το OV_LOAD κρατά 3 KB
+; κάτω από τα εικονίδια (2 ως το βήμα 147), όσο το μπλοκ των δομών του DIST
+; (DB_ROW), που γεμίζει μόνο μετά, από το rt_flush. ---
 OV_LOAD     equ #6400                   ; = το OV_LOAD του src/boot.asm
 OV_MAX      equ #7000 - OV_LOAD
-        org     GH_BUF, OV_LOAD
-        include "dm_ovl.asm"
-zz_ovl_end:
-        assert  zz_ovl_end <= GH_BUF + GH_LOG
-        save    "../build/ovl.bin", OV_LOAD, zz_ovl_end - GH_BUF
-OV1_PAD     equ ((zz_ovl_end - GH_BUF + 31) >> 5) << 5   ; ως το τέλος της γραμμής του
+        assert  OV_UNIT == 16           ; τα >> 4 πιο κάτω (το / του rasm στρογγυλεύει)
+        assert  OV_LOAD == DB_ROW && DB_ROW + STRUCT_CAP * DB_STRIDE == #7000
+        org     OV_LOAD
+; ov_install — στην εκκίνηση, με την τράπεζα 1 στο παράθυρο (src/main.asm,
+; μετά το pal_planet): ο εγκαταστάτης στο GH_BUF, και εκεί. Γυρίζει με την 1.
+ov_install:
+        ld      hl,zz_ovi
+        ld      de,GH_BUF
+        ld      bc,zz_ovi_end - GH_BUF
+        ldir
+        jp      ovi_go
+zz_ovi:
+        org     GH_BUF, zz_ovi
+        include "ov_inst.asm"
+zz_ovi_end:
+        assert  ovi_go == GH_BUF
+OVI_R1      equ zz_ovi + zz_ovi_end - GH_BUF
+; --- OV_R1 ---
+        org     OV_R1, OVI_R1
+        include "dm_hand.asm"
+TU_TXT:
+        include "tutext.asm"
+zz_tut_end:
+TU_AT       equ zz_tut_end              ; ο κώδικας του tutorial, στο OV_R1
+        org     GH_BUF, OVI_R1 + TU_AT - OV_R1
+zz_ov4:
+        include "tutor.asm"
+zz_ov4_end:
+        assert  tuo_buf + 32 <= GH_BUF + GH_LOG
+        assert  zz_tut_end - TU_TXT == (TU_YOURS + 1) * 32
+TU_LEN      equ zz_ov4_end - GH_BUF
+R1_LEN      equ TU_AT + TU_LEN - OV_R1
+        assert  OV_R1 + R1_LEN <= DB_ROW
+        save    "../build/ovl4.bin", OVI_R1 + TU_AT - OV_R1, TU_LEN
+        save    "../build/ovr1.bin", OVI_R1, R1_LEN     ; όλο το OV_R1, για τις δοκιμές
+; --- OV_R2 ---
+OVI_R2      equ OVI_R1 + R1_LEN
 SV_ORG      equ GH_BUF + 512
-        org     SV_ORG, OV_LOAD + OV1_PAD
+        org     SV_ORG, OVI_R2
 zz_ov2:
         include "save.asm"
         include "fdc.asm"
 zz_ov2_end:
         assert  zz_ov2_end <= GH_BUF + GH_LOG
-        assert  OV1_PAD + zz_ov2_end - SV_ORG <= OV_MAX
-        save    "../build/ovl2.bin", OV_LOAD + OV1_PAD, zz_ov2_end - SV_ORG
-; --- ΚΑΙ Η ΟΘΟΝΗ ΒΟΗΘΕΙΑΣ (βήμα 108): ένα τρίτο κομμάτι, πάλι στο GH_BUF, από
-; τη γραμμή μετά το σώσιμο. Τη φέρνει το hp_show (src/help.asm) με τον κέρσορα
-; σβηστό. Τα 232 bytes της στην τράπεζα 0 τα πήραν τα διαστήματα των θόλων. ---
-OV2_PAD     equ ((zz_ov2_end - SV_ORG + 31) >> 5) << 5
-        org     GH_BUF, OV_LOAD + OV1_PAD + OV2_PAD
+OV2_ROWS    equ (zz_ov2_end - SV_ORG + 15) >> 4
+        save    "../build/ovl2.bin", OVI_R2, zz_ov2_end - SV_ORG
+        org     GH_BUF, OVI_R2 + OV2_ROWS * OV_UNIT
 zz_ov3:
         include "help_ov.asm"
 zz_ov3_end:
         assert  zz_ov3_end <= GH_BUF + GH_LOG
-        assert  OV1_PAD + OV2_PAD + zz_ov3_end - GH_BUF <= OV_MAX
-        save    "../build/ovl3.bin", OV_LOAD + OV1_PAD + OV2_PAD, zz_ov3_end - GH_BUF
-; --- ΚΑΙ ΤΟ TUTORIAL (βήμα 149): ο κώδικάς του, τέταρτο κομμάτι στο GH_BUF, και
-; μετά οι γραμμές του, μία ανά τρύπα, που δεν έρχονται ποτέ στο GH_BUF: τις
-; φέρνει μία-μία το ίδιο (src/tutor.asm). Τις χωρούν οι τρύπες από το βήμα 148
-; (OV_LOAD). ---
-OV3_PAD     equ ((zz_ov3_end - GH_BUF + 31) >> 5) << 5
-OV4_AT      equ OV_LOAD + OV1_PAD + OV2_PAD + OV3_PAD
-        org     GH_BUF, OV4_AT
-zz_ov4:
-        include "tutor.asm"
-zz_ov4_end:
-        assert  tuo_buf + 32 <= GH_BUF + GH_LOG
-OV4_PAD     equ ((zz_ov4_end - GH_BUF + 31) >> 5) << 5
-        org     GH_BUF + OV4_PAD, OV4_AT + OV4_PAD
-zz_tut:
-        include "tutext.asm"
-zz_tut_end:
-        assert  zz_tut_end - zz_tut == (TU_YOURS + 1) * 32   ; TU_TROWS (src/demolish.asm)
-        assert  OV4_AT + OV4_PAD + zz_tut_end - zz_tut <= OV_LOAD + OV_MAX
-        save    "../build/ovl4.bin", OV4_AT, OV4_PAD + zz_tut_end - zz_tut
+OV3_ROWS    equ (zz_ov3_end - GH_BUF + 15) >> 4
+        save    "../build/ovl3.bin", OVI_R2 + OV2_ROWS * OV_UNIT, zz_ov3_end - GH_BUF
+R2_UNITS    equ OV2_ROWS + OV3_ROWS
+        assert  R2_UNITS <= MAX_DOME
+OV2_HOLE    equ OV_R2
+OV3_HOLE    equ OV_R2 + OV2_ROWS * 128
+; --- OV_R3 ---
+OVI_R3      equ OVI_R2 + R2_UNITS * OV_UNIT
+        org     GH_BUF, OVI_R3
+zz_ovl:
+        include "dm_ovl.asm"
+zz_ovl_end:
+        assert  zz_ovl_end <= GH_BUF + GH_LOG
+R3_UNITS    equ (zz_ovl_end - GH_BUF + 15) >> 4
+        assert  R3_UNITS <= NODE_CAP
+        save    "../build/ovl.bin", OVI_R3, zz_ovl_end - GH_BUF
+OV_ROWS     equ R3_UNITS
+        assert  OVI_R3 + R3_UNITS * OV_UNIT <= OV_LOAD + OV_MAX
+OVI_CH      equ (R3_UNITS + 1) >> 1     ; το ov_install σε δύο μισά (src/ov_inst.asm)
+        assert  2 * OVI_CH <= NODE_CAP && OVI_R3 + 2 * OVI_CH * OV_UNIT <= #7000
 
         org     PAGE2_CODE - 256
 zz_colony:
         include "colony.asm"
 zz_colony_end:
         assert  zz_colony_end <= PAGE2_CODE && zz_colony >= GH_BUF
+        ; Ο εγκαταστάτης των τρυπών περνά τα μισά της κατεδάφισης από το GH_BUF
+        ; στην εκκίνηση, ΠΡΙΝ από το game_new που στήνει την αποικία (βήμα 155).
+        assert  ovi_buf + OVI_CH * OV_UNIT <= zz_colony
 
 ; --- ό,τι τρέχει από την ΤΡΑΠΕΖΑ 2 -----------------------------------------
 ; Η τράπεζα 2 φαίνεται πάντα στο &8000, άρα ο κώδικας εκεί είναι απλώς κώδικας.

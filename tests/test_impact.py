@@ -116,6 +116,7 @@ class Rig:
             codeat.poke(m, at, v)               # το mt_tick στο b6code (βήμα 110)
         self.ptr = [cpc._lib.cpcemu_ram_ptr(m._h, n) for n in range(8)]
         self.keep = [self.bank(n) for n in range(8)]
+        self.ph = codeat.phase(m)               # η φάση της μέτρησης (βήμα 155)
 
     def bank(self, n):
         return ctypes.string_at(self.ptr[n], 0x4000)
@@ -139,7 +140,7 @@ class Rig:
             t += 1
             if t > 100_000:
                 return None
-        return t
+        return t - self.ph
 
 
 def scene(R, rnd, case):
@@ -392,6 +393,8 @@ def expect(R, before, r1):
 
 def run(sym, patch=(), n=400, times=None):
     R = Rig(sym, patch)
+    if times is not None:
+        times["_ph"] = R.ph
     rnd = random.Random(76)
     for case in range(n):
         R.restore()
@@ -433,6 +436,8 @@ def main():
     else:
         print("OK 400 κλήσεις του mt_tick = η αναφορά, ο κανόνας του κρατήρα και η "
               "λίστα αλλαγών — και τίποτε άλλο σε καμία τράπεζα")
+    print(f"    ΦΑΣΗ: ο μάρτυρας των {codeat.CTRL_N} nop μετρά +{times.get('_ph', 0)} µs από εδώ, "
+          f"και αφαιρείται από κάθε μέτρηση (βήμα 155, tests/codeat.py)")
     for k, c in CEIL.items():
         t = times.get(k, 0)
         if t > c:

@@ -249,8 +249,12 @@ rto_src:
 ; Οποιος διαβάζει από δομή διαβάζει τη ΣΤΗΛΗ της: γραμμή του στόχου, στήλη
 ; της πηγής — και για στόχο δομή, γιατί και εκείνη η γραμμή έχει τη στήλη
 ; (jb_best, nd_nearest, sp_take). Για τις 48 δομές οι γραμμές τους δεν
-; χωρούν πια (§4.2): τότε οι στήλες 64-111 τους πάνε σε μπλοκ, και το
-; «γραμμή του στόχου, στήλη της πηγής» μένει για τους θόλους.
+; χωρούν πια (§4.2): ΑΠΟ ΤΟ ΒΗΜΑ 155 οι στήλες των δομών μιας δομής πάνε στο
+; ΜΠΛΟΚ (src/const.asm, DB_ROW): 64 bytes ανά δομή, η απόσταση ως τη δομή t
+; στη θέση t - 64. Το «γραμμή του στόχου, στήλη της πηγής» μένει για στόχο
+; θόλο· για στόχο δομή η γραμμή της πηγής στο μπλοκ. Τη διεύθυνση τη δίνουν το
+; D και το E που έχει ήδη, με ένα add, ένα rra και ένα rr e: DB_ROW +
+; 64 (s - 64) = (#54 + s/4) * 256 + (s & 3) * 64, 16 T περισσότερα.
 ;
 ; Μια δομή γράφει 32 bytes αντί για 96: 1.344 T λιγότερα σε καθεμία από τις
 ; 32. Ενας θόλος 2 T λιγότερα: το push/pop του DE έγινε ένα ld e,a από το A,
@@ -271,8 +275,8 @@ rt_flush:
         ld      bc,GA_PORT + PAGE_B5
         out     (c),c
         ld      hl,RT_NEXT
-        ld      bc,RT_NODES             ; 96, όχι 128 (βήμα 101): οι στήλες
-        ldir                            ; 96-127 είναι του ov_run (demolish.asm)
+        ld      bc,RT_NODES             ; όχι 128 (βήμα 101): οι στήλες NODE_CAP-127
+        ldir                            ; είναι της κατεδάφισης (OV_R3, βήμα 155)
 
         ld      l,b                     ; HL = RT_DIST: το B είναι 0 μετά το ldir
         ld      bc,GA_PORT + PAGE_B1
@@ -285,14 +289,20 @@ rtf_cp:
         pop     bc
         ret
 rtf_st:
-        or      MAX_DOME
-        ld      e,a                     ; DE = η γραμμή + 64
+        ld      a,d                     ; #40 + s/2
+        add     a,RTF_HI
+        rra                             ; #54 + s/4, CY = (s/2) & 1
+        ld      d,a
+        rr      e                       ; (s & 3) * 64: DE = DB_ROW + 64 (s - 64)
         ld      l,MAX_DOME              ; HL = RT_DIST + 64 (το RT_DIST στοιχισμένο)
         ld      c,MAX_STRUCT            ; B = 0
         jr      rtf_cp
+RTF_HI      equ 2 * ((DB_ROW - MAX_DOME * DB_STRIDE) >> 8) - #40
+        assert  DB_STRIDE == 64 && (DB_ROW & 255) == 0 && (RTF_HI & 1) == 0
+        assert  #40 + (NODE_CAP - 1) / 2 + RTF_HI < 256     ; το add δεν κρατά
 
-        assert  MAX_DOME == 64 && MAX_NODE <= 128   ; το bit 5 του #40 + s/2, το or
-        assert  RT_NODES == MAX_DOME + MAX_STRUCT
+        assert  MAX_DOME == 64 && MAX_NODE <= 128   ; το bit 5 του #40 + s/2
+        assert  RT_NODES == MAX_DOME + MAX_STRUCT && RT_NODES <= NODE_CAP
 
         assert  (G_rt_row & 255) == 0 && (G_rt_nodes & 255) == 0
         assert  (G_node_adj & 7) == 0 && ((G_node_adj >> 3) & 255) + 128 <= 256

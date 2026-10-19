@@ -73,10 +73,21 @@ sys.path.insert(0, "/home/vasilhs/cpcemu")
 import test_game as TG                                   # noqa: E402
 import cpc                                               # noqa: E402
 import scene as S                                        # noqa: E402
+import codeat                                            # noqa: E402
 
 PROBE = 0x3E80
 OI_REC = 5
-OI_DOME = 0x4000 + 96 * 128             # πάνω από το NEXTHOP[96][128]
+def _obj_index():
+    for line in open(os.path.join(ROOT, "build", "layout.asm"), encoding="utf-8"):
+        p = line.split()
+        if len(p) >= 3 and p[0] == "G_obj_index":
+            return int(p[2].lstrip("#"), 16)
+    raise KeyError("G_obj_index")
+
+
+# Πάνω από το NEXTHOP[96][128] ως το βήμα 154 (#7000)· από το 155 μετά τους
+# διαδρόμους, στο G_obj_index του tools/pack.py.
+OI_DOME = _obj_index()
 OI_CORR = OI_DOME + S.MAX_DOME * OI_REC
 OI_STRUCT = OI_CORR + S.MAX_CORR * OI_REC
 FIG, DOME, CORR, STRUCT = 1, 2, 4, 8    # OB_IX_*
@@ -135,6 +146,7 @@ class Rig:
             else:
                 m.poke(*p)
         self.keep = [self.bank(n) for n in range(8)]
+        self.ph = codeat.phase(m)               # η φάση της μέτρησης (βήμα 155)
 
     def bank(self, n):
         return ctypes.string_at(self.ptr[n], 0x4000)
@@ -173,7 +185,7 @@ class Rig:
             t += 1
             if t > 1_000_000:
                 return None
-        return t
+        return t - self.ph
 
 
 # --- η αναφορά ------------------------------------------------------------
@@ -433,6 +445,8 @@ def expect(R, a, before, col, mask):
 
 def run(sym, a, patch=(), n=300, times=None):
     R = Rig(sym, patch)
+    if times is not None:
+        times["_ph"] = R.ph
     rnd = random.Random(77)
     for case in range(n):
         R.restore()
@@ -491,6 +505,8 @@ def main():
     else:
         print("OK 300 κλήσεις του ob_index = το ευρετήριο, οι μετρητές και οι αρμοί "
               "της πρόζας — και τίποτε άλλο σε καμία τράπεζα")
+    print(f"    ΦΑΣΗ: ο μάρτυρας των {codeat.CTRL_N} nop μετρά +{times.get('_ph', 0)} µs από εδώ, "
+          f"και αφαιρείται από κάθε μέτρηση (βήμα 155, tests/codeat.py)")
     for k, c in CEIL.items():
         t = times.get(k, 0)
         if t > c:

@@ -42,7 +42,7 @@
 Αρνητικά: οι βλάβες ανοιχτές στα ίδια sol (μία χαλάει)· χωρίς το call της
 τοποθέτησης, χωρίς το call του ui_redo, το tu_ev πάντα ret.
 """
-import math, os, re, sys
+import os, re, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -52,6 +52,7 @@ sys.path.insert(0, "/home/vasilhs/cpcemu")
 import test_game as TG                                   # noqa: E402
 import test_bar as TB                                    # noqa: E402
 import hudread                                           # noqa: E402
+import ovmap as OV                                       # noqa: E402
 
 FAIL = []
 TUT_SNA = os.path.join(ROOT, "build", "tutor.sna")
@@ -191,10 +192,11 @@ class Tut:
             pass
 
     def holes(self):
-        """Η θέση στις τρύπες κάθε byte του κώδικα του tutorial (build/ovl4.bin)."""
-        rows = sum(math.ceil(os.path.getsize(os.path.join(ROOT, "build", n)) / 32)
-                   for n in ("ovl.bin", "ovl2.bin", "ovl3.bin"))
-        return lambda k: 96 + (rows + k // 32) * 128 + k % 32
+        """Η θέση στην τράπεζα 1 κάθε byte του κώδικα του tutorial
+        (build/ovl4.bin): από το βήμα 155 συνεχής στο OV_R1, μετά τις γραμμές
+        του (tests/ovmap.py· ως τότε στις τρύπες του DIST, 32 ανά γραμμή)."""
+        at = OV.pieces(self.sym)["tutor"][1]
+        return lambda k: at[k] - 0x4000
 
     def patch_code(self, old, new):
         """Πειράζει τον κώδικα του tutorial εκεί που ζει, στις τρύπες."""

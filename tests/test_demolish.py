@@ -28,11 +28,12 @@
 αδειάσει η λίστα ως CEIL_US, σε ένα εργοστάσιο και στον θόλο 0 της αποικίας
 που τον βλέπουν τρεις θόλοι.
 
-Ο ΚΩΔΙΚΑΣ ΤΗΣ ΚΑΤΕΔΑΦΙΣΗΣ ΖΕΙ ΣΤΙΣ ΤΡΥΠΕΣ ΤΟΥ DIST (στήλες 96-127, src/demolish.asm)
-και τρέχει από το GH_BUF· οι δύο χειριστές της λίστας τρέχουν από την τρύπα
-της γραμμής 0. Ελέγχεται ότι οι τρύπες έχουν ό,τι λέει το build
-(build/ovl.bin), και τα αρνητικά του πειράζουν τα bytes ΕΚΕΙ: το ov_run τον
-ξαναφέρνει από εκεί κάθε φορά.
+Ο ΚΩΔΙΚΑΣ ΤΗΣ ΚΑΤΕΔΑΦΙΣΗΣ ΖΕΙ ΣΤΙΣ ΤΡΥΠΕΣ (src/demolish.asm): από το βήμα 155
+στις στήλες 112-127 του NEXTHOP, στην τράπεζα 5 (ως τότε 96-127 του DIST), και
+τρέχει από το GH_BUF· οι δύο χειριστές της λίστας τρέχουν στη θέση τους, στην
+αρχή του OV_R1 της τράπεζας 1 (src/dm_hand.asm). Ελέγχεται ότι οι τρύπες έχουν
+ό,τι λέει το build (build/ovl.bin, tests/ovmap.py), και τα αρνητικά του
+πειράζουν τα bytes ΕΚΕΙ: το ov_run τον ξαναφέρνει από εκεί κάθε φορά.
 
 Αρνητικά, με τον κώδικα πειραγμένο στη μνήμη: καμία επιστροφή· όλα πίσω και από
 χτισμένο· οι διάδρομοι μένουν· ο κόσμος δεν ξαναγράφεται· ο διάδρομος χωρίς το
@@ -60,6 +61,7 @@ import test_outside as TO                                # noqa: E402
 import balance as B                                      # noqa: E402
 import route                                             # noqa: E402
 import reach                                             # noqa: E402
+import ovmap as OV                                       # noqa: E402
 
 FAIL = []
 DOME = {0: (12, 8), 1: (24, 14), 2: (40, 24)}            # bld_items: μέταλλο, βιοπλαστικό
@@ -158,9 +160,8 @@ def rooms(G):
                for r in range(12)]
 
 
-def holes(G):
-    b1 = G.bank(1)
-    return bytes(b1[128 * (k >> 5) + 96 + (k & 31)] for k in range(len(OVL)))
+def holes(G, sym):
+    return OV.read(G.m, sym, "dm")
 
 
 def centre(G, n):
@@ -228,7 +229,7 @@ def world_ok(G):
 # --------------------------------------------------------------------------
 def game(sym, g, patch=(), sna=None):
     """Το παιχνίδι στην αποικία δοκιμών (ή στο sna), με τα πειράγματα: ("ram",
-    διεύθυνση, τιμή) ή ("hole", δείκτης στην τράπεζα 1, τιμή)."""
+    διεύθυνση, τιμή) ή ("hole", (τράπεζα, δείκτης στην τράπεζα), τιμή)."""
     old = R.T.COLONY
     R.T.COLONY = sna or old
     try:
@@ -239,7 +240,7 @@ def game(sym, g, patch=(), sna=None):
         if where == "ram":
             G.m.poke(at, v)
         else:
-            G.bank(1)[at] = v
+            G.bank(at[0])[at[1]] = v
     F = TF.Fit(G, sym, g)
     F.set_stocks(TF.STOCK, TF.STOCK)
     return G, F
@@ -330,8 +331,8 @@ def common(G, F, n, nbrs):
 # --------------------------------------------------------------------------
 def tables(sym, g):
     G, F = game(sym, g)
-    if holes(G) != OVL:
-        return "ΠΙΝΑΚΕΣ: οι τρύπες του DIST δεν έχουν τον κώδικα του build/ovl.bin"
+    if holes(G, sym) != OVL:
+        return "ΠΙΝΑΚΕΣ: οι τρύπες του NEXTHOP δεν έχουν τον κώδικα του build/ovl.bin"
     ok, why = world_ok(G)
     if not ok:
         return "ΠΙΝΑΚΕΣ: ο κόσμος της αποικίας δεν είναι το μοντέλο: " + why
@@ -678,14 +679,14 @@ def refuse(sym, g, patch=(), quiet=False):
 # --------------------------------------------------------------------------
 def at_ovl(sym, name, n, pat, edits, hits=1):
     """Τα bytes του κώδικα των τρυπών: το pat μέσα σε n bytes από την ετικέτα,
-    ακριβώς `hits` φορές· τα edits σε καθένα. -> [("hole", δείκτης στην
-    τράπεζα 1, τιμή)], ή None."""
+    ακριβώς `hits` φορές· τα edits σε καθένα. -> [("hole", (τράπεζα, δείκτης
+    στην τράπεζα), τιμή)], ή None (tests/ovmap.py)."""
     o = sym[name] - GH
     at = [o + k for k in range(n - len(pat) + 1) if list(OVL[o + k:o + k + len(pat)]) == pat]
     if len(at) != hits:
         return None
-    return [("hole", 128 * ((h + d) >> 5) + 96 + ((h + d) & 31), v)
-            for h in at for d, v in edits]
+    hole = lambda k: (lambda b, a: (b, a - 0x4000))(*OV.at(sym, "dm", GH + k))
+    return [("hole", hole(h + d), v) for h in at for d, v in edits]
 
 
 def negatives(sym, g):
@@ -700,6 +701,16 @@ def negatives(sym, g):
         if len(at) != 1:
             return None
         return [("ram", sym[name] + at[0] + d, v) for d, v in edits]
+
+    def hand(name, n, pat, edits):
+        """Οι χειριστές στο OV_R1 της τράπεζας 1 (βήμα 155), όπως τους άφησε
+        το ov_install."""
+        o = sym[name] - 0x4000
+        data = bytes(G.bank(1)[o:o + n])
+        at = [k for k in range(n - len(pat) + 1) if list(data[k:k + len(pat)]) == pat]
+        if len(at) != 1:
+            return None
+        return [("hole", (1, o + at[0] + d), v) for d, v in edits]
 
     # dmc_axis: add a,3 · ... · sub 64 + 1 -> add a,1 · sub 64: από κέντρο σε κέντρο
     pad = at_ovl(sym, "DMCA_S", 8, [0xC6, 3], [(1, 1)])
@@ -733,7 +744,7 @@ def negatives(sym, g):
         ("το δωρεάν ορυχείο δίνει 30", at_ovl(sym, "DMD_IT", 64, [0xCB, 0x5E], [(1, 0x46)]),
          mines),
         ("το ορθογώνιο χωρίς να σηκωθεί το φάντασμα",
-         at_ovl(sym, "DHO_RECT", 20, cd("DT_GHOST_RECT"), nop3), factory),
+         hand("DH_RECT", 20, cd("DT_GHOST_RECT"), nop3), factory),
         ("όλα τα ορθογώνια σε ένα πέρασμα",
          [("ram", sym["DIRTY_COST"] + 2 * DK_RSIZE + k, 0) for k in (0, 1)], people),
     ]

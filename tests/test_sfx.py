@@ -45,6 +45,7 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, "/home/vasilhs/cpcemu")
 import test_game as TG                                   # noqa: E402
 import cpc                                               # noqa: E402
+import codeat                                            # noqa: E402
 
 PROBE, OUT = 0x3E80, 0x3EF0
 SND_CH, SND_REC = 3, 4
@@ -155,6 +156,7 @@ class Rig:
         self.keep = [self.bank(n) for n in range(8)]
         self.st = sym["SN_ST"]
         self.mixa = sym["SN_MIX"]
+        self.ph = codeat.phase(m)               # η φάση της μέτρησης (βήμα 155)
 
     def bank(self, n):
         return ctypes.string_at(self.ptr[n], 0x4000)
@@ -196,7 +198,7 @@ class Rig:
                     if n == 2 and off + 0x8000 in mine:
                         continue
                     return t, f"{name} έγραψε τράπεζα {n} #{off:04X}", None
-        return t, None, (w(OUT), w(OUT + 2), w(OUT + 4))
+        return t - self.ph, None, (w(OUT), w(OUT + 2), w(OUT + 4))
 
     def state(self):
         m = self.m
@@ -220,6 +222,8 @@ def data_rules(peek, sym):
 def run(sym, patch=(), n=12, ops=110, times=None):
     """Η πρώτη διαφορά από το μοντέλο, ή None. Οι χρόνοι στο times."""
     R = Rig(sym, patch)
+    if times is not None:
+        times["_ph"] = R.ph
     m = R.m
     why = data_rules(m.peek, sym)
     if why:
@@ -336,6 +340,8 @@ def main():
     else:
         print("OK τα εννέα εφέ = το §9.5, και 12 x 110 κλήσεις = το μοντέλο: AY, κανάλια, "
               "μίκτης, μνήμη, καταχωρητές")
+    print(f"    ΦΑΣΗ: ο μάρτυρας των {codeat.CTRL_N} nop μετρά +{times.get('_ph', 0)} µs από εδώ, "
+          f"και αφαιρείται από κάθε μέτρηση (βήμα 155, tests/codeat.py)")
     for k, c in CEIL.items():
         t = times.get(k, 0)
         if t > c:

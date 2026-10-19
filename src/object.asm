@@ -743,7 +743,10 @@ omp_set:
         ld      (om_tab),hl
         ret
 
-        assert  OI_END <= B5_BASE && B5_BASE + B5_LEN <= #8000
+        ; το ευρετήριο πάνω από τις NODE_CAP γραμμές του NEXTHOP, με χώρο για
+        ; 48 δομές (βήμα 155, tools/pack.py: obj_index)
+        assert  G_obj_index >= #4000 + NODE_CAP * 128
+        assert  OI_STRUCT + STRUCT_CAP * OI_REC == G_obj_index + (MAX_DOME + MAX_CORR + STRUCT_CAP) * OI_REC
 
 ; ---------------------------------------------------------------------------
 ; ob_mach_one — ΜΙΑ υποδοχή. In: A = υποδοχή· το om_prep έχει τρέξει. Η

@@ -226,10 +226,13 @@ goto_st:    db 0
         ; Το src/entity.asm δεν είναι εδώ· το jtm_set και το jtb_mark θέλουν το
         ; bit_tab του ΚΑΤΩ από το #4000, που τα βλέπει με την 5 ή την 6 μέσα.
 bit_tab: db 1,2,4,8,16,32,64,128
-; τα DK_RSIZE και DK_RECT της κατεδάφισης (βήμα 101) ζουν στις τρύπες του
-; DIST (src/dm_ovl.asm), που εδώ δεν υπάρχουν· κανείς δεν τα σπρώχνει.
+; τα DK_RSIZE και DK_RECT της κατεδάφισης (βήμα 101) ζουν στο OV_R1 της
+; τράπεζας 1 (src/dm_hand.asm, βήμα 155), που εδώ δεν υπάρχει· κανείς δεν τα
+; σπρώχνει. Ούτε το blk_row του src/jobs.asm, που το su_lock καλεί μόνο από
+; δομή, και εδώ κανείς δεν το καλεί (βήμα 155).
 DH_RSIZE    equ 0
 DH_RECT     equ 0
+blk_row     equ 0
         include "../src/dirty.asm"
         include "../src/figure.asm"         ; βήμα 89: οι άποικοι έξω
         include "../src/hud.asm"

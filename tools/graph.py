@@ -31,21 +31,54 @@ MAT_SIZE = MAXNODE * MAXNODE    # 16.384 bytes — ακριβώς μία τρά�
 # ΤΟ DIST ΤΟΥ Z80 ΜΕ ΣΥΜΜΕΤΡΙΑ (βήμα 153, src/graph.asm rt_flush). Οι κόμβοι
 # από το MAX_DOME και πάνω είναι δομές, και η γραμμή τους κρατά μόνο τις στήλες
 # των δομών: την απόσταση από τη δομή a στον θόλο b την έχει η γραμμή του b,
-# στη στήλη a. Εδώ η λογική μορφή μένει ολόκληρη (all_pairs)· το zd_off λέει
-# πού τη βρίσκει κανείς στη μνήμη του Z80.
+# στη στήλη a. ΑΠΟ ΤΟ ΒΗΜΑ 155 οι γραμμές των δομών είναι ΜΠΛΟΚ: 64 bytes η
+# καθεμία από το DB_ROW (src/const.asm), η στήλη της δομής b στη θέση b - 64.
+# Εδώ η λογική μορφή μένει ολόκληρη (all_pairs)· το zd_off λέει πού τη βρίσκει
+# κανείς στη μνήμη του Z80, και το z80_cells ποιες θέσεις γράφει.
 MAX_DOME = 64
+RT_NODES = 96           # οι στήλες που γράφει το rt_flush (src/graph.asm)
+DB_OFF = 0x2400         # DB_ROW - &4000
+DB_STRIDE = 64
+NODE_CAP = 112          # οι στήλες της γραμμής πριν από τις τρύπες (src/const.asm)
 
 
 def zd_off(a, b):
     """Η θέση του DIST[a][b] στην τράπεζα 1 του Z80, από το &4000."""
-    if a >= MAX_DOME and b < MAX_DOME:
+    if a < MAX_DOME:
+        return a * MAXNODE + b
+    if b < MAX_DOME:
         return b * MAXNODE + a
-    return a * MAXNODE + b
+    return DB_OFF + (a - MAX_DOME) * DB_STRIDE + b - MAX_DOME
 
 
 def zd(buf, a, b):
-    """Το DIST[a][b] από την εικόνα της τράπεζας 1 (ή του πίνακα της αναφοράς)."""
+    """Το DIST[a][b] από την εικόνα της τράπεζας 1 του Z80."""
     return buf[zd_off(a, b)]
+
+
+def z80_cells(hw):
+    """Ό,τι γράφει μια πλήρης ανοικοδόμηση ως το hw: δύο λίστες (θέση, a, b),
+    μία για το DIST (τράπεζα 1) και μία για το NEXTHOP (τράπεζα 5), από το
+    &4000. Κάθε πηγή γράφει RT_NODES στήλες στο NEXTHOP· στο DIST ένας θόλος
+    τη γραμμή του, μια δομή μόνο τις στήλες των δομών, στο μπλοκ."""
+    d, n = [], []
+    for a in range(hw):
+        for b in range(RT_NODES):
+            n.append((a * MAXNODE + b, a, b))
+            if a < MAX_DOME:
+                d.append((a * MAXNODE + b, a, b))
+            elif b >= MAX_DOME:
+                d.append((DB_OFF + (a - MAX_DOME) * DB_STRIDE + b - MAX_DOME, a, b))
+    return d, n
+
+
+def z80_holes():
+    """Οι θέσεις των τρυπών (βήμα 155, src/ov_inst.asm), από το &4000: του
+    DIST (OV_R2 στις γραμμές θόλων και το OV_R1) και του NEXTHOP (OV_R3)."""
+    r2 = [r * MAXNODE + c for r in range(MAX_DOME) for c in range(NODE_CAP, MAXNODE)]
+    r1 = list(range(MAX_DOME * MAXNODE, DB_OFF))
+    r3 = [r * MAXNODE + c for r in range(NODE_CAP) for c in range(NODE_CAP, MAXNODE)]
+    return r2 + r1, r3
 
 
 class Graph:

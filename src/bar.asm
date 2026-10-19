@@ -326,8 +326,6 @@ sl_at:      dw 0
 sl_piq:     dw 0
 sl_src:     dw 0
 sl_pic:     dw 0
-sl_gly:     dw 0
-sl_id:      db 0
 sl_po:      db 0
 sl_pi:      db 0
 sl_ctl:     dw 0
@@ -338,5 +336,9 @@ sl_ctg:     db #00,#01,#02,#03,#04,#05,#06,#07,#08,#09,#0A,#0B,#0C,#0D,#0E,#0F
 sl_ctw:     db #00,#11,#22,#33,#44,#55,#66,#77,#88,#99,#AA,#BB,#CC,#DD,#EE,#FF
 sl_ctr:     db #00,#10,#20,#30,#40,#50,#60,#70,#80,#90,#A0,#B0,#C0,#D0,#E0,#F0
         assert  sl_ctw == sl_ctg + 16 && sl_ctr == sl_ctw + 16
+; ΜΕΤΑ ΤΟΝ ΠΙΝΑΚΑ, όχι πριν (βήμα 155): τα 3 bytes τους γύρισαν το align 16 στο
+; μηδέν, αφού το rt_flush (src/graph.asm) πήρε 4 και το έσπρωξε 13 bytes.
+sl_gly:     dw 0
+sl_id:      db 0
         assert  sl_pi == sl_po + 1 && sl_ctl == sl_pi + 1
 

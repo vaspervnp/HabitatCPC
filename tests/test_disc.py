@@ -644,39 +644,27 @@ def main():
            "        out     (c),c\n        ld      a,(hl)\n")
     check(pages(old) == [3], "ΑΡΝΗΤΙΚΟ: το mt_ground του βήματος 109 θα πιανόταν")
 
-    # --- 3γ. ο κώδικας της κατεδάφισης στις τρύπες του DIST (βήματα 101-102) -
+    # --- 3γ. ο κώδικας των τρυπών (βήματα 101-102, 155) ---------------------
     # Τον φέρνει η BANK1.BIN στο OV_LOAD, κάτω από τα εικονίδια, και το
-    # ov_install τον μοιράζει στις στήλες 96-127 στην εκκίνηση. Ως το βήμα 101
+    # ov_install τον μοιράζει στις τρύπες στην εκκίνηση. Ως το βήμα 101
     # ερχόταν με την PAGE2.BIN στο GH_BUF· ένας δίσκος που τον ξεχνά αφήνει
-    # μηδενικά εκεί όπου πηδά το πρώτο M, D, FIRE.
-    # Και από το βήμα 103 το σώσιμο με τον οδηγό του δίσκου, από τη γραμμή μετά
-    # (build/ovl2.bin): το ίδιο το παιχνίδι το χρειάζεται για να σώσει.
-    # Και από το βήμα 108 η οθόνη βοήθειας (build/ovl3.bin), μετά το σώσιμο.
-    ovl = open(os.path.join(ROOT, "build", "ovl.bin"), "rb").read()
-    ovl2 = open(os.path.join(ROOT, "build", "ovl2.bin"), "rb").read()
-    ovl3 = open(os.path.join(ROOT, "build", "ovl3.bin"), "rb").read()
-    b1 = cpc._lib.cpcemu_ram_ptr(m._h, 1)
-    holes = bytes(b1[128 * (k >> 5) + 96 + (k & 31)] for k in range(len(ovl)))
-    r2 = (len(ovl) + 31) // 32
-    holes2 = bytes(b1[128 * (r2 + (k >> 5)) + 96 + (k & 31)] for k in range(len(ovl2)))
-    r3 = r2 + (len(ovl2) + 31) // 32
-    holes3 = bytes(b1[128 * (r3 + (k >> 5)) + 96 + (k & 31)] for k in range(len(ovl3)))
-    # Και από το βήμα 149 το tutorial, ο κώδικας και οι δεκαέξι γραμμές του
-    # (build/ovl4.bin): από τη γραμμή μετά τη βοήθεια ως τη 87η, μέσα στην εικόνα
-    # του OV_LOAD πια, που κρατά από το βήμα 148 όσο όλες οι τρύπες.
-    ovl4 = open(os.path.join(ROOT, "build", "ovl4.bin"), "rb").read()
-    r4 = r3 + (len(ovl3) + 31) // 32
-    holes4 = bytes(b1[128 * (r4 + (k >> 5)) + 96 + (k & 31)] for k in range(len(ovl4)))
-    check(len(ovl) > 512 and holes == ovl and len(ovl2) > 512 and holes2 == ovl2
-          and len(ovl3) > 128 and holes3 == ovl3 and len(ovl4) > 512 and holes4 == ovl4
-          and r4 + len(ovl4) // 32 > 80,
-          f"ο κώδικας της κατεδάφισης, του σωσίματος, της βοήθειας και του tutorial ήρθε "
-          f"από τον δίσκο στις τρύπες του DIST: {len(ovl)}, {len(ovl2)}, {len(ovl3)} και "
-          f"{len(ovl4)} bytes (ως τη γραμμή {r4 + len(ovl4) // 32 - 1}), "
-          f"{sum(x != y for x, y in zip(holes, ovl))}, "
-          f"{sum(x != y for x, y in zip(holes2, ovl2))}, "
-          f"{sum(x != y for x, y in zip(holes3, ovl3))} και "
-          f"{sum(x != y for x, y in zip(holes4, ovl4))} διαφορετικά")
+    # μηδενικά εκεί όπου πηδά το πρώτο M, D, FIRE. Από το βήμα 103 και το
+    # σώσιμο με τον οδηγό του δίσκου (build/ovl2.bin): το ίδιο το παιχνίδι το
+    # χρειάζεται για να σώσει. Από το 108 η οθόνη βοήθειας (build/ovl3.bin),
+    # από το 149 το tutorial (build/ovl4.bin) και οι γραμμές του. ΑΠΟ ΤΟ ΒΗΜΑ
+    # 155 σε τρία σημεία (tests/ovmap.py): η κατεδάφιση στις στήλες 112-127 του
+    # NEXTHOP της τράπεζας 5, το σώσιμο και η βοήθεια στις 112-127 των
+    # γραμμών θόλων του DIST, και το OV_R1 ολόκληρο (build/ovr1.bin) στο
+    # #6000: οι χειριστές της κατεδάφισης, οι γραμμές και ο κώδικας του
+    # tutorial.
+    import ovmap as OV
+    got = {n: (OV.read(m, sym, n), OV.pieces(sym)[n][3]) for n in ("dm", "save", "help", "r1")}
+    check(len(got["dm"][1]) > 512 and len(got["save"][1]) > 512 and len(got["help"][1]) > 128
+          and len(got["r1"][1]) > 512 + 256 and all(x == y for x, y in got.values()),
+          "ο κώδικας της κατεδάφισης, του σωσίματος, της βοήθειας και του tutorial ήρθε "
+          "από τον δίσκο στις τρύπες: "
+          + ", ".join(f"{n} {len(w)} bytes ({sum(a != b for a, b in zip(h, w))} διαφορετικά)"
+                      for n, (h, w) in got.items()))
 
     # --- 4. ο κόσμος είναι παραγμένος ------------------------------------
     m.run_code(0x3EC0, open(os.path.join(ROOT, "build", "plane.bin"), "rb").read())

@@ -62,32 +62,37 @@ def build():
     return sym
 
 
-# ΟΙ ΣΤΗΛΕΣ 96-127 ΚΑΘΕ ΓΡΑΜΜΗΣ ΔΕΝ ΕΙΝΑΙ ΤΗΣ ΔΡΟΜΟΛΟΓΗΣΗΣ (βήμα 101): κόμβοι
-# είναι 96, και εκεί ζει ο κώδικας του ov_run (src/demolish.asm). Το rt_flush
-# γράφει 96 στήλες· η σύγκριση με την αναφορά τις αφήνει έξω, και ένας ΔΙΚΟΣ
-# τους έλεγχος λέει ότι η ανοικοδόμηση δεν τις άγγιξε (στο graphtest είναι 0).
-HOLE = 96
+# ΤΙ ΓΡΑΦΕΙ Η ΔΡΟΜΟΛΟΓΗΣΗ, ΚΑΙ ΤΙ ΟΧΙ (βήματα 101, 153, 155). Το rt_flush
+# γράφει RT_NODES στήλες ανά πηγή στο NEXTHOP· στο DIST ένας θόλος τη γραμμή
+# του, και μια δομή μόνο τις στήλες των δομών, στο μπλοκ των 64 bytes ανά
+# γραμμή (G.zd_off, G.z80_cells): την απόσταση από δομή σε θόλο την κρατά η
+# γραμμή του θόλου. Η σύγκριση φτιάχνει ΟΛΗ την εικόνα των δύο τραπεζών όπως
+# πρέπει να βγει από την αναφορά — 0 ό,τι δεν γράφεται, όπως αρχίζει το
+# graphtest — άρα ένα byte έξω από τη θέση του, στις τρύπες της κατεδάφισης,
+# του σωσίματος και του tutorial (G.z80_holes) ή οπουδήποτε, είναι διαφορά.
+def expect(wd, wn, hw):
+    """Οι δύο εικόνες των 16 KB που πρέπει να αφήσει ο Z80 για γράφο ως το hw,
+    και πόσες θέσεις γράφει."""
+    dimg, nimg = bytearray(G.MAT_SIZE), bytearray(G.MAT_SIZE)
+    dc, nc = G.z80_cells(hw)
+    for o, a, b in dc:
+        dimg[o] = wd[a * 128 + b]
+    for o, a, b in nc:
+        nimg[o] = wn[a * 128 + b]
+    return bytes(dimg), bytes(nimg), len(dc) + len(nc)
 
 
-def holes_of(buf):
-    return b"".join(buf[r * 128 + HOLE:(r + 1) * 128] for r in range(len(buf) // 128))
-
-
-# ΚΑΙ ΟΙ ΣΤΗΛΕΣ ΤΩΝ ΘΟΛΩΝ ΣΤΙΣ ΓΡΑΜΜΕΣ ΤΩΝ ΔΟΜΩΝ (βήμα 153): το DIST με
-# συμμετρία δεν τις γράφει — την απόσταση από δομή σε θόλο την κρατά η γραμμή
-# του θόλου (G.zd_off). Το NEXTHOP τις γράφει όλες. Η σύγκριση αφήνει έξω και
-# αυτές, και ένας δικός τους έλεγχος λέει ότι έμειναν όπως ήταν (0 στο graphtest).
-def gaps_of(buf):
-    return b"".join(buf[r * 128:r * 128 + G.MAX_DOME] for r in range(G.MAX_DOME, len(buf) // 128))
-
-
-def masked(buf, dist=False):
-    b = bytearray(buf)
-    for r in range(len(b) // 128):
-        b[r * 128 + HOLE:(r + 1) * 128] = b"\xff" * (128 - HOLE)
-        if dist and r >= G.MAX_DOME:
-            b[r * 128:r * 128 + G.MAX_DOME] = b"\xff" * G.MAX_DOME
-    return bytes(b)
+def where(o, dist):
+    """Μια θέση της εικόνας, με λόγια."""
+    a, b = o >> 7, o & 127
+    if dist and G.MAX_DOME * 128 <= o < G.DB_OFF:
+        return f"#{0x4000 + o:04X}, τρύπα OV_R1"
+    if dist and o >= G.DB_OFF:
+        k, c = divmod(o - G.DB_OFF, G.DB_STRIDE)
+        return f"#{0x4000 + o:04X}, μπλοκ [{k + G.MAX_DOME}][{c + G.MAX_DOME}]"
+    if b >= G.NODE_CAP and a < (G.MAX_DOME if dist else G.NODE_CAP):
+        return f"[{a}][{b}], τρύπα " + ("OV_R2" if dist else "OV_R3")
+    return f"[{a}][{b}]"
 
 
 def run_z80(sym, g, entry="START", slice_b=None, patch=()):
@@ -169,7 +174,7 @@ def slices_check(sym, patch=()):
 def restart(sym, ga, gb, bsz, k, patch=()):
     """Ο ga κομμένος σε φέτες των bsz· μετά από k φέτες ο γράφος γίνεται gb και
     έρχεται rt_mark, και οι φέτες συνεχίζουν ως το τέλος. Γυρίζει (DIST, NEXTHOP
-    ως το hw του gb, rt_dirty, (rt_src, rt_phase) τη στιγμή του rt_mark).
+    ολόκληρα, rt_dirty, (rt_src, rt_phase) τη στιγμή του rt_mark).
 
     Πριν από το rt_mark η σειρά και η ουρά γεμίζουν σκουπίδια, όπως τις αφήνει
     ένα φόρτωμα: το μπλοκ της αποθήκευσης τις καλύπτει, το rt_tail όχι (βήμα 63)."""
@@ -200,8 +205,7 @@ def restart(sym, ga, gb, bsz, k, patch=()):
     while not probe(m, [0x06, bsz] + fn("RT_SLICE")) & 1:
         n += 1
         assert n < 20000, "δεν τελειώνει"
-    lim = gb.hw * 128
-    row = lambda bank: ctypes.string_at(cpc._lib.cpcemu_ram_ptr(m._h, bank), lim)
+    row = lambda bank: ctypes.string_at(cpc._lib.cpcemu_ram_ptr(m._h, bank), G.MAT_SIZE)
     return row(1), row(5), dirty, at
 
 
@@ -210,7 +214,8 @@ def restart_check(sym, patch=()):
     αμέσως μετά από άνοιγμα. Η πρώτη διαφορά ή None."""
     ga, gb = G.GRAPHS["worst"](), G.GRAPHS["colony"]()
     wd, wn = G.all_pairs(gb)
-    lim = gb.hw * 128
+    dc, nc = G.z80_cells(gb.hw)
+    h1, h5 = G.z80_holes()
     # worst: 130 μονάδες ανά πηγή — 50 x 12 = 600 είναι η πηγή 4 στη μέση,
     # 130 x 1 μόλις έκλεισε την πηγή 0, 131 x 1 μόλις άνοιξε την 1
     for bsz, k, phase in ((12, 50, True), (1, 130, False), (1, 131, True)):
@@ -219,39 +224,33 @@ def restart_check(sym, patch=()):
             f"το rt_mark δεν ήρθε εκεί που έπρεπε: rt_src {src}, φάση {ph}"
         if dirty != 1:
             return f"B={bsz}, μετά από {k} φέτες: το rt_mark άφησε rt_dirty = {dirty}"
-        if any(holes_of(dist)) or any(holes_of(nxt)):
-            return f"B={bsz}, μετά από {k} φέτες: γράφτηκαν οι στήλες 96-127 (οι τρύπες)"
-        if any(gaps_of(dist)):
-            return (f"B={bsz}, μετά από {k} φέτες: γράφτηκαν οι στήλες των θόλων στις "
-                    f"γραμμές των δομών του DIST")
-        dist, nxt = masked(dist, True), masked(nxt)
-        wd, wn = masked(wd[:lim], True) + wd[lim:], masked(wn[:lim]) + wn[lim:]
-        if (dist, nxt) != (bytes(wd[:lim]), bytes(wn[:lim])):
-            bad = sum(1 for i in range(lim) if dist[i] != wd[i] or nxt[i] != wn[i])
-            first = next(i for i in range(lim) if dist[i] != wd[i] or nxt[i] != wn[i])
-            return (f"B={bsz}, rt_mark μετά από {k} φέτες (πηγή {src}): {bad} θέσεις του "
-                    f"νέου γράφου λάθος, πρώτη [{first >> 7}][{first & 127}]")
+        if any(dist[o] for o in h1) or any(nxt[o] for o in h5):
+            return f"B={bsz}, μετά από {k} φέτες: γράφτηκαν οι τρύπες (OV_R1-R3)"
+        bad = [(o, True) for o, a, b in dc if dist[o] != wd[a * 128 + b]] + \
+              [(o, False) for o, a, b in nc if nxt[o] != wn[a * 128 + b]]
+        if bad:
+            return (f"B={bsz}, rt_mark μετά από {k} φέτες (πηγή {src}): {len(bad)} θέσεις του "
+                    f"νέου γράφου λάθος, πρώτη {where(*bad[0])}")
     return None
 
 
-def diff(got, want, label, g):
+def diff(got, want, label, dist):
     bad = [i for i in range(len(want)) if got[i] != want[i]]
     print(f"  ΑΠΟΤΥΧΙΑ {label}: {len(bad)} από {len(want)} bytes διαφέρουν")
     for i in bad[:6]:
-        a, b = i >> 7, i & 127
-        print(f"    [{a:3d}][{b:3d}]  Z80 {got[i]:3d} != αναφορά {want[i]:3d}"
-              f"   (γείτονες του {a}: {g.neighbours(a)})")
+        print(f"    {where(i, dist):34s}  Z80 {got[i]:3d} != αναφορά {want[i]:3d}")
     return len(bad)
 
 
 def consistent(dist, nxt, g):
     """Κάθε διαδρομή του NEXTHOP πρέπει να έχει μήκος ακριβώς DIST — και από
-    δομή σε θόλο το DIST είναι η γραμμή του θόλου (βήμα 153)."""
-    for a in range(g.n):
-        for b in range(g.n):
-            if a >= HOLE and b < G.MAX_DOME:
-                continue                # η στήλη του a είναι τρύπα: κόμβοι πάνω από
-                                        # το 96 υπάρχουν μόνο στους γράφους των δοκιμών
+    δομή σε θόλο το DIST είναι η γραμμή του θόλου (βήμα 153), από δομή σε δομή
+    το μπλοκ (βήμα 155)."""
+    for a in range(g.hw):
+        for b in range(min(g.hw, G.RT_NODES)):
+            if a >= G.RT_NODES and b < G.MAX_DOME:
+                continue                # η στήλη του a στη γραμμή του b δεν γράφεται:
+                                        # τόσοι κόμβοι υπάρχουν μόνο στους γράφους των δοκιμών
             d = G.zd(dist, a, b)
             p = G.walk(nxt, a, b)
             if d == G.UNREACH:
@@ -277,27 +276,12 @@ def main():
         dist, nxt, frames, _ = run_z80(sym, g)
         cost[name] = (g, frames)
 
-        # Η σύγκριση σταματά στο hw: πάνω από εκεί ο Z80 δεν γράφει καθόλου,
-        # και καμία ερώτηση δεν διαβάζει εκείνες τις σειρές (βλ. rt_begin).
-        lim = g.hw * 128
-        dist, nxt = dist[:lim], nxt[:lim]
-        if any(holes_of(dist)) or any(holes_of(nxt)):
-            print(f"  ΑΠΟΤΥΧΙΑ {name}: η δρομολόγηση έγραψε στις στήλες 96-127, τις τρύπες του ov_run")
-            fails += 1
-            continue
-        if any(gaps_of(dist)):
-            print(f"  ΑΠΟΤΥΧΙΑ {name}: το DIST έγραψε στις γραμμές των δομών τις στήλες των "
-                  f"θόλων, που τις κρατούν οι γραμμές των θόλων")
-            fails += 1
-            continue
-        dist, nxt = masked(dist, True), masked(nxt)
-        wd, wn = masked(wd[:lim], True), masked(wn[:lim])
-
+        wdi, wni, cells = expect(wd, wn, g.hw)
         bad = 0
-        if dist != wd:
-            bad += diff(dist, wd, f"{name} DIST", g)
-        if nxt != wn:
-            bad += diff(nxt, wn, f"{name} NEXTHOP", g)
+        if dist != wdi:
+            bad += diff(dist, wdi, f"{name} DIST", True)
+        if nxt != wni:
+            bad += diff(nxt, wni, f"{name} NEXTHOP", False)
         if bad:
             fails += 1
             continue
@@ -308,10 +292,9 @@ def main():
             fails += 1
             continue
 
-        gap = G.MAX_DOME * max(0, g.hw - G.MAX_DOME)
         print(f"OK {name:9s} n={g.n:3d} ακμές={len(g.edges()):4d}  "
-              f"{2*lim - gap} bytes ταυτόσημα, οι διαδρομές συμφωνούν με τις αποστάσεις"
-              + (f", {gap} του DIST ανέγγιχτα" if gap else ""))
+              f"{cells} θέσεις ταυτόσημες, οι διαδρομές συμφωνούν με τις αποστάσεις, "
+              f"τα άλλα {2 * G.MAT_SIZE - cells} bytes ανέγγιχτα")
         if name == "worst":
             worst_frames = frames
 
@@ -378,17 +361,21 @@ def main():
           "φόρτωμα στη σειρά μένει")
 
     # Το jr nz,rtf_st του rt_flush γίνεται nop nop: μια δομή γράφει όλη τη
-    # γραμμή της, όπως ως το βήμα 152 (βήμα 153).
-    fl = sym["RT_FLUSH"]
+    # γραμμή της, όπως ως το βήμα 152 (βήμα 153) — και από το 155 στο OV_R1 και
+    # στο μπλοκ, όπου η γραμμή των 128 δεν χωρά. Και το rr e του rtf_st γίνεται
+    # nop nop: οι γραμμές του μπλοκ πέφτουν η μία πάνω στην άλλη (βήμα 155).
+    fl, rs = sym["RT_FLUSH"], sym["RTF_ST"]
     k = next((k for k in range(60) if list(m.read_ram(fl + k, 2)) ==
-              [0x20, (sym["RTF_ST"] - (fl + k + 2)) & 255]), None)
-    g = G.GRAPHS["worst"]()
-    if k is None or not any(gaps_of(run_z80(sym, g, patch=[(fl + k, 0), (fl + k + 1, 0)])[0][:g.hw * 128])):
-        print("ΑΠΟΤΥΧΙΑ: ΑΡΝΗΤΙΚΟ — με τις δομές να γράφουν όλη τη γραμμή, οι στήλες "
-              "των θόλων τους έμειναν ανέγγιχτες")
-        return 1
-    print("OK ΑΡΝΗΤΙΚΟ: με τις δομές να γράφουν όλη τη γραμμή, γράφονται και οι στήλες "
-          "των θόλων τους")
+              [0x20, (rs - (fl + k + 2)) & 255]), None)
+    j = next((j for j in range(12) if list(m.read_ram(rs + j, 2)) == [0xCB, 0x1B]), None)
+    g = G.GRAPHS["bounded"]()           # 64 δομές, από τον κόμβο 64 (το colony τις έχει στο 32)
+    want = expect(*G.all_pairs(g), g.hw)[0]
+    for at, label in ((fl + k if k is not None else None, "με τις δομές να γράφουν όλη τη γραμμή"),
+                      (rs + j if j is not None else None, "με το rtf_st χωρίς το rr e")):
+        if at is None or run_z80(sym, g, patch=[(at, 0), (at + 1, 0)])[0] == want:
+            print(f"ΑΠΟΤΥΧΙΑ: ΑΡΝΗΤΙΚΟ — {label}, το DIST βγήκε όπως πρέπει")
+            return 1
+        print(f"OK ΑΡΝΗΤΙΚΟ: {label}, το DIST βγαίνει αλλιώς")
 
     # --- κόστος: η χειρότερη περίπτωση ΚΑΙ η πραγματική ---
     print("\nκόστος πλήρους ανοικοδόμησης (CPU, όχι απλωμένο σε frames):")

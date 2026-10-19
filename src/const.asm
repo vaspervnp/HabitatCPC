@@ -58,6 +58,23 @@ MAX_DOME    equ 64
 MAX_STRUCT  equ 32
 MAX_NODE    equ MAX_DOME + MAX_STRUCT
 MAX_CORR    equ 96
+; Ο ΧΩΡΟΣ ΓΙΑ 112 ΚΟΜΒΟΥΣ (βήμα 155), πριν από το MAX_STRUCT 48 του βήματος
+; 156: οι πίνακες έχουν όσες γραμμές και στήλες θα έχει τότε ο γράφος, και ό,τι
+; ζει στις τρύπες τους είναι πια πάνω από τη στήλη NODE_CAP.
+STRUCT_CAP  equ 48
+NODE_CAP    equ MAX_DOME + STRUCT_CAP
+; ΤΟ DIST ΣΤΗΝ ΤΡΑΠΕΖΑ 1 (βήμα 155, DESIGN §6.4): οι 64 γραμμές των θόλων, 128
+; bytes η καθεμία, με τις στήλες 0 ως NODE_CAP - 1· η τρύπα κάθε γραμμής είναι
+; οι στήλες NODE_CAP-127. Από το βήμα 153 η γραμμή μιας δομής χρειάζεται μόνο
+; τις στήλες των δομών (το DIST με συμμετρία): ΜΠΛΟΚ στο DB_ROW, 64 bytes ανά
+; δομή s, και η απόσταση ως τη δομή t στο DB_ROW + 64 s + t. Από κάτω του 1
+; KB για τον κώδικα των τρυπών (OV_R1).
+DB_ROW      equ #6400
+DB_STRIDE   equ 64
+OV_R1       equ #6000                   ; τράπεζα 1, συνεχές, 1 KB
+OV_R2       equ #4000 + NODE_CAP        ; τράπεζα 1, οι τρύπες των 64 γραμμών θόλων
+OV_R3       equ #4000 + NODE_CAP        ; τράπεζα 5, οι τρύπες των NODE_CAP γραμμών του NEXTHOP
+OV_UNIT     equ 128 - NODE_CAP          ; 16 bytes ανά τρύπα
 DOME_REC    equ 24
 D_CX        equ 0
 D_CY        equ 1
@@ -454,18 +471,18 @@ DK_RECT     equ 10                  ; a = tx, b = ty: ορθογώνιο tiles, 
 DK_KINDS    equ 11
 
 ; --- ευρετήριο αντικειμένων (src/object.asm, βήμα 39) ---
-; Στην τράπεζα 5, πάνω από το NEXTHOP[MAX_NODE][128], που τελειώνει στο
-; #6FFF: από το βήμα 30 (96 κόμβοι αντί για 128) τα 4 KB από εκεί ως το τέλος
-; δεν τα χρησιμοποιούσε κανείς. Ανά εγγραφή x0, x1, y0, y1 σε tiles του
-; κόσμου +128, και το id· θόλοι, διάδρομοι, δομές, με τη σειρά σχεδίασης.
+; Στην τράπεζα 5. Ως το βήμα 154 πάνω από το NEXTHOP[MAX_NODE][128], που
+; τελείωνε στο #6FFF· από το 155, όπου έχει 112 γραμμές ως το #77FF, πάνω από
+; τους διαδρόμους (G_obj_index, tools/pack.py). Ανά εγγραφή x0, x1, y0, y1 σε
+; tiles του κόσμου +128, και το id· θόλοι, διάδρομοι, δομές, με τη σειρά
+; σχεδίασης.
 OI_REC      equ 5
 OB_IX_FIG   equ 1           ; ob_idx: οι φιγούρες (ob_fig_scan· ως το 95 και οι πόρτες)
 OB_IX_DOME  equ 2           ;         τα κελύφη των θόλων
 OB_IX_CORR  equ 4           ;         οι διάδρομοι
 OB_IX_STRUCT equ 8          ;         οι δομές
 OB_IX_ALL   equ 15
-OI_DOME     equ #4000 + MAX_NODE * 128
+OI_DOME     equ G_obj_index
 OI_CORR     equ OI_DOME + MAX_DOME * OI_REC
 OI_STRUCT   equ OI_CORR + MAX_CORR * OI_REC
 OI_END      equ OI_STRUCT + MAX_STRUCT * OI_REC
-        assert  OI_END <= #8000

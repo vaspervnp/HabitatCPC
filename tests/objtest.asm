@@ -262,10 +262,13 @@ LKOPG   equ (G_node_adj >> 8) + 3           ; src/link.asm (βήμα 154) και
 LKO_MASK equ #3F                            ; που εδώ
 NODEPG  equ G_rt_nodes >> 8                 ; δεν υπάρχουν (το walk6.asm τα διαβάζει)
         include "../src/walk6.asm"          ; βήμα 118: στο παιχνίδι στο b6code
-; τα DK_RSIZE και DK_RECT της κατεδάφισης (βήμα 101) ζουν στις τρύπες του
-; DIST (src/dm_ovl.asm), που εδώ δεν υπάρχουν· κανείς δεν τα σπρώχνει.
+; τα DK_RSIZE και DK_RECT της κατεδάφισης (βήμα 101) ζουν στο OV_R1 της
+; τράπεζας 1 (src/dm_hand.asm, βήμα 155), που εδώ δεν υπάρχει· κανείς δεν τα
+; σπρώχνει. Ούτε το blk_row του src/jobs.asm, που το su_lock καλεί μόνο από
+; δομή, και εδώ κανείς δεν το καλεί (βήμα 155).
 DH_RSIZE    equ 0
 DH_RECT     equ 0
+blk_row     equ 0
         include "../src/dirty.asm"
         include "../src/figure.asm"         ; βήμα 89: οι άποικοι έξω
         include "../src/hud.asm"

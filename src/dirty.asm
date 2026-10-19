@@ -558,7 +558,7 @@ dkc_out:
 dirty_jmp:
         dw      dh_slot, dh_mach, dh_icon, dh_conn, dh_tile, dh_built, dh_site
         dw      dh_crow, dh_agent               ; src/figure.asm, τράπεζα 2
-        dw      DH_RSIZE, DH_RECT               ; στην τράπεζα 1 (src/dm_ovl.asm)
+        dw      DH_RSIZE, DH_RECT               ; στην τράπεζα 1 (src/dm_hand.asm)
 
 ; dhs_vacate, dhv_rect, dhv_clip, dhv_charge: στην τράπεζα 2 από το βήμα 89,
 ; στο src/figure.asm, που τα χρησιμοποιεί κι αυτό. Ψυχρός κώδικας — ένα

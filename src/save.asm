@@ -134,11 +134,21 @@ sv_after:
         ld      (cam_tx),hl             ; cam_tx, cam_ty διπλανά (ui.asm)
         ld      hl,(SV_HDR + 10)
         ld      (cur_hx),hl             ; cur_hx, cur_hy διπλανά (ui.asm)
+        ; Οι NODE_CAP στήλες κάθε γραμμής, όχι ολόκληρη η τράπεζα ως τις
+        ; μηχανές (βήμα 155): στις στήλες NODE_CAP-127 είναι η κατεδάφιση
+        ; (OV_R3, src/ov_inst.asm). Το ng_zero αφήνει το DE στο τέλος της
+        ; στήλης NODE_CAP - 1, συν ένα.
         ld      bc,GA_PORT + PAGE_B5
         out     (c),c
         ld      hl,#4000
-        ld      bc,B5_BASE - #4001      ; ως τις μηχανές (βήμα 85)
+        ld      a,NODE_CAP
+sva_nh:
+        ld      bc,NODE_CAP - 1
         call    ng_zero
+        ld      hl,128 - NODE_CAP
+        add     hl,de                   ; η επόμενη γραμμή
+        dec     a
+        jr      nz,sva_nh
         call    dt_end
         call    wheel_load              ; και το σάρωμα των εργασιών (βήμα 115)
         call    rt_mark

@@ -408,9 +408,10 @@ def hit_cost(sym, g, patch=(), quiet=False):
         m.poke(g + off, v)
     code = ([0xF3, 0x31, 0x00, 0x01, 0x01, 0xC6, 0x7F, 0xED, 0x49]       # τράπεζα 6
             + call(sym, "MT_TICK") + [0x18, 0xFE])
+    ph = codeat.phase(m)                    # η φάση της μέτρησης (βήμα 155)
     m.write_ram(PROBE, bytes(code))
     m.set_pc(PROBE)
-    end, t = PROBE + len(code) - 2, 0
+    end, t = PROBE + len(code) - 2, -ph   # η φάση αφαιρείται από την αρχή
     while not (end <= m.pc <= end + 2):
         m.run_us(1)
         t += 1

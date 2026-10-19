@@ -561,14 +561,15 @@ def main():
     gen = find("BSC_GO", [0x21] + w(sym["BS_GEN"]) + [0xBE, 0x28], 120) + 4
     fits = find("BWD_LP", [0xCD] + w(sym["RM_FITS"]), 10)
     letter = find("SLD_PL", [0xFE, 10], 10)
-    # Η βοήθεια στις τρύπες (βήμα 108): μετά την κατεδάφιση και το σώσιμο,
-    # 32 bytes ανά γραμμή του DIST, στις στήλες 96-127.
-    ovl = [open(os.path.join(ROOT, "build", f), "rb").read() for f in ("ovl.bin", "ovl2.bin", "ovl3.bin")]
-    r3 = (len(ovl[0]) + 31) // 32 + (len(ovl[1]) + 31) // 32
+    # Η βοήθεια στις τρύπες (βήμα 108): από το βήμα 155 μετά το σώσιμο, στις
+    # στήλες 112-127 των γραμμών θόλων του DIST, 16 bytes ανά γραμμή
+    # (tests/ovmap.py· ως τότε μετά την κατεδάφιση και το σώσιμο, 32 ανά γραμμή).
+    import ovmap as OV
+    help_ = OV.pieces(sym)["help"]
     # Το hp_up είναι το τέλος της: το δεύτερο call του έγινε fall through.
     o = sym["HP_UP"] - sym["ZZ_OV3"]
-    assert ovl[2][o:o + 3] == bytes([0xCD] + w(sym["HP_ANY"])), "το hp_up δεν αρχίζει με call hp_any"
-    hole = lambda k: ("b1", 128 * (r3 + (k >> 5)) + 96 + (k & 31))
+    assert help_[3][o:o + 3] == bytes([0xCD] + w(sym["HP_ANY"])), "το hp_up δεν αρχίζει με call hp_any"
+    hole = lambda k: ("b1", help_[1][k] - 0x4000)
     neg = [("χωρίς σάρωση γραμμάτων", [(scan, 0xB7), (scan + 1, 0), (scan + 2, 0)]),
            ("ακμή χωρίς μνήμη του κρατημένου", [(held + i, 0) for i in range(4)]),
            ("μπάρα που αγνοεί το σβήσιμο των λωρίδων", [(gen, 0x18)]),
