@@ -91,7 +91,8 @@ def main():
 
     # 5γ. ΒΗΜΑ 151: ό,τι δεν ζωγραφίζει ποτέ το παιχνίδι λείπει, και οι δείκτες
     #     του δείχνουν όπως πρέπει. Τα μεγέθη 0 και 1 των τεσσάρων ενεργειακών:
-    #     κανένα sprite, struct_ptr 0, struct_dims 0 — και το 2 εκεί. Τα τρία
+    #     κανένα sprite, struct_dims 0 — και το 2 εκεί, με τον δείκτη του είδους
+    #     στο struct_ptr (μία λέξη ανά είδος από το βήμα 152). Τα τρία
     #     εικονίδια του airlock (δωμάτιο 7): κανένα, και ο δείκτης του δείχνει το
     #     άδειο. Μηχανές, σήματα, εικονίδια s και mach_ptr στην τράπεζα 7.
     def table(name):
@@ -100,19 +101,24 @@ def main():
         return img[r.addr - base:r.addr - base + r.size]
     w16 = lambda t, i: t[2 * i] | t[2 * i + 1] << 8
     sp, sd = table("struct_ptr"), table("struct_dims")
+    check(len(sp) == 16, f"struct_ptr {len(sp)} bytes, όχι 16 (ένα ανά είδος, βήμα 152)")
     for k, kind in enumerate(("solar", "turbine", "collector", "extractor")):
         for z, size in enumerate("sml"):
             name = f"{kind}_{size}"
             if size == "l":
-                check(name in by_name and w16(sp, 4 * k + 2) == by_name[name].addr
+                check(name in by_name and w16(sp, k) == by_name[name].addr
                       and sd[8 * k + 4] and sd[8 * k + 5],
-                      f"το {name}: struct_ptr #{w16(sp, 4 * k + 2):04X}, διαστάσεις "
+                      f"το {name}: struct_ptr #{w16(sp, k):04X}, διαστάσεις "
                       f"{sd[8 * k + 4]}x{sd[8 * k + 5]}")
             else:
-                check(name not in by_name and w16(sp, 4 * k + z) == 0
-                      and sd[8 * k + 2 * z] == sd[8 * k + 2 * z + 1] == 0,
-                      f"το {name} δεν έπρεπε να υπάρχει: struct_ptr #{w16(sp, 4 * k + z):04X},"
-                      f" διαστάσεις {sd[8 * k + 2 * z]}x{sd[8 * k + 2 * z + 1]}")
+                check(name not in by_name and sd[8 * k + 2 * z] == sd[8 * k + 2 * z + 1] == 0,
+                      f"το {name} δεν έπρεπε να υπάρχει: διαστάσεις "
+                      f"{sd[8 * k + 2 * z]}x{sd[8 * k + 2 * z + 1]}")
+    # τα τέσσερα του ενός μεγέθους: το 0 έχει διαστάσεις, τα 1-3 μηδέν
+    for k, kind in enumerate(("mine", "airlock", "pad", "ship"), 4):
+        check(w16(sp, k) == by_name[kind].addr and sd[8 * k] and sd[8 * k + 1]
+              and not any(sd[8 * k + 2:8 * k + 8]),
+              f"το {kind}: struct_ptr #{w16(sp, k):04X}, διαστάσεις {list(sd[8 * k:8 * k + 8])}")
     for size in "sml":
         t = table(f"icon_{size}_ptr")
         check(f"icon_{size}_airlock" not in by_name
@@ -227,9 +233,9 @@ def main():
           f"ΑΡΝΗΤΙΚΟ: με k + 1 οι θόλοι δεν ξαναβγαίνουν ({good} σωστά, {bad} με το λάθος)")
 
     # 6. οι παραγόμενοι πίνακες δείχνουν στα σωστά
-    # Το None είναι θέση που ΔΕΝ υπάρχει — το struct_ptr κρατά τέσσερις ανά
-    # είδος και το ορυχείο έχει ένα μέγεθος. Πρέπει να δείχνει μηδέν, και ο
-    # renderer το ελέγχει πριν σχεδιάσει.
+    # Το None είναι θέση που ΔΕΝ υπάρχει — ως το βήμα 151 το struct_ptr κρατούσε
+    # τέσσερις ανά είδος και το ορυχείο είχε ένα μέγεθος. Πρέπει να δείχνει
+    # μηδέν, και ο renderer το ελέγχει πριν σχεδιάσει.
     for tab, names in ptr.items():
         r = by_name[tab]
         for i, n in enumerate(names):

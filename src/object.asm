@@ -1205,15 +1205,16 @@ ob_struct:
         ld      a,(s_rec+ST_STATE)
         or      a
         ret     z
-        ; (kind*4 + size)*2: ο ίδιος δείκτης για το struct_dims (δύο bytes
-        ; ανά μέγεθος) και για το struct_ptr (μία λέξη ανά μέγεθος).
+        ; (kind*4 + size)*2 για το struct_dims (δύο bytes ανά μέγεθος), kind*2
+        ; στο B για το struct_ptr (μία λέξη ανά είδος, βήμα 152: ό,τι περνά τον
+        ; έλεγχο του μηδενός από κάτω έχει το μόνο μέγεθος του είδους του).
         ld      a,(s_rec+ST_KIND)
         add     a,a
+        ld      b,a
         add     a,a
         ld      hl,s_rec+ST_SIZE
         add     a,(hl)
         add     a,a
-        ld      c,a
         add     a,G_struct_dims & 255
         ld      l,a
         adc     a,G_struct_dims >> 8
@@ -1226,7 +1227,7 @@ ob_struct:
         inc     hl
         ld      d,(hl)
         ld      (ob_w),de
-        ; θέση: κέντρο μείον το μισό πλαίσιο — το C περνά από κάτω ανέγγιχτο
+        ; θέση: κέντρο μείον το μισό πλαίσιο — το B περνά από κάτω ανέγγιχτο
         ld      a,(s_rec+ST_CX)
         call    ob_sx
         ld      a,(ob_w)
@@ -1239,7 +1240,7 @@ ob_struct:
         srl     a
         call    ob_subu
         ld      (ob_y),hl
-        ld      a,c
+        ld      a,b
         ; πηγή από το struct_ptr, και η πλατφόρμα είναι η μόνη ΑΔΙΑΦΑΝΗ
         add     a,G_struct_ptr & 255
         ld      l,a

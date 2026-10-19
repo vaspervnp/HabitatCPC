@@ -290,6 +290,7 @@ mla_pok:
         include "mine.asm"                  ; βήμα 123: η τιμή και οι σημαίες του ορυχείου
         include "visit0.asm"                ; βήμα 136: οι επισκέπτες, ό,τι δεν θέλει την 6
         include "fight0.asm"                ; βήμα 150: ο φρουρός αφήνει την ανάγκη για τη μάχη
+        include "b6out.asm"                 ; βήμα 110: ό,τι του b6code θέλει άλλη τράπεζα (στην 0 από το 152)
 zz_bank0_end:
         ; ΤΟ ΠΑΤΩΜΑ ΤΩΝ TESTS. Πάνω από τον κώδικα στήνουν stubs, ημερολόγια και
         ; probes: τα probes στο #3E80, το test_loop τα stubs του από το
@@ -401,7 +402,6 @@ zz_page2_code:                          ; για το tools/mkdsk.py: πού φ�
         include "install.asm"           ; βήμα 99: οι μηχανές κουβαλιούνται και στήνονται (στην 2 από το 108)
         include "figure.asm"            ; βήμα 89: οι άποικοι έξω
         include "suit.asm"              ; βήμα 90: οι στολές
-        include "b6out.asm"             ; βήμα 110: ό,τι του b6code θέλει άλλη τράπεζα
         include "sound.asm"
         include "objindex.asm"          ; βήμα 41: το χτίσιμο του ευρετηρίου
         include "info.asm"              ; βήμα 79: τι έχει κάτω ο κέρσορας (I)
@@ -451,6 +451,7 @@ zz_page2_end:
         ; ολόκληρο αυτό το κομμάτι, εικονίδια και κώδικας (tools/mkdsk.py).
         org     G_b1code
         include "commit.asm"
+        include "bar1.asm"              ; βήμα 152: το bar_want, από την τράπεζα 0
 zz_b1code_end:
         assert  zz_b1code_end <= G_b1code + B1C_MAX
         assert  G_b1code + B1C_MAX == #8000
