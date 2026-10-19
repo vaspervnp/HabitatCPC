@@ -61,6 +61,7 @@ import test_outside as TO                                # noqa: E402
 import balance as B                                      # noqa: E402
 import route                                             # noqa: E402
 import reach                                             # noqa: E402
+import econ as EC                                        # noqa: E402
 import ovmap as OV                                       # noqa: E402
 
 FAIL = []
@@ -184,9 +185,9 @@ def model(G, base=None):
     wl = bytearray(b & 0xEF for b in base)
     on = lambda x, y: -64 <= x < 64 and -64 <= y < 64
     domes = [[r[0], r[1], r[2], r[4]] for r in (dome(G, d) for d in range(64))]
-    structs = [struct(G, n) for n in range(64, 96)]
+    structs = [struct(G, n) for n in range(64, 64 + EC.MAX_STRUCT)]
     dims = G.m.read_ram(L["G_struct_dims"], 64)
-    for n in range(96):
+    for n in range(64 + EC.MAX_STRUCT):
         fp = reach.footprint(n, domes, structs, dims)
         if fp is None:
             continue
@@ -520,7 +521,7 @@ def people(sym, g, patch=(), quiet=False):
         return f"ΑΝΘΡΩΠΟΙ: ο χειρότερος γύρος {worst / MS:.1f} ms > {CEIL_US / MS:.0f}"
     to = {ag(G, a, 1) for a in who}
     t = min(to)
-    if len(to) != 1 or not 64 <= t < 96 or struct(G, t)[2] not in (K_AIRLOCK, K_SHIP):
+    if len(to) != 1 or not 64 <= t < 64 + EC.MAX_STRUCT or struct(G, t)[2] not in (K_AIRLOCK, K_SHIP):
         return f"ΑΝΘΡΩΠΟΙ: οι {who} πήγαν στους κόμβους {to}, όχι σε ένα airlock ή στο σκάφος"
     inside = struct(G, t)[4] == 2
     for a in who:
@@ -568,7 +569,7 @@ def mines(sym, g, patch=(), quiet=False):
         m0 = metal()
         if not B.build(G.m, sym, 8, g_metal, at=(2 * tx + 4, 2 * ty + 4)):
             return f"ΟΡΥΧΕΙΑ: το ορυχείο στο ({tx}, {ty}) δεν μπήκε"
-        new = [64 + k for k in range(32) if 64 + k not in nodes
+        new = [64 + k for k in range(EC.MAX_STRUCT) if 64 + k not in nodes
                and struct(G, 64 + k)[2] == K_MINE and struct(G, 64 + k)[4]]
         if len(new) != 1:
             return f"ΟΡΥΧΕΙΑ: μετά το FIRE ορυχεία {new} καινούργια"

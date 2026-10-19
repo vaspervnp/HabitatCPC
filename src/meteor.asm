@@ -77,7 +77,7 @@ mts_seed:
 mts_lp:
         ld      a,c
         cp      MAX_NODE
-        jr      nc,mts_nx               ; 96-127: δεν είναι κόμβος
+        jr      nc,mts_nx               ; 112-127 (96-127 ως το 155): όχι κόμβος
         call    mt_rec
         push    hl
         ld      de,D_STATE

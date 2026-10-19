@@ -67,6 +67,7 @@ PROBE = 0x3E80
 MAX_JOB, JOB_REC, NO_JOB = 32, 5, 255
 J_BUILD, J_OPERATE, J_DRILL, J_SUPPLY = 0, 1, 3, 7
 DOME_REC, STRUCT_REC = 24, 8
+NS = EC.MAX_STRUCT                      # 48 από το βήμα 156 (32 ως τότε)
 D_SIZE, D_STATE, D_POWER, D_OPS, D_MACH, D_HEALTH = 2, 4, 6, 7, 8, 16
 ST_KIND, ST_STATE, ST_INTEG, ST_OPS, ST_OWED = 2, 4, 5, 6, 7
 K_MINE = 8
@@ -179,7 +180,7 @@ def zoo():
                  (7, dome(0, 1, 0, 4, (200,))),                # μόνο βιοπλαστικό
                  (9, dome(1, 1, 0, 0, (4, 4, 0, 0)))):         # Build, όχι για τις μηχανές
         domes[d * DOME_REC:(d + 1) * DOME_REC] = r
-    structs = bytearray(32 * STRUCT_REC)
+    structs = bytearray(NS * STRUCT_REC)
     for s, r in ((0, struct(11, 2)),                           # το σκάφος
                  (1, struct(0, 1, 0x20)), (2, struct(0, 1, 0x05)),
                  (3, struct(1, 1, 0x25)), (4, struct(2, 1, 0x00)),
@@ -205,8 +206,8 @@ def colony(rnd, free):
                  garbage=rnd.randrange(256) if st == 0 else 0)
         r[D_STATE] = st
         domes[d * DOME_REC:(d + 1) * DOME_REC] = r
-    structs = bytearray(32 * STRUCT_REC)
-    for s in range(32):
+    structs = bytearray(NS * STRUCT_REC)
+    for s in range(NS):
         r = struct(rnd.randrange(12), rnd.choice([0, 0, 1, 2]),
                    rnd.choice([0, 0x10, 0x20, 0x05, 0x25, 0x01, rnd.randrange(256)]))
         structs[s * STRUCT_REC:(s + 1) * STRUCT_REC] = r
@@ -215,11 +216,11 @@ def colony(rnd, free):
         if rnd.random() < free:
             continue
         if rnd.random() < 0.4:                                 # μια εργασία που ίσως ζητείται
-            n = rnd.randrange(96)
+            n = rnd.randrange(64 + NS)
             rec = [rnd.choice([J_SUPPLY, J_SUPPLY + 1, J_BUILD]), rnd.randrange(128),
-                   rnd.choice([255, rnd.randrange(96)]), rnd.randrange(10), n]
+                   rnd.choice([255, rnd.randrange(64 + NS)]), rnd.randrange(10), n]
         else:
-            rec = [rnd.randrange(10), rnd.randrange(128), rnd.choice([255, rnd.randrange(96)]),
+            rec = [rnd.randrange(10), rnd.randrange(128), rnd.choice([255, rnd.randrange(64 + NS)]),
                    rnd.randrange(10), rnd.randrange(128)]
         board[j * JOB_REC:(j + 1) * JOB_REC] = bytes(rec)
     return domes, structs, board
@@ -265,7 +266,7 @@ def timing(sym, L, patch=()):
     domes = bytearray(64 * DOME_REC)
     for d in range(48):
         domes[d * DOME_REC:(d + 1) * DOME_REC] = dome(2, 2, 9, 4, (200,) * 8)
-    structs = bytearray(32 * STRUCT_REC)
+    structs = bytearray(NS * STRUCT_REC)
     for s in range(24):
         structs[s * STRUCT_REC:(s + 1) * STRUCT_REC] = struct(0, 2)
     board = empty_board()
@@ -273,7 +274,7 @@ def timing(sym, L, patch=()):
         board[j * JOB_REC:(j + 1) * JOB_REC] = bytes([J_OPERATE, j, 7, 3, j])
     _, _, _, big = box.sweep(domes, structs, board, step=1)
     domes = bytearray(64 * DOME_REC)
-    structs = bytearray(32 * STRUCT_REC)
+    structs = bytearray(NS * STRUCT_REC)
     for s in range(1, 31):
         structs[s * STRUCT_REC:(s + 1) * STRUCT_REC] = struct(0, 1, 0x21)
     full = bytearray([J_DRILL, 95, 255, 4, 95] * MAX_JOB)

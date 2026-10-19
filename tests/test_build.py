@@ -545,7 +545,7 @@ def main():
     s_ = load_map()["struct_dims"]
     dims = load_bin()[s_.off:s_.off + s_.size]
     domes = [list(colony_.dome[24 * d:24 * d + 4]) for d in range(64)]
-    structs = [list(colony_.struct[8 * k:8 * k + 5]) for k in range(32)]
+    structs = [list(colony_.struct[8 * k:8 * k + 5]) for k in range(len(colony_.struct) // 8)]
     res = reach.plan(bytes(plane.buf), domes, structs, dims, 0, 0, 4, 4,
                      2 * tx + 4, 2 * ty + 4)
     cost = 12 + reach.CORR_M * res["pieces"]

@@ -36,7 +36,7 @@ MAT_SIZE = MAXNODE * MAXNODE    # 16.384 bytes — ακριβώς μία τρά�
 # Εδώ η λογική μορφή μένει ολόκληρη (all_pairs)· το zd_off λέει πού τη βρίσκει
 # κανείς στη μνήμη του Z80, και το z80_cells ποιες θέσεις γράφει.
 MAX_DOME = 64
-RT_NODES = 96           # οι στήλες που γράφει το rt_flush (src/graph.asm)
+RT_NODES = 112          # οι στήλες που γράφει το rt_flush (src/graph.asm· 96 ως το βήμα 155)
 DB_OFF = 0x2400         # DB_ROW - &4000
 DB_STRIDE = 64
 NODE_CAP = 112          # οι στήλες της γραμμής πριν από τις τρύπες (src/const.asm)

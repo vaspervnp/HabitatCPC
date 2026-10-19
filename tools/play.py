@@ -60,7 +60,8 @@ SHORE_AT = GROW_AT                 # από τόσους αποίκους
 FAR_R = 40                         # βήμα 147: όχθες ως τόσα tiles, όταν κοντά δεν χωρά
 FAR_N = 12                         # οι τόσες κοντινότερες, μία ανά 4x4
 FAR_ANCHORS = 6                    # σκαλοπάτια (airlock) για νερό και ρεύμα, το πολύ
-SLOT_KEEP = 2                      # θέσεις δομών (32) που μένουν για αντλίες
+SLOT_KEEP = 2                      # θέσεις δομών (STRUCT_SLOTS) που μένουν για αντλίες
+STRUCT_SLOTS = 48                  # το MAX_STRUCT του src/const.asm (32 ως το βήμα 155)
 MINE_K = 4                         # K_MINE, το είδος της δομής
 K_SOLAR, K_COLLECT, K_EXTRACT, K_AIRLOCK = 0, 2, 3, 5   # τα K_* του src/const.asm
 R_GREEN = 5                        # D_ROOM του θερμοκηπίου: οι υποδοχές του είναι φυτά
@@ -198,7 +199,7 @@ class Game:
 
     def structs(self):
         b6, s0 = self.bank(6), self.L["G_struct_tbl"] - 0x4000
-        return [list(b6[s0 + 8 * k:s0 + 8 * k + 8]) for k in range(32)]
+        return [list(b6[s0 + 8 * k:s0 + 8 * k + 8]) for k in range(STRUCT_SLOTS)]
 
     def state(self, node):
         if node < 64:
@@ -574,7 +575,7 @@ class Game:
         return None
 
     def free_structs(self):
-        """Οι ελεύθερες από τις 32 θέσεις δομών (MAX_STRUCT)."""
+        """Οι ελεύθερες από τις STRUCT_SLOTS θέσεις δομών (MAX_STRUCT)."""
         return sum(1 for t in self.structs() if not t[4])
 
     def anchor_ctx(self):
@@ -583,7 +584,7 @@ class Game:
         kind, param, w, h = self.m.read_ram(self.sym["BLD_ITEMS"] + 8 * AIRLOCK, 4)
         return dict(b4=self.world(), domes=[d[:4] for d in self.domes()], structs=structs,
                     dims=self.m.read_ram(self.L["G_struct_dims"], 64), lock=(kind, param, w, h),
-                    slot=next((k for k in range(reach.ship0(structs), 32) if not structs[k][4]), None),
+                    slot=next((k for k in range(reach.ship0(structs), STRUCT_SLOTS) if not structs[k][4]), None),
                     size=next((t[3] for t in structs if t[4] and t[2] == K_AIRLOCK), 0))
 
     def with_airlock(self, tx, ty, X):

@@ -222,7 +222,7 @@ def plan(world, domes, structs, dims, kind, param, w, h, cx, cy):
                    ((b, domes[b][:4]) for b in range(64)) if st]
         out["any"] = bool(targets)
         targets += [(64 + k, (structs[k][0], structs[k][1], route.AIRLOCK))
-                    for k in range(ship0(structs), 32)
+                    for k in range(ship0(structs), len(structs))   # 32 ως το βήμα 155
                     if structs[k][4] and structs[k][2] == K_AIRLOCK
                     and not joined(structs[k])]
         for node, bb in targets:
@@ -253,7 +253,7 @@ def plan(world, domes, structs, dims, kind, param, w, h, cx, cy):
     else:
         p = (sb(cx) >> 1, sb(cy) >> 1)
         best = RANGE + 1
-        for node in range(64 + ship0(structs), 96):
+        for node in range(64 + ship0(structs), 64 + len(structs)):
             fp = footprint(node, domes, structs, dims)
             if fp is None:
                 continue
@@ -295,7 +295,7 @@ def anchor(structs, deg, node, cx, cy):
     |dy|) σε μισά tiles από το (cx, cy), με τη διαφορά σε 8 bits (254 αν
     ξεχειλίζει). Σε ισοπαλία το πρώτο. 255 αν κανένα."""
     best, out = 255, 255
-    for k in range(32):
+    for k in range(len(structs)):          # MAX_STRUCT (32 ως το βήμα 155)
         s = structs[k]
         n = 64 + k
         if not s[4] or s[2] not in (K_SHIP, K_AIRLOCK) or n == node \

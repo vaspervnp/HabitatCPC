@@ -128,11 +128,13 @@ drn_bt:
 drn_bn:
         inc     l
         djnz    drn_bt
-        ; C = θέσεις - γεωτρύπανα, από -16 ως 96: CY αν είναι από 1 και πάνω.
+        ; C = θέσεις - γεωτρύπανα, από -16 ως 144: CY αν είναι από 1 ως 144.
+        ; Ως το βήμα 155 από -16 ως 96, και το cp #80 ως πρόσημο· με 48 δομές
+        ; οι θέσεις φτάνουν τις 144, και τα αρνητικά είναι 240-255.
         ld      a,c
         dec     a
-        cp      #80
+        cp      MAX_STRUCT * MINE_OPS
         ret
 
-        assert  MAX_STRUCT * MINE_OPS < 128 && AG_NBOT < 128 && MINE_OPS == 3
+        assert  MAX_STRUCT * MINE_OPS + AG_NBOT < 256 && MINE_OPS == 3
 bot_end:                                ; το τέλος των ρομπότ (tests/test_bots.py)

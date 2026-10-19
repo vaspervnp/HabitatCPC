@@ -54,7 +54,7 @@ def mine_ops(m):
               for line in open(os.path.join(ROOT, "build", "layout.asm"), encoding="utf-8")
               if line.startswith("G_struct_tbl")) - 0x4000
     b6 = cpc._lib.cpcemu_ram_ptr(m._h, 6)
-    return [b6[gs + 8 * k + 6] & 0x3C for k in range(32)
+    return [b6[gs + 8 * k + 6] & 0x3C for k in range(B.MAX_STRUCT)
             if b6[gs + 8 * k + 2] == 4 and b6[gs + 8 * k + 4]]
 
 

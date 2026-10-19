@@ -521,7 +521,10 @@ def negatives(sym):
 
     mo, sb, mt, ma = sym["MC_ORDER"], sym["SP_BUILD"], sym["MC_TAIL"], sym["MC_ARRIVE"]
     at0("το FIT χωρίς εργασίες", "FIT_SET", 120, [0xCD] + w(mo), [(0, 0), (1, 0), (2, 0)], "fit")
-    at0("χωρίς το «αν δεν υπάρχει ήδη»", "MCO_ONE", 6, [0xC8], [(0, 0)], "fit")
+    # call sp_find · ret z: το ret z μετά το call, γιατί από το βήμα 156 το
+    # sp_find είναι στο &ADC8 και το C8 βγαίνει και στο call
+    at0("χωρίς το «αν δεν υπάρχει ήδη»", "MCO_ONE", 6, [0xCD] + w(sym["SP_FIND"]) + [0xC8],
+        [(3, 0)], "fit")
     at0("θόλος σε λειτουργία ως εργοτάξιο", "SPA_SITE", 16, [0xC2] + w(ma),
         [(0, 0), (1, 0), (2, 0)], "deliver")
     at0("καμία Build για τη μηχανή", "MCA_GOT", 40, [0xC4] + w(sb), [(0, 0), (1, 0), (2, 0)],

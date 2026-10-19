@@ -167,7 +167,7 @@ def econ_jobs(L, b2, stock, popcap, alive, seed):
     # ΤΑ LK_OWN (βήμα 154, src/link.asm): στην τελευταία σελίδα του node_adj,
     # L = κόμβος | 128, «τίποτα» = #3F για τις MAX_STRUCT δομές
     lk = ((L["G_node_adj"] >> 8) + 3) * 256 + 128 + 64 - 0x8000
-    b2[lk:lk + 32] = b"\x3f" * 32
+    b2[lk:lk + EC.MAX_STRUCT] = b"\x3f" * EC.MAX_STRUCT
 
 
 def wipe6(L, before):

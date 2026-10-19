@@ -42,9 +42,15 @@ test_loop: ένας σπόρος που μένει μηδέν, η δομή 95 π
 Και ο ΧΡΟΝΟΣ, ανά είδος κλήσης, στο χειρότερο που συνάντησε: όχι πιο αργό από
 όσο μετρήθηκε στο βήμα 76. Με το meteor.asm του βήματος 75 αποτυγχάνει.
 
+ΔΥΟ ΠΕΡΑΣΜΑΤΑ ΑΠΟ ΤΟ ΒΗΜΑ 156, που οι δομές έγιναν 48: οι 400 σκηνές του
+βήματος 155 ακριβώς (οι δομές 32-47 άδειες), με τα ταβάνια ως τότε, και οι
+ίδιες με δομές και στις 32-47, από δική τους ζαριά (xrnd), με δικά τους.
+
 Αρνητικά, με τον κώδικα πειραγμένο στη μνήμη: κρατήρας και πάνω σε διάδρομο,
 κρούση έξω από τον κόσμο που δεν γυρίζει, θόλοι με πλευρά 2 + 2*μέγεθος, η
-μηχανή από το λάθος byte, το «κοντινό» κέντρο στα 3 tiles.
+μηχανή από το λάθος byte, το «κοντινό» κέντρο στα 3 tiles, το σκάφος σαν
+κτίριο, το airlock χωρίς το lk_air_out· και από το βήμα 156 το mt_scan μόνο
+στις 32 πρώτες δομές.
 """
 import copy, ctypes, os, random, sys
 
@@ -59,6 +65,7 @@ import cpc                                               # noqa: E402
 import econ as EC                                        # noqa: E402
 
 PROBE = 0x3E80
+OLD_NS = 32                 # οι δομές ως το βήμα 155: η ζαριά τους μένει ίδια
 DK_MACH, DK_TILE, DIRTY_N = 1, 4, 32
 K_SHIP = 7                               # src/const.asm: δεν είναι κτίριο (βήμα 87)
 K_AIRLOCK = 5                            # src/const.asm: η κρούση του βγάζει τον κόσμο έξω
@@ -70,8 +77,15 @@ CEIL = {
     "ησυχία": 193,      # η ζαριά έπεσε, η ησυχία λέει όχι (βήμα 121)
     "έξω": 285,         # κρούση έξω από τον κόσμο                       299
     "κτίριο": 6330,     # κρούση σε κτίριο                              6440
-    "έδαφος": 5450,     # κρούση στο έδαφος, με ή χωρίς κρατήρα         6389
+    "έδαφος": 5910,     # κρούση στο έδαφος, με ή χωρίς κρατήρα         6389
 }
+# ΤΟ ΕΔΑΦΟΣ ΑΠΟ ΤΟ ΒΗΜΑ 156, 5450 ως τότε (5444): οι δομές 48, και το mt_scan
+# περνά 16 θέσεις ακόμη πριν πει «έδαφος», ~20 us η άδεια — 29 όταν το κέντρο
+# της (σκουπίδια ή παλιό) πέφτει κοντά: 5444 -> 5904 στις ίδιες σκηνές. Η
+# αρχή 1300 -> 1762 για τον ίδιο λόγο, κάτω από το ταβάνι της.
+# Και οι ίδιες σκηνές με δομές στις θέσεις 32-47 (xrnd): η αρχή και το κτίριο
+# στα ταβάνια τους, το έδαφος 6536.
+CEIL48 = {"αρχή": 7041, "κτίριο": 6330, "έδαφος": 6540}
 # ΤΟ ΚΤΙΡΙΟ ΚΑΙ ΤΟ ΕΔΑΦΟΣ ΑΠΟ ΤΟ ΒΗΜΑ 151, 5270 και 5170 ως τότε: οι σκηνές
 # έχουν τα ενεργειακά στο μέγεθος που φτιάχνει το παιχνίδι, μεγαλύτερα από τα 0
 # και 1 που είχαν ως τότε, και ένα από αυτά τα κέντρα χτυπά για πρώτη φορά ένα
@@ -143,10 +157,10 @@ class Rig:
         return t - self.ph
 
 
-def scene(R, rnd, case):
-    """Μια τυχαία κατάσταση στη μνήμη· γυρίζει (είδος, r1)."""
+def scene(R, rnd, case, extra=True):
+    """Μια τυχαία κατάσταση στη μνήμη· γυρίζει (είδος, r1). Χωρίς extra οι
+    δομές 32-47 μένουν άδειες: η σκηνή του βήματος 155 ακριβώς."""
     L = R.L
-    kind = case % 4                        # 0: καμία βροχή, 1-3: κρούση
     mcx, mcy = rnd.randrange(-64, 64), rnd.randrange(-64, 64)
     if rnd.random() < 0.15:
         mcx = rnd.choice([-64, -60, 58, 63])
@@ -154,14 +168,15 @@ def scene(R, rnd, case):
         mcy = rnd.choice([-64, -61, 59, 63])
     dims = EC.struct_dims()
 
-    def place(rec, b, w, h):
+    def place(rec, b, w, h, z=None):
         """Ένα κέντρο κοντά στο κέντρο της βροχής, με όλο το αποτύπωμα μέσα
         στον κόσμο, όπως το εγγυάται το χτίσιμο: ένας θόλος στο x = -61 με
         πλευρά 8 θα τυλιγόταν στο +63, και εκεί η αναφορά τον βρίσκει ενώ το
         φίλτρο «κοντά» του Z80 όχι."""
+        z = z or rnd
         for k, (c, n) in enumerate(((mcx, w), (mcy, h))):
-            t0 = max(-64, min(64 - n, c + rnd.randrange(-11, 12) - n // 2))
-            rec[b + k] = (2 * t0 + n + rnd.randrange(2)) & 255
+            t0 = max(-64, min(64 - n, c + z.randrange(-11, 12) - n // 2))
+            rec[b + k] = (2 * t0 + n + z.randrange(2)) & 255
 
     # Θόλοι και δομές με ΧΩΡΙΣΤΗ πυκνότητα: οι θόλοι κοιτάζονται πρώτοι, και
     # με πολλούς θόλους γύρω από το κέντρο μια δομή δεν χτυπιέται ποτέ.
@@ -182,33 +197,46 @@ def scene(R, rnd, case):
             dom[b + 4] = 0                 # άδεια — συχνά με κέντρο κοντά
             if rnd.random() < 0.3:
                 place(dom, b, side, side)
-    st = bytearray(rnd.randrange(256) for _ in range(EC.MAX_STRUCT * EC.STRUCT_REC))
+    # ΟΙ 32 ΠΡΩΤΕΣ ΔΟΜΕΣ ΑΠΟ ΤΗΝ ΙΔΙΑ ΖΑΡΙΑ ΜΕ ΤΟ ΒΗΜΑ 155, οι 32-47 (βήμα 156)
+    # από δική τους: οι 400 σκηνές μένουν ίδιες, με δομές και πιο πάνω
+    xrnd = random.Random(15600 + case)
+    st = bytearray(rnd.randrange(256) for _ in range(OLD_NS * EC.STRUCT_REC))
+    st += bytes(xrnd.randrange(256) for _ in range((EC.MAX_STRUCT - OLD_NS) * EC.STRUCT_REC))
     for s in range(EC.MAX_STRUCT):
         b = s * EC.STRUCT_REC
+        z = rnd if s < OLD_NS else xrnd
         # 0-3: το μέγεθος 2, και το 3 χωρίς σχήμα. Ως το βήμα 150 και τα 0 και 1,
         # που το παιχνίδι δεν φτιάχνει ποτέ: από το 151 είναι χωρίς σχήμα κι αυτά
         # (tools/pack.py). Η ίδια ζαριά (max): το δείγμα μένει όπως ήταν.
-        kind = rnd.randrange(8)
-        st[b + 2], st[b + 3] = kind, max(2, rnd.choice([0, 1, 2, 2, 3])) if kind < 4 else 0
+        sk = z.randrange(8)
+        st[b + 2], st[b + 3] = sk, max(2, z.choice([0, 1, 2, 2, 3])) if sk < 4 else 0
         k = st[b + 2] * 8 + st[b + 3] * 2
         w, h = dims[k] // 4, dims[k + 1] // 16
-        if rnd.random() < ds:
-            place(st, b, w, h)
-            st[b + 4] = rnd.choice([1, 2, 2, 3])
+        if z.random() < ds and (extra or s < OLD_NS):
+            place(st, b, w, h, z)
+            st[b + 4] = z.choice([1, 2, 2, 3])
         else:
             st[b + 4] = 0
-            if rnd.random() < 0.3:
-                place(st, b, w, h)
+            if z.random() < 0.3:
+                place(st, b, w, h, z)
+    # ΒΡΟΧΗ ΟΤΑΝ Η ΔΟΜΗ 31 ΔΕΝ ΕΙΝΑΙ ΕΙΔΟΥΣ 0, όχι όταν case % 4 != 0. Ετσι ήταν
+    # από το βήμα 76: το kind του βρόχου των δομών σκέπαζε το case % 4, και η
+    # τελευταία δομή ήταν η 31. Βγήκε στο βήμα 156, όταν η τελευταία έγινε η 47
+    # και οι σκηνές άλλαξαν· μένει, για να μείνουν οι 400 σκηνές ίδιες.
+    kind = st[(OLD_NS - 1) * EC.STRUCT_REC + 2]
     if rnd.random() < 0.3:
         # ΤΑ ΟΡΙΑ ΤΩΝ ΠΙΝΑΚΩΝ: ζωντανοί μόνο ένας ως τρεις από τους κόμβους στις
         # άκρες τους. Ο θόλος 63 που μετριέται για δομή, η δομή 95 που δεν
         # ελέγχεται ποτέ ως κέντρο, η πρώτη δομή: με όλο τον πίνακα γεμάτο,
-        # κανένα από αυτά δεν φαινόταν (βήμα 76).
+        # κανένα από αυτά δεν φαινόταν (βήμα 76). Από το βήμα 156 και οι 96,
+        # 110, 111: η πρώτη της δεύτερης σελίδας και οι δύο τελευταίες.
         for d in range(EC.MAX_DOME):
             dom[d * EC.DOME_REC + 4] = 0
         for n_ in range(EC.MAX_STRUCT):
             st[n_ * EC.STRUCT_REC + 4] = 0
-        for n_ in rnd.sample([0, 62, 63, 64, 65, 94, 95], rnd.randrange(1, 4)):
+        ends = rnd.sample([0, 62, 63, 64, 65, 94, 95], rnd.randrange(1, 4))
+        ends += xrnd.sample([96, 110, 111], xrnd.randrange(0, 3)) if extra else []  # βήμα 156
+        for n_ in ends:
             if n_ < EC.MAX_DOME:
                 b = n_ * EC.DOME_REC
                 side = 4 + 2 * dom[b + 2]
@@ -216,10 +244,11 @@ def scene(R, rnd, case):
                 dom[b + 4] = rnd.choice([1, 2, 2, 2])
             else:
                 b = (n_ - EC.MAX_DOME) * EC.STRUCT_REC
-                st[b + 2], st[b + 3] = rnd.randrange(4), max(2, rnd.randrange(3))  # βήμα 151
+                z = rnd if n_ < EC.MAX_DOME + OLD_NS else xrnd
+                st[b + 2], st[b + 3] = z.randrange(4), max(2, z.randrange(3))  # βήμα 151
                 k = st[b + 2] * 8 + st[b + 3] * 2
-                place(st, b, dims[k] // 4, dims[k + 1] // 16)
-                st[b + 4] = rnd.choice([1, 2, 2])
+                place(st, b, dims[k] // 4, dims[k + 1] // 16, z)
+                st[b + 4] = z.choice([1, 2, 2])
     # ΚΑΝΕΝΑ AIRLOCK ΟΠΟΥ ΣΤΕΚΕΤΑΙ Ή ΦΤΑΝΕΙ ΑΠΟΙΚΟΣ (βήμα 151). Η κρούση σε
     # έτοιμο airlock βγάζει όσους είναι μέσα του έξω (lk_air_out, src/door.asm),
     # και τους δείχνει στο εργοτάξιο (fg_mark) — αυτό το μετρά το
@@ -391,14 +420,14 @@ def expect(R, before, r1):
     return b, "έδαφος"
 
 
-def run(sym, patch=(), n=400, times=None):
+def run(sym, patch=(), n=400, times=None, extra=True):
     R = Rig(sym, patch)
     if times is not None:
         times["_ph"] = R.ph
     rnd = random.Random(76)
     for case in range(n):
         R.restore()
-        _, r1 = scene(R, rnd, case)
+        _, r1 = scene(R, rnd, case, extra)
         before = [R.bank(k) for k in range(8)]
         want, what = expect(R, before, r1)
         t = R.call()
@@ -428,23 +457,26 @@ def run(sym, patch=(), n=400, times=None):
 def main():
     sym, _ = TG.build()
     fails = 0
-    times = {}
-    why = run(sym, times=times)
-    if why:
-        print(f"ΑΠΟΤΥΧΙΑ: {why}")
-        fails += 1
-    else:
-        print("OK 400 κλήσεις του mt_tick = η αναφορά, ο κανόνας του κρατήρα και η "
-              "λίστα αλλαγών — και τίποτε άλλο σε καμία τράπεζα")
-    print(f"    ΦΑΣΗ: ο μάρτυρας των {codeat.CTRL_N} nop μετρά +{times.get('_ph', 0)} µs από εδώ, "
-          f"και αφαιρείται από κάθε μέτρηση (βήμα 155, tests/codeat.py)")
-    for k, c in CEIL.items():
-        t = times.get(k, 0)
-        if t > c:
-            print(f"ΑΠΟΤΥΧΙΑ: {k} {t} us > {c} (βήμα 76)")
+    times, times48 = {}, {}
+    for extra, tm, what in ((False, times, "οι 400 σκηνές του βήματος 155, δομές ως 32"),
+                            (True, times48, "οι ίδιες με δομές και στις 32-47")):
+        why = run(sym, times=tm, extra=extra)
+        if why:
+            print(f"ΑΠΟΤΥΧΙΑ: {what}: {why}")
             fails += 1
         else:
-            print(f"OK {k:7s} {t:5d} us <= {c}")
+            print(f"OK {what}: 400 κλήσεις του mt_tick = η αναφορά, ο κανόνας του κρατήρα "
+                  "και η λίστα αλλαγών — και τίποτε άλλο σε καμία τράπεζα")
+    print(f"    ΦΑΣΗ: ο μάρτυρας των {codeat.CTRL_N} nop μετρά +{times.get('_ph', 0)} µs από εδώ, "
+          f"και αφαιρείται από κάθε μέτρηση (βήμα 155, tests/codeat.py)")
+    for tm, ceil, why in ((times, CEIL, "βήμα 76"), (times48, CEIL48, "βήμα 156, δομές ως 48")):
+        for k, c in ceil.items():
+            t = tm.get(k, 0)
+            if t > c:
+                print(f"ΑΠΟΤΥΧΙΑ: {k} {t} us > {c} ({why})")
+                fails += 1
+            else:
+                print(f"OK {k:7s} {t:5d} us <= {c}" + ("" if ceil is CEIL else "   (ως 48 δομές)"))
 
     m = cpc.CPC()
     m.run_frames(60)
@@ -474,9 +506,15 @@ def main():
            # χτυπά μία σκηνή από τις 400, η 150
            ("το airlock χωρίς το lk_air_out",
             [(find("MT_TICK", [0xCC, sym["LK_AIR_OUT"] & 255, sym["LK_AIR_OUT"] >> 8], 600) + k, 0)
-             for k in range(3)])]
+             for k in range(3)]),
+           # βήμα 156: το mt_scan των δομών με B = 32, όπως ως το 155 — οι
+           # δομές 32-47 δεν χτυπιούνται ποτέ (και ο κόμβος βγαίνει λάθος)
+           ("μόνο 32 δομές", [(find("MT_TICK", [0x11, EC.STRUCT_REC, EC.MAX_STRUCT], 600) + 2, 32)])]
     for label, patch in neg:
-        why = run(sym, patch, n=400 if "σκάφος" in label or "airlock" in label else 120)
+        # τα αρνητικά ως το βήμα 155 στις σκηνές του (με τις ίδιες περιπτώσεις
+        # που τα πιάνουν), το «μόνο 32» με δομές και στις 32-47
+        why = run(sym, patch, n=400 if "σκάφος" in label or "airlock" in label else 120,
+                  extra="32" in label)
         if why:
             print(f"OK ΑΡΝΗΤΙΚΟ: με {label} αποτυγχάνει ({why[:90]})")
         else:

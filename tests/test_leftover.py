@@ -172,7 +172,7 @@ def up_rule(deg, own, ship_kind, p):
         if ship_kind != K_SHIP:
             return 255
         p = 64
-    for _ in range(32):
+    for _ in range(U.NS):                   # το B = MAX_STRUCT του dm_up
         if deg[p] < 8:
             return p
         p = U.end(own.get(p, U.NONE))

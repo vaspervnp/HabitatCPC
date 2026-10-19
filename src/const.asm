@@ -55,7 +55,7 @@ Q_SE        equ 3           ; και τα δύο
 ; ΚΩΔΙΚΑ στην τράπεζα 2. Ο κόμβος ενός θόλου είναι το id του, μιας δομής
 ; MAX_DOME + id: 64 + 32 = 96.
 MAX_DOME    equ 64
-MAX_STRUCT  equ 32
+MAX_STRUCT  equ 48
 MAX_NODE    equ MAX_DOME + MAX_STRUCT
 MAX_CORR    equ 96
 ; Ο ΧΩΡΟΣ ΓΙΑ 112 ΚΟΜΒΟΥΣ (βήμα 155), πριν από το MAX_STRUCT 48 του βήματος

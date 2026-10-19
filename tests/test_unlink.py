@@ -61,7 +61,8 @@ FAIL = []
 SOLAR, AIRLOCK = 4, 9                                    # σειρές του bld_items
 K_SHIP = 7                                               # src/const.asm
 NONE, LOST = 0x3F, 0xFF                                  # LKO_NONE, LKO_LOST
-NS = 32                                                  # MAX_STRUCT (src/const.asm)
+NS = 48                                                  # MAX_STRUCT (src/const.asm· 32 ως το βήμα 155)
+NODES = 64 + NS
 MS = 1000
 CEIL_US = D.CEIL_US
 WORST = {}
@@ -109,7 +110,7 @@ def recs(G):
     b6 = bytes(G.bank(6)[:0x4000])
     gd, gs = L["G_dome_tbl"] - 0x4000, L["G_struct_tbl"] - 0x4000
     domes = [[b6[gd + 24 * d + k] for k in (0, 1, 2, 4)] for d in range(64)]  # cx cy size state
-    structs = [list(b6[gs + 8 * k:gs + 8 * k + 7]) for k in range(32)]
+    structs = [list(b6[gs + 8 * k:gs + 8 * k + 7]) for k in range(NS)]
     return domes, structs, G.m.read_ram(L["G_struct_dims"], 64)
 
 
@@ -118,8 +119,8 @@ def world(G):
 
 
 def snap(G):
-    return dict(owns=owns(G), deg=[D.deg(G, n) for n in range(96)],
-                adj=[D.adj(G, n) for n in range(96)], recs=recs(G), world=world(G),
+    return dict(owns=owns(G), deg=[D.deg(G, n) for n in range(NODES)],
+                adj=[D.adj(G, n) for n in range(NODES)], recs=recs(G), world=world(G),
                 cur=(G.m.peek(G.sym["CUR_HX"]), G.m.peek(G.sym["CUR_HY"])))
 
 
@@ -177,7 +178,7 @@ def look(G):
 
 def dups(G):
     """Κόμβοι με τον ίδιο γείτονα δύο φορές."""
-    return {n: D.adj(G, n) for n in range(96) if len(set(D.adj(G, n))) != len(D.adj(G, n))}
+    return {n: D.adj(G, n) for n in range(NODES) if len(set(D.adj(G, n))) != len(D.adj(G, n))}
 
 
 def shot(G, name):
@@ -254,7 +255,7 @@ def y_path(least):
 def anchor_is(G, node):
     def pred(res, at):
         domes, structs, dims = recs(G)
-        deg = [D.deg(G, n) for n in range(96)]
+        deg = [D.deg(G, n) for n in range(NODES)]
         return reach.anchor(structs, deg, 255, at[0], at[1]) == node
     return pred
 
@@ -294,7 +295,7 @@ def expect(G, s, gone):
         πάει λέγοντας· χωρίς γονιό το σκάφος, αν η δομή 0 είναι σκάφος."""
         if p is None:
             p = 64 if structs[0][2] == K_SHIP else None
-        for _ in range(32):
+        for _ in range(NS):                 # το B = MAX_STRUCT του dm_up
             if p is None or deg[p] < 8:
                 return p
             p = end(own2[p]) if p in own2 and end(own2[p]) < 64 + NS else None
@@ -445,7 +446,7 @@ def kept(sym, g, patch=(), quiet=False):
     d0 = tile(D.centre(G, 1))
     at3, res3 = find_spot(G, sym, AIRLOCK, lambda r, a: bool(r["corridors"]), (d0[0] + 6, d0[1] + 2))
     domes, structs, dims = recs(G)
-    want = reach.anchor(structs, [D.deg(G, n) for n in range(96)], 255, *at3)
+    want = reach.anchor(structs, [D.deg(G, n) for n in range(NODES)], 255, *at3)
     a3 = place(G, sym, g, AIRLOCK, at3)
     if not a3 or own(G, a3) != gnd(want):
         return (f"ΚΡΑΤΙΕΤΑΙ: το airlock {a3}: LK_OWN #{own(G, a3 or 64):02X}, η πρόζα λέει "

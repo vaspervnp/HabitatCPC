@@ -95,6 +95,12 @@ import cpc                                               # noqa: E402
 UI_PLACE = 2
 FAIL = []
 SHIP_RND = random.Random(87)
+# ΟΙ ΔΟΜΕΣ ΚΑΙ ΣΤΙΣ ΘΕΣΕΙΣ 32-47 (βήμα 156): σε μία σκηνή στις τρεις, από δική
+# της γεννήτρια, οι θέσεις 1-31 μετακινούνται στις 17-47 — η ίδια σειρά, άρα
+# οι ίδιες ισοπαλίες, με κόμβους 16 πιο πάνω. Οι σκηνές του βήματος 155 μένουν
+# ίδιες κατά τα άλλα.
+SHIFT_RND, SHIFT = random.Random(156), 16
+NS = 48                                         # MAX_STRUCT (32 ως το βήμα 155)
 
 
 def check(ok, msg):
@@ -182,6 +188,12 @@ def scene(rnd, G, sym):
     # Οι βαθμοί: ως το βήμα 86 «airlock με ακμή» ήταν «έχει διάδρομο»· από το
     # 87 το λέει το ST_JOINED, και οι βαθμοί — τυχαίοι — δεν πρέπει να μετράνε.
     deg = [rnd.randrange(3) for _ in range(64)] + [rnd.choice([0, 0, 1]) for _ in range(64)]
+    structs += [[0, 0, 0, 0, 0] for _ in range(NS - 32)]
+    if SHIFT_RND.random() < 1 / 3:
+        structs[1 + SHIFT:] = structs[1:NS - SHIFT]
+        structs[1:1 + SHIFT] = [[0, 0, 0, 0, 0] for _ in range(SHIFT)]
+        deg[65 + SHIFT:64 + NS] = deg[65:64 + NS - SHIFT]
+        deg[65:65 + SHIFT] = [0] * SHIFT
     # ...και το ST_JOINED κάθε airlock από τον ίδιο του τον βαθμό, όπως ως το 86
     # το «έχει ακμή»: οι σκηνές μένουν ίδιες, μόνο η πηγή της απάντησης αλλάζει.
     for k, st in enumerate(structs):
@@ -192,7 +204,7 @@ def scene(rnd, G, sym):
     # τρίτο θόλο — ο Z80 και ο κανόνας συμφωνούσαν, αλλά το φάντασμα έβγαζε το
     # ίδιο tile από δύο διαδρόμους, κάτι που στο παιχνίδι δεν γίνεται.
     dims = G.m.read_ram(layout("G_struct_dims"), 64)
-    for node in range(96):
+    for node in range(64 + NS):
         fp = reach.footprint(node, domes, structs, dims)
         if fp is None:
             continue
@@ -215,7 +227,7 @@ def put_scene(G, world, domes, structs, deg=None):
     d6 = bytearray(G.bank(6, G.gd, 64 * 24))
     for d, (x, y, s, st) in enumerate(domes):
         d6[24 * d:24 * d + 5] = bytes([x, y, s, 0, st])
-    s6 = bytearray(G.bank(6, G.gs, 32 * 8))
+    s6 = bytearray(G.bank(6, G.gs, 48 * 8))      # MAX_STRUCT (32 ως το βήμα 155)
     for k, s in enumerate(structs):
         s6[8 * k:8 * k + 5] = bytes(s[:5])
         s6[8 * k + 6] = reach.joined(s)         # ST_JOINED (βήμα 87)
@@ -801,7 +813,7 @@ def fire(sym, g, patch=()):
         b6 = bytes(G.bank(6)[:0x4000])
         b5 = bytes(G.bank(5)[:0x4000])          # οι διάδρομοι, από το βήμα 154
         domes = [list(b6[R.DOME_TBL + 24 * d:R.DOME_TBL + 24 * d + 4]) for d in range(64)]
-        structs = [list(b6[R.STRUCT_TBL + 8 * k:R.STRUCT_TBL + 8 * k + 7]) for k in range(32)]
+        structs = [list(b6[R.STRUCT_TBL + 8 * k:R.STRUCT_TBL + 8 * k + 7]) for k in range(NS)]
         res = reach.plan(b4, domes, structs, dims, kind, param, w, h, cx, cy)
         if not res["ok"] or not (res["corridors"] or res["path"]):
             return f"{name} στο ({cx}, {cy}): ο κανόνας δεν το δένει πουθενά — {res['reason']}"
@@ -931,7 +943,7 @@ def first_lock(sym, g, patch=()):
     for item, at, free, recs in ((9, (-96, 44), 1, 0), (0, (-96, 60), 0, 1)):
         c0 = bytes(G.bank(5)[corr:corr + 384])
         w0 = bytes(G.bank(4)[:0x4000])
-        s0 = [list(G.bank(6)[R.STRUCT_TBL + 8 * k:R.STRUCT_TBL + 8 * k + 7]) for k in range(32)]
+        s0 = [list(G.bank(6)[R.STRUCT_TBL + 8 * k:R.STRUCT_TBL + 8 * k + 7]) for k in range(NS)]
         B.build(m, sym, item, g + 6, at=at, place=False)
         G.settle()
         G.stick(JOY_FIRE)
@@ -1028,9 +1040,10 @@ def negatives(sym, g):
         ("το airlock που μπαίνει μόνο του δεν μετριέται", first_lock,
          [(find(m, sym["ALC_NONE"], [0x21] + w(g + 63) + [0x34], 40) + 3, 0)]),
         # --- βήμα 87 ---
-        # cp K_SHIP στο al_scans γίνεται cp 255: το σκάφος μετράει ως δομή
+        # sub K_SHIP στο al_scans γίνεται sub 255: το σκάφος μετράει ως δομή
+        # (cp K_SHIP ως το βήμα 155)
         ("το σκάφος μετράει ως δομή", rules,
-         [(find(m, sym["AL_SCANS"], [0xFE, 7], 30) + 1, 255)]),
+         [(find(m, sym["AL_SCANS"], [0xD6, 7], 30) + 1, 255)]),
         # cp l · jr nc στο lk_anchor γίνεται jr c: καμία άγκυρα δεν περνά
         ("η άγκυρα που δεν διαλέγει τη μικρότερη απόσταση", first_lock,
          [(find(m, sym["LK_ANCHOR"], [0xBD, 0x30], 80) + 1, 0x38)]),

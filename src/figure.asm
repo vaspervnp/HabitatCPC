@@ -1140,7 +1140,7 @@ fgv_lp:
         ld      d,a
         djnz    fgv_lp
         ld      de,FG_VEIN_US
-        jp      dhv_charge
+        jr      dhv_charge
 
 ; dhv_clip — το clip: το ορθογώνιο L x H στο ob_x, ob_y, κομμένο στο κάδρο.
 ; Z αν δεν φαίνεται, και τότε το clip είναι ολόκληρο το κάδρο.

@@ -35,6 +35,7 @@ sys.path.insert(0, "/home/vasilhs/cpcemu")
 EC = dict(STOCK=0, PSTORE=28, PCAP=30, PPROD=32, PUSE=34, O2PROD=38,
           O2USE=40, POK=46, O2OK=47,
           DAY=49, SOL=51, ALIVE=58, GAMEOVER=59, STORM=61, POPCAP=74)
+MAX_STRUCT = 48             # src/const.asm (32 ως το βήμα 155)
 NAMES = ["νερό", "τροφή", "μετάλλ.", "μέταλλο", "βιοπλ.", "επεξ.",
          "ανταλ.", "φάρμακα", "όπλα", "ρομπότ"]
 
@@ -388,7 +389,7 @@ def records(m):
     b6 = cpc._lib.cpcemu_ram_ptr(m._h, 6)
     gd, gs = L["G_dome_tbl"] - 0x4000, L["G_struct_tbl"] - 0x4000
     return (sum(1 for d in range(64) if b6[gd + 24 * d + 4]) +
-            sum(1 for k in range(32) if b6[gs + 8 * k + 4]))
+            sum(1 for k in range(MAX_STRUCT) if b6[gs + 8 * k + 4]))
 
 
 def no_link(m, sym):
@@ -424,7 +425,7 @@ def live_plan(m, sym, item, at):
     b6 = bytes(cpc._lib.cpcemu_ram_ptr(m._h, 6)[:0x4000])
     gd, gs = L["G_dome_tbl"] - 0x4000, L["G_struct_tbl"] - 0x4000
     domes = [list(b6[gd + 24 * d:gd + 24 * d + 4]) for d in range(64)]
-    structs = [list(b6[gs + 8 * k:gs + 8 * k + 7]) for k in range(32)]
+    structs = [list(b6[gs + 8 * k:gs + 8 * k + 7]) for k in range(MAX_STRUCT)]
     dims = m.read_ram(L["G_struct_dims"], 64)
     rec = m.read_ram(sym["BLD_ITEMS"] + 8 * item, 4)
     return reach.plan(b4, domes, structs, dims, rec[0], rec[1], rec[2], rec[3], at[0], at[1])
@@ -446,7 +447,7 @@ def live_spot(m, sym, item, at):
     b6 = bytes(cpc._lib.cpcemu_ram_ptr(m._h, 6)[:0x4000])
     gd, gs = L["G_dome_tbl"] - 0x4000, L["G_struct_tbl"] - 0x4000
     domes = [list(b6[gd + 24 * d:gd + 24 * d + 4]) for d in range(64)]
-    structs = [list(b6[gs + 8 * k:gs + 8 * k + 7]) for k in range(32)]
+    structs = [list(b6[gs + 8 * k:gs + 8 * k + 7]) for k in range(MAX_STRUCT)]
     dims = m.read_ram(L["G_struct_dims"], 64)
     rec = m.read_ram(sym["BLD_ITEMS"] + 8 * item, 4)
     kind, param, w, h = rec[0], rec[1], rec[2], rec[3]

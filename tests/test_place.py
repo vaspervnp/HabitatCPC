@@ -67,6 +67,7 @@ LOG, LPTR, FLAG, STUB = 0x3800, 0x3EFC, 0x3EFE, 0x3F00   # τα stubs του bd_
 B1, B4 = 0xC0, 0xC4
 K_MINE, NO_MACH, DS_BUILDING, DK_SITE = 4, 255, 1, 6     # src/const.asm
 FREE = 1 << 3                                            # ST_FREE, βήμα 123
+NS = 48                                                  # MAX_STRUCT (src/const.asm· 32 ως το βήμα 155)
 OB_IX_FIG, OB_IX_DOME, OB_IX_STRUCT = 1, 2, 8
 MAX_DEGREE = 8
 # µs με το probe (βήμα 73). Στο βήμα 72: 1779, 3344, 5469, 1221, 2407, 208,
@@ -76,10 +77,14 @@ MAX_DEGREE = 8
 # 927 (bd_mflags και bd_mprice, που για ό,τι δεν είναι ορυχείο γυρίζουν
 # αμέσως)· και το commit ενός ορυχείου, νέο: 1.530, με το bd_mprice να ψάχνει
 # στις 31 γεμάτες εγγραφές για ορυχείο (~600 us, μόνο στο FIRE).
+# Βήμα 156: οι δομές 48, και το commit μπαίνει στην τελευταία, την 47 — 16
+# εγγραφές ακόμη στο bdk_find, 8 us η καθεμιά: 927 -> 1.055· και το ορυχείο
+# και 16 ακόμη στο bd_mprice, 13 us η καθεμιά: 1.502 -> 1.838. Ως το 155 τα
+# ταβάνια ήταν 930 και 1.540.
 CEIL = {"έλεγχος 4x4": 796, "έλεγχος 6x6": 1365, "έλεγχος 8x8": 2124,
         "έλεγχος 3x3": 599, "έλεγχος 4x4 ορυχείο": 1440, "έλεγχος έξω": 153,
-        "rect": 66, "afford": 63, "commit θόλου": 4656, "commit δομής": 930,
-        "commit ορυχείου": 1540}
+        "rect": 66, "afford": 63, "commit θόλου": 4656, "commit δομής": 1060,
+        "commit ορυχείου": 1845}
 # Το commit από το βήμα 85: χωρίς την αναζήτηση του κοντινότερου θόλου (9.362
 # και 5.591 ως τότε)· τους δεσμούς τους βάζει το al_commit.
 
@@ -225,12 +230,12 @@ def rules(sym, patch=(), n=600):
         G.item(rnd.randrange(11))
         # ΤΟ ΠΡΩΤΟ ΟΡΥΧΕΙΟ ΔΩΡΕΑΝ (βήμα 123): κάπου-κάπου ένα ορυχείο στον
         # πίνακα — έτοιμο, εργοτάξιο, ή άδεια εγγραφή που λέει ακόμη «ορυχείο».
-        structs = bytearray(G.bank(6, G.gs, 32 * 8))
+        structs = bytearray(G.bank(6, G.gs, NS * 8))
         if rnd.random() < 0.5:
-            k = rnd.randrange(32)
+            k = rnd.randrange(NS)
             structs[8 * k + 2], structs[8 * k + 4] = K_MINE, rnd.choice([0, 1, 2])
             G.put(6, G.gs, structs)
-        mine = any(structs[8 * k + 2] == K_MINE and structs[8 * k + 4] for k in range(32))
+        mine = any(structs[8 * k + 2] == K_MINE and structs[8 * k + 4] for k in range(NS))
         m.poke(sym["BD_HALF"], HALF)
         before = m.read_ram(sym["BD_KIND"], 9)
         G.run("BD_SELECT", [0x3E, i])
@@ -369,16 +374,16 @@ def commit_rules(sym, patch=(), n=300):
                 domes[o + 4] = rnd.choice([1, 2])
             else:
                 domes[o + 4] = 0
-        structs = bytearray(G.bank(6, G.gs, 32 * 8))
-        for s_ in range(32):
+        structs = bytearray(G.bank(6, G.gs, NS * 8))
+        for s_ in range(NS):
             structs[8 * s_ + 4] = 2 if k < 0.05 or (k < 0.9 and rnd.random() < 0.6) else 0
         G.put(6, G.gd, domes)
         G.put(6, G.gs, structs)
-        deg = bytearray(m.read_ram(G.nodes, 96))
-        for x in range(96):
+        deg = bytearray(m.read_ram(G.nodes, 112))           # MAX_NODE (96 ως το βήμα 155)
+        for x in range(112):
             deg[x] = rnd.choice([0, 1, 3, 7, 8]) if rnd.random() < 0.3 else deg[x] & 7
         m.write_ram(G.nodes, bytes(deg))
-        adj = bytearray(m.read_ram(G.adj, 8 * 96))
+        adj = bytearray(m.read_ram(G.adj, 8 * 112))
         jobs = bytearray(m.read_ram(G.jobs, 5 * 32))
         full = rnd.random() < 0.1                        # γεμάτος πίνακας εργασιών
         for j in range(32):
@@ -412,7 +417,7 @@ def commit_rules(sym, patch=(), n=300):
                 want_d[o:o + 24] = bytes([cx & 255, cy & 255, param, rm_list[rsel], DS_BUILDING,
                                           0, lm, lb] + [NO_MACH] * 8 + [0] * 8)
         else:
-            slot = next((s_ for s_ in range(32) if structs[8 * s_ + 4] == 0), None)
+            slot = next((s_ for s_ in range(NS) if structs[8 * s_ + 4] == 0), None)
             node = None if slot is None else 64 + slot
             if slot is not None:
                 ops = (half | (0 if bm else FREE)) if param == K_MINE else 0
@@ -442,9 +447,9 @@ def commit_rules(sym, patch=(), n=300):
                     want_jobs[5 * j:5 * j + 5] = bytes([k, node, 255, 4 if k else 5, node])
                     seen["Supply" if k else "Build"] += 1
             idx = OB_IX_FIG + (OB_IX_DOME if kind == 0 else OB_IX_STRUCT)
-        got = {"A": A, "θόλοι": G.bank(6, G.gd, 64 * 24), "δομές": G.bank(6, G.gs, 32 * 8),
+        got = {"A": A, "θόλοι": G.bank(6, G.gd, 64 * 24), "δομές": G.bank(6, G.gs, NS * 8),
                "κόσμος": G.bank(4), "αποθέματα": (G.w16(G.g + 6), G.w16(G.g + 8)),
-               "βαθμοί": m.read_ram(G.nodes, 96), "γείτονες": m.read_ram(G.adj, 8 * 96),
+               "βαθμοί": m.read_ram(G.nodes, 112), "γείτονες": m.read_ram(G.adj, 8 * 112),
                "εργασίες": m.read_ram(G.jobs, 5 * 32), "rt_dirty": m.peek(sym["RT_DIRTY"]),
                "ob_idx": m.peek(sym["OB_IDX"]),
                "bd_metal, bd_half": (m.peek(sym["BD_METAL"]), m.peek(sym["BD_HALF"]))}
@@ -482,7 +487,7 @@ def redraw_rules(sym, patch=(), n=200):
         cx, cy = rnd.randrange(-100, 100), rnd.randrange(-100, 100)
         cx, cy = cx + ((cx ^ w) & 1), cy + ((cy ^ h) & 1)
         G.cursor(cx, cy)
-        node = rnd.randrange(64) if kind == 0 else 64 + rnd.randrange(32)
+        node = rnd.randrange(64) if kind == 0 else 64 + rnd.randrange(NS)
         m.poke(sym["BD_NODE"], node)
         pend = rnd.randrange(200)
         m.poke(sym["RV_PEND"], pend)
@@ -537,9 +542,9 @@ def timing(sym):
         d = bytearray(G.bank(6, G.gd, 64 * 24))
         for k in range(64):
             d[24 * k + 4] = 0 if k == 63 else 2          # η τελευταία θέση
-        s_ = bytearray(G.bank(6, G.gs, 32 * 8))
-        for k in range(32):
-            s_[8 * k + 4] = 0 if k == 31 else 2
+        s_ = bytearray(G.bank(6, G.gs, NS * 8))
+        for k in range(NS):
+            s_[8 * k + 4] = 0 if k == NS - 1 else 2
         G.put(6, G.gd, d)
         G.put(6, G.gs, s_)
         # το κόστος του ίδιου του κτίσματος, όπως το αφήνει το al_plan (βήμα 88)

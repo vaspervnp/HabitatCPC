@@ -79,7 +79,7 @@ def z80_read(m, sym, frames):
     """Ο,τι επιστρέφει το run_z80, από έναν Z80 που έτρεξε."""
     enter(m, sym, "SAVE_STATE")
     return (m.read_ram(STAGE_AG, 2048), m.read_ram(STAGE_OCC, 128), frames,
-            m.read_ram(STAGE_DOME, 1536), m.read_ram(STAGE_STR, 32 * 8),
+            m.read_ram(STAGE_DOME, 1536), m.read_ram(STAGE_STR, STR_BYTES),
             m.read_ram(sym["G_ECON_STATE"], EC.ECON_BYTES) +
             m.read_ram(STAGE_OCC + EC.X_OFF, EC.X_N) +  # EC_X (βήμα 121)
             bytes([m.peek(sym["EC_FULL"]),              # η αποθήκη (βήμα 122)
@@ -1108,7 +1108,10 @@ def calm_branches(sym, g, nexthop, sim0):
 # (~16 us, 20 με τα 40 ανταλλακτικά της αποικίας της δοκιμής) και η δεύτερη
 # κλήση στο ec_setfull (~20): 8.740 -> 8.780, 9.120 -> 9.160. Ως το 143 τα
 # ταβάνια ήταν 8.750 και 9.120.
-STORE_FLOW_US, STORE_FLOW8_US = 8790, 9170
+# Βήμα 156: οι δομές 48 — το ef_lp του src/flow.asm περνά 16 άδειες θέσεις
+# ακόμη, 18 us η καθεμιά (ld a,(ix+ST_STATE) · cp · jr · add ix,de · djnz):
+# 8.770 -> 9.060, 9.150 -> 9.440. Ως το 155 τα ταβάνια ήταν 8.790 και 9.170.
+STORE_FLOW_US, STORE_FLOW8_US = 9080, 9460
 # Οι βαριές επισκέψεις της θέσης 11 με το απόθεμα μετάλλου ενεργό (βήμα 127):
 # το erm_ink περνά 5 us σε κάθε μηχανή που δεν τρώει μέταλλο, και οι τέσσερις
 # που το τρώνε σταματούν. Εδώ 7.090 και 12.160 us, χωρίς το απόθεμα 8.390 και
@@ -1327,7 +1330,10 @@ def store_branches(sym, g, nexthop, sim0):
 # 8.440 και 12.750, που μένουν ίδιες.
 # Βήμα 144: και το όριο των ανταλλακτικών, +40 και +30 (8.830 και 9.200· ως
 # το 143 τα ταβάνια ήταν 8.800 και 9.180).
-MEAL_FLOW_US, MEAL_FLOW8_US, MEAL_SWEEP_US = 8840, 9210, 12080
+# Βήμα 156: οι 16 άδειες θέσεις ακόμη του ef_lp, όπως στο STORE_FLOW_US: 8.820
+# -> 9.110, 9.200 -> 9.490 (ως το 155 τα ταβάνια ήταν 8.840 και 9.210). Οι βαριές
+# επισκέψεις της θέσης 11 ίδιες: δεν περνούν από τις δομές.
+MEAL_FLOW_US, MEAL_FLOW8_US, MEAL_SWEEP_US = 9130, 9500, 12080
 
 
 def meal_branches(sym, g, nexthop, sim0):
@@ -2734,7 +2740,7 @@ def move_branches(sym, sim0, n=12, patch=(), quiet=False):
         # ΚΑΤΑ ΔΙΕΥΘΥΝΣΗ (βήμα 154): από τότε το node_occ είναι μετά τις δομές, και
         # το «ό,τι μένει» ανάμεσα σε δύο διαστήματα έπιανε τους θόλους και τις δομές.
         spans = sorted((sym[n] - 0x4000, k) for n, k in (("G_AGENT_FIELDS", 2048),
-                       ("G_NODE_OCC", 256), ("G_DOME_TBL", len(dome)), ("G_STRUCT_TBL", 256)))
+                       ("G_NODE_OCC", 256), ("G_DOME_TBL", len(dome)), ("G_STRUCT_TBL", len(st))))
         mk0 = sym["G_NODE_OCC"] - 0x4000 + 128          # τα σημάδια των φιγούρων
         marks = bytearray(bank6()[mk0:mk0 + 128])
         rest = lambda b: b"".join(b[s + k:e] for (s, k), (e, _) in
@@ -2757,7 +2763,7 @@ def move_branches(sym, sim0, n=12, patch=(), quiet=False):
             ag = b6[sym["G_AGENT_FIELDS"] - 0x4000:][:2048]
             oc = b6[sym["G_NODE_OCC"] - 0x4000:][:G.MAXNODE]
             dm = b6[sym["G_DOME_TBL"] - 0x4000:][:len(dome)]
-            sb = b6[sym["G_STRUCT_TBL"] - 0x4000:][:256]
+            sb = b6[sym["G_STRUCT_TBL"] - 0x4000:][:len(st)]
             p = m.peek(rec) | (m.peek(rec + 1) << 8)
             got = pushes(m.read_ram(rec + 2, p - rec - 2))
             mk = b6[mk0:mk0 + 128]

@@ -150,7 +150,7 @@ def ref_flow(G):
     e.mach_power = G.w16(G.g + 36)
     e.ess_power = G.w16(G.g + 82)
     e.day, e.wind, e.storm = G.m.peek(G.g + 49), G.m.peek(G.g + 50), G.m.peek(G.g + 61)
-    e.struct = bytearray(G.b6[G.st:G.st + 256])
+    e.struct = bytearray(G.b6[G.st:G.st + EC.MAX_STRUCT * EC.STRUCT_REC])
     e.job = bytearray(G.jobs())
     EC.flow_cycle(e)
     return (e.stock[EC.S_ORE], e.mines, bytes(e.job)), bytes(e.struct)
@@ -194,7 +194,7 @@ def flow(sym, patch=(), patch6=(), quiet=False):
                     f"{[list(got[2][5 * j:5 * j + 5]) for j in range(32) if got[2][5 * j:5 * j + 5] != jobs0[5 * j:5 * j + 5]]}"
                     f" — η πρόζα λέει μετάλλευμα {ore0}, σωροί {want_piles}, 4, ST_OPS 80 91 92 3 0 1, "
                     f"Drill για τους 69 (4), 70 και 71 (2)")
-        if got != (want_ore, want_mines, want_jobs) or bytes(G.b6[G.st:G.st + 256]) != want_st:
+        if got != (want_ore, want_mines, want_jobs) or bytes(G.b6[G.st:G.st + EC.MAX_STRUCT * EC.STRUCT_REC]) != want_st:
             return "ΡΟΗ: ο Z80 διαφέρει από την αναφορά (tools/econ.py, flow_cycle)"
         # ένας δεύτερος κύκλος: καμία διπλή, και φτηνός (το bit 7)
         jobs1 = G.jobs()
@@ -259,7 +259,7 @@ def low(sym, patch=(), patch6=(), quiet=False):
     if ops != want_ops or prio != want_prio:
         return (f"ΧΑΜΗΛΑ: ST_OPS {[hex(ops[k]) for k in sorted(ops)]}, προτεραιότητες "
                 f"{prio} — η πρόζα λέει 80 92 91 00 80 και {want_prio}")
-    if got != want_jobs or bytes(G.b6[G.st:G.st + 256]) != want_st:
+    if got != want_jobs or bytes(G.b6[G.st:G.st + EC.MAX_STRUCT * EC.STRUCT_REC]) != want_st:
         return "ΧΑΜΗΛΑ: ο Z80 διαφέρει από την αναφορά (tools/econ.py, flow_cycle)"
     # η άφιξη: ένας εργάτης στον κόμβο της χαμηλής Drill της 7, εκτός σωλήνα
     j = at[7]
@@ -370,7 +370,7 @@ def chain(sym, g, patch=(), patch6=(), quiet=False, stop=None):
     m = G.m
     G.s16(G.g + 2 * EC.S_METAL, 200)
     B.build(m, sym, 8, g + 6, at=MINE_AT, fit=False)
-    k = next((k for k in range(32) if G.rec(k)[2] == K_MINE), None)
+    k = next((k for k in range(EC.MAX_STRUCT) if G.rec(k)[2] == K_MINE), None)
     if k is None:
         return "ΑΛΥΣΙΔΑ: το ορυχείο δεν μπήκε στη φλέβα"
     node = 64 + k
@@ -545,10 +545,17 @@ def chain(sym, g, patch=(), patch6=(), quiet=False, stop=None):
 # με λιγότερα από 20, όπως εδώ) και η δεύτερη κλήση στο ec_setfull (13): +29 us
 # σε όλους (1.727 -> 1.756, 4.143 -> 4.172, 2.104 -> 2.133, 2.597 -> 2.626). Ως το
 # 143 τα ταβάνια ήταν 1.730, 4.146, 2.107, 2.107 και 2.600.
-COST = {"κύκλος, χωρίς ορυχεία": 1759, "κύκλος, τρία ορυχεία 0/2/3, ο πρώτος": 4175,
-        "κύκλος, τρία ορυχεία 0/2/3, ο επόμενος": 2136,
-        "κύκλος, τρία ορυχεία στις θέσεις 29-31, ο επόμενος": 2136,
-        "κύκλος, τρία ορυχεία, ένα άδειασε με τη Drill χαμηλά": 2629,
+# Βήμα 156: οι δομές 48 — το ef_lp περνά 16 άδειες θέσεις ακόμη, 18 us η
+# καθεμιά (ld a,(ix+ST_STATE) · cp · jr · add ix,de · djnz): +288 us σε όλους
+# (1.756 -> 2.044, 4.170 -> 4.458, 2.133 -> 2.421, 2.629 -> 2.917), και τα τρία
+# στις τελευταίες θέσεις, 45-47 πια, όσο και στις 0/2/3. Ως το 155 τα ταβάνια
+# ήταν 1.759, 4.175, 2.136, 2.136 και 2.629.
+# Οι τρεις τελευταίες θέσεις του πίνακα: 29-31 ως το βήμα 155, 45-47 από το 156
+LAST3 = f"κύκλος, τρία ορυχεία στις θέσεις {EC.MAX_STRUCT - 3}-{EC.MAX_STRUCT - 1}, ο επόμενος"
+COST = {"κύκλος, χωρίς ορυχεία": 2047, "κύκλος, τρία ορυχεία 0/2/3, ο πρώτος": 4463,
+        "κύκλος, τρία ορυχεία 0/2/3, ο επόμενος": 2424,
+        LAST3: 2424,
+        "κύκλος, τρία ορυχεία, ένα άδειασε με τη Drill χαμηλά": 2917,
         "θέση 12 χωρίς κύκλο": 690, "θέση 13": 2800,
         "θέση 13, Drill ανοιχτή, κανείς στο παράθυρο": 3500,
         "θέση 13, Drill ανοιχτή, αδρανείς άλλου ρόλου": 3650,
@@ -597,11 +604,11 @@ def cost(sym):
     # πλήρωνε κάθε θέση ως το τελευταίο ορυχείο, ~400 us εδώ.
     G = Game(sym)
     for j, n in enumerate([0, 2, 3]):
-        G.put_rec(29 + j, [(-30 + 6 * j) & 255, 20, K_MINE, 0, DS_ACTIVE, 255, n, 0])
+        G.put_rec(EC.MAX_STRUCT - 3 + j, [(-30 + 6 * j) & 255, 20, K_MINE, 0, DS_ACTIVE, 255, n, 0])
     for _ in range(2):
         G.m.poke(sym["EC_FDIV"], 1)
         t = G.call("ECON_FLOW", timed=True) - G.probe([], timed=True)
-    out["κύκλος, τρία ορυχεία στις θέσεις 29-31, ο επόμενος"] = t
+    out[LAST3] = t
     # ΤΟ ΑΝΕΒΑΣΜΑ (βήμα 126): τα τρία ορυχεία μετά τον πρώτο κύκλο, ο μόνος του
     # ορυχείου με τους δύο έχει φύγει, και η χαμηλή του Drill είναι στην
     # τελευταία θέση του πίνακα: το dr_raise περνά και τις 32 εργασίες.

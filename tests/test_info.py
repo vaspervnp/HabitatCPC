@@ -114,7 +114,7 @@ def footprints(G, a):
             side = 4 + 2 * G.b6[b + 2]
             out.append(((s8(G.b6[b]) - side) >> 1, (s8(G.b6[b + 1]) - side) >> 1,
                         side, side, "d", d))
-    for s in range(32):
+    for s in range(S.MAX_STRUCT):
         b = STRUCTS - 0x4000 + 8 * s
         if G.b6[b + 4]:
             k = G.b6[b + 2] * 8 + G.b6[b + 3] * 2
@@ -156,7 +156,7 @@ def scene(G, a, rnd):
     """Θόλοι και δομές μακριά από την αποικία, σε κάθε συνδυασμό."""
     spots = []
     d_free = [d for d in range(64) if not G.b6[DOMES - 0x4000 + 24 * d + 4]]
-    s_free = [s for s in range(32) if not G.b6[STRUCTS - 0x4000 + 8 * s + 4]]
+    s_free = [s for s in range(S.MAX_STRUCT) if not G.b6[STRUCTS - 0x4000 + 8 * s + 4]]
     x = -56
     for k, (size, room, st, hp) in enumerate([(0, 4, 2, 255), (1, 3, 1, 32), (2, 5, 2, 128),
                                               (0, 0, 2, 0), (1, 7, 1, 254), (2, 11, 2, 200)]):

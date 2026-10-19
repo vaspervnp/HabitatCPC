@@ -61,7 +61,12 @@
 στο st_ord, το κάτω άκρο στρογγυλεμένο προς τα κάτω, το ob_meas που μένει 1,
 και οι άδειες εγγραφές μέσα στο ευρετήριο, οι κατηγορίες από το A των
 σαρώσεων, το oi_build του βήματος 81, που δεν ξεχνά τον θόλο του ob_corr, και
-ο διακόπτης των κοντών στροφών που δεν κλείνει ή δεν ανοίγει (βήμα 97).
+ο διακόπτης των κοντών στροφών που δεν κλείνει ή δεν ανοίγει (βήμα 97)· από
+το βήμα 156 το ob_struct_sort μόνο στις 32 πρώτες δομές.
+
+ΔΥΟ ΠΕΡΑΣΜΑΤΑ ΑΠΟ ΤΟ ΒΗΜΑ 156, που οι δομές έγιναν 48: οι 300 σκηνές του
+βήματος 155 ακριβώς (οι δομές 32-47 άδειες), με τα ταβάνια ως τότε, και οι
+ίδιες με δομές και στις 32-47, από δική τους ζαριά (xrnd), με δικά τους.
 """
 import ctypes, os, random, sys
 
@@ -76,6 +81,7 @@ import scene as S                                        # noqa: E402
 import codeat                                            # noqa: E402
 
 PROBE = 0x3E80
+OLD_NS = 32                 # οι δομές ως το βήμα 155: η ζαριά τους μένει ίδια
 OI_REC = 5
 def _obj_index():
     for line in open(os.path.join(ROOT, "build", "layout.asm"), encoding="utf-8"):
@@ -112,6 +118,13 @@ CEIL = {
     "όλα + φιγούρες": 147178, # και η σάρωση των φιγούρων (ως το 95 και
                             # των πορτών)                                  167358
 }
+# Βήμα 156: οι δομές 48. Στις ίδιες σκηνές το ob_struct_sort περνά 16 άδειες
+# θέσεις ακόμη, 15 us η καθεμιά: +240 στις δομές (35.657 -> 35.897), στα όλα
+# (139.515 -> 139.755) και με τις φιγούρες (137.781 -> 138.021), κάτω από τα
+# ταβάνια. Με δομές και στις θέσεις 32-47 (xrnd) οι δομές 41.665, πάνω από το
+# ταβάνι των 32 — 16 sprites ακόμη το πολύ —, τα όλα 139.899 και με τις
+# φιγούρες 141.659, κάτω από τα δικά τους.
+CEIL48 = {"δομές": 41700, "όλα": 148201, "όλα + φιγούρες": 147178}
 KIND = {DOME: "θόλοι", CORR: "διάδρομοι", STRUCT: "δομές",
         DOME | CORR | STRUCT: "όλα", 15: "όλα + φιγούρες"}
 
@@ -314,18 +327,24 @@ def doors(col):
 
 # --- οι καταστάσεις --------------------------------------------------------
 
-def scene(R, a, rnd, case):
-    """Μια τυχαία κατάσταση στη μνήμη· γυρίζει (colony, μάσκα)."""
+def scene(R, a, rnd, case, extra=True):
+    """Μια τυχαία κατάσταση στη μνήμη· γυρίζει (colony, μάσκα). Χωρίς extra οι
+    δομές 32-47 μένουν άδειες: η σκηνή του βήματος 155 ακριβώς."""
     col = S.Colony()
     col.n_dome, col.n_struct, col.n_corr = S.MAX_DOME, S.MAX_STRUCT, S.MAX_CORR
     col.dome[:] = bytes(rnd.randrange(256) for _ in range(len(col.dome)))
-    col.struct[:] = bytes(rnd.randrange(256) for _ in range(len(col.struct)))
+    # ΟΙ 32 ΠΡΩΤΕΣ ΔΟΜΕΣ ΑΠΟ ΤΗΝ ΙΔΙΑ ΖΑΡΙΑ ΜΕ ΤΟ ΒΗΜΑ 155, οι 32-47 (βήμα 156)
+    # από δική τους, xrnd: οι 300 καταστάσεις μένουν ίδιες, με δομές και πιο πάνω
+    xrnd = random.Random(15600 + case)
+    col.struct[:] = (bytes(rnd.randrange(256) for _ in range(OLD_NS * S.STRUCT_REC))
+                     + bytes(xrnd.randrange(256)
+                             for _ in range((S.MAX_STRUCT - OLD_NS) * S.STRUCT_REC)))
     # ΟΣΑ ΤΥΧΑΙΑ ΚΑΙ ΩΣ ΤΟ ΒΗΜΑ 153 (96 x 5): οι 300 καταστάσεις μένουν ίδιες
     col.corr[:] = bytes(rnd.randrange(256) for _ in range(96 * 5))[:len(col.corr)]
     hub = rnd.randrange(-100, 100), rnd.randrange(-100, 100)
 
-    def near(c, r):
-        return max(-120, min(120, c + rnd.randrange(-r, r + 1))) & 255
+    def near(c, r, z=None):
+        return max(-120, min(120, c + (z or rnd).randrange(-r, r + 1))) & 255
 
     nd = rnd.choice([0, 1, 2, 4, 12, 12, 30, 64])
     live = set(rnd.sample(range(S.MAX_DOME), nd))
@@ -359,23 +378,31 @@ def scene(R, a, rnd, case):
             col.corr[b] = S.CT_EMPTY                     # άδεια (βήμα 154: το C_A)
     col.corr[S.MAX_CORR * S.CORR_REC] = S.CT_EMPTY       # η 97η, πάντα άδεια
     ns = rnd.choice([0, 0, 1, 2, 5, 12, 32])
-    sl = set(rnd.sample(range(S.MAX_STRUCT), ns))
+    sl = set(rnd.sample(range(OLD_NS), ns))
     if edges:
         sl = set(rnd.sample([0, 1, 30, 31], rnd.randrange(0, 3)))
+    # Οι 32-47: καμία, μία, μερικές ή όλες, και στις άκρες η 32, η 46 ή η 47
+    xs = xrnd.choice([0, 0, 1, 4, 16, 16])
+    xl = set(xrnd.sample(range(OLD_NS, S.MAX_STRUCT), xs))
+    if edges:
+        xl = set(xrnd.sample([32, 46, 47], xrnd.randrange(0, 3)))
+    if not extra:
+        xl = set()
     for s in range(S.MAX_STRUCT):
         b = s * S.STRUCT_REC
-        if s in sl:
-            col.struct[b], col.struct[b + 1] = near(hub[0], 40), near(hub[1], 40)
-            if rnd.random() < 0.25 and s:   # ίσο cy με την προηγούμενη θέση
+        z = rnd if s < OLD_NS else xrnd
+        if s in sl or s in xl:
+            col.struct[b], col.struct[b + 1] = near(hub[0], 40, z), near(hub[1], 40, z)
+            if z.random() < 0.25 and s:     # ίσο cy με την προηγούμενη θέση
                 col.struct[b + 1] = col.struct[b + 1 - S.STRUCT_REC]
-            kind = rnd.randrange(8)
+            kind = z.randrange(8)
             col.struct[b + 2] = kind
             # τα ενεργειακά στο 2, και το 3 χωρίς σχήμα: τα 0 και 1, ως το βήμα
             # 150 εδώ, το παιχνίδι δεν τα φτιάχνει, και από το 151 δεν έχουν σχήμα.
             # Η ίδια ζαριά (max): το δείγμα μένει όπως ήταν, μόνο μεγαλύτερο.
-            col.struct[b + 3] = (max(2, rnd.choice([0, 1, 2, 2, 3])) if kind < 4 else
-                                 rnd.choice([0, 0, 0, 1]))          # 3, 1: χωρίς σχήμα
-            col.struct[b + 4] = rnd.choice([S.DS_BUILDING, S.DS_ACTIVE])
+            col.struct[b + 3] = (max(2, z.choice([0, 1, 2, 2, 3])) if kind < 4 else
+                                 z.choice([0, 0, 0, 1]))            # 3, 1: χωρίς σχήμα
+            col.struct[b + 4] = z.choice([S.DS_BUILDING, S.DS_ACTIVE])
         else:
             col.struct[b + 4] = S.DS_EMPTY
     L, m, sym = R.L, R.m, R.sym
@@ -384,10 +411,12 @@ def scene(R, a, rnd, case):
     R.put(5, L["G_corr_tbl"] - 0x4000, col.corr)        # στην τράπεζα 5 (βήμα 154)
     # το παλιό ευρετήριο και οι μετρητές του: ό,τι δεν ξαναχτίζεται μένει
     R.put(5, OI_DOME - 0x4000, bytes(rnd.randrange(256)
-                                     for _ in range(OI_STRUCT + S.MAX_STRUCT * OI_REC - OI_DOME)))
+                                     for _ in range(OI_STRUCT + OLD_NS * OI_REC - OI_DOME))
+          + bytes(xrnd.randrange(256) for _ in range((S.MAX_STRUCT - OLD_NS) * OI_REC)))
     for v in ("OI_ND", "OI_NC", "OI_NS", "ST_N"):
         m.poke(sym[v], rnd.randrange(256))
-    R.put(0, sym["ST_ORD"], bytes(rnd.randrange(256) for _ in range(S.MAX_STRUCT)))
+    R.put(0, sym["ST_ORD"], bytes(rnd.randrange(256) for _ in range(OLD_NS))
+          + bytes(xrnd.randrange(256) for _ in range(S.MAX_STRUCT - OLD_NS)))
     R.put(0, sym["DOME_CONN"], bytes(rnd.randrange(256) for _ in range(S.MAX_DOME)))
     # Βήμα 97: σκουπίδια και στις σημαίες των στροφών — από δικό τους rnd, ώστε
     # οι 300 καταστάσεις, και άρα τα ταβάνια, να μένουν ίδιες.
@@ -443,14 +472,14 @@ def expect(R, a, before, col, mask):
     return b, free
 
 
-def run(sym, a, patch=(), n=300, times=None):
+def run(sym, a, patch=(), n=300, times=None, extra=True):
     R = Rig(sym, patch)
     if times is not None:
         times["_ph"] = R.ph
     rnd = random.Random(77)
     for case in range(n):
         R.restore()
-        col, mask = scene(R, a, rnd, case)
+        col, mask = scene(R, a, rnd, case, extra)
         # ΜΙΣΕΣ ΦΟΡΕΣ, ΕΝΑΣ ΘΟΛΟΣ ΣΤΗ ΜΝΗΜΗ ΤΟΥ ob_corr (βήμα 82), συνήθως η
         # αφετηρία ενός ζωντανού διαδρόμου, με την κάμερα της κατάστασης. Ως το
         # βήμα 81 ένα ob_index μόνο των διαδρόμων μετρούσε τον πρώτο που ξεκινά
@@ -497,23 +526,27 @@ def main():
     sym, _ = TG.build()
     a = S.Assets()
     fails = 0
-    times = {}
-    why = run(sym, a, times=times)
-    if why:
-        print(f"ΑΠΟΤΥΧΙΑ: {why}")
-        fails += 1
-    else:
-        print("OK 300 κλήσεις του ob_index = το ευρετήριο, οι μετρητές και οι αρμοί "
-              "της πρόζας — και τίποτε άλλο σε καμία τράπεζα")
-    print(f"    ΦΑΣΗ: ο μάρτυρας των {codeat.CTRL_N} nop μετρά +{times.get('_ph', 0)} µs από εδώ, "
-          f"και αφαιρείται από κάθε μέτρηση (βήμα 155, tests/codeat.py)")
-    for k, c in CEIL.items():
-        t = times.get(k, 0)
-        if t > c:
-            print(f"ΑΠΟΤΥΧΙΑ: {k} {t} us > {c} (βήματα 82, 86, 89 και 96)")
+    times, times48 = {}, {}
+    for extra, tm, what in ((False, times, "οι 300 σκηνές του βήματος 155, δομές ως 32"),
+                            (True, times48, "οι ίδιες με δομές και στις 32-47")):
+        why = run(sym, a, times=tm, extra=extra)
+        if why:
+            print(f"ΑΠΟΤΥΧΙΑ: {what}: {why}")
             fails += 1
         else:
-            print(f"OK {k:13s} {t:6d} us <= {c}")
+            print(f"OK {what}: 300 κλήσεις του ob_index = το ευρετήριο, οι μετρητές και "
+                  "οι αρμοί της πρόζας — και τίποτε άλλο σε καμία τράπεζα")
+    print(f"    ΦΑΣΗ: ο μάρτυρας των {codeat.CTRL_N} nop μετρά +{times.get('_ph', 0)} µs από εδώ, "
+          f"και αφαιρείται από κάθε μέτρηση (βήμα 155, tests/codeat.py)")
+    for tm, ceil, why in ((times, CEIL, "βήματα 82, 86, 89 και 96"),
+                          (times48, CEIL48, "βήμα 156, δομές ως 48")):
+        for k, c in ceil.items():
+            t = tm.get(k, 0)
+            if t > c:
+                print(f"ΑΠΟΤΥΧΙΑ: {k} {t} us > {c} ({why})")
+                fails += 1
+            else:
+                print(f"OK {k:13s} {t:6d} us <= {c}" + ("" if ceil is CEIL else "   (ως 48 δομές)"))
 
     m = cpc.CPC()
     m.run_frames(60)
@@ -546,9 +579,15 @@ def main():
              for k, v in enumerate([0x21, meas & 255, meas >> 8, 0x34, 0x00])]),
            ("τον διακόπτη που δεν κλείνει (jt_clear)", [(find("JT_CLEAR", [0x3E, 0xC9]) + 1, 0x21)]),
            ("τον διακόπτη που δεν ανοίγει (jtm_bend)",
-            [(6, find("JTM_BEND", [0x3E, 0xC3], bank=6) + 1, 0xC9)])]
+            [(6, find("JTM_BEND", [0x3E, 0xC3], bank=6) + 1, 0xC9)]),
+           # βήμα 156: το ob_struct_sort με 16 στη δεύτερη σελίδα, όπως ως το
+           # 155 — οι δομές 32-47 δεν μπαίνουν στο st_ord ούτε στο ευρετήριο
+           ("μόνο 32 δομές στο st_ord",
+            [(find("OB_STRUCT_SORT", [0x01, 0x00, S.MAX_STRUCT - 16], 12) + 2, 16)])]
     for label, patch in neg:
-        why = run(sym, a, patch, n=100)
+        # τα αρνητικά ως το βήμα 155 στις σκηνές του, το «μόνο 32» με δομές και
+        # στις 32-47
+        why = run(sym, a, patch, n=100, extra="32" in label)
         if why:
             print(f"OK ΑΡΝΗΤΙΚΟ: με {label} αποτυγχάνει ({why[:90]})")
         else:

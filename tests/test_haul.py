@@ -167,7 +167,7 @@ def piles(sym, patch=(), patch6=(), quiet=False):
                     f" — η πρόζα λέει σωροί {want_piles}, ST_OPS {[hex(v) for v in want_ops]}, "
                     f"το μετάλλευμα ίδιο, εργασίες {posts}")
         if (G.ore(), G.mines(), G.jobs()) != (want_ore, want_mines, want_jobs) \
-                or bytes(G.b6[G.st:G.st + 256]) != want_st:
+                or bytes(G.b6[G.st:G.st + EC.MAX_STRUCT * EC.STRUCT_REC]) != want_st:
             return "ΣΩΡΟΙ: ο Z80 διαφέρει από την αναφορά (tools/econ.py, flow_cycle και haul_pile)"
         # ένας δεύτερος κύκλος: καμία διπλή
         jobs1 = G.jobs()
@@ -329,7 +329,7 @@ def chain(sym, g, patch=(), patch6=(), quiet=False):
     G.b6[G.st + ST_KIND] = K_SHIP           # η πλατφόρμα σκάφος, όπως σε νέο παιχνίδι
     G.s16(G.g + 2 * EC.S_METAL, 200)
     B.build(m, sym, 8, g + 6, at=TD.MINE_AT, fit=False)
-    k = next((k for k in range(32) if G.rec(k)[ST_KIND] == K_MINE), None)
+    k = next((k for k in range(EC.MAX_STRUCT) if G.rec(k)[ST_KIND] == K_MINE), None)
     if k is None:
         return "ΑΛΥΣΙΔΑ: το ορυχείο δεν μπήκε στη φλέβα"
     node = 64 + k

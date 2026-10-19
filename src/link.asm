@@ -225,31 +225,39 @@ al_scans:
         call    asc_b6
         ld      hl,G_struct_tbl + ST_STATE
         ld      de,STRUCT_REC
-        ld      bc,MAX_STRUCT * 256 + MAX_DOME
+        ld      bc,(MAX_STRUCT >> 1) * 256 + MAX_DOME + MAX_STRUCT
         ; ΤΟ ΣΚΑΦΟΣ ΔΕΝ ΕΙΝΑΙ ΚΤΙΡΙΟ (βήμα 87): δεν είναι «κοντά», ούτε κάνει
         ; τον ηλιακό να μην είναι ο πρώτος. Στέκεται πάντα στη θέση 0 — το
         ; game_new το βάζει εκεί, και κτίριο δεν γκρεμίζεται — οπότε το πέρασμα
-        ; αρχίζει από την 1 όταν τη βρει σκάφος. Ενας έλεγχος, όχι ένας ανά δομή.
+        ; αρχίζει από την 1 όταν τη βρει σκάφος: από τη μέση του πρώτου
+        ; ζεύγους, με A = 0. Ενας έλεγχος, όχι ένας ανά δομή.
         ld      a,(G_struct_tbl + ST_KIND)
-        cp      K_SHIP
-        jr      nz,asc_lp
-        add     hl,de
-        dec     b
-        inc     c
-        jr      asc_lp
+        sub     K_SHIP
+        jr      z,asc_r0
+        jr      asc_go
 al_scand:
         ld      (al_fn),hl
         ld      hl,G_dome_tbl + D_STATE
         ld      de,DOME_REC
-        ld      bc,MAX_DOME * 256       ; B = πόσες θέσεις, C = ο κόμβος
+        ld      bc,(MAX_DOME >> 1) * 256 + MAX_DOME     ; B ζεύγη, C μετά το τέλος
         call    asc_b6
+asc_go:
+        xor     a                       ; A = 0 σε όλο το πέρασμα: cp (hl)
+        ; ΔΥΟ ΘΕΣΕΙΣ ΑΝΑ ΓΥΡΟ, ΚΑΙ Ο ΚΟΜΒΟΣ ΜΟΝΟ ΟΤΑΝ ΧΡΕΙΑΖΕΤΑΙ (βήμα 156). Ως
+        ; το 155 η άδεια θέση κόστιζε 13 us (ld a,(hl) / or a / jr / add hl,de /
+        ; inc c / djnz), και οι 16 νέες δομές θα έδιναν +208 us σε κάθε βήμα
+        ; κέρσορα με δομή στο χέρι. Εδώ 9: cp (hl) / jr / add hl,de και μισό
+        ; djnz. Ο κόμβος βγαίνει από το B, και η θέση μέσα στο ζεύγος από το bit
+        ; 3 του L (asc_live).
 asc_lp:
-        ld      a,(hl)                  ; D_STATE = ST_STATE
-        or      a
+        cp      (hl)                    ; D_STATE = ST_STATE: NZ αν ζει
         jr      nz,asc_live
-asc_nx:
+asc_r0:
         add     hl,de
-        inc     c
+        cp      (hl)
+        jr      nz,asc_live
+asc_r1:
+        add     hl,de
         djnz    asc_lp
 ; asc_b1 / asc_b6 — η τράπεζα 1 ή 6 στο παράθυρο, και τίποτε άλλο: κρατούν
 ; όλους τους καταχωρητές και τις σημαίες.
@@ -257,26 +265,6 @@ asc_b1:
         push    bc
         ld      bc,GA_PORT + PAGE_B1
         jr      asc_out
-asc_live:
-        ld      (al_any),a
-        push    bc
-        push    de
-        push    hl
-        dec     hl
-        dec     hl
-        dec     hl                      ; cy
-        ld      de,cur_hy
-        call    al_far
-        dec     hl                      ; cx
-        dec     de                      ; cur_hx
-        call    nc,al_far
-        ld      a,c
-        call    nc,al_call
-        call    asc_b6
-        pop     hl
-        pop     de
-        pop     bc
-        jr      asc_nx
 ; asc_b5 — η τράπεζα 5 (βήμα 154: οι διάδρομοι, src/door.asm). Κρατά τα πάντα.
 asc_b5:
         push    bc
@@ -289,6 +277,46 @@ asc_out:
         out     (c),c
         pop     bc
         ret
+; asc_live — HL -> η κατάσταση ενός ζωντανού. Η ΘΕΣΗ ΜΕΣΑ ΣΤΟ ΖΕΥΓΟΣ είναι το
+; bit 3 του L: οι εγγραφές είναι 8 ή 24 bytes από μια κατάσταση με L & 15 = 4,
+; άρα το bit 3 είναι η ισοτιμία της θέσης, και στη δεύτερη σελίδα των δομών. Ο
+; κόμβος C - 2B + αυτό, και μόνο για ό,τι είναι σε απόσταση: τα άλλα δεν
+; πληρώνουν ούτε τον κόμβο ούτε το asc_b6 (ως το 155 και τα δύο, 23 us).
+asc_live:
+        ld      (al_any - 1),hl         ; το H (>= #40) στο al_any: κάτι υπάρχει
+        push    bc
+        push    de
+        push    hl
+        dec     hl
+        dec     hl
+        dec     hl                      ; cy
+        ld      de,cur_hy
+        call    al_far
+        dec     hl                      ; cx: το L - 4 κρατά το bit 3
+        dec     de                      ; cur_hx
+        call    nc,al_far
+        jr      c,asl_far
+        ld      a,c
+        sub     b
+        sub     b
+        bit     3,l
+        jr      z,asl_k0
+        inc     a
+asl_k0:
+        call    al_call                 ; A = ο κόμβος
+        call    asc_b6
+asl_far:
+        pop     hl
+        pop     de
+        pop     bc
+        xor     a
+        bit     3,l
+        jr      z,asc_r0
+        jr      asc_r1
+        assert  ((G_dome_tbl + D_STATE) & 15) == 4
+        assert  ((G_struct_tbl + ST_STATE) & 15) == 4
+        assert  DOME_REC == 24 && STRUCT_REC == 8 && D_STATE == ST_STATE
+        assert  (MAX_DOME & 1) == 0 && (MAX_STRUCT & 1) == 0
 al_call:
         ld      hl,(al_fn)
         jp      (hl)
@@ -1123,6 +1151,7 @@ al_cnt:     db 0
 al_bad:     db 0
 al_best:    db 0
 al_t:       db 0
+            db 0                ; το L του asc_live (βήμα 156)
 al_any:     db 0
 al_why:     db 0
 al_cb:      dw 0
