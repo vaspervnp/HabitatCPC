@@ -108,7 +108,7 @@ def build(cols=4, rows=3, seed=1):
                     n = gap // 2
                 _put(c.corr, k, S.CORR_REC, {
                     S.C_A: a, S.C_B: b, S.C_DIR: direction,
-                    S.C_LEN: n, S.C_STATE: S.DS_ACTIVE})
+                    S.C_LEN: n})
                 k += 1
     c.n_corr = k
 
@@ -134,11 +134,9 @@ def adjacency(c):
     deg = bytearray(128)
     adj = bytearray(128 * 8)
     for i in range(c.n_corr):
-        if c.c(i, S.C_STATE) == S.DS_EMPTY:
-            continue
         a, b = c.c(i, S.C_A), c.c(i, S.C_B)
-        if a == 255:
-            continue            # συνέχεια διαδρομής: μία ακμή, όχι δύο (§9.4)
+        if a >= S.CT_EMPTY:     # άδεια θέση (βήμα 154), ή συνέχεια διαδρομής:
+            continue            # μία ακμή, όχι δύο (§9.4)
         for u, v in ((a, b), (b, a)):
             if deg[u] < 8:
                 adj[u * 8 + deg[u]] = v

@@ -68,19 +68,19 @@ fw_leg:
         ld      a,(fw_q)
         ld      l,a                     ; L = Q
         and     c
-        and     64                      ; και οι δύο δομές (64-95);
+        and     64                      ; και οι δύο δομές (64-111);
         jr      z,fwl_xr                ; ένας θόλος: Γ στα μπροστινά σημεία
-        ld      h,NODEPG
-        set     5,l                     ; LK_OWN + Q
+        ld      h,LKOPG
+        set     7,l                     ; LK_OWN + Q
         ld      a,c
         xor     (hl)
-        and     #FF - #80 - LKO_GROUND
+        and     LKO_MASK
         jr      z,fwl_qp                ; το Q κρέμεται από το P
-        ld      a,l                     ; Q + 32: το bit 5 δεν μετρά
+        ld      a,l                     ; Q | 128: το bit 7 δεν μετρά
         ld      l,c
-        set     5,l                     ; LK_OWN + P
+        set     7,l                     ; LK_OWN + P
         xor     (hl)
-        and     #FF - #80 - LKO_GROUND
+        and     LKO_MASK
         ld      a,(hl)
         jr      z,fwl_own               ; το P κρέμεται από το Q: το δικό του Γ
         ld      hl,(fw_b)               ; κανένας από τους δύο: πρώτα κατά x
@@ -243,7 +243,7 @@ fpy_2:
 fw_q:       db 0                        ; πού πηγαίνει (fg_want)
 fw_hb:      db 0                        ; και το μισό ύψος του (fw_xy)
 
-        assert  MAX_DOME == 64 && LKO_GROUND == #20 && MAX_DOME + MAX_STRUCT <= #60
+        assert  MAX_DOME == 64 && LKO_MASK == #3F && MAX_DOME + MAX_STRUCT <= 128
 
 ; ---------------------------------------------------------------------------
 ; fg_ord — μετά το dha_mv του dh_agent (src/figure.asm, βήμα 134): μία εγγραφή

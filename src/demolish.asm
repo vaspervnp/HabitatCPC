@@ -265,10 +265,13 @@ dmu_lp:
         cp      MAX_DEGREE
         ld      a,l
         ret     c                       ; έχει θέση: CY
-        set     5,l                     ; LK_OWN + δομή
+        set     7,l
+        ld      h,LKOPG                 ; LK_OWN + δομή
         ld      a,(hl)
-        and     #FF - #80 - LKO_GROUND  ; ο γονιός του, 0 κανένας
-        jr      z,dmu_no
+        and     LKO_MASK
+        or      MAX_DOME                ; ο γονιός του· 127 κανένας, ή χαμένος
+        cp      MAX_NODE
+        jr      nc,dmu_no
         djnz    dmu_lp
 dmu_no:
         ld      a,255

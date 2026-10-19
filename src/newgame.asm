@@ -13,8 +13,9 @@
 M_OXYGEN    equ 0
 
 NG_SEED     equ #ACE1
-; οι πίνακες οντοτήτων της τράπεζας 6, ένα συνεχές μπλοκ (src/layout)
-NG_B6_LEN   equ G_corr_tbl + MAX_CORR * CORR_REC - G_agent_fields
+; οι πίνακες οντοτήτων της τράπεζας 6, ένα συνεχές μπλοκ (src/layout), ως το
+; worldinfo (βήμα 154: ως τότε ως το τέλος των διαδρόμων, που πήγαν στην 5)
+NG_B6_LEN   equ G_worldinfo - G_agent_fields
 
 ; ---------------------------------------------------------------------------
 ; game_new — από το μηδέν ως το πρώτο frame.
@@ -37,6 +38,12 @@ game_new:
         ld      hl,NODE_DEG
         ld      bc,127
         call    ng_zero
+        ; --- τα LK_OWN (src/link.asm): «τίποτα», όχι 0, που είναι η σύνδεση
+        ; εδάφους ως το σκάφος (βήμα 154) ---
+        ld      hl,LK_OWN
+        ld      (hl),LKO_NONE
+        ld      bc,MAX_STRUCT - 1
+        call    ng_dup
         ; --- ο πίνακας εργασιών: 255, όχι 0 ---
         ld      hl,G_job_tbl
         ld      de,JOB_REC
@@ -68,6 +75,14 @@ ngw_fl:
         set     7,l                     ; η στήλη +128 της επόμενης σελίδας
         dec     c
         jr      nz,ngw_ff
+        ; --- οι διάδρομοι, στην τράπεζα 5 από το βήμα 154: CT_EMPTY, όχι 0, και
+        ; μία εγγραφή ακόμη, που μένει άδεια (το dmk_lp κοιτάζει την επόμενη) ---
+        call    asc_b5
+        ld      hl,G_corr_tbl
+        ld      (hl),CT_EMPTY
+        ld      bc,(MAX_CORR + 1) * CORR_REC - 1
+        call    ng_dup
+        call    asc_b6
 
 ; --- ΑΔΕΙΑ ΑΡΧΗ (βήμα 87): μόνο το σκάφος, οι άνθρωποι και τα αποθέματα --
 ;
@@ -304,10 +319,17 @@ ng_econ_end:
         NG_BYTE EC_ALIVE, 4
 ng_econ_col_end:
 
-        assert  G_node_occ == G_agent_fields + 8 * 256
-        assert  G_dome_tbl == G_node_occ + 256
+        ; ΤΟ ΜΠΛΟΚ (βήμα 154): πράκτορες, 128 ελεύθερα, θόλοι, οι 48 δομές,
+        ; κατοχή — και το worldinfo αμέσως μετά, έξω από αυτό
+        assert  G_dome_tbl >= G_agent_fields + 8 * 256
         assert  G_struct_tbl == G_dome_tbl + MAX_DOME * DOME_REC
-        assert  G_corr_tbl == G_struct_tbl + MAX_STRUCT * STRUCT_REC
+        assert  G_node_occ == G_struct_tbl + 48 * STRUCT_REC
+        assert  G_worldinfo == G_node_occ + 256
+        ; οι διευθύνσεις του src/const.asm: STB_H, STB_C, CT_H
+        assert  (G_struct_tbl & 7) == 0 && STB_C + 4 * 47 + 3 <= 255
+        assert  ((G_struct_tbl + 48 * STRUCT_REC) & 255) == 0
+        assert  ((G_struct_tbl >> 8) & 1) == 0
+        assert  (G_corr_tbl & 511) == 0 && 2 * (MAX_CORR - 1) <= 255
         assert  AG_DEST == AG_NODE + 256 && AG_PROG == AG_DEST + 256
         assert  D_MACH == 8 && D_HEALTH == 16 && M_OXYGEN == 0
         assert  W_OCC_STRUCT == 1 << 4 && ST_JOINED == 6

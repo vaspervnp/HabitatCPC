@@ -88,8 +88,8 @@ def colony(sa, sb, a_at, b_at, side, runs):
         c.dome[i * S.DOME_REC:(i + 1) * S.DOME_REC] = r
     c.n_dome = 2
     for k, (d, n) in enumerate(runs):
-        rec = [0, 1, d, n, S.DS_ACTIVE] if k == 0 else [255, 255, d, n, S.DS_ACTIVE]
-        c.corr[k * 5:(k + 1) * 5] = bytes(rec)
+        rec = [0, 1, d, n] if k == 0 else [255, 255, d, n]      # 4 bytes (βήμα 154)
+        c.corr[k * S.CORR_REC:(k + 1) * S.CORR_REC] = bytes(rec)
     c.n_corr = len(runs)
     return c
 

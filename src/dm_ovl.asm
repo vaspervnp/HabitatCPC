@@ -123,6 +123,10 @@ dmd_corr:
         ; ευθύς διάδρομος που θα έπαιρνε την πρώτη θα την έβρισκε για στροφή
         ; του (oc_cont, src/object.asm). Ενα airlock στην άλλη άκρη μένει
         ; χωρίς διάδρομο, όπως ένα που μπήκε μόνο του (alc_none, src/link.asm).
+        ; ΣΤΗΝ ΤΡΑΠΕΖΑ 5 από το βήμα 154, και η εγγραφή που φεύγει παίρνει
+        ; CT_EMPTY και στις δύο άκρες: μια άδεια θέση δεν είναι ποτέ το dm_n (ως
+        ; τότε το έλεγε το byte της κατάστασης, που δεν υπάρχει πια).
+        call    asc_b5
         ld      hl,G_corr_tbl
         ld      b,MAX_CORR
 dmk_lp:
@@ -138,49 +142,52 @@ dmk_lp:
         jr      nz,dmk_nx
         ld      d,e                     ; D = η άλλη άκρη
 dmk_me:
+        ld      (hl),CT_EMPTY           ; C_B
+        dec     hl
+        ld      (hl),CT_EMPTY           ; C_A
+        inc     hl
         inc     hl
         inc     hl                      ; C_LEN
         ld      a,(hl)
-        inc     hl                      ; C_CSTATE
-        inc     (hl)
-        dec     (hl)
-        jr      z,dmk_nx                ; ελεύθερη: τα άκρα της είναι παλιά
-        ld      (hl),0
         call    dm_tiles
         inc     hl                      ; ο C_A της επόμενης
         ld      a,(hl)
         inc     a
-        jr      nz,dmk_air
+        jr      nz,dmk_air              ; όχι CT_CONT
+        ld      (hl),CT_EMPTY
         inc     hl
+        ld      (hl),CT_EMPTY
         inc     hl
         inc     hl                      ; C_LEN
         ld      a,(hl)
-        inc     hl
-        ld      (hl),0                  ; C_CSTATE
         call    dm_tiles
 dmk_air:
+        call    asc_b6                  ; η άλλη άκρη, στην 6
         push    de
         ld      a,d
         call    dm_crect                ; το ορθογώνιό του (dm_world)
         pop     de
         ld      a,d
-        sub     MAX_DOME
-        jr      c,dmk_nx                ; θόλος
+        cp      MAX_DOME
+        jr      c,dmk_n5                ; θόλος
         add     a,a
-        add     a,a
-        add     a,a
-        add     a,ST_JOINED
+        add     a,a                     ; 4 x δομή σε 8 bits
+        add     a,STB_C + ST_JOINED / 2
         ld      l,a
-        ld      h,G_struct_tbl >> 8
+        ld      h,STB_H
+        add     hl,hl                   ; -> ST_JOINED (src/const.asm, βήμα 154)
         ld      (hl),0
         ld      hl,EC_FREELK
         inc     (hl)
+dmk_n5:
+        call    asc_b5
 dmk_nx:
         pop     hl
         ld      de,CORR_REC
         add     hl,de
         pop     bc
         djnz    dmk_lp
+        call    asc_b6
         ; --- ΤΑ ΥΛΙΚΑ ΠΙΣΩ: τα μισά, ή όλα από εργοτάξιο ---
         ld      hl,(dm_m)
         ld      de,(dm_b)
@@ -397,14 +404,14 @@ dm_paths:
         ld      (dm_par),a              ; η άκρη της δικής του σύνδεσης: καμία
         ld      c,MAX_DOME
 dmp_lp:
-        ld      h,NODEPG
+        ld      h,LKOPG
         ld      l,c
-        set     5,l                     ; LK_OWN + δομή
+        set     7,l                     ; LK_OWN + δομή
         ld      a,(hl)
-        or      a
+        cp      LKO_NONE
         jr      z,dmp_nx                ; τίποτα κρατημένο
-        ld      e,a
-        and     #FF - #80 - LKO_GROUND
+        and     LKO_MASK
+        or      MAX_DOME
         ld      b,a                     ; B = η άκρη
         ld      a,(dm_n)
         cp      c
@@ -416,7 +423,7 @@ dmp_lp:
 dmp_own:
         ld      a,b
         ld      (dm_par),a              ; για όσους κρέμονταν από αυτόν (dm_relink)
-        xor     a
+        ld      a,LKO_NONE
 dmp_put:
         ld      (hl),a
 dmp_nx:
@@ -466,13 +473,13 @@ dm_relink:
         ld      (alv_jp + 1),hl
         ld      c,MAX_DOME
 dml_lp:
-        ld      h,NODEPG
+        ld      h,LKOPG
         ld      l,c
-        set     5,l                     ; LK_OWN + δομή
+        set     7,l                     ; LK_OWN + δομή
         ld      a,(hl)
         inc     a                       ; LKO_LOST
         jr      nz,dml_nx
-        ld      (hl),a                  ; 0, ώσπου να γράψει το lk_keep
+        ld      (hl),LKO_NONE           ; ώσπου να γράψει το lk_keep
         ld      a,(dm_par)
         call    dm_up                   ; ο γονιός, ή πρόγονος, ή το σκάφος
         jr      nc,dml_nx               ; κανένας
@@ -480,7 +487,7 @@ dml_lp:
         push    bc
         ld      b,c
         ld      c,a
-        or      LKO_GROUND
+        and     LKO_MASK                ; σύνδεση εδάφους
         call    lk_keep                 ; κρατιέται, και η ακμή (src/link.asm)
         pop     bc
         push    bc
@@ -575,25 +582,19 @@ dmw_fn:
 dmw_cl:
         push    bc
         push    hl
-        ld      bc,GA_PORT + PAGE_B6
+        ld      bc,GA_PORT + PAGE_B5    ; οι διάδρομοι (βήμα 154)
         out     (c),c
-        ; ΠΡΩΤΑ Η ΚΑΤΑΣΤΑΣΗ: οι άδειες εγγραφές είναι οι περισσότερες, και τα
-        ; δύο mt_rec πριν από αυτήν ήταν 17 ms στην αποικία δοκιμών.
-        ld      bc,C_CSTATE
-        add     hl,bc
-        ld      a,(hl)
-        pop     hl
-        push    hl
-        or      a
-        jr      z,dmw_cn                ; ελεύθερη
+        ; ΠΡΩΤΑ ΑΝ ΕΙΝΑΙ ΠΙΑΣΜΕΝΗ: οι άδειες εγγραφές είναι οι περισσότερες,
+        ; και τα δύο mt_rec πριν από αυτό ήταν 17 ms στην αποικία δοκιμών.
         ld      a,(hl)                  ; C_A
+        cp      CT_EMPTY
+        jr      nc,dmw_cn               ; ελεύθερη, ή η δεύτερη εγγραφή μιας στροφής
         ld      (cr_a),a
-        inc     a
-        jr      z,dmw_cn                ; η δεύτερη εγγραφή μιας στροφής
         inc     hl
-        ld      a,(hl)                  ; C_B
+        ld      c,(hl)                  ; C_B
+        call    asc_b6                  ; το dmr_pair θέλει τις εγγραφές των άκρων
+        ld      a,c
         ld      (cr_b),a
-        ld      c,a
         ld      a,(cr_a)
         call    dmr_pair                ; το ορθογώνιό του, στο dmv_t
         call    dmw_meets

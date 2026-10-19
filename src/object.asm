@@ -909,30 +909,29 @@ obfo_have:                              ; από το ob_figures: το of_at έ�
 ; ---------------------------------------------------------------------------
 ob_corr:
         ld      (oc_id),a
+        add     a,a
         ld      l,a
-        ld      h,0
-        ld      d,h
-        ld      e,l
-        add     hl,hl
-        add     hl,hl                   ; 4*id
-        add     hl,de                   ; 5*id
-        ld      de,G_corr_tbl
-        add     hl,de
+        ld      h,CT_H
+        add     hl,hl                   ; G_corr_tbl + 4 * id (src/const.asm)
         ; Η εγγραφή ΚΑΙ η επόμενη, σε c_rec και oc_cr, με ένα ldir: το αν
-        ; ακολουθεί συνέχεια ρωτιέται ΕΔΩ, όσο η τράπεζα 6 είναι ακόμη στο
-        ; παράθυρο — μετά το ob_getdome ο πίνακας διαδρόμων δεν φαίνεται πια.
-        ; Η τελευταία εγγραφή διαβάζει 5 bytes έξω από τον πίνακα· η σύγκριση
-        ; με το MAX_CORR πιο κάτω δεν τα κοιτάζει.
+        ; ακολουθεί συνέχεια ρωτιέται ΕΔΩ, πριν από το ob_getdome. Από την
+        ; ΤΡΑΠΕΖΑ 5 από το βήμα 154, και πίσω η 6: τα δύο out πληρώνονται από
+        ; το x4 αντί για x5, τα 8 bytes αντί για 10 και τα δύο «άδεια;» που
+        ; έφυγαν. Η τελευταία εγγραφή διαβάζει 4 bytes έξω από τον πίνακα· η
+        ; σύγκριση με το MAX_CORR πιο κάτω δεν τα κοιτάζει.
+        ld      bc,GA_PORT + PAGE_B5
+        out     (c),c
         ld      de,c_rec
         ld      bc,2 * CORR_REC
         ldir
-        ld      a,(c_rec+C_CSTATE)
-        or      a
-        ret     z                       ; άδεια θέση
+        ld      bc,GA_PORT + PAGE_B6
+        out     (c),c
         ld      a,(c_rec+C_A)
         inc     a
-        ret     z                       ; C_A = 255: ΣΥΝΕΧΕΙΑ διαδρομής — τη
+        ret     z                       ; CT_CONT: ΣΥΝΕΧΕΙΑ διαδρομής — τη
                                         ; ζωγραφίζει η εγγραφή που την ξεκίνησε
+        inc     a
+        ret     z                       ; CT_EMPTY: άδεια θέση
         ld      b,0                     ; oc_cont
         ld      a,(oc_id)
         inc     a
@@ -940,10 +939,7 @@ ob_corr:
         jr      nc,occ_nocont           ; τελευταία εγγραφή — δεν έχει επόμενη
         ld      a,(oc_cr+C_A)
         inc     a
-        jr      nz,occ_nocont
-        ld      a,(oc_cr+C_CSTATE)
-        or      a
-        jr      z,occ_nocont
+        jr      nz,occ_nocont           ; η επόμενη: CT_CONT, άρα και πιασμένη
         inc     b
 occ_nocont:
         ld      a,b
@@ -1195,13 +1191,23 @@ ob_addsx:
 ; ---------------------------------------------------------------------------
 ob_struct:
         add     a,a
-        add     a,a
-        add     a,a                     ; 8*id: μία σελίδα (assert)
+        add     a,a                     ; 4*id σε 8 bits
+        if      STB_C
+        add     a,STB_C
+        endif
         ld      l,a
-        ld      h,G_struct_tbl >> 8
-        ld      de,s_rec                ; πρώτα η αντιγραφή, μετά η ερώτηση:
-        ld      bc,STRUCT_REC           ; το s_rec είναι πρόχειρο
+        ld      h,STB_H
+        add     hl,hl                   ; η εγγραφή (src/const.asm, βήμα 154)
+        ; ΠΡΩΤΑ Η ΑΝΤΙΓΡΑΦΗ, ΜΕΤΑ Η ΕΡΩΤΗΣΗ: το s_rec είναι πρόχειρο. ΜΟΝΟ ΤΑ
+        ; ΠΕΝΤΕ ΠΡΩΤΑ (βήμα 154), cx, cy, είδος, μέγεθος, κατάσταση, όσα
+        ; διαβάζουν αυτό και το st_mark: 32 us, όπου τα 8 ήταν 50 — και
+        ; πληρώνουν τα 4 us του add hl,hl και του add a,STB_C πάνω. Πέντε ldi
+        ; θα ήταν 25 us, αλλά 5 bytes ακόμη έσπρωχναν το align 16 του sl_ctg
+        ; (src/bar.asm) πέρα από το όριο: 16 bytes της τράπεζας 0.
+        ld      de,s_rec
+        ld      bc,5
         ldir
+        assert  ST_CX == 0 && ST_CY == 1 && ST_KIND == 2 && ST_SIZE == 3 && ST_STATE == 4
         ld      a,(s_rec+ST_STATE)
         or      a
         ret     z
@@ -1530,10 +1536,27 @@ jt_b6c:
 ; ευρετήριο, όχι σε κάθε σχεδίαση· μένει εδώ, στην τράπεζα 0, γιατί το
 ; objindex.asm δεν χωρούσε ολόκληρο στην τράπεζα 2 (βήμα 41).
 ; ---------------------------------------------------------------------------
+; ΔΥΟ ΣΕΛΙΔΕΣ, ΔΥΟ ΒΡΟΧΟΙ (βήμα 154, src/const.asm): οι 16 πρώτες ως το
+; κρατούμενο του add, που έρχεται ακριβώς στο τέλος της σελίδας τους — 1 us
+; λιγότερο η καθεμιά από το djnz — και οι άλλες με το djnz, μετά το inc h.
 ob_struct_sort:
         ld      hl,G_struct_tbl + ST_STATE
         ld      de,st_ord
-        ld      bc,MAX_STRUCT * 256     ; B = πόσες, C = id
+        ld      bc,(MAX_STRUCT - 16) * 256      ; B = όσες στη δεύτερη, C = id
+osa_g1:
+        ld      a,(hl)
+        or      a
+        jr      z,osa_s1
+        ld      a,c
+        ld      (de),a
+        inc     de
+osa_s1:
+        inc     c                       ; δεν αγγίζει το κρατούμενο
+        ld      a,l
+        add     a,STRUCT_REC
+        ld      l,a
+        jr      nc,osa_g1
+        inc     h
 osa_gather:
         ld      a,(hl)
         or      a
@@ -1543,10 +1566,11 @@ osa_gather:
         inc     de
 osa_gskip:
         ld      a,l
-        add     a,STRUCT_REC            ; μία σελίδα (assert)
+        add     a,STRUCT_REC
         ld      l,a
         inc     c
         djnz    osa_gather
+        assert  (G_struct_tbl & 255) == 128 && STRUCT_REC == 8 && MAX_STRUCT > 16
         ld      a,e
         sub     st_ord & #FF            ; πόσες μπήκαν: < 256, άρα αρκεί το
         ld      (st_n),a                ; κάτω byte, όπου κι αν πέφτει το st_ord
@@ -1564,23 +1588,26 @@ osa_out:
         ld      a,d
         call    osa_key
         ld      e,a
+; ΤΟ st_ord ΔΕΝ ΠΕΡΝΑ ΣΕΛΙΔΑ (assert στη δήλωσή του), και ο εσωτερικός βρόχος
+; περπατά με dec l / inc l (βήμα 154): 3 us λιγότερα ανά βήμα, όσα κοστίζει
+; πια το osa_key με τον πίνακα σε δύο σελίδες.
 osa_in:
         ld      a,l
-        cp      st_ord & #FF            ; j = 0; τα 32 κάτω bytes είναι μοναδικά
+        cp      st_ord & #FF            ; j = 0
         jr      z,osa_place
-        dec     hl
+        dec     l
         ld      a,(hl)
         call    osa_key                 ; το κλειδί του st_ord[j-1]
         cp      e
         jr      c,osa_put
         jr      z,osa_put               ; ίσο: μένει μπροστά — σταθερή
         ld      a,(hl)                  ; st_ord[j] = st_ord[j-1]
-        inc     hl
+        inc     l
         ld      (hl),a
-        dec     hl
+        dec     l
         jr      osa_in
 osa_put:
-        inc     hl
+        inc     l
 osa_place:
         ld      (hl),d
         pop     hl
@@ -1593,17 +1620,19 @@ osa_place:
 osa_key:
         push    hl
         add     a,a
-        add     a,a
-        add     a,a
-        add     a,ST_CY
+        add     a,a                     ; 4*id σε 8 bits
+        if      STB_C
+        add     a,STB_C
+        endif
         ld      l,a
-        ld      h,G_struct_tbl >> 8
+        ld      h,STB_H
+        add     hl,hl                   ; η εγγραφή (src/const.asm, βήμα 154)
+        inc     l                       ; ST_CY
         ld      a,(hl)
         add     a,128
         pop     hl
         ret
-; ob_struct, osa_gskip, osa_key: id*8 + ST_* σε μία σελίδα (βήμα 100)
-        assert  (G_struct_tbl & 255) == 0 && MAX_STRUCT * STRUCT_REC == 256
+        assert  ST_CY == 1
 
 ; ---------------------------------------------------------------------------
 ; ob_touch — τα ευρετήρια είναι παλιά· ξαναχτίσου στην επόμενη σχεδίαση.
@@ -1744,7 +1773,7 @@ d_fy:       dw 0
 d_qw:       db 0
 d_qh:       db 0
 
-s_rec:      defs STRUCT_REC
+s_rec:      defs STRUCT_REC         ; τα πέντε πρώτα (ob_struct, βήμα 154)
 c_rec:      defs CORR_REC
 oc_cr:      defs CORR_REC       ; η ΕΠΟΜΕΝΗ εγγραφή, με το ίδιο ldir (ob_corr)
 
@@ -1772,6 +1801,7 @@ obx_sgn:    db 0
 ;                     ανάβει η μέτρηση των διαδρόμων (jt_mark, src/joint.asm)
 ;   DOME_FIG[64][8]   ποια φιγούρα σε κάθε θέση      (αλλιώς 64 x 128)
 st_ord:     defs MAX_STRUCT
+        assert  (st_ord & 255) + MAX_STRUCT <= 256   ; το dec l / inc l του osa_in (βήμα 154)
 dome_conn:  defs MAX_DOME
 
         assert  ob_w == ob_src + 2 && ob_h == ob_w + 1 && oc_diag == ob_src + 8

@@ -877,14 +877,21 @@ fw_xy:
         dec     l
         dec     l
         jr      fwx_go
+; Η ΔΟΜΗ ΔΙΑΒΑΖΕΙ ΠΡΩΤΑ cx ΚΑΙ cy (βήμα 154): η εγγραφή βγαίνει με το add hl,hl
+; του src/const.asm, 3 us, και δεν ξαναβρίσκεται μετά το struct_dims — ως τότε
+; ένα ld b,l και ένα ld h,σελίδα. 3 us λιγότερα από πριν.
 fwx_st:
         add     a,a
-        add     a,a
-        add     a,a                     ; (64 + δομή) x 8 = δομή x 8 σε 8 bits
+        add     a,a                     ; (64 + δομή) x 4 = δομή x 4 σε 8 bits
+        if      STB_C
+        add     a,STB_C
+        endif
         ld      l,a
-        ld      h,G_struct_tbl >> 8     ; μία σελίδα (assert στο τέλος)
-        ld      b,l                     ; (βήμα 118: όχι push / pop, 3 us)
+        ld      h,STB_H
+        add     hl,hl                   ; η εγγραφή (src/const.asm)
+        ld      d,(hl)                  ; cx
         inc     l
+        ld      e,(hl)                  ; cy
         inc     l
         ld      a,(hl)                  ; ST_KIND
         add     a,a
@@ -902,8 +909,10 @@ fwx_st:
         rrca
         rrca
         and     #0F                     ; γραμμές / 16 = μισό ύψος σε μισά tiles
-        ld      l,b
-        ld      h,G_struct_tbl >> 8
+        ld      b,a
+        add     a,e
+        ld      e,a
+        ret
 fwx_go:
         ld      b,a
         ld      d,(hl)                  ; cx
@@ -1243,5 +1252,5 @@ fw_b:       dw 0                        ; by, bx
         assert  ((G_tile_water | G_tile_deepwater | G_tile_crater | G_tile_foundation) & 63) == 0
         assert  (G_struct_dims & 255) + 64 <= 256          ; 64 bytes (build/layout.txt)
         assert  obf_n == obf_k + 1 && (G_slot_empty >> 8) != 0
-        assert  (G_struct_tbl & 255) == 0 && MAX_STRUCT * STRUCT_REC == 256 && MAX_DOME == 64
+        assert  MAX_DOME == 64 && ST_CY == ST_CX + 1 && ST_KIND == ST_CY + 1 && ST_SIZE == ST_KIND + 1
         assert  (G_dome_tbl & 7) == 0 && (DOME_REC & 7) == 0 && D_SIZE < 8  ; τα inc l του fw_xy

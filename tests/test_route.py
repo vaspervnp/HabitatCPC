@@ -231,11 +231,11 @@ def ui_flow(sym, g, col):
 
     before = m.peek(g + 3 * 2) | (m.peek(g + 3 * 2 + 1) << 8)
     fire()
-    rec = snoop(m, sym, 0xC6, gc + S.CORR_REC * col.n_corr, S.CORR_REC * 2)
+    rec = snoop(m, sym, 0xC5, gc + S.CORR_REC * col.n_corr, S.CORR_REC * 2)   # τράπεζα 5 (βήμα 154)
     after = m.peek(g + 3 * 2) | (m.peek(g + 3 * 2 + 1) << 8)
-    check(rec[0] == 12 and rec[1] == 13 and rec[5] == 255
+    check(rec[0] == 12 and rec[1] == 13 and rec[S.CORR_REC] == 255
           and m.peek(sym["LN_A"]) == 255 and after < before,
-          f"το δεύτερο FIRE έχτισε: {list(rec[:5])} {list(rec[5:])}, "
+          f"το δεύτερο FIRE έχτισε: {list(rec[:S.CORR_REC])} {list(rec[S.CORR_REC:])}, "
           f"μέταλλο {before} -> {after}")
 
     # --- ΚΑΙ ΦΑΙΝΕΤΑΙ ΣΩΣΤΑ: το cr_redraw εναντίον πλήρους σχεδίασης -------
@@ -388,15 +388,15 @@ def commit_and_render(sym, g, col):
         entry(m, sym, "DO_LINK")
 
     # --- 4: οι εγγραφές ---------------------------------------------------
-    raw = snoop(m, sym, 0xC6, gc + S.CORR_REC * slot, S.CORR_REC * 4)
+    raw = snoop(m, sym, 0xC5, gc + S.CORR_REC * slot, S.CORR_REC * 4)   # τράπεζα 5 (βήμα 154)
     c.corr[slot * S.CORR_REC:(slot + 4) * S.CORR_REC] = raw
     c.n_corr = slot + 4
-    r0 = list(raw[0:5])
-    r1 = list(raw[5:10])
-    check(r0[0] == 12 and r0[1] == 13 and r1[0] == 255 and r1[1] == 255
-          and r0[4] == 2 and r1[4] == 2,
+    R = S.CORR_REC
+    r0 = list(raw[0:R])
+    r1 = list(raw[R:2 * R])
+    check(r0[0] == 12 and r0[1] == 13 and r1[0] == 255 and r1[1] == 255,
           f"δύο εγγραφές για μία διαδρομή, η δεύτερη C_A=255: {r0} {r1}")
-    ntile = r0[3] + r1[3] + raw[13] + raw[18]
+    ntile = r0[3] + r1[3] + raw[2 * R + 3] + raw[3 * R + 3]
     metal1 = m.peek(g + 3 * 2) | (m.peek(g + 3 * 2 + 1) << 8)
     check(metal0 - metal1 == 6 * ntile,
           f"πληρώθηκε ανά πλακίδιο: {ntile} x 6 = {metal0 - metal1}")

@@ -66,7 +66,7 @@ from cpc import KEY_SPACE, KEY_RIGHT, JOY_FIRE                     # noqa: E402
 FAIL = []
 WID = [4, 6, 8]                          # πλευρά του αποτυπώματος σε tiles
 W_OCC = 0x30
-CORR_REC = 5
+CORR_REC = 4                                             # 4 bytes από το βήμα 154
 METAL_PER_TILE = 6                       # ο κατάλογος του src/build.asm
 LAID_MAX = 160
 FLICKER_MAX = 24                         # μετρημένο 13 (βήμα 37)· με έδαφος 96,
@@ -352,7 +352,7 @@ def build(sym, g, sa, sb, dx, dy, what, patch=None):
     G, m = P.G, P.G.m
     side, runs, path = P.ref()
     f, fs = (P.ca, sa) if side == 0 else (P.cb, sb)
-    tbl = layout("G_corr_tbl") - 0x4000     # μέσα στην τράπεζα 6
+    tbl = layout("G_corr_tbl") - 0x4000     # μέσα στην τράπεζα 5 (βήμα 154)
     # Η ΠΡΟΣΟΜΟΙΩΣΗ ΣΤΑΜΑΤΑ πριν από το FIRE, για να μετριέται μόνο ο
     # διάδρομος. (Ως το βήμα 42 ήταν και αναγκαίο: ένας άποικος που άφηνε
     # θέση δακτυλίου στο μεταξύ άφηνε 2-7 λάθος bytes, §15.)
@@ -360,9 +360,9 @@ def build(sym, g, sa, sb, dx, dy, what, patch=None):
     c = G.canary()
     metal = m.peek(g + 6) | (m.peek(g + 7) << 8)
     slot = None
-    b6 = G.bank(6)
+    b6, b5 = G.bank(6), G.bank(5)
     for k in range(96):
-        if b6[tbl + k * CORR_REC + 4] == 0:
+        if b5[tbl + k * CORR_REC] == 254:       # CT_EMPTY
             slot = k
             break
     cam = tuple(v - 256 if v > 127 else v
@@ -408,11 +408,11 @@ def build(sym, g, sa, sb, dx, dy, what, patch=None):
         G.go(on)
         return bad, bands, most, grey
     paid = metal - (m.peek(g + 6) | (m.peek(g + 7) << 8))
-    rec = [bytes(b6[tbl + (slot + k) * CORR_REC:
+    rec = [bytes(b5[tbl + (slot + k) * CORR_REC:
                     tbl + (slot + k + 1) * CORR_REC]) for k in range(2)]
     node_a, node_b = rec[0][0], rec[0][1]
     want = [(rec[0][2], rec[0][3])] + ([(rec[1][2], rec[1][3])]
-                                       if rec[1][0] == 255 and rec[1][4] else [])
+                                       if rec[1][0] == 255 else [])
     check(paid == METAL_PER_TILE * sum(n for _, n in runs) and want == runs,
           f"{what}: χτίστηκε — {[list(r) for r in rec[:len(want)]]}, "
           f"μέταλλο -{paid}")

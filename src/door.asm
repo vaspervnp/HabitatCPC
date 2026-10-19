@@ -53,24 +53,22 @@ lkd_st:
         jr      nc,lkd_corr
         ld      hl,lks_in
         call    lk_each
+; ΟΙ ΔΙΑΔΡΟΜΟΙ ΣΤΗΝ ΤΡΑΠΕΖΑ 5 από το βήμα 154: ο βρόχος τρέχει με την 5, και
+; μόνο ένας διάδρομος του νέου βγάζει την 6 για το gr_live, και ξαναβάζει την
+; 5. Στο τέλος πίσω η 6, για τον τροχό.
 lkd_corr:
+        call    asc_b5
         ld      hl,G_corr_tbl
         ld      b,MAX_CORR
 lkd_lp:
         push    bc
         push    hl
         ld      a,(hl)                  ; C_A
-        cp      255
-        jr      z,lkd_nx                ; συνέχεια διαδρομής
+        cp      CT_EMPTY
+        jr      nc,lkd_nx               ; άδεια θέση, ή συνέχεια διαδρομής
         ld      c,a
         inc     hl
         ld      b,(hl)                  ; C_B
-        inc     hl
-        inc     hl
-        inc     hl
-        ld      a,(hl)                  ; C_CSTATE
-        or      a
-        jr      z,lkd_nx
         ld      a,(lk_n)
         cp      c
         jr      z,lkd_o
@@ -79,9 +77,10 @@ lkd_lp:
         ld      b,c                     ; B = η άλλη άκρη
 lkd_o:
         ld      c,a                     ; C = ο νέος
+        call    asc_b6
         ld      a,b
         call    gr_live                 ; κρατά BC
-        jr      nz,lkd_nx               ; η άλλη άκρη χτίζεται ακόμη
+        jr      nz,lkd_n5               ; η άλλη άκρη χτίζεται ακόμη
         ld      l,c
         ld      h,NODEPG
         ld      e,(hl)                  ; ο βαθμός του νέου
@@ -96,16 +95,18 @@ lkd_o:
         ld      b,0
         cpir                            ; μόνο ως τον βαθμό: πιο πέρα μένουν παλιά
         pop     bc
-        jr      z,lkd_nx                ; είναι ήδη ακμή
+        jr      z,lkd_n5                ; είναι ήδη ακμή
 lkd_ln:
         call    cr_link_bc
+lkd_n5:
+        call    asc_b5
 lkd_nx:
         pop     hl
         ld      de,CORR_REC
         add     hl,de
         pop     bc
         djnz    lkd_lp
-        ret
+        jp      asc_b6
 
 ; lk_adj — A = κόμβος -> HL = node_adj + 8 * κόμβος. Κρατά A, BC, DE.
 ; Το #9300 είναι (#12 << 11) + #300: το #12 μπαίνει στο H πριν από τα τρία
@@ -364,11 +365,11 @@ eni_st:
         ret
 eni_s:
         add     a,a
-        add     a,a
-        add     a,a                     ; 8 * κόμβος σε 8 bits: = 8 * δομή
-        add     a,ST_KIND
+        add     a,a                     ; 4 * κόμβος σε 8 bits: = 4 * δομή
+        add     a,STB_C + ST_KIND / 2
         ld      l,a
-        ld      h,G_struct_tbl >> 8     ; μία σελίδα (assert πιο κάτω)
+        ld      h,STB_H
+        add     hl,hl                   ; -> ST_KIND (src/const.asm, βήμα 154)
         ld      a,(hl)
         cp      K_AIRLOCK
         ld      de,ST_STATE - ST_KIND
@@ -378,7 +379,7 @@ eni_s:
 
         assert  DOME_REC == 24 && STRUCT_REC == 8
         assert  F_INDOORS == 2 && MAX_DOME == 64 && ST_STATE - ST_KIND == 2
-        assert  (G_struct_tbl & 255) == 0 && MAX_STRUCT * STRUCT_REC == 256
+        assert  (ST_KIND & 1) == 0
 
 ; en_count — C = ζωντανοί, E = ζωντανοί με F_INDOORS (το ef_o2, src/econ.asm).
 ; ΜΟΝΟ ΟΙ ΑΠΟΙΚΟΙ, 0-79 (βήμα 92): τα ρομπότ δεν πιάνουν θέση στο ταβάνι και δεν

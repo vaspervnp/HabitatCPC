@@ -100,9 +100,8 @@ bd_redraw:
         call    vr_tiles
         jr      z,bdr_out
         call    ob_b6
-        ld      a,(bd_node)
-        sub     MAX_DOME
-        call    ob_struct
+        ld      a,(bd_node)             ; ο κόμβος: 4 x κόμβος = 4 x δομή σε 8
+        call    ob_struct               ; bits (βήμα 154), χωρίς το sub MAX_DOME
         call    dt_end                  ; η 1 (src/dirty.asm)
         call    ob_clip_full
 bdr_out:

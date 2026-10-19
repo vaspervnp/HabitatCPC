@@ -44,8 +44,17 @@ from sprites import load_map, load_bin                   # noqa: E402
 import hudread                                           # noqa: E402
 import scene as S                                        # noqa: E402
 
+def _lay(name):
+    """Μια διεύθυνση του build/layout.asm (βήμα 154: οι πίνακες της 6 κουνήθηκαν)."""
+    for line in open(os.path.join(ROOT, "build", "layout.asm"), encoding="utf-8"):
+        p = line.split()
+        if len(p) >= 3 and p[0] == name and p[1] == "equ":
+            return int(p[2].lstrip("#"), 16)
+    raise SystemExit(f"δεν βρέθηκε το {name}")
+
+
 FAIL = []
-DOMES, STRUCTS = 0x7500, 0x7B00
+DOMES, STRUCTS = _lay("G_dome_tbl"), _lay("G_struct_tbl")
 NAMES_D = ["DOME S", "DOME M", "DOME L"]
 NAMES_S = ["SOLAR", "TURBINE", "COLLECTOR", "EXTRACTOR", "MINE", "AIRLOCK", "LANDING"]
 ROOMS = {4: "OXYGEN", 3: "CANTEEN", 2: "QUARTERS", 5: "GREENHOUSE", 8: "FACTORY",

@@ -37,7 +37,7 @@
 ακμή και δεν χτίζεται)· το σκάφος δεν αναγνωρίζεται (cp K_SHIP -> cp 255)· ο
 γονιός ξεχνιέται (ήταν του tests/test_unlink.py, όπου ο γονιός είναι πια
 πάντα το σκάφος και το σκάφος είναι και η εφεδρεία)·
-χωρίς ανάβαση (djnz dmu_lp -> nop)· το LK_OWN με το bit 7 (and #5F -> and #DF)·
+χωρίς ανάβαση (djnz dmu_lp -> nop)· το LK_OWN με το bit 7 (and #3F -> and #BF)·
 χωρίς το call dm_haul (τα φορτία χάνονται)· ΚΟΣΤΟΣ: κάθε εργοτάξιο
 ξαναδένεται, ακόμη κι αν έχει ακμή (χωρίς το jr nz του βαθμού).
 """
@@ -125,17 +125,17 @@ def ship(sym, g, patch=(), quiet=False):
     c = U.tile(D.centre(G, 64))
     at1, _ = U.find_spot(G, sym, SOLAR, lambda r, a: r["path"] is None, (c[0] + 6, c[1]))
     s1 = at1 and U.place(G, sym, g, SOLAR, at1)
-    if not s1 or U.own(G, s1) != 64 | U.LKG:
+    if not s1 or U.own(G, s1) != U.gnd(64):
         return f"ΣΚΑΦΟΣ: ο S1 στο {at1}: {s1}, LK_OWN #{U.own(G, s1 or 64):02X}, όχι σύνδεση εδάφους ως το 64"
     c1 = U.tile(D.centre(G, s1))
     at2, _ = U.find_spot(G, sym, SOLAR, U.path_to(s1, None, 2), (c1[0] + 5, c1[1] + 2))
     s2 = at2 and U.place(G, sym, g, SOLAR, at2)
-    if not s2 or U.own(G, s2) & 0x5F != s1:
+    if not s2 or U.end(U.own(G, s2)) != s1:
         return f"ΣΚΑΦΟΣ: ο S2 στο {at2}: {s2}, LK_OWN #{U.own(G, s2 or 64):02X}"
     c2 = U.tile(D.centre(G, s2))
     at3, _ = U.find_spot(G, sym, SOLAR, U.path_to(s2, None, 2), (c2[0] + 4, c2[1] - 3))
     s3 = at3 and U.place(G, sym, g, SOLAR, at3)
-    if not s3 or U.own(G, s3) & 0x5F != s2:
+    if not s3 or U.end(U.own(G, s3)) != s2:
         return f"ΣΚΑΦΟΣ: ο S3 στο {at3}: {s3}, LK_OWN #{U.own(G, s3 or 64):02X}"
     G.camera(c1[0] - 8, c1[1] - 5)
     # ΠΡΩΤΑ Ο S2: ο γονιός του είναι ο S1, όχι το σκάφος, και ο S3 κρέμεται από
@@ -144,16 +144,16 @@ def ship(sym, g, patch=(), quiet=False):
     err, worst = U.gone_at(G, F, s, s2, "ΣΚΑΦΟΣ, ο S2")
     if err:
         return err
-    if U.own(G, s3) != s1 | U.LKG:
+    if U.own(G, s3) != U.gnd(s1):
         return f"ΣΚΑΦΟΣ: ο S2 έφυγε, ο S3 {s3}: LK_OWN #{U.own(G, s3):02X}, όχι ο S1 {s1}"
     # ΜΕΤΑ Ο S1, σαν από ένα σώσιμο πριν από το 102: κανένα LK_OWN. Η σύνδεσή του
     # είναι εδάφους, χωρίς bit 5 στα tiles της: τίποτε άλλο δεν θα το έλεγε.
-    G.m.poke(L["G_rt_nodes"] + 96 + s1 - 64, 0)
+    G.m.poke(U.LK_OWN + s1, U.NONE)
     s = U.snap_at(G, s1)
     err, worst2 = U.gone_at(G, F, s, s1, "ΣΚΑΦΟΣ, ο S1")
     if err:
         return err
-    if U.own(G, s3) != 64 | U.LKG or 64 not in D.adj(G, s3):
+    if U.own(G, s3) != U.gnd(64) or 64 not in D.adj(G, s3):
         return f"ΣΚΑΦΟΣ: ο S3 {s3}: LK_OWN #{U.own(G, s3):02X}, ακμές {D.adj(G, s3)}"
     if not quiet:
         U.shot(G, "leftover_ship.png")
@@ -175,8 +175,8 @@ def up_rule(deg, own, ship_kind, p):
     for _ in range(32):
         if deg[p] < 8:
             return p
-        p = own.get(p, 0) & 0x5F
-        if not p:
+        p = U.end(own.get(p, U.NONE))
+        if p >= 64 + U.NS:
             return 255
     return 255
 
@@ -184,13 +184,13 @@ def up_rule(deg, own, ship_kind, p):
 UP_CASES = [
     # (A, βαθμοί, LK_OWN, είδος της δομής 0)
     (70, {70: 3}, {}, K_SHIP),
-    (70, {70: 8, 66: 2}, {70: 66 | 0x20}, K_SHIP),
+    (70, {70: 8, 66: 2}, {70: U.gnd(66)}, K_SHIP),
     (70, {70: 8, 66: 8, 65: 7}, {70: 66 | 0x80, 66: 65}, K_SHIP),
     (70, {70: 8}, {}, K_SHIP),
     (255, {64: 2}, {}, K_SHIP),
     (255, {64: 8}, {}, K_SHIP),
     (255, {64: 2}, {}, K_PAD),
-    (70, {70: 8, 66: 8, 64: 1}, {70: 66 | 0xA0, 66: 64 | 0x20}, K_SHIP),
+    (70, {70: 8, 66: 8, 64: 1}, {70: 66 | 0x80, 66: U.gnd(64)}, K_SHIP),
     (70, {70: 8, 66: 8}, {70: 66, 66: 70}, K_SHIP),          # κύκλος: τελειώνει
 ]
 
@@ -209,8 +209,8 @@ def ancestors(sym, patch=()):
             m.poke(L["G_rt_nodes"] + n, 0)
         for n, v in deg.items():
             m.poke(L["G_rt_nodes"] + n, v)
-        for n, v in own.items():
-            m.poke(L["G_rt_nodes"] + 96 + n - 64, v)
+        for n in range(64, 64 + U.NS):
+            m.poke(U.LK_OWN + n, own.get(n, U.NONE))
         b6[L["G_struct_tbl"] - 0x4000 + 2] = kind
         full = [deg.get(n, 0) for n in range(128)]
         want = up_rule(full, own, kind, a)
@@ -330,8 +330,8 @@ def negatives(sym, g):
         ("ο γονιός ξεχνιέται (από το test_unlink)",
          ovl("DMP_OWN", 6, [0x32] + w(sym["DM_PAR"]), nop3), ship),
         ("χωρίς το call dm_haul", ovl("DMJ_LP", 16, cd("DM_HAUL"), nop3), loads),
-        ("χωρίς ανάβαση", raw(ram("DM_UP", 48, [0x28, 2, 0x10], [(2, 0), (3, 0)])), ancestors),
-        ("το LK_OWN με το bit 7", raw(ram("DM_UP", 48, [0xE6, 0x5F], [(1, 0xDF)])), ancestors),
+        ("χωρίς ανάβαση", raw(ram("DM_UP", 48, [0x30, 2, 0x10], [(2, 0), (3, 0)])), ancestors),
+        ("το LK_OWN με το bit 7", raw(ram("DM_UP", 48, [0xE6, 0x3F], [(1, 0xBF)])), ancestors),
         ("κάθε εργοτάξιο ξαναδένεται", raw(ram("DM_SITES", 24, [0xB6, 0x20], [(1, 0), (2, 0)])),
          sites_cost),
     ]

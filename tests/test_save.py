@@ -140,6 +140,16 @@ FORMAT = {
          "G_node_adj": 1024},
         {"G_agent_fields": 0x6C00, "G_node_occ": 0x7400, "G_dome_tbl": 0x7500,
          "G_struct_tbl": 0x7B00, "G_corr_tbl": 0x7C00, "G_worldinfo": 0x7DE0}),
+    # βήμα 154: οι διάδρομοι 4 bytes στην τράπεζα 5 (#7800, ένα δικό τους
+    # μπλοκ)· οι θόλοι στο #7480, οι 48 δομές μετά τους, η κατοχή μετά από
+    # αυτές και το worldinfo μετά από εκείνη· και τα
+    # LK_OWN στην τελευταία σελίδα του node_adj, με άλλη γραφή (σύνδεση εδάφους
+    # χωρίς το bit 6, «τίποτα» το #3F): ένα 0 εκεί θα ήταν σύνδεση ως το σκάφος
+    10: ({"G_mach_op": 91, "G_econ_state": 103, "G_job_tbl": 211, "G_room_n": 371,
+          "G_room_list": 383, "G_crew": 479, "G_rt_nodes": 512, "G_rt_row": 768,
+          "G_node_adj": 1024},
+         {"G_agent_fields": 0x6C00, "G_node_occ": 0x7C00, "G_dome_tbl": 0x7480,
+          "G_struct_tbl": 0x7A80, "G_corr_tbl": 0x7800, "G_worldinfo": 0x7D00}),
 }
 
 
@@ -431,7 +441,7 @@ def main():
     check(d_econ == c_econ, "και δεν άγγιξε την κατάσταση")
 
     print(f"\nκόστος: σώσιμο {nsave} frames, φόρτωμα {nload} frames "
-          f"— 46 τομείς, 23 KB")
+          f"— 47 τομείς, 23,5 KB (46 ως το βήμα 153, χωρίς τους διαδρόμους της 5)")
     # --- 5. κρύα εκκίνηση, άλλος κόσμος, και μετά φόρτωμα ------------------
     m.reset()
     m.run_frames(300)

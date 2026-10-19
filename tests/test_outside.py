@@ -103,8 +103,10 @@ class World:
         return list(self.b6(self.L["G_struct_tbl"] + 8, 8))
 
     def corridors(self):
-        c = self.L["G_corr_tbl"]
-        return [list(self.b6(c + 5 * k, 5)) for k in range(96) if self.b6(c + 5 * k + 4)[0]]
+        """Οι πιασμένες εγγραφές (βήμα 154: 4 bytes στην τράπεζα 5, άδεια = C_A 254)."""
+        c = self.L["G_corr_tbl"] - 0x4000
+        b5 = ctypes.string_at(cpc._lib.cpcemu_ram_ptr(self.m._h, 5), 0x4000)
+        return [list(b5[c + 4 * k:c + 4 * k + 4]) for k in range(96) if b5[c + 4 * k] != 254]
 
     def w16(self, off):
         return self.m.peek(self.g + off) | self.m.peek(self.g + off + 1) << 8

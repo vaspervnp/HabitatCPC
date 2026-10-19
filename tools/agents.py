@@ -21,7 +21,18 @@ CODE = 0x3F10                           # η σκαλωσιά, πάνω από �
 NAG = 8                                 # πόσοι άποικοι ανά δείγμα
 
 AG_BASE = 0x6C00                        # G_agent_fields, τράπεζα 6
-DOME_BASE = 0x7500                      # G_dome_tbl, τράπεζα 6
+def _dome_base():
+    """Το G_dome_tbl από το build/layout.asm (#7500 ως το βήμα 153, #7480 από το 154)."""
+    import os
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    for line in open(os.path.join(root, "build", "layout.asm"), encoding="utf-8"):
+        p = line.split()
+        if len(p) >= 3 and p[0] == "G_dome_tbl" and p[1] == "equ":
+            return int(p[2].lstrip("#"), 16)
+    raise SystemExit("δεν βρέθηκε το G_dome_tbl")
+
+
+DOME_BASE = _dome_base()                # G_dome_tbl, τράπεζα 6
 DOME_REC = 24
 DOME_HEAD = ("cx", "cy", "size", "room", "state", "integ", "power", "ops")
 NDOME = 8                               # 8 x 8 bytes = ακριβώς το BUF

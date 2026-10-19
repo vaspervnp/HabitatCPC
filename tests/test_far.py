@@ -39,7 +39,7 @@ import route                                             # noqa: E402
 FAIL = []
 PROBE = 0x3E80
 I_CORR, UI_LINK = 3, 3
-CORR_BYTES = 96 * 5
+CORR_BYTES = 96 * 4                     # 4 bytes ο διάδρομος, στην τράπεζα 5 (βήμα 154)
 
 
 def check(ok, msg):
@@ -88,6 +88,7 @@ class Game(TI.Game):
                 self.b6[b + i] = v
             self.slots[name] = (free[k], c)
         self.corr = corr_tbl() - 0x4000
+        self.b5 = cpc._lib.cpcemu_ram_ptr(self.m._h, 5)
 
     def stick(self, bits):
         m = self.m
@@ -160,9 +161,9 @@ def run(sym, patch=()):
         bad, r4 = G.aim(to)
         if bad != 2 or r4 != FAR:
             return f"{frm} -> {to}: ui_bad {bad}, «{r4.rstrip()}», η πρόζα λέει 2, «TOO FAR»", n
-        before = bytes(G.b6[G.corr:G.corr + CORR_BYTES])
+        before = bytes(G.b5[G.corr:G.corr + CORR_BYTES])
         G.stick(0x10)                                    # FIRE: τίποτα
-        if bytes(G.b6[G.corr:G.corr + CORR_BYTES]) != before \
+        if bytes(G.b5[G.corr:G.corr + CORR_BYTES]) != before \
                 or m.peek(sym["UI_STATE"]) != UI_LINK \
                 or m.peek(sym["LN_A"]) != G.slots[frm][0]:
             return f"{frm} -> {to}: το FIRE έχτισε ή άλλαξε κατάσταση", n

@@ -799,6 +799,7 @@ def fire(sym, g, patch=()):
         kind, param, w, h, cost_m, cost_b = items[item][:6]
         b4 = bytes(G.bank(4)[:0x4000])
         b6 = bytes(G.bank(6)[:0x4000])
+        b5 = bytes(G.bank(5)[:0x4000])          # οι διάδρομοι, από το βήμα 154
         domes = [list(b6[R.DOME_TBL + 24 * d:R.DOME_TBL + 24 * d + 4]) for d in range(64)]
         structs = [list(b6[R.STRUCT_TBL + 8 * k:R.STRUCT_TBL + 8 * k + 7]) for k in range(32)]
         res = reach.plan(b4, domes, structs, dims, kind, param, w, h, cx, cy)
@@ -808,7 +809,7 @@ def fire(sym, g, patch=()):
             return f"{name}: η σκηνή δεν έχει αυτό που δοκιμάζει — {len(res['corridors'])} διάδρομοι"
         deg0 = m.read_ram(nodes, 96)
         stock0 = (G.m.peek(g + 6) | G.m.peek(g + 7) << 8, G.m.peek(g + 8) | G.m.peek(g + 9) << 8)
-        ncorr0 = sum(1 for k in range(96) if b6[corr + 5 * k + 4])
+        ncorr0 = sum(1 for k in range(96) if b5[corr + 4 * k] != 254)
         G.run(40_000)
         G.iters = []                         # μόνο ο γύρος του FIRE και οι σειρές
         G.stick(JOY_FIRE)
@@ -857,20 +858,20 @@ def fire(sym, g, patch=()):
             return f"{name}: βαθμοί {deg[node]} και +{sum(deg) - sum(deg0)}, ο κανόνας {len(ends)}"
         # --- οι διάδρομοι στον πίνακα: ΠΟΙΟ άκρο είναι το a (από εκεί ζωγραφίζεται,
         # και ένα airlock δεν είναι ποτέ), η κατεύθυνση, το μήκος, η συνέχεια
-        b6_0 = b6
-        b6 = bytes(G.bank(6)[:0x4000])
-        recs = sorted(list(b6[corr + 5 * k:corr + 5 * k + 5]) for k in range(96)
-                      if b6[corr + 5 * k + 4] and not b6_0[corr + 5 * k + 4])
+        b5_0 = b5
+        b5 = bytes(G.bank(5)[:0x4000])
+        recs = sorted(list(b5[corr + 4 * k:corr + 4 * k + 4]) for k in range(96)
+                      if b5[corr + 4 * k] != 254 and b5_0[corr + 4 * k] == 254)
         me = (cx, cy, param if kind == 0 else reach.route.AIRLOCK)
         want_r = []
         for c in res["corridors"]:
             frm, to = (node, c[0]) if c[1] == me else (c[0], node)
-            want_r.append([frm, to, c[3][0][0], c[3][0][1], 2])
+            want_r.append([frm, to, c[3][0][0], c[3][0][1]])
             if len(c[3]) > 1:
-                want_r.append([255, 255, c[3][1][0], c[3][1][1], 2])
+                want_r.append([255, 255, c[3][1][0], c[3][1][1]])
         if recs != sorted(want_r):
             return f"{name}: οι εγγραφές διαδρόμων {recs}, ο κανόνας λέει {sorted(want_r)}"
-        ncorr = sum(1 for k in range(96) if b6[corr + 5 * k + 4])
+        ncorr = sum(1 for k in range(96) if b5[corr + 4 * k] != 254)
         want_c = sum(len(c[3]) for c in res["corridors"])
         stock = (G.m.peek(g + 6) | G.m.peek(g + 7) << 8, G.m.peek(g + 8) | G.m.peek(g + 9) << 8)
         paid = (stock0[0] - stock[0], stock0[1] - stock[1])
@@ -912,8 +913,9 @@ def first_lock(sym, g, patch=()):
     # Ως το 95 ήταν κάτω από το κάδρο· στο κέντρο του θόλου πατά 4 γραμμές στη
     # σειρά πάνω, μέσα στο χωράφι, που η σύνδεση εδάφους ξαναζωγραφίζει έδαφος.
     corr0 = layout("G_corr_tbl") - 0x4000
-    for k in range(96 * 5):
-        b6[corr0 + k] = 0
+    b5 = G.bank(5)                          # οι διάδρομοι, από το βήμα 154
+    for k in range(97 * 4):
+        b5[corr0 + k] = 254                 # CT_EMPTY
     # ...και χωρίς τις ακμές τους: ο πρώτος θόλος που μπαίνει παίρνει τον
     # κόμβο 0, και θα κληρονομούσε τη γραμμή του παλιού (βήμα 87: η σύνδεση
     # εδάφους του ελέγχεται ακμή προς ακμή).
@@ -927,7 +929,7 @@ def first_lock(sym, g, patch=()):
     lock = None
     # (αντικείμενο, κέρσορας, EC_FREELK μετά, οι νέες εγγραφές διαδρόμων)
     for item, at, free, recs in ((9, (-96, 44), 1, 0), (0, (-96, 60), 0, 1)):
-        c0 = bytes(G.bank(6)[corr:corr + 480])
+        c0 = bytes(G.bank(5)[corr:corr + 384])
         w0 = bytes(G.bank(4)[:0x4000])
         s0 = [list(G.bank(6)[R.STRUCT_TBL + 8 * k:R.STRUCT_TBL + 8 * k + 7]) for k in range(32)]
         B.build(m, sym, item, g + 6, at=at, place=False)
@@ -936,8 +938,9 @@ def first_lock(sym, g, patch=()):
         G.run(5_000_000, until=lambda: not (m.peek(sym["RV_PEND"]) or m.peek(sym["UI_OWED"])
                                             or m.peek(sym["DIRTY_NUM"])))
         node = m.peek(sym["BD_NODE"])
-        c1 = bytes(G.bank(6)[corr:corr + 480])
-        new = [list(c1[5 * k:5 * k + 5]) for k in range(96) if c1[5 * k + 4] and not c0[5 * k + 4]]
+        c1 = bytes(G.bank(5)[corr:corr + 384])
+        new = [list(c1[4 * k:4 * k + 4]) for k in range(96)
+               if c1[4 * k] != 254 and c0[4 * k] == 254]
         if m.peek(g + 63) != free or len(new) != recs:
             return (f"αντικείμενο {item} στο {at}: EC_FREELK {m.peek(g + 63)} (θέλει {free}), "
                     f"{len(new)} νέοι διάδρομοι (θέλει {recs})")
@@ -970,8 +973,8 @@ def first_lock(sym, g, patch=()):
             if drawn < 30:
                 return f"το airlock: μόνο {drawn} tiles θεμέλιο — η σκηνή δεν δοκιμάζει τη σύνδεση"
             print(f"    το πρώτο airlock: η σύνδεση εδάφους ως τον 65, {drawn} tiles θεμέλιο χωρίς κατοχή")
-        elif new != [[node, lock, 0, 5, 2]]:
-            return f"ο θόλος {node}: διάδρομος {new}, θέλει [[{node}, {lock}, 0, 5, 2]]"
+        elif new != [[node, lock, 0, 5]]:
+            return f"ο θόλος {node}: διάδρομος {new}, θέλει [[{node}, {lock}, 0, 5]]"
         elif nb != [lock] or joined != 1:
             return (f"ο θόλος {node}: γείτονες {nb} (θέλει [{lock}], το έδαφος ως το "
                     f"κοντινότερο airlock), ST_JOINED του airlock {joined}")

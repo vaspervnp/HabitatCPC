@@ -40,8 +40,17 @@ import reach                                                       # noqa: E402
 import route                                                       # noqa: E402
 from test_route import hud_row                                     # noqa: E402
 
+def _lay(name):
+    """Μια διεύθυνση του build/layout.asm (βήμα 154: οι πίνακες της 6 κουνήθηκαν)."""
+    for line in open(os.path.join(ROOT, "build", "layout.asm"), encoding="utf-8"):
+        p = line.split()
+        if len(p) >= 3 and p[0] == name and p[1] == "equ":
+            return int(p[2].lstrip("#"), 16)
+    raise SystemExit(f"δεν βρέθηκε το {name}")
+
+
 FAIL = []
-DOME_TBL, STRUCT_TBL = 0x7500 - 0x4000, 0x7B00 - 0x4000   # μέσα στην τράπεζα 6
+DOME_TBL, STRUCT_TBL = _lay("G_dome_tbl") - 0x4000, _lay("G_struct_tbl") - 0x4000   # μέσα στην τράπεζα 6
 PAD_NODE = 64                            # η δομή 0 της αρχικής αποικίας
 CENTER = (-8, 8)                         # το κέντρο της πίστας, σε tiles
 CAM = (-18, 3)                           # η πίστα στη μέση του κάδρου

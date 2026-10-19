@@ -209,7 +209,7 @@ def corridor_rects(a, col, i):
         lastx, lasty = x, y
         x, y = x + sx, y + sy
     j = i + 1
-    if j < S.MAX_CORR and col.c(j, S.C_A) == 255 and col.c(j, S.C_STATE):
+    if j < S.MAX_CORR and col.c(j, S.C_A) == S.CT_CONT:
         d1 = col.c(j, S.C_DIR)
         x, y = S.corr_bend(lastx, lasty, sx, sy, d1)
         vx, vy = S.CORR_STEP[d1]
@@ -251,14 +251,14 @@ def model(a, col):
             domes.append(box([(fx, fy, 2 * qw, 2 * qh)]) + (d,))
     corrs = []
     for i in range(S.MAX_CORR):
-        if col.c(i, S.C_STATE) and col.c(i, S.C_A) != 255 and col.c(i, S.C_LEN):
+        if col.c(i, S.C_A) < S.CT_EMPTY and col.c(i, S.C_LEN):
             b = box(corridor_rects(a, col, i))
             # Ο,τι φαίνεται από τη γωνία (βήμα 129) μέσα στο κουτί των
             # τρεξιμάτων — για στροφή που βγάζει το route: ο άξονας μοιράζεται
             # μία φορά με τη διαγώνιο, και η συνέχεια έχει μήκος. Οι τυχαίες
             # εγγραφές εδώ έχουν και αναστροφές και μήκος 0.
             j = i + 1
-            if j < S.MAX_CORR and col.c(j, S.C_A) == 255 and col.c(j, S.C_STATE) \
+            if j < S.MAX_CORR and col.c(j, S.C_A) == S.CT_CONT \
                     and col.c(j, S.C_DIR) in ((col.c(i, S.C_DIR) + 1) & 7,
                                               (col.c(i, S.C_DIR) - 1) & 7) \
                     and col.c(j, S.C_LEN):
@@ -308,7 +308,8 @@ def scene(R, a, rnd, case):
     col.n_dome, col.n_struct, col.n_corr = S.MAX_DOME, S.MAX_STRUCT, S.MAX_CORR
     col.dome[:] = bytes(rnd.randrange(256) for _ in range(len(col.dome)))
     col.struct[:] = bytes(rnd.randrange(256) for _ in range(len(col.struct)))
-    col.corr[:] = bytes(rnd.randrange(256) for _ in range(len(col.corr)))
+    # ΟΣΑ ΤΥΧΑΙΑ ΚΑΙ ΩΣ ΤΟ ΒΗΜΑ 153 (96 x 5): οι 300 καταστάσεις μένουν ίδιες
+    col.corr[:] = bytes(rnd.randrange(256) for _ in range(96 * 5))[:len(col.corr)]
     hub = rnd.randrange(-100, 100), rnd.randrange(-100, 100)
 
     def near(c, r):
@@ -333,17 +334,18 @@ def scene(R, a, rnd, case):
     dens = 0.0 if not ids else rnd.choice([0.0, 0.1, 0.4, 0.8])
     for i in range(S.MAX_CORR):
         b = i * S.CORR_REC
-        prev = col.corr[b - S.CORR_REC: b] if i else b"\0" * 5
-        if i and prev[4] and prev[0] != 255 and prev[2] & 1 and rnd.random() < 0.6:
+        prev = col.corr[b - S.CORR_REC: b] if i else bytes([S.CT_EMPTY]) * 4
+        if i and prev[0] < S.CT_EMPTY and prev[2] & 1 and rnd.random() < 0.6:
             # η συνέχεια μιας διαγωνίου: αξονική, C_A = C_B = 255 (crm_put)
-            col.corr[b:b + 5] = bytes([255, 255, rnd.choice([0, 2, 4, 6]),
-                                       rnd.choice([0, 1, 2, 3, 6]), S.DS_ACTIVE])
+            col.corr[b:b + 4] = bytes([255, 255, rnd.choice([0, 2, 4, 6]),
+                                       rnd.choice([0, 1, 2, 3, 6])])
         elif rnd.random() < dens or (edges and ids and i in (0, 95) and rnd.random() < 0.5):
-            col.corr[b:b + 5] = bytes([rnd.choice(ids), rnd.choice(ids), rnd.randrange(8),
-                                       rnd.choice([1, 1, 2, 3, 4, 7, 0]),
-                                       rnd.choice([S.DS_BUILDING, S.DS_ACTIVE])])
+            col.corr[b:b + 4] = bytes([rnd.choice(ids), rnd.choice(ids), rnd.randrange(8),
+                                       rnd.choice([1, 1, 2, 3, 4, 7, 0])])
+            rnd.choice([S.DS_BUILDING, S.DS_ACTIVE])     # ως το βήμα 153 η κατάσταση
         else:
-            col.corr[b + 4] = S.DS_EMPTY
+            col.corr[b] = S.CT_EMPTY                     # άδεια (βήμα 154: το C_A)
+    col.corr[S.MAX_CORR * S.CORR_REC] = S.CT_EMPTY       # η 97η, πάντα άδεια
     ns = rnd.choice([0, 0, 1, 2, 5, 12, 32])
     sl = set(rnd.sample(range(S.MAX_STRUCT), ns))
     if edges:
@@ -367,7 +369,7 @@ def scene(R, a, rnd, case):
     L, m, sym = R.L, R.m, R.sym
     R.put(6, L["G_dome_tbl"] - 0x4000, col.dome)
     R.put(6, L["G_struct_tbl"] - 0x4000, col.struct)
-    R.put(6, L["G_corr_tbl"] - 0x4000, col.corr)
+    R.put(5, L["G_corr_tbl"] - 0x4000, col.corr)        # στην τράπεζα 5 (βήμα 154)
     # το παλιό ευρετήριο και οι μετρητές του: ό,τι δεν ξαναχτίζεται μένει
     R.put(5, OI_DOME - 0x4000, bytes(rnd.randrange(256)
                                      for _ in range(OI_STRUCT + S.MAX_STRUCT * OI_REC - OI_DOME)))
@@ -443,7 +445,7 @@ def run(sym, a, patch=(), n=300, times=None):
         srnd = random.Random(8200 + case)
         if srnd.random() < 0.5:
             src = [col.c(i, S.C_A) for i in range(S.MAX_CORR)
-                   if col.c(i, S.C_STATE) and col.c(i, S.C_A) < S.MAX_DOME]
+                   if col.c(i, S.C_A) < S.MAX_DOME]
             R.stale(srnd.choice(src) if src and srnd.random() < 0.8
                     else srnd.randrange(S.MAX_DOME))
         before = [R.bank(k) for k in range(8)]

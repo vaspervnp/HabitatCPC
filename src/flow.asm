@@ -304,11 +304,13 @@ efc_st:
 ; ---------------------------------------------------------------------------
 dr_raise:
         res     ST_DLOW,(ix+ST_OPS)
+        ld      a,ixh
+        rra                             ; CY: η δεύτερη σελίδα, οι δομές 16-47
         ld      a,ixl
-        rrca
-        rrca
-        rrca                            ; η δομή: ο πίνακας αρχίζει σε σελίδα
-        add     a,MAX_DOME
+        rra
+        rra
+        rra                             ; 32 x CY + L / 8 (βήμα 154, src/const.asm)
+        add     a,MAX_DOME - ((G_struct_tbl & 255) >> 3)    ; ο κόμβος της
         ld      c,a                     ; ο κόμβος της
         ld      hl,G_job_tbl + J_NODE
         ld      de,JOB_REC

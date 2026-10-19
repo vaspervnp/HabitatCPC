@@ -164,18 +164,32 @@ def econ_jobs(L, b2, stock, popcap, alive, seed):
         b2[gj + 5 * j] = NO_JOB
     nodes = L["G_rt_nodes"] - 0x8000
     b2[nodes:nodes + 128] = bytes(128)
+    # ΤΑ LK_OWN (βήμα 154, src/link.asm): στην τελευταία σελίδα του node_adj,
+    # L = κόμβος | 128, «τίποτα» = #3F για τις MAX_STRUCT δομές
+    lk = ((L["G_node_adj"] >> 8) + 3) * 256 + 128 + 64 - 0x8000
+    b2[lk:lk + 32] = b"\x3f" * 32
 
 
 def wipe6(L, before):
-    """Η τράπεζα 6 από τους πράκτορες ως το τέλος των διαδρόμων: μηδέν, και
-    τρεις στήλες πρακτόρων στο 255."""
-    ag, end = L["G_agent_fields"] - 0x4000, L["G_corr_tbl"] + 96 * 5 - 0x4000
+    """Η τράπεζα 6 από τους πράκτορες ως το worldinfo (βήμα 154· ως τότε ως το
+    τέλος των διαδρόμων): μηδέν, και τρεις στήλες πρακτόρων στο 255."""
+    ag, end = L["G_agent_fields"] - 0x4000, L["G_worldinfo"] - 0x4000
     b6 = bytearray(before[6])
     b6[ag:end] = bytes(end - ag)
     for page in (1, 2, 3):                               # θέση, ακμή, εργασία
         o = ag + 256 * page + 128
         b6[o:o + 128] = b"\xff" * 128
     return b6
+
+
+def wipe5(L, before):
+    """Οι διάδρομοι στην τράπεζα 5 (βήμα 154): 96 εγγραφές των 4 και μία
+    ακόμη, όλες CT_EMPTY (254) — όχι 0, που θα ήταν ένας διάδρομος από τον
+    θόλο 0."""
+    c = L["G_corr_tbl"] - 0x4000
+    b5 = bytearray(before[5])
+    b5[c:c + 97 * 4] = b"\xfe" * (97 * 4)
+    return b5
 
 
 def crew(L, b6, fill, people, flags):
@@ -209,7 +223,7 @@ def rule_empty(L, before, fill):
     for x in (-1, 0):                                    # κατοχή, όχι θεμέλιο
         for y in (-1, 0):
             b4[(y + 64) * 128 + x + 64] |= 0x10
-    return b2, b6, b4
+    return b2, b6, b4, wipe5(L, before)
 
 
 def rule_colony(L, before, fill):
@@ -220,7 +234,7 @@ def rule_colony(L, before, fill):
     for x, y in ((0, 1), (1, 0), (0, 2), (2, 0), (2, 64), (64, 2), (0, 65), (65, 0)):
         b2[adj + 8 * x + b2[nodes + x]] = y
         b2[nodes + x] += 1
-    b6 = wipe6(L, before)
+    b6, b5 = wipe6(L, before), wipe5(L, before)
     gd, gs, gc = L["G_dome_tbl"] - 0x4000, L["G_struct_tbl"] - 0x4000, L["G_corr_tbl"] - 0x4000
     for d, (cx, cy, room) in enumerate(DOMES):
         rec = [cx & 255, cy & 255, 0, room, DS_ACTIVE, 255, 0, 0] + [NO_MACH] * 8 + [0] * 8
@@ -229,8 +243,7 @@ def rule_colony(L, before, fill):
         b6[gd + 24 * d:gd + 24 * d + 24] = bytes(rec)
     b6[gs:gs + 6] = bytes([PAD[0] & 255, PAD[1], PAD[2], 0, DS_ACTIVE, 255])
     b6[gs + 8:gs + 15] = bytes([LOCK[0], LOCK[1] & 255, LOCK[2], 0, DS_ACTIVE, 255, 1])
-    b6[gc:gc + 15] = bytes([0, 1, 2, 4, DS_ACTIVE, 0, 2, 4, 4, DS_ACTIVE,
-                            0, 65, 0, 2, DS_ACTIVE])
+    b5[gc:gc + 12] = bytes([0, 1, 2, 4, 0, 2, 4, 4, 0, 65, 0, 2])   # στην 5, 4 bytes
     crew(L, b6, fill, ROLES, 3)                          # F_ALIVE + F_INDOORS
     # ο κόσμος: έδαφος και κατοχή κάτω από τα τέσσερα, το decor μένει — ΟΧΙ
     # θεμέλιο από το βήμα 94 (src/colony.asm: οι θόλοι στο έδαφός τους)...
@@ -259,7 +272,7 @@ def rule_colony(L, before, fill):
             k = (y + 64) * 128 + x + 64
             if not b4[k] & 0x30:
                 b4[k] |= 0x10
-    return b2, b6, b4
+    return b2, b6, b4, b5
 
 
 def check(sym, patch=(), n=8, timing=False, colony=False):
@@ -274,6 +287,7 @@ def check(sym, patch=(), n=8, timing=False, colony=False):
         G.restore()
         if case:
             G.put(6, 0x2C00, bytes(rnd.randrange(256) for _ in range(0x1400)))
+            G.put(5, L["G_corr_tbl"] - 0x4000, bytes(rnd.randrange(256) for _ in range(97 * 4)))
             G.put(2, L["G_econ_state"] - 0x8000,
                   bytes(rnd.randrange(256) for _ in range(L["G_hud_shadow"] - L["G_econ_state"])))
             G.put(4, 0, bytes(rnd.choice([0, 1, 7, 0x40, 0x88, 0xC5, 0x17, rnd.randrange(256)])
@@ -282,21 +296,23 @@ def check(sym, patch=(), n=8, timing=False, colony=False):
         t = G.run(step=1 if timing and case == 0 else 20)
         if case == 0:
             t0 = t
-        b2, b6, b4 = rule(L, before, fill)
+        b2, b6, b4, b5 = rule(L, before, fill)
         lo = L["G_econ_state"] - 0x8000
         # ως την κρυφή μνήμη του HUD, που τη γράφει η πρώτη σχεδίαση· ως το βήμα
         # 84 ήταν σταθερά στο #A500, από το 85 (οι μηχανές στην τράπεζα 5) πιο
         # κάτω — και ένα σταθερό #A500 έγραφε σκουπίδια πάνω στον κώδικα
-        # ως το τέλος των διαδρόμων: μετά είναι η κρυφή μνήμη φιγούρων, που την
-        # ξαναχτίζει η πρώτη σχεδίαση του ui_init
-        b6end = L["G_corr_tbl"] + 96 * 5 - 0x4000
+        # ως το worldinfo (ως το βήμα 153 ως το τέλος των διαδρόμων): μετά είναι
+        # η κρυφή μνήμη φιγούρων, που την ξαναχτίζει η πρώτη σχεδίαση του ui_init
+        b6end = L["G_worldinfo"] - 0x4000
+        c5 = L["G_corr_tbl"] - 0x4000
         for name, k, want, a, z in (("η τράπεζα 2", 2, b2, lo, L["G_hud_shadow"] - 0x8000),
                                     ("η τράπεζα 6", 6, b6, 0x2C00, b6end),
+                                    ("οι διάδρομοι", 5, b5, c5, c5 + 97 * 4),
                                     ("ο κόσμος", 4, b4, 0, 0x4000)):
             got = G.bank(k)
             if got[a:z] != bytes(want[a:z]):
                 i = next(i for i in range(a, z) if got[i] != want[i])
-                base = {2: 0x8000, 6: 0x4000, 4: 0x4000}[k]
+                base = {2: 0x8000, 6: 0x4000, 5: 0x4000, 4: 0x4000}[k]
                 return (f"αφετηρία {case}: {name}, #{base + i:04X} = {got[i]}, ο κανόνας λέει "
                         f"{want[i]}"), t0
         m = G.m

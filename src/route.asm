@@ -129,10 +129,13 @@ cr_read:
         assert  D_CX == 0 && D_CY == 1 && D_SIZE == 2 && D_STATE == 4
 crd_st:
         add     a,a
-        add     a,a
-        add     a,a                     ; (64 + δομή) x 8 = δομή x 8 σε 8 bits
+        add     a,a                     ; (64 + δομή) x 4 = δομή x 4 σε 8 bits
+        if      STB_C
+        add     a,STB_C
+        endif
         ld      l,a
-        ld      h,G_struct_tbl >> 8     ; μία σελίδα (assert πιο κάτω)
+        ld      h,STB_H
+        add     hl,hl                   ; η εγγραφή (src/const.asm, βήμα 154)
         ld      a,(hl)                  ; ST_CX
         ld      (de),a
         inc     hl
@@ -156,7 +159,7 @@ crd_st:
         ret                             ; NC από το sub
 
         assert  STRUCT_REC == 8 && ST_CX == 0 && ST_CY == 1 && ST_KIND == 2 && ST_STATE == 4
-        assert  (G_struct_tbl & 255) == 0 && MAX_STRUCT * STRUCT_REC == 256 && MAX_DOME == 64
+        assert  MAX_DOME == 64
 
 ; crs_far / crs_sym — οι δύο αποτυχίες που ΔΕΝ εξαρτώνται από το ποιος θόλος
 ; είναι η αφετηρία: 64 tiles ή περισσότερο σε έναν άξονα (cr_far = 1, για τον
@@ -1015,41 +1018,48 @@ cra_no:
 ; Out: A = 0 αν μπήκε, 1 αν δεν βρέθηκε θέση.
 ;
 ; ΔΥΟ ΕΓΓΡΑΦΕΣ ΓΙΑ ΜΙΑ ΔΙΑΔΡΟΜΗ. Η εγγραφή του §6.1 κρατά ΕΝΑ τρέξιμο
-; (a, b, dir, len, state) και η στροφή θέλει δύο. Η δεύτερη γράφεται με
-; C_A = 255 — «συνεχίζει την προηγούμενη» — ώστε:
+; (a, b, dir, len) και η στροφή θέλει δύο. Η δεύτερη γράφεται με
+; C_A = CT_CONT — «συνεχίζει την προηγούμενη» — ώστε:
 ;   * ο γράφος να την αγνοεί (μία ακμή, όχι δύο),
 ;   * ο renderer να τη ζωγραφίζει μαζί με την πρώτη, από εκεί που εκείνη
 ;     σταμάτησε, χωρίς να ξέρει τίποτε για δρομολόγηση.
 ; Οι δύο εγγραφές πρέπει να είναι ΔΙΠΛΑΝΕΣ, γι' αυτό η αναζήτηση θέλει δύο
 ; συνεχόμενες άδειες.
 ;
-; ΜΠΑΙΝΕΙ ΩΣ DS_ACTIVE, όχι DS_BUILDING. Ο πίνακας εργασιών του §6.7 δείχνει
+; ΜΠΑΙΝΕΙ ΕΤΟΙΜΟΣ, όχι εργοτάξιο (ως το βήμα 153 με DS_ACTIVE στο πέμπτο του
+; byte, που από τότε δεν υπάρχει: όποια θέση δεν έχει CT_EMPTY στο C_A είναι
+; ένας διάδρομος έτοιμος). Ο πίνακας εργασιών του §6.7 δείχνει
 ; σε ΚΟΜΒΟ, και ο διάδρομος είναι ακμή: δεν υπάρχει κόμβος να δημοσιευτεί η
 ; εργασία Build. Ενας διάδρομος που χτίζεται θα ήθελε είτε δικό του id κόμβου
 ; είτε νέο είδος εργασίας — και τα δύο είναι αλλαγή στο §6.7, όχι εδώ.
 ; ---------------------------------------------------------------------------
 cr_commit:
-        ld      bc,GA_PORT + PAGE_B6
+        ld      bc,GA_PORT + PAGE_B5    ; οι διάδρομοι στην 5 (βήμα 154)
         out     (c),c
-        ld      hl,G_corr_tbl + C_CSTATE
+        ld      hl,G_corr_tbl + C_A
         ld      de,CORR_REC
         ld      b,MAX_CORR
+        ; ΤΟ CT_EMPTY ΣΤΟΝ A, έξω από τον βρόχο: το cp (hl) είναι 1 us λιγότερο
+        ; από το ld a,(hl) / or a του byte κατάστασης ως το βήμα 153, ανά
+        ; πιασμένη θέση.
+        ld      a,CT_EMPTY
 crm_find:
-        ld      a,(hl)
-        or      a
+        cp      (hl)
         jr      nz,crm_next
         ld      a,(cr_n)
         cp      2
         jr      c,crm_got               ; ένα τρέξιμο: μία θέση αρκεί
         ld      a,b
         dec     a
-        jr      z,crm_next              ; τελευταία θέση — δεν χωρά ζευγάρι
+        jr      z,crm_nx                ; τελευταία θέση — δεν χωρά ζευγάρι
         push    hl
         add     hl,de
         ld      a,(hl)
         pop     hl
-        or      a
+        cp      CT_EMPTY
         jr      z,crm_got
+crm_nx:
+        ld      a,CT_EMPTY
 crm_next:
         add     hl,de
         djnz    crm_find
@@ -1065,10 +1075,10 @@ crm_got:
         ld      a,(cr_n)
         cp      2
         jr      c,crm_done
-        ld      de,CORR_REC + C_CSTATE
+        ld      de,CORR_REC
         add     hl,de
         ld      de,(cr_d1)              ; E = d1, D = l1
-        ld      bc,#FFFF                ; C_A = 255: συνέχεια της προηγούμενης
+        ld      bc,CT_CONT * 257        ; C_A = CT_CONT: συνέχεια της προηγούμενης
         call    crm_put
 crm_done:
         ld      bc,GA_PORT + PAGE_B1
@@ -1095,21 +1105,23 @@ cr_commit_ln:
         xor     a
         ret
 
-; crm_put — HL -> C_CSTATE μιας εγγραφής· C = a, B = b, E = κατεύθυνση,
-; D = μήκος. Γράφει από το τέλος προς την αρχή· HL -> η αρχή της.
+; crm_put — HL -> μια εγγραφή· C = a, B = b, E = κατεύθυνση, D = μήκος.
+; HL -> η αρχή της, και μένει εκεί (βήμα 154: ως τότε έγραφε από το τέλος,
+; από το byte της κατάστασης).
 crm_put:
-        ld      (hl),DS_ACTIVE
-        dec     hl
+        ld      (hl),c
+        inc     hl
+        ld      (hl),b
+        inc     hl
+        ld      (hl),e
+        inc     hl
         ld      (hl),d
         dec     hl
-        ld      (hl),e
         dec     hl
-        ld      (hl),b
         dec     hl
-        ld      (hl),c
         ret
 
-        assert  C_A == 0 && C_B == 1 && C_DIR == 2 && C_LEN == 3 && C_CSTATE == 4
+        assert  C_A == 0 && C_B == 1 && C_DIR == 2 && C_LEN == 3 && CORR_REC == 4
 
 ; cr_pay — αφαιρεί το κόστος ολόκληρης της διαδρομής.
 cr_pay:

@@ -36,8 +36,13 @@ D_MACH, D_HEALTH = 8, 16
 STRUCT_REC = 8
 S_CX, S_CY, S_KIND, S_SIZE, S_STATE, S_INTEG, S_OUT = range(7)
 
-CORR_REC = 5
-C_A, C_B, C_DIR, C_LEN, C_STATE = range(5)
+# Ο ΔΙΑΔΡΟΜΟΣ: 4 bytes από το βήμα 154, στην τράπεζα 5 (src/const.asm). Ως τότε
+# 5, με ένα byte κατάστασης· τώρα το C_A λέει και την κατάσταση: CT_EMPTY η
+# άδεια θέση, CT_CONT η συνέχεια της προηγούμενης εγγραφής. Και μία εγγραφή
+# ακόμη στο τέλος, πάντα άδεια.
+CORR_REC = 4
+C_A, C_B, C_DIR, C_LEN = range(4)
+CT_EMPTY, CT_CONT = 254, 255
 
 MAX_DOME, MAX_STRUCT, MAX_CORR = 64, 32, 96
 DS_EMPTY, DS_BUILDING, DS_ACTIVE = 0, 1, 2
@@ -134,7 +139,7 @@ class Colony:
     def __init__(self):
         self.dome = bytearray(MAX_DOME * DOME_REC)
         self.struct = bytearray(MAX_STRUCT * STRUCT_REC)
-        self.corr = bytearray(MAX_CORR * CORR_REC)
+        self.corr = bytearray([CT_EMPTY]) * ((MAX_CORR + 1) * CORR_REC)
         self.n_dome = self.n_struct = self.n_corr = 0
 
     # --- πρόσβαση ---------------------------------------------------------
@@ -308,7 +313,7 @@ def draw_corridor(canvas, a, cam, colony, i, clip):
     sx, sy = CORR_STEP[dr]
     rows = a.rows(CORR_SPR[dr & 3])
     j = i + 1
-    cont = j < MAX_CORR and colony.c(j, C_A) == 255 and colony.c(j, C_STATE) != DS_EMPTY
+    cont = j < MAX_CORR and colony.c(j, C_A) == CT_CONT
     d1 = colony.c(j, C_DIR) if cont else None
     horiz = cont and d1 in (2, 6)
     for k in range(n):
@@ -366,7 +371,7 @@ def dome_dirs(colony, d):
     """Ποιες κατευθύνσεις του θόλου έχουν διάδρομο (το dome_conn του Z80)."""
     out = set()
     for i in range(colony.n_corr):
-        if colony.c(i, C_STATE) == DS_EMPTY:
+        if colony.c(i, C_A) == CT_EMPTY:
             continue
         a_, b_, dr = colony.c(i, C_A), colony.c(i, C_B), colony.c(i, C_DIR)
         if a_ == d:
@@ -375,8 +380,7 @@ def dome_dirs(colony, d):
             # Ο b παίρνει τον αρμό του ΤΕΛΕΥΤΑΙΟΥ τρεξίματος: μια διαδρομή με
             # στροφή συνεχίζει στην επόμενη εγγραφή (C_A = 255, §9.4) και
             # φτάνει στον b με τη δική της κατεύθυνση.
-            if i + 1 < MAX_CORR and colony.c(i + 1, C_A) == 255 \
-                    and colony.c(i + 1, C_STATE) != DS_EMPTY:
+            if i + 1 < MAX_CORR and colony.c(i + 1, C_A) == CT_CONT:
                 dr = colony.c(i + 1, C_DIR)
             out.add((dr + 4) & 7)
     return out
@@ -389,11 +393,10 @@ def dome_bends(colony, d):
     ΚΑΙ ΚΑΘΕΤΑ από το βήμα 129, με τις γωνίες: τότε k - 1 (0, 2, 4, 6)."""
     out = set()
     for i in range(colony.n_corr - 1):
-        if colony.c(i, C_STATE) == DS_EMPTY or colony.c(i, C_B) != d:
+        if colony.c(i, C_A) == CT_EMPTY or colony.c(i, C_B) != d:
             continue
         j = i + 1
-        if colony.c(j, C_A) == 255 and colony.c(j, C_STATE) != DS_EMPTY \
-                and colony.c(j, C_LEN) == 1:
+        if colony.c(j, C_A) == CT_CONT and colony.c(j, C_LEN) == 1:
             k = (colony.c(i, C_DIR) + 4) & 7
             out.add(k if colony.c(j, C_DIR) in (2, 6) else k - 1)
     return out
@@ -423,7 +426,7 @@ def joint(a, sz, dr):
     c.n_dome, c.n_corr = 1, 1
     c.dome[D_CX], c.dome[D_CY], c.dome[D_SIZE] = 20, 12, sz
     c.dome[D_STATE] = DS_ACTIVE
-    c.corr[0:CORR_REC] = bytes([0, 1, dr, 3, DS_ACTIVE])
+    c.corr[0:CORR_REC] = bytes([0, 1, dr, 3])
     cam, clip = Camera(0, 0), Clip(0, 0, SCR_W, SCR_H)
     fx, fy, qw, qh, _ = dome_frame(a, cam, c, 0)
 
@@ -549,8 +552,8 @@ def bend(a, sz, k):
         c.dome[b + D_CX], c.dome[b + D_CY] = cx & 255, cy & 255
         c.dome[b + D_SIZE], c.dome[b + D_STATE] = s, DS_ACTIVE
     (d0, n0), (d1, n1) = p[1]
-    c.corr[0:2 * CORR_REC] = bytes([0, 1, d0, n0, DS_ACTIVE,
-                                    255, 255, d1, n1, DS_ACTIVE])
+    c.corr[0:2 * CORR_REC] = bytes([0, 1, d0, n0,
+                                    CT_CONT, CT_CONT, d1, n1])
     cam = Camera((2 * tx - 40) // 4, (8 * ty - 100) // 16)
     need = _outline_px(a, c, 1, (0,), cam, Clip(0, 0, SCR_W, SCR_H))
     have = joint(a, sz, (d1 + 4) & 7)
@@ -643,7 +646,7 @@ def draw_objects(canvas, a, cam, colony, clip=None, ag=None):
     live = [d for d in range(colony.n_dome)
             if colony.d(d, D_STATE) != DS_EMPTY]
     for i in range(colony.n_corr):
-        if colony.c(i, C_STATE) != DS_EMPTY:
+        if colony.c(i, C_A) != CT_EMPTY:
             draw_corridor(canvas, a, cam, colony, i, clip)
     for d in live:
         draw_shell(canvas, a, cam, colony, d, clip)

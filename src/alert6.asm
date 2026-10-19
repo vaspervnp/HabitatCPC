@@ -104,13 +104,12 @@ alwm_nx:
         xor     a
         ret
 alw_st:
-        sub     MAX_DOME
         add     a,a
-        add     a,a
-        add     a,a                     ; x STRUCT_REC: ο πίνακας σε σελίδα
-        add     a,ST_KIND
+        add     a,a                     ; 4 x κόμβος = 4 x δομή σε 8 bits
+        add     a,STB_C + ST_KIND / 2
         ld      l,a
-        ld      h,G_struct_tbl >> 8
+        ld      h,STB_H
+        add     hl,hl                   ; -> ST_KIND (src/const.asm, βήμα 154)
         ld      a,(hl)                  ; το είδος, με τη σειρά του t_solar
         ld      hl,t_solar
 alw_x10:
@@ -181,5 +180,5 @@ ali_no:
         assert  J_BUILD == 0 && J_KIND == 0 && J_NODE == 1
         assert  MACH_SLOTS == 8 && D_HEALTH - D_MACH == MACH_SLOTS
         assert  MACH_OWED & 3 == 3 && (MACH_READY & 3) == 0
-        assert  MAX_STRUCT * STRUCT_REC == 256 && (G_struct_tbl & 255) == 0
+        assert  MAX_DOME == 64 && (ST_KIND & 1) == 0
         assert  t_dome_m == t_dome_s + 10 && t_dome_l == t_dome_m + 10

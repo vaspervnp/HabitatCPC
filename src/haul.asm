@@ -33,7 +33,7 @@ HAUL_CAP    equ 30
 ST_HAUL     equ 6                       ; το bit του ST_OPS: η Haul υπάρχει
 
         assert  ST_OPS == 6 && ST_OWED == 7 && STRUCT_REC == 8
-        assert  (G_struct_tbl & 255) == 0 && MAX_STRUCT * STRUCT_REC == 256
+        assert  MAX_DOME == 64 && (ST_OPS & 1) == 0
         assert  HAUL_CAP + 4 < 128 && HAUL_LOAD <= HAUL_CAP
         assert  J_NODE == 1 && J_AGENT == 2 && J_SITE == 4
 
@@ -111,14 +111,13 @@ hl_arrive:
         cp      c
         jr      nz,hla_drop             ; στον προορισμό: παραδίδει
         ; --- στο ορυχείο: η Haul του φεύγει, και ένα φορτίο από τον σωρό ---
-        sub     MAX_DOME
         add     a,a
-        add     a,a
-        add     a,a                     ; x STRUCT_REC: το 512 φεύγει από το byte
-        add     a,ST_OPS
-        ld      e,a
-        ld      d,G_struct_tbl >> 8
-        ex      de,hl                   ; HL -> ST_OPS, DE -> J_SITE
+        add     a,a                     ; 4 x κόμβος = 4 x δομή σε 8 bits
+        add     a,STB_C + ST_OPS / 2
+        ex      de,hl                   ; DE -> J_SITE
+        ld      l,a
+        ld      h,STB_H
+        add     hl,hl                   ; HL -> ST_OPS (src/const.asm, βήμα 154)
         res     ST_HAUL,(hl)
         inc     hl                      ; ST_OWED: ο σωρός
         ld      a,(hl)

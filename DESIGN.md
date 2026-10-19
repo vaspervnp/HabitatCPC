@@ -352,13 +352,13 @@ placement's in bank 1, the window's default, since 94
 
 | Block | Bank | Contents | Bytes | Slack |
 |---|---|---|---|---|
-| `&0000–&3FFF` | 0 | engine code, ISR (milestone 83, 266 bytes at `&0103`), blit kernels, UI, the button bar and the help screen's entry (milestone 84; its body in the routing matrix's holes since 108, and what the bar should show, `bar_want`, in bank 1 since 152, [below](#room-for-the-distances-code-at-milestone-152)), the shells' spans (milestone 108), the merchant's line (milestone 93) and its carriers (milestone 98), the machines carried and installed (milestone 99), the marks of the machines that do not run (milestone 100), the demolition's button and the two kinds of its redraw (milestone 101), the intruders' gate and alert (milestone 111), the alert line's names (milestone 119), the calm's call sites and the flare's clock (milestone 121), the storage's switch (milestone 122), the mine's price and half yield (milestone 123), the scarcest ingredient of a meal and its two switches (milestone 142), the Spares limit and the second input's switch (milestone 144), the tutorial's four calls (milestone 149), the guards' rule for a need (milestone 150, 14 bytes, [§6.10](#guards-leave-their-needs-for-the-fight-at-milestone-150)), the two pieces of `b6code`'s work that page another bank (`src/b6out.asm`, 102 bytes, from bank 2 at milestone 152, [below](#room-for-the-distances-code-at-milestone-152)) · in the snapshots only, the test colony after the code (milestone 87, 251 bytes, [§10.1](#beside-the-ship-at-milestone-87)) | 16,384 | **139**, 75 of them under the tests' floor at `&3E80` (268 and 204 before milestone 153's distances by symmetry, [§6.4](#distances-by-symmetry-at-milestone-153); 82 and 18 before milestone 152 moved `bar_want` out and `src/b6out.asm` in, [below](#room-for-the-distances-code-at-milestone-152); 96 and 32 before milestone 150's guards, [§6.10](#guards-leave-their-needs-for-the-fight-at-milestone-150); 93 and 29 before milestone 148's shared `ov_cpgh`, [below](#all-of-the-holes-come-in-at-milestone-148); 126 and 62 before milestone 144's Spares limit, [§6.5](#twenty-spares-at-milestone-144); 204 and 140 before milestone 142's rule for the scarcest ingredient, [§6.5](#only-the-scarcest-goes-on-at-milestone-142); 12 under `&3E00` before milestone 141, [below](#the-floor-at-3e80-at-milestone-141); 209 and 17 before milestone 140's job rule, 232 and 40 before milestone 138's Bioplastic limit, [§6.5](#bioplastic-stops-at-a-hundred-at-milestone-138); 340 and 148 before milestone 136's walking visitors, [§6.11](#visitors-who-walk-at-milestone-136); 458 before milestone 135's coins at the merchant, [§6.11](#coins-at-the-merchant-at-milestone-135); `&3D60` until milestone 95, [below](#milestone-31-found-the-floor-under-bank-0-and-it-is-not-3fc0)) (494 before milestone 134's coins on the HUD, their cache and `ev_kind`, [§6.11](#visitors-who-pay-and-prestige-at-milestone-134); 520 before milestone 127's Metal reserve, [§6.5](#thirty-metal-kept-at-milestone-127); 527 before milestone 126's second driller, [§6.7](#the-second-driller-waits-for-the-machines-at-milestone-126); 541 before milestone 124's balance, [§6.5](#only-what-adds-to-the-store-stops-at-milestone-124); 652 before milestone 123's mine anywhere, [§6.5](#a-mine-anywhere-at-milestone-123); 712 before milestone 122's storage, [§6.5](#storage-at-milestone-122); 758 before milestone 121's sparse disasters, [§6.10](#sparse-and-not-before-twenty-colonists-at-milestone-121); 764 before milestone 120's malfunction roll, [§6.10](#how-often-measured); 900 before milestone 119's names on the alert line, [§9.2](#the-machines-name-on-the-alert-line-at-milestone-119); 905 before milestone 115's `wheel_load`, [§6.7](#nothing-waits-for-a-full-board-at-milestone-115); 937 before milestone 114, [§8.4](#the-domes-opaque-inside-at-milestone-114); 977 before milestone 111, [§6.10](#intruders-at-milestone-111); 221 before milestone 110, [§8.4](#shells-stored-as-their-spans-at-milestone-110); 219 before milestone 109, [§6.9](#sites-you-can-see-at-milestone-109); 287 before milestone 108, [§8.4](#only-what-a-shell-covers-at-milestone-108); 479 before milestone 107, [§9.3](#a-cursor-step-near-the-colony-at-milestone-107); 232 before milestone 103, [below](#memory-again-at-milestone-103); 264 before milestone 101, 238 before 100, 398 before 99, 224 before 98, 240 before 97, 256 before 96, 401 before 95, 383 before 94, 380 before 93, 369 before 92, 718 before 91, 752 before 90, 744 before 89, 746 before 88, 840 before 87, the same before 86; 855 before 85, 2,304 before 84, 2,991 before 83) |
-| window | 1 | **distance matrix** `DIST[96][128]` 12,288, by symmetry since milestone 153: rows 64–95 hold only columns 64–95, and their columns 0–63, 2,048 bytes in pieces of 64, are no longer written ([§6.4](#distances-by-symmetry-at-milestone-153)) · room icons `m` and `l` 3,608, without the airlock's since milestone 151 ([below](#a-first-step-to-48-structures-at-milestone-151); 3,936 until then) · **code of the placement**, and since milestone 152 of what the button bar should show, 488 at `&7E18` (`b1code`, milestone 94 with 160 at `&7F60`, [below](#code-in-bank-1-at-milestone-94); 488 since 152, [below](#room-for-the-distances-code-at-milestone-152)) · **code of the demolition** 1,086 in the matrix's unused columns 96–127 (milestone 101 with 901, [below](#code-in-the-routing-matrixs-holes-at-milestone-101)), and **of the save** 646 in the rows after it (milestone 103 with 630, [below](#memory-again-at-milestone-103); 646 since 113, [§11](#on-a-real-drive-at-milestone-113)), the help screen's 211 after it (milestone 108), **the tutorial's** 294 and its sixteen lines of 32 after those (milestone 149, [§9.6](#96-the-tutorial-at-milestone-149)), and their image at `&6400` until the start spreads it there (milestone 102, at `&6B78` until 103 and at `&6800` until 148, [below](#all-of-the-holes-come-in-at-milestone-148)) | 16,384 | **43** in `b1code` since milestone 152 ([below](#room-for-the-distances-code-at-milestone-152)), which took the 328 after the `l` icons that milestone 151 left ([below](#a-first-step-to-48-structures-at-milestone-151)) and had 7 of 160 until then (160 before milestone 94); 256 in the matrix's unused columns, rows 88–95, since milestone 149's tutorial (1,088 since milestone 113, all of which the image could bring from 148, 77 before) (1,120 before it, 1,344 before 108, 1,984 before 103, 2,144 before 102, 3,072 before 101) |
+| `&0000–&3FFF` | 0 | engine code, ISR (milestone 83, 266 bytes at `&0103`), blit kernels, UI, the button bar and the help screen's entry (milestone 84; its body in the routing matrix's holes since 108, and what the bar should show, `bar_want`, in bank 1 since 152, [below](#room-for-the-distances-code-at-milestone-152)), the shells' spans (milestone 108), the merchant's line (milestone 93) and its carriers (milestone 98), the machines carried and installed (milestone 99), the marks of the machines that do not run (milestone 100), the demolition's button and the two kinds of its redraw (milestone 101), the intruders' gate and alert (milestone 111), the alert line's names (milestone 119), the calm's call sites and the flare's clock (milestone 121), the storage's switch (milestone 122), the mine's price and half yield (milestone 123), the scarcest ingredient of a meal and its two switches (milestone 142), the Spares limit and the second input's switch (milestone 144), the tutorial's four calls (milestone 149), the guards' rule for a need (milestone 150, 14 bytes, [§6.10](#guards-leave-their-needs-for-the-fight-at-milestone-150)), the two pieces of `b6code`'s work that page another bank (`src/b6out.asm`, 102 bytes, from bank 2 at milestone 152, [below](#room-for-the-distances-code-at-milestone-152)) · in the snapshots only, the test colony after the code (milestone 87, 251 bytes, [§10.1](#beside-the-ship-at-milestone-87)) | 16,384 | **141**, 77 of them under the tests' floor at `&3E80` (139 and 75 before milestone 154's two pages, [below](#corridors-in-bank-5-and-the-structures-on-two-pages-at-milestone-154); 268 and 204 before milestone 153's distances by symmetry, [§6.4](#distances-by-symmetry-at-milestone-153); 82 and 18 before milestone 152 moved `bar_want` out and `src/b6out.asm` in, [below](#room-for-the-distances-code-at-milestone-152); 96 and 32 before milestone 150's guards, [§6.10](#guards-leave-their-needs-for-the-fight-at-milestone-150); 93 and 29 before milestone 148's shared `ov_cpgh`, [below](#all-of-the-holes-come-in-at-milestone-148); 126 and 62 before milestone 144's Spares limit, [§6.5](#twenty-spares-at-milestone-144); 204 and 140 before milestone 142's rule for the scarcest ingredient, [§6.5](#only-the-scarcest-goes-on-at-milestone-142); 12 under `&3E00` before milestone 141, [below](#the-floor-at-3e80-at-milestone-141); 209 and 17 before milestone 140's job rule, 232 and 40 before milestone 138's Bioplastic limit, [§6.5](#bioplastic-stops-at-a-hundred-at-milestone-138); 340 and 148 before milestone 136's walking visitors, [§6.11](#visitors-who-walk-at-milestone-136); 458 before milestone 135's coins at the merchant, [§6.11](#coins-at-the-merchant-at-milestone-135); `&3D60` until milestone 95, [below](#milestone-31-found-the-floor-under-bank-0-and-it-is-not-3fc0)) (494 before milestone 134's coins on the HUD, their cache and `ev_kind`, [§6.11](#visitors-who-pay-and-prestige-at-milestone-134); 520 before milestone 127's Metal reserve, [§6.5](#thirty-metal-kept-at-milestone-127); 527 before milestone 126's second driller, [§6.7](#the-second-driller-waits-for-the-machines-at-milestone-126); 541 before milestone 124's balance, [§6.5](#only-what-adds-to-the-store-stops-at-milestone-124); 652 before milestone 123's mine anywhere, [§6.5](#a-mine-anywhere-at-milestone-123); 712 before milestone 122's storage, [§6.5](#storage-at-milestone-122); 758 before milestone 121's sparse disasters, [§6.10](#sparse-and-not-before-twenty-colonists-at-milestone-121); 764 before milestone 120's malfunction roll, [§6.10](#how-often-measured); 900 before milestone 119's names on the alert line, [§9.2](#the-machines-name-on-the-alert-line-at-milestone-119); 905 before milestone 115's `wheel_load`, [§6.7](#nothing-waits-for-a-full-board-at-milestone-115); 937 before milestone 114, [§8.4](#the-domes-opaque-inside-at-milestone-114); 977 before milestone 111, [§6.10](#intruders-at-milestone-111); 221 before milestone 110, [§8.4](#shells-stored-as-their-spans-at-milestone-110); 219 before milestone 109, [§6.9](#sites-you-can-see-at-milestone-109); 287 before milestone 108, [§8.4](#only-what-a-shell-covers-at-milestone-108); 479 before milestone 107, [§9.3](#a-cursor-step-near-the-colony-at-milestone-107); 232 before milestone 103, [below](#memory-again-at-milestone-103); 264 before milestone 101, 238 before 100, 398 before 99, 224 before 98, 240 before 97, 256 before 96, 401 before 95, 383 before 94, 380 before 93, 369 before 92, 718 before 91, 752 before 90, 744 before 89, 746 before 88, 840 before 87, the same before 86; 855 before 85, 2,304 before 84, 2,991 before 83) |
+| window | 1 | **distance matrix** `DIST[96][128]` 12,288, by symmetry since milestone 153: rows 64–95 hold only columns 64–95, and their columns 0–63, 2,048 bytes in pieces of 64, are no longer written ([§6.4](#distances-by-symmetry-at-milestone-153)) · room icons `m` and `l` 3,608, without the airlock's since milestone 151 ([below](#a-first-step-to-48-structures-at-milestone-151); 3,936 until then) · **code of the placement**, and since milestone 152 of what the button bar should show, 488 at `&7E18` (`b1code`, milestone 94 with 160 at `&7F60`, [below](#code-in-bank-1-at-milestone-94); 488 since 152, [below](#room-for-the-distances-code-at-milestone-152)) · **code of the demolition** 1,096 in the matrix's unused columns 96–127 (milestone 101 with 901, [below](#code-in-the-routing-matrixs-holes-at-milestone-101); 1,086 until milestone 154, whose corridors are paged in from bank 5), and **of the save** 638 in the rows after it (milestone 103 with 630, [below](#memory-again-at-milestone-103); 646 from 113, [§11](#on-a-real-drive-at-milestone-113), until milestone 154 wrote its header in words), the help screen's 211 after it (milestone 108), **the tutorial's** 299 and its sixteen lines of 32 after those (294 until milestone 154) (milestone 149, [§9.6](#96-the-tutorial-at-milestone-149)), and their image at `&6400` until the start spreads it there (milestone 102, at `&6B78` until 103 and at `&6800` until 148, [below](#all-of-the-holes-come-in-at-milestone-148)) | 16,384 | **43** in `b1code` since milestone 152 ([below](#room-for-the-distances-code-at-milestone-152)), which took the 328 after the `l` icons that milestone 151 left ([below](#a-first-step-to-48-structures-at-milestone-151)) and had 7 of 160 until then (160 before milestone 94); 288 in the matrix's unused columns, rows 87–95, since milestone 154's shorter save; 256, rows 88–95, from milestone 149's tutorial (1,088 since milestone 113, all of which the image could bring from 148, 77 before) (1,120 before it, 1,344 before 108, 1,984 before 103, 2,144 before 102, 3,072 before 101) |
 | window | 4 | **world plane** 128×128×1 byte | 16,384 | 0 |
-| window | 5 | **next-hop matrix** `NEXTHOP[96][128]` 12,288 · **object index** ≤ 960 ([§8.4](#84-object-pass-and-draw-order)) · **joints** 328 at `&7400` (milestone 96; the machine sprites 1,584 from milestone 85, the room icons `s` 864 from 87, `mach_ptr` 24 from 90 and the machines' marks 24 from 100, [§6.10](#seen-at-milestone-100), were before them until milestone 151 took them to bank 7, [below](#a-first-step-to-48-structures-at-milestone-151)) · **the corridors' corner drawings** 164 at `&7F08`, the window's last bytes (`b5code`, milestone 97 with 272 for the short bends' code, 248 from milestone 100; the code went to `b6code` at milestone 129 and the drawings came, [below](#code-in-bank-5-at-milestone-97)) | 16,384 | **2,644**: 2,496 after the joints since milestone 151 ([below](#a-first-step-to-48-structures-at-milestone-151); 148 until then), 64 between the object index and the joints, 84 in `b5code` (83 before milestone 129, 107 before milestone 100, 336 before 97, 664 before 96, 688 before 90, 1,552 before 87, 3,136 before 85) |
-| window | 6 | `flip_mode0` 256 · dome and ring shells 3,016, **only their spans** since milestone 110 ([§8.4](#shells-stored-as-their-spans-at-milestone-110); the whole `nw` quadrants, 7,424, until then), and the domes' solid end without its masks since 114 ([§8.4](#the-domes-opaque-inside-at-milestone-114); 3,840 until then) · **figures** 1,282: the outdoor list 256, the ten figures with shadow 321 and without 321 (milestone 136, [§6.11](#visitors-who-walk-at-milestone-136); nine in 289 each from milestone 111, [§6.10](#intruders-at-milestone-111), and eight in 256 until then), the 24 empty ring slots 384 (milestone 89; until then 3,456 of slot figures, every figure baked into every slot) · corridors 640 (from bank 2 with the connectors' 256, milestone 89; the connectors gone at 96) · the object pass's own tables 190 at `&5700` (238 until milestone 152 made `struct_ptr` one word per kind, [below](#room-for-the-distances-code-at-milestone-152)) (`&6600` until milestone 110; `struct_ptr`, `icon_{s,m,l}_ptr`, `corr_slots`, `conn_points`, `interior_ofs`; from bank 2, milestone 90, [§4.3](#43-bank-2-flat-again)) · entity tables 4,576 ([§6.1](#61-entities)), `agent_fields` pinned at `&6C00`, and since milestone 121 the two timestamps of the calm in six of the 28 bytes `node_occ` keeps for agents 100–127, which do not exist ([§6.10](#sparse-and-not-before-twenty-colonists-at-milestone-121)) · `worldinfo` 4 · figure cache 512 · **code of the wheel**, since milestone 96 of the joints, since 110 of the needs and the meteors, since 111 of the intruders, since 114 of the shells' solid end, since 115 of the sweep of lost jobs, since 118 of the walk on the path's L and since 119 of the alert line's names, since 122 of the storage's count and since 129 of the short bends and the corridors' corners, 5,815 at `&5549` (5,767 at `&5579` until milestone 152, 5,831 at `&5539` until milestone 136, 5,063 at `&5839` until milestone 114), right under `agent_fields`, its last 256 the intruders' node map at `&6B00` (`b6code`, milestone 92 with 256 at `&6B00`, milestone 93 with 1,280 at `&6700`, milestone 94 with 1,298, milestone 96 with 1,554 in the connectors' place, milestone 110 with 5,138 in the shells', 111 with 75 fewer for the ninth figure, 136 with 64 fewer for the tenth, 152 with `struct_ptr`'s 48, [below](#code-in-bank-6-at-milestone-92)) | 16,356 | **28** — and 49 of `b6code`'s 5,815 not yet used, under the node map (1 of 5,767 before milestone 152's `struct_ptr`, [below](#room-for-the-distances-code-at-milestone-152); 9 before milestone 138's Bioplastic limit, [§6.5](#bioplastic-stops-at-a-hundred-at-milestone-138); 221 of 5,831 before milestone 136's walking visitors, [§6.11](#visitors-who-walk-at-milestone-136); 233 before milestone 135's coins in the merchant's cargo, [§6.11](#coins-at-the-merchant-at-milestone-135); 233, not 280, after milestone 134, whose figure order took 47 after this cell was written; 460 before milestone 134's paying visitors and prestige, [§6.11](#visitors-who-pay-and-prestige-at-milestone-134); 1,011 before milestone 129's corridor corners and the short bends from bank 5, [§8.4](#corners-at-milestone-129); 1,029 before milestone 127's Metal reserve, [§6.5](#thirty-metal-kept-at-milestone-127); 1,069 before milestone 126's raise of an emptied mine, [§6.7](#the-second-driller-waits-for-the-machines-at-milestone-126); 1,206 before milestone 122's storage, [§6.5](#storage-at-milestone-122); 1,313 before milestone 121's sparse disasters, [§6.10](#sparse-and-not-before-twenty-colonists-at-milestone-121); 1,327 before milestone 120's needs without their rooms, [§6.6](#a-need-without-its-room-at-milestone-120); 1,509 before milestone 119's names on the alert line, 1,762 before milestone 118's walk on the path's L, 1,946 before milestone 115, 1,326 of 5,063 before milestone 114, 2,461 of 5,138 before milestone 111, 11 of 1,554 before milestone 110, 21 before milestone 97, 25 before 96, 16 before 95, 46 and 61 before 94, 1,070 before 93, 1,326 before 92, 1,564 before 90, 28 before 89) |
+| window | 5 | **next-hop matrix** `NEXTHOP[96][128]` 12,288 · **object index** ≤ 960 ([§8.4](#84-object-pass-and-draw-order)) · **joints** 328 at `&7400` (milestone 96; the machine sprites 1,584 from milestone 85, the room icons `s` 864 from 87, `mach_ptr` 24 from 90 and the machines' marks 24 from 100, [§6.10](#seen-at-milestone-100), were before them until milestone 151 took them to bank 7, [below](#a-first-step-to-48-structures-at-milestone-151)) · **the corridors** 388 at `&7800`, 96 records of 4 and an empty one (milestone 154 from bank 6, [below](#corridors-in-bank-5-and-the-structures-on-two-pages-at-milestone-154)) · **the corridors' corner drawings** 164 at `&7F08`, the window's last bytes (`b5code`, milestone 97 with 272 for the short bends' code, 248 from milestone 100; the code went to `b6code` at milestone 129 and the drawings came, [below](#code-in-bank-5-at-milestone-97)) | 16,384 | **2,256**: 696 between the joints and the corridors and 1,412 after them since milestone 154 ([below](#corridors-in-bank-5-and-the-structures-on-two-pages-at-milestone-154); 2,496 after the joints from milestone 151, [below](#a-first-step-to-48-structures-at-milestone-151); 148 until then), 64 between the object index and the joints, 84 in `b5code` (83 before milestone 129, 107 before milestone 100, 336 before 97, 664 before 96, 688 before 90, 1,552 before 87, 3,136 before 85) |
+| window | 6 | `flip_mode0` 256 · dome and ring shells 3,016, **only their spans** since milestone 110 ([§8.4](#shells-stored-as-their-spans-at-milestone-110); the whole `nw` quadrants, 7,424, until then), and the domes' solid end without its masks since 114 ([§8.4](#the-domes-opaque-inside-at-milestone-114); 3,840 until then) · **figures** 1,282: the outdoor list 256, the ten figures with shadow 321 and without 321 (milestone 136, [§6.11](#visitors-who-walk-at-milestone-136); nine in 289 each from milestone 111, [§6.10](#intruders-at-milestone-111), and eight in 256 until then), the 24 empty ring slots 384 (milestone 89; until then 3,456 of slot figures, every figure baked into every slot) · corridors' drawings 640 (from bank 2 with the connectors' 256, milestone 89; the connectors gone at 96) · the object pass's own tables 190 at `&5700` (238 until milestone 152 made `struct_ptr` one word per kind, [below](#room-for-the-distances-code-at-milestone-152)) (`&6600` until milestone 110; `struct_ptr`, `icon_{s,m,l}_ptr`, `corr_slots`, `conn_points`, `interior_ofs`; from bank 2, milestone 90, [§4.3](#43-bank-2-flat-again)) · entity tables 4,224 ([§6.1](#61-entities); 4,576 until milestone 154 took the corridors' records to bank 5 and gave the structures 48 slots on two pages, [below](#corridors-in-bank-5-and-the-structures-on-two-pages-at-milestone-154)), `agent_fields` pinned at `&6C00`, and since milestone 121 the two timestamps of the calm in six of the 28 bytes `node_occ` keeps for agents 100–127, which do not exist ([§6.10](#sparse-and-not-before-twenty-colonists-at-milestone-121)) · `worldinfo` 4 · figure cache 512 · **code of the wheel**, since milestone 96 of the joints, since 110 of the needs and the meteors, since 111 of the intruders, since 114 of the shells' solid end, since 115 of the sweep of lost jobs, since 118 of the walk on the path's L and since 119 of the alert line's names, since 122 of the storage's count and since 129 of the short bends and the corridors' corners, 5,815 at `&5549` (5,767 at `&5579` until milestone 152, 5,831 at `&5539` until milestone 136, 5,063 at `&5839` until milestone 114), right under `agent_fields`, its last 256 the intruders' node map at `&6B00` (`b6code`, milestone 92 with 256 at `&6B00`, milestone 93 with 1,280 at `&6700`, milestone 94 with 1,298, milestone 96 with 1,554 in the connectors' place, milestone 110 with 5,138 in the shells', 111 with 75 fewer for the ninth figure, 136 with 64 fewer for the tenth, 152 with `struct_ptr`'s 48, [below](#code-in-bank-6-at-milestone-92)) | 16,004 | **380**: 128 between `agent_fields` and the domes, 252 after the figure cache, since milestone 154 ([below](#corridors-in-bank-5-and-the-structures-on-two-pages-at-milestone-154); 28 until then) — and 48 of `b6code`'s 5,815 not yet used, under the node map (49 before milestone 154; 1 of 5,767 before milestone 152's `struct_ptr`, [below](#room-for-the-distances-code-at-milestone-152); 9 before milestone 138's Bioplastic limit, [§6.5](#bioplastic-stops-at-a-hundred-at-milestone-138); 221 of 5,831 before milestone 136's walking visitors, [§6.11](#visitors-who-walk-at-milestone-136); 233 before milestone 135's coins in the merchant's cargo, [§6.11](#coins-at-the-merchant-at-milestone-135); 233, not 280, after milestone 134, whose figure order took 47 after this cell was written; 460 before milestone 134's paying visitors and prestige, [§6.11](#visitors-who-pay-and-prestige-at-milestone-134); 1,011 before milestone 129's corridor corners and the short bends from bank 5, [§8.4](#corners-at-milestone-129); 1,029 before milestone 127's Metal reserve, [§6.5](#thirty-metal-kept-at-milestone-127); 1,069 before milestone 126's raise of an emptied mine, [§6.7](#the-second-driller-waits-for-the-machines-at-milestone-126); 1,206 before milestone 122's storage, [§6.5](#storage-at-milestone-122); 1,313 before milestone 121's sparse disasters, [§6.10](#sparse-and-not-before-twenty-colonists-at-milestone-121); 1,327 before milestone 120's needs without their rooms, [§6.6](#a-need-without-its-room-at-milestone-120); 1,509 before milestone 119's names on the alert line, 1,762 before milestone 118's walk on the path's L, 1,946 before milestone 115, 1,326 of 5,063 before milestone 114, 2,461 of 5,138 before milestone 111, 11 of 1,554 before milestone 110, 21 before milestone 97, 25 before 96, 16 before 95, 46 and 61 before 94, 1,070 before 93, 1,326 before 92, 1,564 before 90, 28 before 89) |
 | window | 7 | **room icons `s`** 792, **machine sprites** 1,584, `mach_ptr` 24 and the machines' **marks** 24, from bank 5 at milestone 151 ([below](#a-first-step-to-48-structures-at-milestone-151)) · external structures 8,704 (11,264 until milestone 151 dropped the energy structures' small and medium drawings, 2,560 that the game never drew) · plants 1,584 · `plant_ptr` 24 · text 2,148, 2,062 of them used (4 more for the mine's help line at milestone 123, 13 for `STORAGE FULL` at milestone 122; 2,045 from milestone 119, whose build panel took the room names from the help — 110 bytes — and spent 7 on `BROKEN`, [§9.2](#the-machines-name-on-the-alert-line-at-milestone-119); every byte used from milestone 111, with `INTRUDERS`; 2,138 until then, from milestone 101; 2,120 until 101, 2,115 of them used — 2,113 at milestone 93; 2,100 until milestone 90, 2,080 until 87, 2,064 until 86, 2,048 until 85, 1,280 until 84, 1,024 until 79) · **font 768**: the 4×8 font in Mode 1 up to `z` plus five bar cells at codes `&7B–&7F`, generated by `tools/pack.py` from `font_gfx` (milestone 83; 808 until milestone 101, with `{|}~` and DEL, which no text uses, and the cells after them; 1,536 in Mode 0 since milestone 33, where the `audio` reservation was) · **button symbols 595** (milestone 84, from `tools/buttons.py`; 578 until the demolition's at 101, 561 until the merchant's at 93), **before the text** since milestone 111, so the font's alignment costs 1 byte instead of 8 and the bank ends at `&8000` exactly (until milestone 151) | 16,248 | **223**: 136 after the font since milestone 151 ([below](#a-first-step-to-48-structures-at-milestone-151)), 86 in the text block (90 at milestone 122, 103 from milestone 119 to 121) and the byte before the font, which only the text can take (1 before milestone 119; 5 before milestone 111, which spent 10 on `INTRUDERS` and moved the symbols; 6 and 5 before milestone 101, which spent 17 on the demolition's symbol and 23 on its two texts, and took 40 from the font; 23 before milestone 93, which spent 17 on the merchant's symbol; 39 before milestone 90, which spent 20 on `SUIT AIR LOW` and got 4 back from the font's alignment; 63 before 88: 20 went to `NO ENGINEER`, 4 to the font's alignment) |
-| `&8000–&BFFF` | 2 | graphics, flat 6,008 (font gone to bank 7, machines to bank 5 at milestone 85, the `s` room icons to bank 5 at 87, the corridors and connectors to bank 6 at 89, the object pass's tables to banks 6 and 5 at 90) · ghost undo log 1,160, where the demolition runs (milestone 101), the save (milestone 103), the help screen (milestone 108) and the tutorial (milestone 149) · code 9,126 at `&9C00` ([§4.3](#43-bank-2-flat-again); 9,110 until milestone 153, 9,212 until milestone 152 moved `src/b6out.asm` to bank 0, [below](#room-for-the-distances-code-at-milestone-152); this cell said 9,095, counted earlier) | 16,380 | **90** (106 before milestone 153's `sp_take`, [§6.4](#distances-by-symmetry-at-milestone-153); 4 before milestone 152, [below](#room-for-the-distances-code-at-milestone-152); 19 before milestone 149's tutorial entries, [§9.6](#96-the-tutorial-at-milestone-149); 29 before milestone 136's `fg_build` in two parts, [§6.11](#visitors-who-walk-at-milestone-136); this cell said 63 at milestone 134, written before its `fg_build` grew a second pass; 92 before milestone 134's figure order, [§6.11](#visitors-who-pay-and-prestige-at-milestone-134); 74 before milestone 131 dropped `PATH`, [§9.3](#paths-you-can-build-over-at-milestone-131); 90 before milestone 126's two priorities for the Drill, [§6.7](#the-second-driller-waits-for-the-machines-at-milestone-126); 99 before milestone 123's three calls for the mine, [§6.5](#a-mine-anywhere-at-milestone-123); 130 before milestone 120's crew, cargo and seed and its airlock door, [§10.1](#the-scripted-player-at-milestone-120); 121 before milestone 118, whose walk moved to `b6code` and whose `fw_xy` lost its `push` and `pop`, [§6.3](#walking-the-paths-l-at-milestone-118); 268 before milestone 116's leftovers of demolition, [§9.3](#what-demolition-left-behind-at-milestone-116); 331 before milestone 115, whose full job board looks for a place to give, [§6.7](#nothing-waits-for-a-full-board-at-milestone-115); 329 before milestone 111, whose figure decode is 2 bytes shorter; 3 before milestone 110, 71 before milestone 109, 139 before milestone 108, 214 before milestone 107, 455 before 106, 541 before 105, 598 before 104, 1 before 103, 22 before 102; 202 after milestone 101's shrink and 3 before it; 19 before milestone 100, 74 before 99, 4 before 98, 5 before 96, 9 before 95, 8 before 94, 10 before 93, 77 before 91, 45 before 90, 154 before 89, 607 before 88, 333 before 87, 608 before 86, 52 before 85, 798 before 84) |
+| `&8000–&BFFF` | 2 | graphics, flat 6,008 (font gone to bank 7, machines to bank 5 at milestone 85, the `s` room icons to bank 5 at 87, the corridors and connectors to bank 6 at 89, the object pass's tables to banks 6 and 5 at 90) · ghost undo log 1,160, where the demolition runs (milestone 101), the save (milestone 103), the help screen (milestone 108) and the tutorial (milestone 149) · code 9,191 at `&9C00` ([§4.3](#43-bank-2-flat-again); 9,126 until milestone 154, [below](#corridors-in-bank-5-and-the-structures-on-two-pages-at-milestone-154); 9,110 until milestone 153, 9,212 until milestone 152 moved `src/b6out.asm` to bank 0, [below](#room-for-the-distances-code-at-milestone-152); this cell said 9,095, counted earlier) | 16,380 | **25** (90 before milestone 154's two pages and corridors in bank 5, [below](#corridors-in-bank-5-and-the-structures-on-two-pages-at-milestone-154); 106 before milestone 153's `sp_take`, [§6.4](#distances-by-symmetry-at-milestone-153); 4 before milestone 152, [below](#room-for-the-distances-code-at-milestone-152); 19 before milestone 149's tutorial entries, [§9.6](#96-the-tutorial-at-milestone-149); 29 before milestone 136's `fg_build` in two parts, [§6.11](#visitors-who-walk-at-milestone-136); this cell said 63 at milestone 134, written before its `fg_build` grew a second pass; 92 before milestone 134's figure order, [§6.11](#visitors-who-pay-and-prestige-at-milestone-134); 74 before milestone 131 dropped `PATH`, [§9.3](#paths-you-can-build-over-at-milestone-131); 90 before milestone 126's two priorities for the Drill, [§6.7](#the-second-driller-waits-for-the-machines-at-milestone-126); 99 before milestone 123's three calls for the mine, [§6.5](#a-mine-anywhere-at-milestone-123); 130 before milestone 120's crew, cargo and seed and its airlock door, [§10.1](#the-scripted-player-at-milestone-120); 121 before milestone 118, whose walk moved to `b6code` and whose `fw_xy` lost its `push` and `pop`, [§6.3](#walking-the-paths-l-at-milestone-118); 268 before milestone 116's leftovers of demolition, [§9.3](#what-demolition-left-behind-at-milestone-116); 331 before milestone 115, whose full job board looks for a place to give, [§6.7](#nothing-waits-for-a-full-board-at-milestone-115); 329 before milestone 111, whose figure decode is 2 bytes shorter; 3 before milestone 110, 71 before milestone 109, 139 before milestone 108, 214 before milestone 107, 455 before 106, 541 before 105, 598 before 104, 1 before 103, 22 before 102; 202 after milestone 101's shrink and 3 before it; 19 before milestone 100, 74 before 99, 4 before 98, 5 before 96, 9 before 95, 8 before 94, 10 before 93, 77 before 91, 45 before 90, 154 before 89, 607 before 88, 333 before 87, 608 before 86, 52 before 85, 798 before 84) |
 | `&C000–&FFFF` | 3 | play-area screen | 16,384 | 0 |
 
 Every bank is spoken for. The two matrices in banks 1 and 5 are the clearest answer
@@ -983,7 +983,9 @@ first ([below](#room-for-the-distances-code-at-milestone-152)):
 1. **151**, this one: the graphics the game never draws go, and bank 5 empties.
 2. **152**: room for the code in banks 0, 2 and 6, with no change of behaviour.
 3. **153**: the distance matrix by symmetry, still with 32 structures ([§6.4](#distances-by-symmetry-at-milestone-153)).
-4. **154**: the structure table across two pages and `LK_OWN`'s encoding.
+4. **154**: the structure table across two pages and `LK_OWN`'s encoding — and, by the
+   user's choice when bank 6 came out short, the corridors in four bytes to bank 5
+   ([below](#corridors-in-bank-5-and-the-structures-on-two-pages-at-milestone-154)).
 5. **155**: `MAX_STRUCT` 48.
 
 **What the game never drew.**
@@ -1132,6 +1134,274 @@ time.
   makes another world too, so after 18,000 frames 31 bytes differ, not 30.
 
 Every other timing line is milestone 151's. Suite 81 of 81.
+
+#### Corridors in bank 5, and the structures on two pages, at milestone 154
+
+Milestone 155 will have 48 structure slots. Their table, 48 × 8 = 384 bytes, is more
+than a page, and bank 6 had 28 bytes free. **The user chose to move the corridors:
+four bytes each, in bank 5**, where milestone 151 had left 2,496 bytes after the joints
+([above](#a-first-step-to-48-structures-at-milestone-151)). Bank 6 gets their 480 bytes,
+and the structure table takes 128 of them. This milestone is three parts, and the game
+still has 32 structures:
+
+1. the corridor records, 4 bytes, in bank 5;
+2. the structure table at its final place, 384 bytes on two pages;
+3. `LK_OWN` in a new place, with a new encoding.
+
+**The corridors.**
+
+- A record is `a b dir len`, at `&7800` in bank 5 (`corr_tbl`): 96 records, and a 97th
+  that is always empty, 388 bytes. `&7800` is where `NEXTHOP`'s 112 rows will end at
+  milestone 155, and the object index and the joints will move into the 1,412 bytes
+  after the corridors. The demolition (`dmk_lp`, `src/dm_ovl.asm`) reads
+  the record after the one it clears, for a continuation, and after the 96th it reads
+  that one.
+- **The state byte is gone.** `C_A` says it: a node (0–111), `CT_EMPTY` (254), or
+  `CT_CONT` (255), the second leg of the record before (with `C_B` 255 as well).
+  `game_new` fills the table with 254, and the demolition writes 254 into both ends of
+  a record it clears. Until now state 0 was empty, so a table of zeros was empty. Now
+  it is 96 corridors from dome 0 to dome 0.
+- A record's address is `add a,a / ld l,a / ld h,CT_H / add hl,hl`: id × 4 + `&7800`.
+- **Five places page bank 5 for it**, with the new `asc_b5` (`src/link.asm`) or an
+  `out` of their own: the object pass (`ob_corr`, which copies two records to `c_rec`
+  and puts bank 6 back), `cr_commit` (`src/route.asm`), a finished dome's links
+  (`lkd_corr`, `src/door.asm`), the demolition (`dmk_lp`, `dmw_cl`) and the test colony
+  (`src/colony.asm`). Each pages bank 6 back before it reads a dome or a structure.
+- `ob_corr` is faster by about 15–22 µs a corridor although it pages, because its
+  index is × 4, its copy 8 bytes, and the state is no longer checked. `cr_commit`'s
+  search for a free record holds `CT_EMPTY` in `A` and compares with `cp (hl)`: 1 µs
+  less a record than at milestone 153.
+
+**The structure table** is at `&7A80`, right after the domes. Records 0–15 are the upper
+half of page `&7A`, and records 16–47 the whole of page `&7B`. **Each page ends at a
+record boundary**, so no record crosses one. From a node (64 + s) or an id s:
+
+```
+add a,a / add a,a           ; 4s in 8 bits: node 64 + s gives the same
+add a,STB_C + field/2       ; STB_C = (&7A80 >> 1) & 255 = &40
+ld l,a / ld h,STB_H         ; STB_H = &7A80 >> 9 = &3D
+add hl,hl                   ; &7A80 + 8s + field
+```
+
+With a field, these are as many bytes as the old `add a,a` × 3 / `add a,field` /
+`ld l,a` / `ld h,page`, and 2 µs more (the `add hl,hl` is 3, and one `add a,a` goes).
+Without a field, the `add a,STB_C` makes it 2 bytes and 4 µs more. An odd field takes
+an `inc l` after. Where the old code took `MAX_DOME` off a node first, the new needs no
+`sub`: 4s is the same for the node and the id, and that is 2 µs less. Thirteen places
+take this form:
+
+- `mt_rec`, `alw_node` and `sp_want` in `b6code`;
+- `hl_arrive`, `op_ptr`, `ob_struct` and `osa_key` in bank 0;
+- `en_in`, `cr_read`, `fw_xy`, `al_cor1a` and `aln_st` in bank 2;
+- the demolition's `ST_JOINED`, in the routing matrix's holes.
+
+`fw_xy` reads cx and cy from the record before the dimensions, and is 3 µs faster
+than before. `ob_struct` copies only the five bytes it and `st_mark` read (cx, cy,
+kind, size, state) with `ld bc,5 / ldir`, 32 µs where the eight were 50. Five `ldi`
+would be 25, but their 5 more bytes pushed the `align 16` before `sl_ctg`
+(`src/bar.asm`) over a boundary, and that would cost 16 bytes of bank 0. `bd_redraw`
+passes `ob_struct` the node, without its `sub MAX_DOME`.
+
+**A node from a record's pointer** (`st_post`, `dr_raise`):
+
+```
+ld a,ixh / rra              ; carry: the second page
+ld a,ixl / rra / rra / rra  ; 32 × carry + L / 8
+add a,MAX_DOME - 16
+```
+
+That is 3 µs more than `ld a,ixl` and three `rrca`. `st_post` wins them back: it
+enters `jp_have` one instruction in (`jp_hava`), with the node already in `A`, 4 µs
+less. `dr_raise` runs only when an emptied mine's Drill waits low, and pays the 3 µs.
+
+**The loops.** The 16-bit ones (`add ix,de`, `add hl,de`) cross a page by themselves:
+the flow cycle, `rr_pad`, `al_scans`, `lk_anchor`, `bdk_scan`, `mt_scan`, `sp_owed`,
+the edges. Only their asserts changed. Four loops stepped with `ld a,l / add a,8 /
+ld l,a`:
+
+- **`bd_mprice`** (the first mine is free) steps with `add hl,de`, 1 µs less a record.
+  Neither of its two callers holds `DE`.
+- **`ob_struct_sort`** gathers in two loops. The first page runs until the `add`'s
+  carry, which comes exactly at its end (`jr nc`, 1 µs less than `djnz`). The second
+  counts with `djnz` after an `inc h`. The gathering is 15 µs faster. Its insertion
+  sort calls `osa_key` at every step, which now costs 3 µs more, so the inner loop
+  walks `st_ord` with `dec l` / `inc l` where it had `dec hl` / `inc hl`: 3 µs less a
+  step, in the same bytes. `st_ord` does not cross a page, and an assert says so.
+- **`su_lock`** runs to the carry on each page and stops after the second. It walks all
+  48 slots, also with 32 structures. The 16 empty slots cost 208 µs, which milestone
+  155 would pay anyway.
+- **The tutorial's count** of a kind (`tuo_slp`) steps with a `jr c` to an `inc h`
+  outside the loop, taken once: 2 µs a record. It runs at a tutorial's events only.
+
+**`LK_OWN`.** It was entries 96–127 of `node_deg`, which belong to no node while there
+are 96. At 112 nodes, 96–111 are nodes. It is now in `node_adj`'s rows for nodes
+120–125, which will never exist: `LK_OWN` = `&96C0` + s, reached from a node in `L` by
+`ld h,LKOPG / set 7,l`. The encoding changed, because 64 + s with bit 5 set is no
+longer a free number:
+
+| Byte | Means |
+|---|---|
+| node, bit 7 if y first | a path to that node ([§9.3](#paths-that-go-at-milestone-102)) |
+| node `& &3F` (bit 6 clear) | a ground link to that node |
+| `&3F` (`LKO_NONE`) | nothing kept: no structure is 63 |
+| `&FF` (`LKO_LOST`) | the other end was demolished |
+
+Two of them compare with `xor` and `and &3F`. The parent is `and &3F / or &40 / cp
+MAX_NODE`: `LKO_NONE` and `LKO_LOST` both give 127, which is no node. Until now 0
+was "nothing", and a ground link had bit 5. `game_new` writes `&3F` into the 48
+bytes (`ng_dup`, `src/hw.asm`), and the save's 2 KB of bank 2 hold them.
+
+**The save is version 10** ([§11](#11-save-and-load)). It has one more block, bank 5's
+`&7800`, 1 sector, so a slot uses 47. Bank 6's block is still `&6C00–&7DFF`, 9 sectors:
+the domes, the structures and `node_occ` moved inside it, and the corridors left it. A
+save of version 9 is refused. To fit the save's overlay, its header is written in
+words, `cam_tx` and `cur_hx` with their neighbours, 12 bytes less.
+
+**Bank 6 now** (`tools/pack.py`):
+
+| Address | Contents | Bytes |
+|---|---|---|
+| `&6C00` | `agent_fields`, pinned | 2,048 |
+| `&7400` | free | 128 |
+| `&7480` | domes, 64 × 24 | 1,536 |
+| `&7A80` | structures, 48 × 8 | 384 |
+| `&7C00` | `node_occ`, page-aligned | 256 |
+| `&7D00` | `worldinfo` | 4 |
+| `&7D04` | `dome_fig` | 512 |
+| `&7F04` | free | 252 |
+
+`game_new` still clears one block, `&6C00` up to `worldinfo`. `mt_scan` still finds the
+domes and the structures one after the other.
+
+**Where the bytes are now.**
+
+- Bank 0 ends at `&3E33`, 77 bytes under the floor (75 before). Its code grew by 8
+  bytes, and the alignment before `sl_ctg` (`src/bar.asm`) took 10 fewer.
+- Bank 2's code ends at `&BFE7`, with 25 bytes left (90 before): `asc_b5`, the paging
+  around the corridors, and `crm_put` writing forward.
+- `b6code` has 48 bytes left (49 before).
+- Bank 6 has 380 bytes free (28 before), and bank 5 has 2,256 (2,644 before).
+- In the holes, the demolition's code is 10 bytes longer and the save's 8 shorter. The
+  save gives back a row of 32, so the holes have 288 bytes free (256 before). The
+  tutorial's code is 5 bytes longer, in the same rows.
+- The test colony (`src/colony.asm`) ends at `&9BFF`, 1 byte under its limit.
+
+**How full the colonies get.** A probe read the tables every 256 frames in 8 of
+`tools/play.py`'s games of 120 sols. The most corridor records was 83 of 96, 21 of
+them continuations (`BEEF` 0 at sol 118.6, with 52 domes and 59 colonists). The most
+domes was 52 of 64, the most structures 29 of 32, and the most colonists 66. The
+corridors are the next wall ([§15](#15-open-risks)).
+
+**Is it the same game?** `tools/play.py`'s `big` plan, 120 sols on the 8 worlds of the
+probe above, on this milestone's code and on milestone 153's. Every game parts, the
+earliest at sol 7.16 (`BEEF` 2, where the Control room goes in one sample earlier, with
+1 Metal left instead of 3). The first thing that differs in that game's samples is the
+sol of the third, at the same frame count: 0.4787 instead of 0.4773, 16 ticks more,
+with every stock, site and job the same. `play.py` counts frames, and the game's loop
+runs as many ticks a frame as the speed asks only when the frame's work fits
+([§10.1](#the-scripted-player-at-milestone-120)). At ×4 this milestone ran 3.96 ticks a
+frame at sol 6.34 where 153 ran 3.92: its frames are a little lighter, and the scripted
+player acts at other ticks. From there each game is another game, and the intruders,
+who did almost all the killing in every run, come at other times.
+
+At sol 120 the 8 colonies had 364 colonists alive, against 431 on milestone 153's code.
+That gap was measured against the same code with only its timing changed:
+
+| Code | Alive at sol 120 | Deaths | Buildings |
+|---|---|---|---|
+| 153 | 431 | 43 | 499 |
+| 153 with one `nop` in `ob_corr` | 428 | 39 | 505 |
+| 153 with 14 µs more in `ob_corr` | 378 | 42 | 441 |
+| 154 | 364 | 50 | 469 |
+| 154 with 14 µs more in `ob_corr` | 415 | 47 | 493 |
+
+The one `nop` changed 5 of the 8 games, none before sol 59. The 14 µs changed 7, five
+of them by sol 46, much as this milestone changed all 8 against 153 by sol 47. The two
+families overlap: the gap is the timing, not the code.
+
+**Tests.**
+
+- **The new `tests/test_twopage.py`** writes 48 records in bank 6 and asks eight readers
+  about every node 64–111: `mt_rec`, `op_ptr`, `osa_key`, `en_in`, `fw_xy`, `cr_read`,
+  `sp_want` and `alw_node`. It also checks the node `st_post` posts from each record's
+  pointer. It then plays 60 scenes of `su_lock`, with airlocks in every part of the
+  table and distances in bank 1, and compares each answer with the rule. Five
+  negatives fail: `mt_rec` without its `add hl,hl`, `su_lock` without the second page,
+  `st_post`'s node always from the first page, `osa_key` without its `inc l`, and
+  `fw_xy` with `STB_C` 0.
+- **The test builds.** `tests/simtest.asm` has no `src/link.asm`, so it has its own
+  `asc_b5` and `asc_b6`. It fills bank 5's corridors with 254, as `game_new` does, and
+  copies 384 bytes of structures, not 512: in the new layout the 512 would run over
+  `node_occ`. `tests/test_sim.py` writes the 384, records 32–47 zero, and its check
+  of "the rest of bank 6" takes the tables in address order, since `node_occ` is
+  now after the structures.
+  `tests/objtest.asm` defines `LKOPG` and `LKO_MASK`, which `src/walk6.asm` reads.
+  `tests/objtest.asm` and `tests/uitest.asm` load the test colony's corridors into
+  bank 5 (`build/bank5_col.bin`, `tools/mkcolony.py`).
+- **The models.** `tools/scene.py`, `tools/colony.py` and fourteen tests know the
+  4-byte records and `CT_EMPTY`. `tests/test_unlink.py`, `tests/test_leftover.py` and
+  `tests/test_figure.py` know `LK_OWN`'s new place and encoding. `tests/test_newgame.py`
+  checks the 48 bytes of `&3F` and bank 5's 388 of 254. `tests/test_save.py` knows
+  version 10's layout.
+- **`tests/test_object.py`** has one more negative, `ob_corr` reading its records from
+  bank 6, which changes 4 of its 5 cameras. An empty record drawn (the check for 254
+  taken out) changes none: its "dome 254" is outside the dome table, and the corridor
+  falls outside every camera. So that one is not a negative.
+- **`tests/test_place.py`**'s stub of `ob_struct` in `bd_redraw` expects the node,
+  not the id.
+- **Negatives that moved.** `tests/test_demolish.py`'s "corridors stay" takes out both
+  254 writes. `tests/test_drill.py`'s count "in the eighth byte" is now "in the fifth"
+  (`ST_STATE`), because `op_ptr`'s `add` can only name an even field.
+
+**What else moved**, against milestone 153's logs.
+
+- **Faster.**
+  - A mine's commit in `tests/test_place.py`: 1,530 → 1,502 µs (`bd_mprice`).
+  - `tests/test_oibuild.py`'s index builds: corridors 110,049 → 108,466 µs (`ob_corr`),
+    structures 36,000 → 35,657, all 141,183 → 139,515, all with the figures 139,584 →
+    137,781.
+  - `tests/test_scroll.py`'s full redraw: 467,760 → 466,680 µs, and every scroll step
+    20–40 µs lower.
+  - `tests/test_corner.py`'s eight bent corridors: 28 µs less each.
+  - `tests/test_figure.py`: the erase over a building 3,784 → 3,770 µs, and every
+    other cost 2 µs lower.
+  - The flow cycle in `tests/test_sim.py`: 8,780 → 8,770 µs, with a full store 8,830 →
+    8,820, with eight Storage domes 9,160 → 9,150.
+  - `tests/test_drill.py`'s first cycle with three mines: 4,172 → 4,170 µs
+    (`jp_hava`).
+  - The worst rounds of `tests/test_link.py`, `tests/test_reach.py`,
+    `tests/test_unlink.py` and `tests/test_leftover.py`: about 1 ms lower each.
+- **Slower, and why.**
+  - A meteor on a building (`tests/test_impact.py`): 6,326 → 6,330 µs, at its ceiling
+    of 6,330. A struck airlock with three inside (`tests/test_suit.py`): 7,077 →
+    7,080, ceiling 7,100. Both are `mt_rec`'s 4 µs: `add a,STB_C` and `add hl,hl`
+    where there was one `add a,a`.
+  - `ui_validate` in `tests/test_reach.py`: 5,964 → 5,968 µs and 2,224 → 2,228, two
+    reads of a structure's kind at 2 µs each. The cursor step with a Solar panel:
+    19,640 → 19,650, sampled every 10.
+  - A tutorial's event (`tests/test_tutor.py`): 4,800 → 4,820 µs, all of it in the
+    thirteen counts (2,170 → 2,190): `tuo_slp`'s `jr c`.
+  - `game_new` (`tests/test_newgame.py`): 226,030 → 226,462 µs. It fills bank 5's 388
+    bytes of corridors with 254 and `LK_OWN`'s 48 with `&3F`, and clears 224 fewer
+    bytes of bank 6.
+  - A load (`tests/test_save.py`): 73 → 74 frames, for the corridors' sector.
+- **Where a round ends.** `tests/test_demolish.py`'s demolition of the colony's dome 0
+  went from 101.8 to 102.6 ms in its worst round. Its rounds were 91.4, 35.7, 77.5,
+  101.8, … and are 89.2, 37.9, 76.7, 102.6, …, 487.1 ms in all both times. The
+  factory's went from 97.9 to 97.1. `tests/test_reveal.py`'s finished Solar panel went
+  from 49 to 51 ms: 677.4 ms in 33 rounds both times, the work split at another
+  point.
+- **The suit's search** (`su_lock`) walks 48 slots where it walked 32, 208 µs more
+  a search with 32 structures. It runs once for a colonist whose suit runs low
+  outside (`su_tick`). No test times that call, and no slot's time moved. The 16
+  slots will be real at milestone 155.
+- **The disc.** `GAME2.BIN` is 65 bytes longer and `GAME.BIN` 2 shorter. The boot's
+  random seed came out different again, and the boot is 400 frames, not 390
+  ([milestone 152](#room-for-the-distances-code-at-milestone-152) had the same).
+- **The measurement's phase.** `tests/test_tutor.py`'s `call` and `ret` went from 13
+  µs to 12, and `tests/test_split.py`'s negatives count other lines wrong.
+
+Every other timing line is milestone 153's. Suite 82 of 82 on the final code.
 
 #### The ghost log is not slack, and that was measured before anything moved
 
@@ -2137,8 +2407,8 @@ Buildings use the same pattern:
 | Table | Entries | Fields |
 |---|---|---|
 | Domes | 64 | `cx cy size room state integrity power ops machines[8] health[8]` — **24 bytes** |
-| Structures | 32 | `cx cy kind size state integrity joined owed` |
-| Corridors | 96 | `a b dir len state` |
+| Structures | 32, in 48 slots since milestone 154 | `cx cy kind size state integrity joined owed` |
+| Corridors | 96 | `a b dir len` — **4 bytes in bank 5** since milestone 154, where `a` also says empty (254) or a continuation (255); until then 5 in bank 6, with `state` |
 | Jobs | 32 | `kind node agent priority site` |
 
 **Two last bytes changed meaning at milestone 88** ([§6.9](#built-at-milestone-88)).
@@ -2161,12 +2431,14 @@ Measured, as laid out by `tools/pack.py`:
 | `agent_fields` — 16 fields × 128, **must be page-aligned**, and since milestone 89 **pinned at `&6C00`**: a save writes `&6C00–&7DFF` of bank 6 as it is, nine sectors, so the entity tables cannot move when the graphics above them do | 2,048 |
 | `node_occ` — slot bitmasks (128), and one **figure mark** per agent (128, milestone 89, [§8.5](#85-the-dirty-list)) | 256 |
 | Domes, 64 × 24 | 1,536 |
-| Structures, 32 × 8 | 256 |
-| Corridors, 96 × 5 | 480 |
-| **Total in bank 6** | **4,576** |
+| Structures, 48 × 8, on two pages from `&7A80` | 384 |
+| **Total in bank 6** | **4,224** |
+| Corridors, 96 × 4 and an empty 97th, **bank 5** at `&7800` | 388 |
 
 (The structures read 64 × 8 = 512 here, and the total 4,832, until milestone 89 —
-thirty milestones after they became 32. `tools/pack.py` had the 256 all along.)
+thirty milestones after they became 32. `tools/pack.py` had the 256 all along. Until
+milestone 154 the structures were 32 × 8 = 256 and the corridors 96 × 5 = 480 in bank 6,
+4,576 in all: the 48 slots needed the corridors' room, [§4.2](#corridors-in-bank-5-and-the-structures-on-two-pages-at-milestone-154).)
 
 `machines[4]` was specified, but `machine_count` in the asset data gives a large dome
 **eight** slots. The record is 24 bytes so the large dome has the slots the art draws.
@@ -2219,9 +2491,11 @@ node_deg[128]      1 byte per node          128 B
 node_adj[128][8]   neighbour ids, row n at node_adj + n*8   1,024 B
 ```
 
-There are 96 nodes, so entries 96–127 of `node_deg` belong to no node. Since milestone
-102 they keep where each structure's own link goes (`LK_OWN`,
-[§9.3](#paths-that-go-at-milestone-102)).
+There are 96 nodes, so entries 96–127 of `node_deg` belong to no node. From milestone
+102 to 153 they kept where each structure's own link goes (`LK_OWN`,
+[§9.3](#paths-that-go-at-milestone-102)). With 48 structures 96–111 are nodes, so at
+milestone 154 `LK_OWN` moved to `node_adj`'s rows for nodes 120–125, which will never
+exist ([§4.2](#corridors-in-bank-5-and-the-structures-on-two-pages-at-milestone-154)).
 
 Both live in **bank 2**, with the BFS workspace, for the reason in
 [§6.4](#64-routing). 1,152 bytes.
@@ -4964,7 +5238,7 @@ colony, built by the engineer, a worker arriving, the Ore a cycle for each numbe
 work, the suit sending them back, someone dying there, and a driller bot that comes and
 stays. Sixteen faults, each caught: no posting, mines uncounted, Ore with nobody as in
 93, one making 1, four at a mine, no bit 7, the bit never cleared, arrival, leaving and
-death uncounted, the count in the eighth byte, never a driller, dead drillers counted,
+death uncounted, the count in the eighth byte (the fifth since milestone 154, whose `op_ptr` names only even fields), never a driller, dead drillers counted,
 one place a mine, the assignment without the mask (slot 13 over its ceilings) and a mask
 that collects no role (nobody ever arrives). `tests/test_sim.py` gives every mine of its colony one at work and
 compares the structures after every movement slice.
@@ -12288,7 +12562,10 @@ hung from it stays without a link, as at milestone 101.
 (`LKO_GROUND`) for a ground link, and bit 7 for a path that goes y first (`al_po`); 0 is
 "nothing kept": the test colony's own links, which `src/colony.asm` makes by hand, and
 every link of an older save. Node 64 + *s* with bit 5 set is 96 + *s*, so the byte is one
-`set 5,l` from the node. `alc_pth` keeps it with the path (`lk_keepp`, in front of
+`set 5,l` from the node. **Since milestone 154** it is `&96C0` + *s*, in `node_adj`'s rows
+for nodes 120–125, one `ld h,LKOPG / set 7,l` from the node. A ground link is the node
+`& &3F`, "nothing" is `&3F`, which `game_new` writes into the 48 bytes, and "lost" stays
+`&FF` ([§4.2](#corridors-in-bank-5-and-the-structures-on-two-pages-at-milestone-154)). `alc_pth` keeps it with the path (`lk_keepp`, in front of
 `cr_link_bc`), and `lk_ground` with a structure's ground link. A dome writes nothing: its
 ground link goes when it is finished (`lk_done`).
 
@@ -14862,12 +15139,13 @@ and `L` open a slot chooser, both only from `LOOK`.
 |---|---|---|
 | 0 | Header: magic, version, seed, planet, camera, cursor, slot | 512 |
 | 1–32 | **World plane, verbatim** — bank 4 | 16,384 |
-| 33–41 | Agents, domes, structures, corridors, slot occupancy, seed — bank 6 `&6C00–&7DFF` | 4,608 |
-| 42–45 | Economy, job board, node graph — bank 2, the 2 KB under `hud_shadow` (`&8F00–&96FF` since milestone 90; `&A400` until 33) | 2,048 |
-| | **Total** | **23,552** |
+| 33–41 | Agents, domes, structures, slot occupancy, seed — bank 6 `&6C00–&7DFF` (and the corridors until milestone 154) | 4,608 |
+| 42 | **Corridors** — bank 5 `&7800–&79FF`, since milestone 154: 388 bytes of records and 124 free ones | 512 |
+| 43–46 | Economy, job board, node graph, `LK_OWN` — bank 2, the 2 KB under `hud_shadow` (`&8F00–&96FF` since milestone 90; `&A400` until 33); sectors 42–45 until milestone 154 | 2,048 |
+| | **Total** | **24,064** |
 
 The world plane **is** saved, in full. Regenerating it from the seed would cost
-5.1 s on every load (13.5 until milestone 112) ([§5.10](#510-player-modification)); the 46 sectors cost
+5.1 s on every load (13.5 until milestone 112) ([§5.10](#510-player-modification)); the 46 sectors (47 since milestone 154) cost
 **0.7 s measured in the emulator** (`tests/test_save.py`), plus 0.46 s for the motor
 to come up to speed since milestone 113 ([below](#on-a-real-drive-at-milestone-113)) —
 real hardware will be several times that, because the emulator has no rotational
@@ -14884,7 +15162,7 @@ boot ([§13.1](#131-three-ways-a-loader-does-not-run)): a stale next-hop is not
 garbage, it is a *valid neighbour of another world*, and an agent reading one walks
 off in a direction that made sense in a game that no longer exists.
 
-**Where on the disc.** A slot is 6 tracks (54 sectors, 46 used) and the three live at
+**Where on the disc.** A slot is 6 tracks (54 sectors, 46 used, 47 since milestone 154) and the three live at
 tracks 24, 30 and 36 — the disc holds 42. `sv_save` and `sv_load` take a slot number,
 and **all three are now reachable**: `S` and `L` no longer save and load on the spot,
 they open a one-line chooser in the panel — `SAVE TO SLOT 2`, left and right to
@@ -14911,8 +15189,8 @@ visible the whole time by accident; a rejected empty slot is decided in one seek
 the player saw a flash. `ui_msg` sets a counter that `ui_panel` decrements instead of
 repainting — six HUD ticks, sixteen bytes of code.
 
-**The version is 9 since milestone 111** (`SV_VER`), and a save of another version is
-refused, not misread. 9 adds the landings' count to the economy (`EC_LANDS`,
+**The version is 10 since milestone 154, and was 9 from milestone 111** (`SV_VER`); a
+save of another version is refused, not misread. 9 adds the landings' count to the economy (`EC_LANDS`,
 [§6.11](#611-ships-and-arrivals)), 107 → 108 bytes. Everything after it moved by one,
 into the last byte of the gap before `rt_nodes`, which is now full. The intruders
 themselves are agents 96–99, in the block the save already holds. A load sets `fo_n`
@@ -14924,6 +15202,10 @@ save can ([§9.6](#96-the-tutorial-at-milestone-149)). A load ends with `tu_run`
 puts the line and both bytes of self-modified code back as the loaded game wants them.
 **Milestone 150 kept 9**: the guards' rule reads the task and the flags every save holds
 ([§6.10](#guards-leave-their-needs-for-the-fight-at-milestone-150)).
+**Version 10 came with milestone 154**: the corridors are 4 bytes in bank 5, a block of
+their own (one sector), the domes, the structures and `node_occ` moved inside bank 6's
+block, and `LK_OWN` moved and changed its encoding ([§4.2](#corridors-in-bank-5-and-the-structures-on-two-pages-at-milestone-154)). A save of 9
+would be misread in all four, so it is refused.
 8 came with milestone 94 and adds the finished mines to the economy (`EC_MINES`), 106 → 107
 bytes, so everything after it moved by one, into the gap before `rt_nodes`, which has
 one left; and the seventh byte of a mine counts who digs there, with bit 7 for its
@@ -15174,7 +15456,7 @@ tests in this document runnable rather than aspirational:
 | Frame budget | instrument the ISR with a frame counter; assert no slot exceeds its budget |
 | Blit correctness | render a known scene, compare against a golden PNG |
 | Terrain pass | independent Python renderer of the autotiling (`assets/SPRITES.md` §3), compared byte for byte at seven cameras: a lake with a deep centre and an ore vein, both corners of the world — the far one reaching row 63 since milestone 56 — craters and foundations, a lake written into the last three rows, a ring of mountains written around the lake (two autotiled families that differ by 1, which the test world never had), and a camera offset that makes every row wrap the 2 KB ring; plus the cost per tile, which must stay where §2.2 says (`test_tiles.py`) |
-| Object pass | independent Python renderer from the prose, compared byte-for-byte at five camera positions (`test_object.py`; its golden pictures written again at milestone 152 with milestone 151's large solar panel, and `struct_ptr` one word per kind since then, checked by `test_pack.py`, [§4.2](#room-for-the-distances-code-at-milestone-152)); since milestone 96 the corridors centred and under the shells, and the joints computed twice, from the sprites (`tools/pack.py`) and by drawing (`scene.joint`) — six negatives: the south and the east corridor back on the axis, no joints, no joint at `b`, the south joints not mirrored, the east joint a byte off ([§8.4](#centred-and-joined-to-the-ring-at-milestone-96)); since 97 the short bends, twelve scenes and two controls against `scene.bend` — five negatives: the switch kept closed, the diagonal on the other side, no length check, no horizontal check, the pixel a line up ([§8.4](#the-short-bends-at-milestone-97)); since 114 three on the domes' solid end: `sp2_fl` without its `dec hl`, `blt_op_flip` forwards, the line `2n` long ([§8.4](#the-domes-opaque-inside-at-milestone-114)); since 129 twelve vertical short bends and a third control, and the bends' negatives are eight: the switch kept closed, no length check, the diagonal's side not added, the vertical bends in the horizontal bit and the horizontal ones in the vertical, the horizontal pixel a line off, one horizontal pixel for two, the vertical one on line 2·qh ([§8.4](#the-short-bends-at-milestone-97)) |
+| Object pass | independent Python renderer from the prose, compared byte-for-byte at five camera positions (`test_object.py`; its golden pictures written again at milestone 152 with milestone 151's large solar panel, and `struct_ptr` one word per kind since then, checked by `test_pack.py`, [§4.2](#room-for-the-distances-code-at-milestone-152)); since milestone 96 the corridors centred and under the shells, and the joints computed twice, from the sprites (`tools/pack.py`) and by drawing (`scene.joint`) — six negatives: the south and the east corridor back on the axis, no joints, no joint at `b`, the south joints not mirrored, the east joint a byte off ([§8.4](#centred-and-joined-to-the-ring-at-milestone-96)); since 97 the short bends, twelve scenes and two controls against `scene.bend` — five negatives: the switch kept closed, the diagonal on the other side, no length check, no horizontal check, the pixel a line up ([§8.4](#the-short-bends-at-milestone-97)); since 114 three on the domes' solid end: `sp2_fl` without its `dec hl`, `blt_op_flip` forwards, the line `2n` long ([§8.4](#the-domes-opaque-inside-at-milestone-114)); since 129 twelve vertical short bends and a third control, and the bends' negatives are eight: the switch kept closed, no length check, the diagonal's side not added, the vertical bends in the horizontal bit and the horizontal ones in the vertical, the horizontal pixel a line off, one horizontal pixel for two, the vertical one on line 2·qh ([§8.4](#the-short-bends-at-milestone-97)); since 154 the corridors in bank 5: `ob_corr` reading bank 6 ([§4.2](#corridors-in-bank-5-and-the-structures-on-two-pages-at-milestone-154)) |
 | Scrolling | equivalence: scroll *k* steps and compare with a full draw at the destination; since milestone 108 the full redraw and one step each way in µs, under ceilings (490,000, 72,000, 14,500, 24,500, 72,000 since milestone 114; 520,000, 76,000, 14,500, 24,500, 76,000 until then), and over them with `ob_shell` not setting its spans — since milestone 110, when there is nothing else, with the mirrored kernel in every quadrant, and since 114 in every piece (`test_scroll.py`) |
 | A shell's spans, and the blit's line loop | 144 quadrant blits — three sizes, ring and dome, four orientations, in and out of the view, a random camera, clips whole, a column, a row or anything — and 40 other sprites masked and opaque, against a model of §8.2's ring and `SPRITES.md` §2; since milestone 110 the shells are only their spans in bank 6 and the model reads `sprites.bin`, the 144 under milestone 109's 922,920 µs, seven negatives (until then through `ob_blit` too, in 75% of its time, with five negatives and a sixth seen only in the time) (`test_span.py`, [§8.4](#shells-stored-as-their-spans-at-milestone-110)); since 114 with the domes' solid end, under 870,000 µs, five more negatives ([§8.4](#the-domes-opaque-inside-at-milestone-114)); and each shell rebuilt from bank 6's image equals `sprites.bin`, its `k` what the columns say, and `k + 1` breaks it (`test_pack.py`) |
 | Screen addresses | `scr_addr` and `scr_nextline` in the game's own binary for every (x, y) of the screen at seven values of `cam_p`, 2,008 included, against §8.2's formula: `DE`, `A`, `HL` and `BC`; one call of each no slower than milestone 68 measured it — three negatives (`test_screen.py`) |
@@ -15206,6 +15488,7 @@ tests in this document runnable rather than aspirational:
 | Fitting | in the real binary, with the keys: a finished large Factory fitted slot by slot — the record, the payment per `fit_cost`, every machine waiting (health under 128, milestone 99), the screen equal to a full redraw, waiting marks and all since milestone 100; a slot emptied — `NO_MACH`, half back, the slot's bytes changed, the canary alive, the screen exact, worst round 40 ms — and with `dh_mach`'s jump to `dhv_rect` patched out, the machine stays on screen and the comparison fails; a replacement, with the build sound; a refusal with 3 Metal (nothing changes, the box red, the refusal's sound); `SPACE` into all eight, and `SPACE` with Metal for three — the first three, and only the refusal's sound; the choice standing on what each slot already holds, in the factory and in the greenhouse, with `fit_pick` patched one place off as its negative (milestone 55: no test caught that before); Quarters refusing to open. A greenhouse site fitted crop by crop before it finishes — the plants at health 200 at once, nothing drawn onto the site — and MIXED, then the plants appearing when it is done (`test_fit.py`). The operator rule over sparse slots in `test_sim.py`, the FIT panel and an oxygen generator fitted to the site in `test_game.py` — since milestone 99 at health 7, carried and installed by the site's builder before it produces |
 | The routing rebuild | both matrices byte for byte against `tools/graph.py` in ten graphs chosen to break different things, and every `NEXTHOP` path as long as `DIST` says; since milestone 153 `DIST` by symmetry, a structure's row without its dome columns, which must stay untouched — a negative makes a structure write its whole row ([§6.4](#distances-by-symmetry-at-milestone-153)); the sliced rebuild equal to the whole one, in **exactly** ⌈units / B⌉ calls on five graphs with B = 1, 3, 12; `rt_mark` in the middle of a rebuild on another graph (mid-source, after a close, after an open), with the row and the queue scribbled as a load leaves them, gives the new graph whole and raises `rt_dirty`; the cost (`test_routing.py`) |
 | Distances from a structure (milestone 153) | in the simulation harness, the dome columns of the structures' rows of `DIST` zeroed after the routes are built: a worker at a structure takes the nearest of four Operate jobs of one priority, the nearest last in the table, and a hungry colonist at a structure goes to the nearest canteen, not the first in the list, byte for byte against `tools/econ.py`; two negatives make `jb_best` and `nd_nearest` read the structure's own row, and the Z80 disagrees (`test_sim.py`, [§6.4](#distances-by-symmetry-at-milestone-153)) |
+| The structure table on two pages (milestone 154) | `main.sna`, 48 records written into bank 6 — more than the game's 32 — and eight readers called directly for every node 64–111: `mt_rec`, `op_ptr`, `osa_key`, `en_in`, `fw_xy`, `cr_read`, `sp_want`, `alw_node`, each against the record it should read, and the node `st_post` makes from each record's pointer; then `su_lock` in 60 scenes with one to five airlocks anywhere in the 48, some only building, and random distances in bank 1, the answer always the rule's (the nearest ready one, the first on a tie), the nearest in each third of the table at least five times; the table at `&7A80`, after the domes, on page boundaries — five negatives: `mt_rec` without `add hl,hl`, `su_lock` without the second page, `st_post` always on the first page, `osa_key` without `inc l`, `fw_xy` with `STB_C` 0 (`test_twopage.py`, [§4.2](#corridors-in-bank-5-and-the-structures-on-two-pages-at-milestone-154)) |
 | Corridor routing | independent Python router compared on every pair of domes, then the *picture* compared at both kinds of bend (`test_route.py`) |
 | The whole game | `src/main.asm` booted: start state, the economy moving inside the loop, a building placed and **finished**, and the HUD following it with no input; after 14,000 frames the screen equals a full redraw with **zero** wrong bytes, and ring slots must have emptied on the way, or the equality proved nothing (`test_game.py`) |
 | The start state | `game_new` called directly in `main.sna` from eight starts — the game as it runs, and seven with garbage in everything it clears or writes and in the whole plane — against [§10.1](#101-start-state) written from the prose: since milestone 87 the empty start — the economy cleared but for the ship's cargo, the clock, the seed and the flags, the meteor fields left alone, and since milestone 93 the merchant's nine bytes cleared too (a previous game's cargo survived until then); every job slot `NO_JOB`; no edge at all; bank 6's tables clear but for the ship's record and six colonists (four until milestone 120) **outside** at node 64 with full needs in `corr_fill`'s ring slots and three agent columns at 255; occupancy alone under the ship's 2×2; since milestone 120 the cargo's 100 Food and 12 Spares, six alive and a cap of 6, and **the events' seed from `G_worldinfo`** — which the seven garbage starts fill with garbage — or `#ACE1` when it is zero — and the test colony of `colony.sna` against the old rule, with its 40 Food, 4 Spares and four colonists, the airlock's `ST_JOINED` and since milestone 96 the corridors' half tiles; `rt_dirty` and `wh_slot` — no slower than milestone 74 measured, `ui_init` included (250,326 µs at milestone 120) — nine negatives, since milestone 120 also the seed always `#ACE1` and a crew of four; since milestone 137 the ships' shares 50/10/20/10/10, from `tools/econ.py`'s `LAND_START` (20% each until then) (`test_newgame.py`, [§10.1](#beside-the-ship-at-milestone-87)) |
@@ -15246,7 +15529,7 @@ tests in this document runnable rather than aspirational:
 | The map is a constraint | the pump refused on dry ground **with the reason on screen**, accepted at the shore and actually built; the mine likewise at a vein — and since milestone 123 accepted away from one, the panel saying `NO VEIN  HALF ORE`; the first built for nothing with `ST_FREE`, a second off the vein for 30 with `ST_HALF`; and a dome and a solar panel accepted on the same dry ground, which is what separates "this rule" from "this patch of dirt". Since milestone 132 the second mine's dry ground is six tiles from the dome's, and `tools/balance.py`'s `live_spot` asks a mine for ore only when it was asked for beside ore: until then it moved the dry mine to the nearest vein, and the vein `colony.sna` lays was nearest (`test_map.py`) |
 | The disc | `RUN"HABITAT` from a cold BASIC prompt: the game arrives, the start state is there, the HUD is drawn, the wheel's code is in bank 6 byte for byte (milestone 92; 1,219 bytes since 93, 1,282 since 94), the icons and the placement's code in bank 1 (milestone 94), the demolition's code in the routing matrix's holes, 1,086 bytes byte for byte (milestone 102), and the save's 630 in the rows after it (milestone 103), and the help screen's 211 after that (milestone 108), and since milestone 149 the tutorial's code and its sixteen lines after those, to row 87, inside the image of milestone 148, and the world is **generated** rather than loaded. Since milestone 113: no file went to AMSDOS, the boot is at most 600 frames, and at the handover banks 6 and 7 and the game's code are the build's to the byte, with two planted faults in the reader; a disc whose `PAGE2.BIN` is type 0 boots the same through AMSDOS, and without the head's return to track 0 it does not (since milestone 128 with AMSDOS made to believe track 0); and `fl_ok` and `fd_ok` judge nine controller results right. Since milestone 128 the planet menu: its lines read off the screen with the ROM's font (six since milestone 149), the inverted one following arrows and joystick both ways round, a `RETURN` held from the `RUN` not picking (negative: the previous keys starting at none), every choice reaching `worldinfo` and two random ones apart, and since milestone 149 `TUTORIAL` reaching `TU_SEED` with bit 7 of the fourth byte and no other choice with it, the seed's code alone in 180 cases (`TUTORIAL` among them) with four negatives, and the boot timed from the choice, at most 450 frames (`test_disc.py`, [§13.3](#133-the-loader-reads-the-disc-itself-at-milestone-113), [§13.2](#132-the-loading-screen)) |
 | Disc driver | the μPD765 without AMSDOS: reads the disc's own **catalogue** and compares it with the host's `.dsk` byte for byte, then writes three sectors, reads them back, and checks the neighbouring sector is untouched (`test_fdc.py`) |
-| Save and load | a small dome placed beside the ship first (since milestone 87 the empty start never moves by itself), freeze the wheel, photograph the state, `S`, run 18,000 frames until it has moved, `L`, and assert the economy, the world plane and the **picture** are back, the ships' shares and the merchant's cargo too, changed in between — plus a load from an empty slot that must be refused; since milestone 103 the save's code comes in from the routing matrix's holes on every `S` and `L`, so the first save runs with `rst 0` written over all of it, and a last negative without the copy does not save; since milestone 115 `jb_lost`, cleared before the load, is `#80` after it (`test_save.py`) |
+| Save and load | a small dome placed beside the ship first (since milestone 87 the empty start never moves by itself), freeze the wheel, photograph the state, `S`, run 18,000 frames until it has moved, `L`, and assert the economy, the world plane and the **picture** are back, the ships' shares and the merchant's cargo too, changed in between — plus a load from an empty slot that must be refused; since milestone 103 the save's code comes in from the routing matrix's holes on every `S` and `L`, so the first save runs with `rst 0` written over all of it, and a last negative without the copy does not save; since milestone 115 `jb_lost`, cleared before the load, is `#80` after it; since milestone 154 version 10, with the corridors from bank 5 in a sector of their own (`test_save.py`) |
 | Inside and outside | the real game from the empty start, the player's keys: the four at the ship outside and no oxygen demand; the first dome tied to the ship by the ground, its engineer at the site **outside**, and when it is done no edge left and the engineer at the ship, outside; the airlock below it with its corridor in the table, `ST_JOINED`, the ground to the ship and **no** corridor edge until it is done, then the edge and its builder inside; nobody left in the sealed dome and everyone standing in the finished airlock inside (milestone 88, when the carriers stand there too); a colonist sent from the ship to the dome — outside on the ground with oxygen still 255 after two buildings' time, inside from the airlock on, and losing oxygen in the dome; one of those inside sent back to the ship, the demand two per colonist inside, and in that deficit those outside keeping their oxygen for 600 frames; since milestone 120, on `colony.sna`, a new dome north of the airlock tied to it by the ground, and when it is done everyone who stood at the site standing in the airlock **inside**, with it as their destination — seven negatives: the dome keeping its ground link, the builder kept in, the corridor an edge at placement, the airlock without air, breathing outside, the demand counting everyone, the new dome's builders put out at the airlock outside as until milestone 120 — in bank 6 since milestone 93 (`test_outside.py`, [§6.2](#inside-and-outside--milestone-87)) |
 | A need without its room | the simulation harness with the needs slot pinned, eight colonists set by hand ([§6.6](#a-need-without-its-room-at-milestone-120)): with no Quarters a sleepy colonist holding `T_NEED` lets it go and a sleepy one without a task stays put; with no Medbay an injured and thirsty one goes to a canteen and an injured and sleepy one to the Quarters; a Quarters that exists but is unreachable (`DIST` 255) lets `T_NEED` go; with every room, the sleepy to the Quarters, the injured to the Medbay, the sated letting `T_NEED` go; the three scenes byte for byte against `seek` in `tools/entity.py`; five cost ceilings — the slot's worst case no higher than milestone 119's 4,550 µs, sated 2,970, sleepy without Quarters and injured without Medbay 3,050, outside unreachable and thirsty 3,950; and in the game, `tools/play.py`'s opening to sol 2.4 on `main.sna`: all six sleepy, none holding `T_NEED` with food, water and health above the threshold — five negatives: the code as until milestone 119 (all six stuck in the game, the sleepy one keeps `T_NEED`), no Medbay check, `nd_far` returning, no Quarters check (its cost) (`test_noroom.py`) |
 | Suits | `main.sna`: ten minutes of suit at the start, one unit every 128 frames, death at zero with health untouched, `SUIT AIR LOW` under a minute; out of an airlock with a full suit, back to it alone at a minute; a meteor on an airlock puts those standing in it outside, and since milestone 104 those in the tube on the way to it — a real shower aimed at the airlock, one colonist in the tube each way, and 400 random calls of `lk_air_out` against `tools/entity.py`; an impact on a working airlock under 7,100 µs; nothing served at a site outside; 32 structures in `rooms_rebuild` — eleven negatives (`test_suit.py`, [§6.6](#suits-at-milestone-90), [§6.2](#who-was-in-the-tube-at-milestone-104)) |
@@ -15709,7 +15992,8 @@ gap.
 | ~~Water runs out where no more pumps fit~~ (milestone 140) | ~~High~~ | **Resolved at milestone 145, in the player** ([§10.1](#water-kept-at-milestone-145)). The domes of the plan `big` took the shore beside the ship: in `1048` 0 at sol 42 only 2 of 100 shores within 40 tiles took a pump, and the water was under 20 for 35 samples (`g144` lost 23 to air there). From fourteen colonists the scripted player keeps one pump site that a pump reaches, next to the pumps it has, and no dome, structure, corridor or path covers it or its path: no sample with water under 20 in 24 worlds and 60 sols, and `1048` 0 grew to 64 with five pumps. Left: a far lake needs a structure within 12 tiles, and the player builds none for that — since milestone 147 an airlock is that structure ([§10.1](#past-sixty-four-at-milestone-147)). |
 | ~~The ice planet holds about eighteen~~ (milestone 140) | ~~Medium~~ | **Resolved at milestone 146, the user's choice: less water** ([§5.7](#less-water-on-ice-at-milestone-146)). Ice's shallow water starts at 90 and deep water at 66, not 120 and 96. Within 26 tiles of the ship, 41 % of the ground can be built on, against 26 %, and a medium dome has 16 sites, against 10. Ice still has the most water of the four, and the menu says `MOST WATER, SOME ORE`. Played ([§10.1](#the-ice-planet-played-at-milestone-146)), the six ice colonies average 33.2 at sol 60, against 16.5, and four of them pass twenty. Not a byte of code; `GEN_VERSION` is 4, and a save keeps its world. |
 | ~~No colony past 64 has been played~~ (milestone 140) | ~~Medium~~ | **Played at milestone 147, and only the player changed** ([§10.1](#past-sixty-four-at-milestone-147)). The eight largest worlds for 120 sols: none passed 64 with milestone 145's player. Two died of air when no pump fit, and four stayed at the cap of 54 with no site for a second Control. The player now puts a pump on any shore within 40 tiles, uses an airlock as a stepping stone when the colony has fenced itself in (for water and for power), builds no pump while power is mostly cut, searches for domes to 32 tiles, and keeps two of the 32 structure slots for pumps. `5A5A` 2 reached 80 and `1048` 0 reached 79. The mean at sol 120 is 56.8 against 44.4, and no colony died of air. |
-| **32 structures hold a colony of about eighty** (milestone 147) | Medium | `MAX_STRUCT` is 32. At 79 colonists `1048` 0 had 11 solar panels, 8 airlocks, 7 pumps, 3 collectors, the ship, a mine and the pad. With the slots full, its eighth pump would not go in. With the player keeping two slots for pumps it lived, but its water stayed under 20 in 58 samples ([§10.1](#past-sixty-four-at-milestone-147)). **The user chose 48 slots at milestone 150.** Of 40 games of 120 sols played then, one reached 32 (`BEEF` 2 at sol 82.7, with 64 colonists). 48 need about 5.3 KB of tables the banks do not have: 16 more rows of `DIST` in bank 1 and of `NEXTHOP` in bank 5 (2 KB each, and 80 bytes of the object index), the holes' columns 96–111, which leave 1,792 bytes for the 2,816 of the overlays, 128 bytes of the structure table in bank 6 and 16 of `st_ord` in bank 0. Some 25 loops take the structure table for one page, and `LK_OWN`'s bit 5 is a structure's id. The energy structures' small and medium drawings, 2,560 bytes of bank 7, and the airlock's three room icons, 400, are never drawn. Its own milestones, from 151. **Milestone 151 took the first step** ([§4.2](#a-first-step-to-48-structures-at-milestone-151)): the drawings never drawn are gone, and bank 5 has 2,644 bytes for `NEXTHOP`'s 16 rows and the index's 80. **Milestone 152 made room for the code** ([§4.2](#room-for-the-distances-code-at-milestone-152)): 204 bytes in bank 0, 106 in bank 2 and 49 in `b6code`, with no change of behaviour. **Milestone 153 keeps the distances by symmetry** ([§6.4](#distances-by-symmetry-at-milestone-153)): a structure's row holds only the structures' columns, the readers take a structure's distance to a dome from the dome's row, and that cost 129 bytes of bank 0 and 16 of bank 2. |
+| **32 structures hold a colony of about eighty** (milestone 147) | Medium | `MAX_STRUCT` is 32. At 79 colonists `1048` 0 had 11 solar panels, 8 airlocks, 7 pumps, 3 collectors, the ship, a mine and the pad. With the slots full, its eighth pump would not go in. With the player keeping two slots for pumps it lived, but its water stayed under 20 in 58 samples ([§10.1](#past-sixty-four-at-milestone-147)). **The user chose 48 slots at milestone 150.** Of 40 games of 120 sols played then, one reached 32 (`BEEF` 2 at sol 82.7, with 64 colonists). 48 need about 5.3 KB of tables the banks do not have: 16 more rows of `DIST` in bank 1 and of `NEXTHOP` in bank 5 (2 KB each, and 80 bytes of the object index), the holes' columns 96–111, which leave 1,792 bytes for the 2,816 of the overlays, 128 bytes of the structure table in bank 6 and 16 of `st_ord` in bank 0. Some 25 loops take the structure table for one page, and `LK_OWN`'s bit 5 is a structure's id. The energy structures' small and medium drawings, 2,560 bytes of bank 7, and the airlock's three room icons, 400, are never drawn. Its own milestones, from 151. **Milestone 151 took the first step** ([§4.2](#a-first-step-to-48-structures-at-milestone-151)): the drawings never drawn are gone, and bank 5 has 2,644 bytes for `NEXTHOP`'s 16 rows and the index's 80. **Milestone 152 made room for the code** ([§4.2](#room-for-the-distances-code-at-milestone-152)): 204 bytes in bank 0, 106 in bank 2 and 49 in `b6code`, with no change of behaviour. **Milestone 153 keeps the distances by symmetry** ([§6.4](#distances-by-symmetry-at-milestone-153)): a structure's row holds only the structures' columns, the readers take a structure's distance to a dome from the dome's row, and that cost 129 bytes of bank 0 and 16 of bank 2. **Milestone 154 put the table on two pages** ([§4.2](#corridors-in-bank-5-and-the-structures-on-two-pages-at-milestone-154)): bank 6 was 356 bytes short, and the user chose to move the corridors, 4 bytes each, to bank 5. The structure table has its 48 slots at `&7A80`, `LK_OWN` left `node_deg` for rows of `node_adj` no node will have, and bank 6 has 380 bytes free. The game still has 32. |
+| **96 corridor records** (milestone 154) | Low | In 8 of `tools/play.py`'s games of 120 sols the most was 83, 21 of them the second legs of bent corridors, with 52 domes and 59 colonists (`BEEF` 0 at sol 118.6, [§4.2](#corridors-in-bank-5-and-the-structures-on-two-pages-at-milestone-154)). That is 1.6 records a dome, so 96 records are about 60 domes: the corridors fill before the 64 dome slots do. When the table is full, `cr_commit` finds no record, and the building goes in without that corridor and does not pay for it, though the ghost showed it. |
 | ~~A guard on the way to a need does not fight~~ (milestone 147) | ~~Medium~~ | **A guard inside leaves any need for the fight since milestone 150**, the user's choice ([§6.10](#guards-leave-their-needs-for-the-fight-at-milestone-150)). Measured first: in 83 raids of eight worlds over 120 sols the guards were on a need 2% of the time, never under 16, and the deaths to intruders, 38 as it was and 33–43 with the guards answering, are noise. `g147h`'s massacre was the water's, which the player has kept since milestone 147. One check in `fo_guard`, 14 bytes of bank 0, and none in the needs, where slot 15's place before the movement keeps a fighter from taking a step to the room. |
 | **Eight domes of a kind** (milestone 140) | Low | The room lists hold eight domes of each type: a ninth Storage adds no capacity, a ninth canteen or quarters is never chosen for a need, a ninth factory is never searched for a Bot. **The user chose to keep it, written down** ([§6.8](#eight-of-a-kind-measured-at-milestone-140)): a medium Storage holds 300 and a large 600. |
 | **Growth outruns the food chain** (found at milestone 131) | Medium | With materials topped up, colonies of 10–22 starved: one lab feeds about fourteen, and the scripted player found no room for a second. A ship comes when the store is full, not when production can follow ([§10.1](#past-twenty-at-milestone-131)). |

@@ -18,7 +18,8 @@
              το κτίσμα με τον κοντινότερο θόλο όσο μακριά κι αν ήταν· τώρα τους
              δεσμούς τους βάζει το al_commit (tests/test_reach.py)
   bd_redraw  ο θόλος σε DK_SITE, μία ανά σειρά, και NZ· η δομή στο vr_* και,
-             αν φαίνεται, ob_struct και ob_clip_full, και Z (stubs)
+             αν φαίνεται, ob_struct (με τον κόμβο από το βήμα 154) και
+             ob_clip_full, και Z (stubs)
 
 ΓΙΑΤΙ. Ως το βήμα 73 το build.asm το έβλεπαν σενάρια που χτίζουν μέσα από το
 interface (test_build, test_map, test_game, test_reveal, test_link): λίγες
@@ -494,7 +495,9 @@ def redraw_rules(sym, patch=(), n=200):
         if kind == 0:
             want = ([v for r in range(h) for v in (DK_SITE, node, r)], (pend + h) & 255, False)
         else:
-            want = ([0xFE, tx, ty, w, h] + ([0xFD, node - 64, 0xFC] if vis else []), pend, True)
+            # το ob_struct με τον ΚΟΜΒΟ από το βήμα 154 (ως τότε το id, κόμβος - 64):
+            # 4 x κόμβος = 4 x δομή σε 8 bits, και το sub MAX_DOME έφυγε
+            want = ([0xFE, tx, ty, w, h] + ([0xFD, node, 0xFC] if vis else []), pend, True)
         if got != want:
             return f"bd_redraw {i} στο ({cx}, {cy}): {got}, ο κανόνας λέει {want}"
     print(f"    {n} redraw")

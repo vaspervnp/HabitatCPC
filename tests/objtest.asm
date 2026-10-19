@@ -258,7 +258,8 @@ done_flag:  db 0
         include "../src/objindex.asm"
         include "../src/span.asm"           ; βήμα 108: στην τράπεζα 0, όπως στο παιχνίδι
         include "../src/span6.asm"          ; βήμα 114: στο παιχνίδι στο b6code
-LKO_GROUND equ #20                          ; src/link.asm και src/graph.asm, που εδώ
+LKOPG   equ (G_node_adj >> 8) + 3           ; src/link.asm (βήμα 154) και src/graph.asm,
+LKO_MASK equ #3F                            ; που εδώ
 NODEPG  equ G_rt_nodes >> 8                 ; δεν υπάρχουν (το walk6.asm τα διαβάζει)
         include "../src/walk6.asm"          ; βήμα 118: στο παιχνίδι στο b6code
 ; τα DK_RSIZE και DK_RECT της κατεδάφισης (βήμα 101) ζουν στις τρύπες του
@@ -312,7 +313,7 @@ cr_d1:  db 0
         org     #0000                   ; τράπεζα 4 — το επίπεδο κόσμου
         incbin  "../build/world_col.bin"
         org     B5_BASE                 ; τράπεζα 5 — οι μηχανές (βήμα 85)
-        incbin  "../build/bank5.bin", 0, G_b5code - B5_BASE
+        incbin  "../build/bank5_col.bin", 0, G_b5code - B5_BASE   ; και οι διάδρομοι (βήμα 154)
         org     G_b5code                ; και τα σχέδια των γωνιών (βήμα 129)
         include "../build/corner_spr.asm"
         org     #8000                   ; τράπεζα 6 — τεταρτημόρια ΚΑΙ πίνακες

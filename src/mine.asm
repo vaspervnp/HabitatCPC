@@ -14,7 +14,8 @@
 ; Μηδενίζει και το bd_half (το ξαναβρίσκει το bd_res). Από το bd_select και
 ; μετά από κάθε τοποθέτηση (bdk_post), με την 1 στο παράθυρο, που την αφήνει.
 ; 32 εγγραφές, ~250 us, μόνο όταν διαλέγεται ή μπαίνει ορυχείο. Χαλάει AF,
-; BC, HL.
+; BC, DE, HL (βήμα 154: και τον DE, που κανείς από τους δύο καλούντες δεν
+; κρατά).
 ; ---------------------------------------------------------------------------
 bd_mprice:
         xor     a
@@ -28,16 +29,15 @@ bd_mprice:
         ld      bc,GA_PORT + PAGE_B6
         out     (c),c
         ld      hl,G_struct_tbl + ST_KIND
+        ld      de,STRUCT_REC
         ld      b,MAX_STRUCT
 bmp_lp:
         ld      a,(hl)
         cp      K_MINE
         jr      z,bmp_mine
 bmp_nx:
-        ld      a,l
-        add     a,STRUCT_REC
-        ld      l,a
-        djnz    bmp_lp
+        add     hl,de                   ; δύο σελίδες (βήμα 154): 1 us λιγότερο
+        djnz    bmp_lp                  ; από το ld a,l / add a,8 / ld l,a
         xor     a                       ; κανένα: δωρεάν
         jr      bmp_set
 bmp_mine:

@@ -25,6 +25,7 @@ SNA = os.path.join(ROOT, "build", "simtest.sna")
 FRAME_US = 19968
 TICKS = 640                 # 40 πλήρεις περιστροφές
 STAGE_AG, STAGE_OCC, STAGE_DOME, STAGE_STR = 0xC000, 0xC800, 0xC900, 0xCF00
+STR_BYTES = 48 * 8                  # ο πίνακας δομών όλος (βήμα 154): οι 32-47 μηδέν
 
 
 def build():
@@ -140,7 +141,7 @@ def z80_load(sym, g, sim, rt_n=None, patch=()):
     # βήμα 121 η ησυχία των καταστροφών στα άδεια των πρακτόρων 100-127.
     m.write_ram(STAGE_OCC, bytes(sim.occ[:128]) + EC.occ_hi(sim.e))
     m.write_ram(STAGE_DOME, bytes(sim.e.dome))
-    m.write_ram(STAGE_STR, bytes(sim.e.struct))
+    m.write_ram(STAGE_STR, bytes(sim.e.struct).ljust(STR_BYTES, b"\0"))
     m.write_ram(sym["G_ECON_STATE"], EC.to_bytes(sim.e))   # τράπεζα 2, βασική
     m.write_ram(sym["G_JOB_TBL"], bytes(sim.e.job))
     m.write_ram(sym["G_ROOM_N"], bytes(sim.e.room_n))
@@ -764,7 +765,7 @@ def flow_branches(sym, g, nexthop, sim0, patch=(), quiet=False):
         m.write_ram(STAGE_AG, sim.a.to_bytes())
         m.write_ram(STAGE_OCC, bytes(sim.occ) + bytes(128))
         m.write_ram(STAGE_DOME, bytes(e.dome))
-        m.write_ram(STAGE_STR, bytes(e.struct))
+        m.write_ram(STAGE_STR, bytes(e.struct).ljust(STR_BYTES, b"\0"))
         m.write_ram(sym["G_ECON_STATE"], EC.to_bytes(e))
         enter(m, sym, "LOAD_STATE")
         for at, v in patch:
@@ -2715,7 +2716,7 @@ def move_branches(sym, sim0, n=12, patch=(), quiet=False):
         m.write_ram(STAGE_AG, a.to_bytes())
         m.write_ram(STAGE_OCC, bytes(occ) + bytes(128))
         m.write_ram(STAGE_DOME, bytes(dome))
-        m.write_ram(STAGE_STR, bytes(st))
+        m.write_ram(STAGE_STR, bytes(st).ljust(STR_BYTES, b"\0"))
         m.write_ram(sym["G_ECON_STATE"], EC.to_bytes(sim0.e))
         m.write_ram(sym["G_JOB_TBL"], bytes(sim0.e.job))
         m.write_ram(sym["G_ROOM_N"], bytes(sim0.e.room_n))
@@ -2727,8 +2728,10 @@ def move_branches(sym, sim0, n=12, patch=(), quiet=False):
         for at, v in patch:
             m.poke(at, v)
         bank6 = lambda: ctypes.string_at(cpc._lib.cpcemu_ram_ptr(m._h, 6), 0x4000)
-        spans = [(sym[n] - 0x4000, k) for n, k in (("G_AGENT_FIELDS", 2048),
-                 ("G_NODE_OCC", 256), ("G_DOME_TBL", len(dome)), ("G_STRUCT_TBL", 256))]
+        # ΚΑΤΑ ΔΙΕΥΘΥΝΣΗ (βήμα 154): από τότε το node_occ είναι μετά τις δομές, και
+        # το «ό,τι μένει» ανάμεσα σε δύο διαστήματα έπιανε τους θόλους και τις δομές.
+        spans = sorted((sym[n] - 0x4000, k) for n, k in (("G_AGENT_FIELDS", 2048),
+                       ("G_NODE_OCC", 256), ("G_DOME_TBL", len(dome)), ("G_STRUCT_TBL", 256)))
         mk0 = sym["G_NODE_OCC"] - 0x4000 + 128          # τα σημάδια των φιγούρων
         marks = bytearray(bank6()[mk0:mk0 + 128])
         rest = lambda b: b"".join(b[s + k:e] for (s, k), (e, _) in
@@ -3513,7 +3516,7 @@ def wheel_check(sym, g, nexthop, base, patch=()):
     m.write_ram(STAGE_AG, sim.a.to_bytes())
     m.write_ram(STAGE_OCC, bytes(sim.occ) + bytes(128))
     m.write_ram(STAGE_DOME, bytes(sim.e.dome))
-    m.write_ram(STAGE_STR, bytes(sim.e.struct))
+    m.write_ram(STAGE_STR, bytes(sim.e.struct).ljust(STR_BYTES, b"\0"))
     m.write_ram(sym["G_ECON_STATE"], EC.to_bytes(sim.e))
     m.write_ram(sym["G_JOB_TBL"], bytes(sim.e.job))
     m.write_ram(sym["G_ROOM_N"], bytes(sim.e.room_n))

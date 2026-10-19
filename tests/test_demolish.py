@@ -112,8 +112,13 @@ def rec(G, n):
 
 
 def corridors(G):
+    """[a, b, dir, len, κατάσταση] ανά θέση, όπως ως το βήμα 153: από το 154 οι
+    εγγραφές είναι 4 bytes στην τράπεζα 5, και η κατάσταση βγαίνει από το C_A
+    (254 άδεια, 2 κάθε άλλη — και η συνέχεια μιας στροφής, C_A 255)."""
     t = L["G_corr_tbl"] - 0x4000
-    return [list(b6(G)[t + 5 * k:t + 5 * k + 5]) for k in range(96)]
+    b5 = G.bank(5)
+    return [list(b5[t + 4 * k:t + 4 * k + 4]) + [0 if b5[t + 4 * k] == 254 else 2]
+            for k in range(96)]
 
 
 def jobs(G):
@@ -704,11 +709,13 @@ def negatives(sym, g):
          factory),
         ("όλα πίσω και από χτισμένο", at_ovl(sym, "DMK_NX", 30, [0xFE, 2, 0x20], [(2, 0x18)]),
          factory),
-        ("οι διάδρομοι μένουν", at_ovl(sym, "DMK_ME", 12, [0x36, 0x00], [(0, 0), (1, 0)]),
+        # ld (hl),CT_EMPTY · dec hl · ld (hl),CT_EMPTY -> nop (βήμα 154: οι δύο άκρες)
+        ("οι διάδρομοι μένουν", at_ovl(sym, "DMK_ME", 12, [0x36, 0xFE, 0x2B, 0x36, 0xFE],
+                                       [(0, 0), (1, 0), (3, 0), (4, 0)]),
          factory),
         ("ο κόσμος δεν ξαναγράφεται", at_ovl(sym, "DMW_GO", 4, cd("DM_WORLD"), nop3), factory),
         ("ο διάδρομος χωρίς το tile γύρω του", pad and pad2 and pad + pad2, airlock),
-        ("μόνο το αποτύπωμα, όχι οι διάδρομοι", at_ovl(sym, "DMK_AIR", 6, cd("DM_CRECT"), nop3),
+        ("μόνο το αποτύπωμα, όχι οι διάδρομοι", at_ovl(sym, "DMK_AIR", 10, cd("DM_CRECT"), nop3),
          factory),
         ("τα δωμάτια μένουν", at_ovl(sym, "DMW_GO", 12, cd("ROOMS_REBUILD"), nop3), at_once),
         ("οι εργασίες μένουν", at_ovl(sym, "DMJ_DEL", 6, [0x36, 0xFF], [(0, 0), (1, 0)]), site),

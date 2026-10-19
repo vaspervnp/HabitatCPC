@@ -15,7 +15,8 @@
 STAGE_AG    equ #C000                   ; 2.048 bytes πεδία πρακτόρων
 STAGE_OCC   equ #C800                   ; 256 bytes μάσκες θέσεων
 STAGE_DOME  equ #C900                   ; 1.536 bytes πίνακας θόλων
-STAGE_STR   equ #CF00                   ; 512 bytes πίνακας δομών
+STAGE_STR   equ #CF00                   ; 384 bytes πίνακας δομών (βήμα 154: ως τότε 512,
+STR_BYTES   equ 48 * STRUCT_REC         ; που έγραφαν πάνω στο node_occ από το #7C00)
 ; Το econ_state ζει στην τράπεζα 2, δηλαδή στη βασική μνήμη: ο host το γράφει
 ; και το διαβάζει κατευθείαν, χωρίς σκάλα.
 
@@ -55,8 +56,20 @@ load_state:
         ldir
         ld      hl,STAGE_STR
         ld      de,G_struct_tbl
-        ld      bc,512
+        ld      bc,STR_BYTES
         ldir
+        ; ΟΙ ΔΙΑΔΡΟΜΟΙ ΑΔΕΙΟΙ (βήμα 154): στην τράπεζα 5, με CT_EMPTY, όπως τους
+        ; αφήνει το game_new. Ως τότε άδεια ήταν η κατάσταση 0, και η τράπεζα 6
+        ; μηδενική· τώρα 0 θα ήταν διάδρομος από τον θόλο 0 στον θόλο 0, και το
+        ; lkd_corr (src/door.asm) θα τον έδενε όταν τελειώσει ο θόλος 0.
+        ld      bc,GA_PORT + PAGE_B5
+        out     (c),c
+        ld      hl,G_corr_tbl
+        ld      (hl),CT_EMPTY
+        ld      bc,(MAX_CORR + 1) * CORR_REC - 1
+        call    ng_dup
+        ld      bc,GA_PORT + PAGE_B6
+        out     (c),c
         ld      a,(ec_full)             ; ο κώδικας της γεμάτης αποθήκης, όπως τον
         call    ec_setfull              ; αφήνει το st_check (βήμα 122)
         ld      bc,GA_PORT + PAGE_B1
@@ -121,7 +134,7 @@ save_state:
         ldir
         ld      hl,G_struct_tbl
         ld      de,STAGE_STR
-        ld      bc,512
+        ld      bc,STR_BYTES
         ldir
         ld      bc,GA_PORT + PAGE_B1
         out     (c),c
@@ -138,6 +151,26 @@ rtr_lp:
         ld      b,255
         call    rt_slice
         jr      nc,rtr_lp
+        ret
+
+; asc_b5 / asc_b6 — του src/link.asm, που εδώ δεν υπάρχει (το lkd_corr του
+; src/door.asm τα καλεί από το βήμα 154). Κρατούν τα πάντα.
+asc_b5:
+        push    bc
+        ld      bc,GA_PORT + PAGE_B5
+        jr      asc_out
+asc_b6:
+        push    bc
+        ld      bc,GA_PORT + PAGE_B6
+asc_out:
+        out     (c),c
+        pop     bc
+        ret
+ng_dup:
+        ld      d,h
+        ld      e,l
+        inc     de
+        ldir
         ret
 
         include "../src/graph.asm"

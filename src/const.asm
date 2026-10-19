@@ -69,6 +69,26 @@ D_POWER     equ 6
 D_OPS       equ 7
 D_MACH      equ 8
 D_HEALTH    equ 16
+; Η ΕΓΓΡΑΦΗ ΜΙΑΣ ΔΟΜΗΣ ΑΠΟ ΤΟΝ ΚΟΜΒΟ ΤΗΣ (βήμα 154). Ως το βήμα 153 ο πίνακας
+; ήταν μία σελίδα: 8 x κόμβος σε 8 bits, και ld h,σελίδα. Με 48 δομές είναι 384
+; bytes, και το 8 x δομή δεν χωρά σε ένα byte. Το 4 x δομή χωρά, και το ×2 το
+; κάνει το add hl,hl, που περνά το κρατούμενο στο H:
+;
+;       add a,a / add a,a       ; 4 x κόμβος = 4 x δομή σε 8 bits (κόμβος 64 + δομή)
+;       add a,STB_C + πεδίο/2   ; (μονό πεδίο: + (πεδίο - 1)/2, και inc l μετά)
+;       ld l,a / ld h,STB_H
+;       add hl,hl               ; G_struct_tbl + 8 x δομή + πεδίο
+;
+; Με πεδίο, ίδια bytes και 2 us παραπάνω από το παλιό add a,a x 3 / add a,πεδίο /
+; ld l,a / ld h,σελίδα (3 για το add hl,hl, 1 λιγότερο add a,a)· χωρίς πεδίο,
+; και το add a,STB_C, 2 bytes και 2 us. Ο πίνακας στο #7A80 (tools/pack.py):
+; STB_C = 64, και κάθε σελίδα του τελειώνει σε όριο εγγραφής (16 + 32). Μια
+; εγγραφή δεν περνά σελίδα: μέσα της αρκεί το inc l.
+STB_H       equ G_struct_tbl >> 9
+STB_C       equ (G_struct_tbl >> 1) & 255
+; Ο ΚΟΜΒΟΣ ΑΠΟ ΤΟΝ ΔΕΙΚΤΗ (st_post, dr_raise): ld a,ixh / rra / ld a,ixl / rra x 3
+; δίνει 32 x (σελίδα & 1) + L / 8 — η πρώτη σελίδα του πίνακα είναι ζυγή. (Τα
+; assert στο src/newgame.asm: εδώ η διάταξη δεν έχει διαβαστεί ακόμη.)
 STRUCT_REC  equ 8
 ST_CX       equ 0
 ST_CY       equ 1
@@ -87,12 +107,20 @@ BIO_MAX     equ 100         ; βήμα 138: η PLASTIC σταματά από ε�
 SPARES_MAX  equ 20          ; βήμα 144: η SPARES σταματά από εδώ και πάνω (src/econ.asm, erm_inp)
 DRILL_LOW   equ 2           ; του δεύτερου και του τρίτου: κάτω από κάθε Operate (room_prio >= 3)
 ST_OWED     equ 7           ; εργοτάξιο: φορτία που χρωστιούνται, μέταλλο<<4 | βιοπλ. (βήμα 88)· έτοιμο ορυχείο: ο σωρός (βήμα 95, src/haul.asm)
-CORR_REC    equ 5
+; Ο ΔΙΑΔΡΟΜΟΣ: 4 bytes από το βήμα 154, στην τράπεζα 5 (G_corr_tbl, #7800). Ως
+; τότε 5, στην 6, με ένα πέμπτο byte κατάστασης που ήταν πάντα DS_ACTIVE ή 0:
+; ένας διάδρομος μπαίνει έτοιμος (cr_commit). Η κατάσταση είναι πια στο C_A:
+; ο κόμβος a (0-111), CT_EMPTY η άδεια θέση, CT_CONT η συνέχεια της
+; προηγούμενης εγγραφής (το δεύτερο τρέξιμο μιας διαδρομής με στροφή).
+CORR_REC    equ 4
 C_A         equ 0
 C_B         equ 1
 C_DIR       equ 2
 C_LEN       equ 3
-C_CSTATE    equ 4
+CT_EMPTY    equ 254
+CT_CONT     equ 255
+; η εγγραφή από το id: add a,a / ld l,a / ld h,CT_H / add hl,hl (ob_corr)
+CT_H        equ G_corr_tbl >> 9
 DS_EMPTY    equ 0
 DS_BUILDING equ 1
 DS_ACTIVE   equ 2

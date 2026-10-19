@@ -14,8 +14,8 @@
                        στήλη ή σειρά, η ευθεία a + (b - a) * progress / 256,
                        όπως ως το βήμα 117. Αλλιώς ένα Γ (βήμα 118), πρώτα
                        κατά x — εκτός αν και οι δύο είναι δομές και η μία
-                       κρέμεται από την άλλη (το LK_OWN της χωρίς τα bits 7
-                       και 5 είναι η άλλη): τότε το Γ που κράτησε εκείνη, με
+                       κρέμεται από την άλλη (τα έξι κάτω bits του LK_OWN
+                       της είναι η άλλη, βήμα 154): τότε το Γ που κράτησε εκείνη, με
                        το bit 7 «πρώτα κατά y», περπατημένο από τη δική της
                        άκρη, ή ανάποδα από την άλλη. Στο πρώτο μισό του
                        progress το πρώτο σκέλος, a + (b - a) * 2p / 256, στο
@@ -194,6 +194,14 @@ def sb(v):
     return v - 256 if v > 127 else v
 
 
+NONE = 0x3F                                              # LKO_NONE (src/link.asm)
+
+
+def LK_OWN(L):
+    """LKOPG * 256 + 128: η τελευταία σελίδα του node_adj (βήμα 154)."""
+    return ((L["G_node_adj"] >> 8) + 3) * 256 + 128
+
+
 class G:
     """Μια μηχανή με το main.sna, και ό,τι διαβάζει η δοκιμή."""
 
@@ -268,15 +276,16 @@ class G:
         return cx - w <= x < cx + w and fy - 2 * h <= y < fy
 
     def own(self, n):
-        """LK_OWN + δομή (βήμα 102): η άκρη της σύνδεσής της, το bit 5 αν είναι
-        σύνδεση εδάφους, το bit 7 «πρώτα κατά y»."""
-        return self.m.peek(self.L["G_rt_nodes"] + 32 + n)
+        """LK_OWN + δομή (βήμα 102): η άκρη της σύνδεσής της στα έξι κάτω bits
+        (βήμα 154: ο κόμβος για μονοπάτι, η δομή για σύνδεση εδάφους), το bit 7
+        «πρώτα κατά y». Στην τελευταία σελίδα του node_adj, L = κόμβος | 128."""
+        return self.m.peek(LK_OWN(self.L) + n)
 
     def yfirst(self, a, b):
         if a >= 64 and b >= 64:
-            if (self.own(b) & 0x5F) == a:
+            if (self.own(b) & 0x3F | 0x40) == a:
                 return not (self.own(b) & 0x80)
-            if (self.own(a) & 0x5F) == b:
+            if (self.own(a) & 0x3F | 0x40) == b:
                 return bool(self.own(a) & 0x80)
         return False
 
@@ -533,9 +542,9 @@ def corner(w, patch=(), quiet=False):
     b6[d0], b6[d0 + 1], b6[d0 + 2] = (sx + 9) & 255, (sy + 13) & 255, 1
     f = L["G_agent_fields"] - 0x4000
     b6[f + AG], b6[f + 128 + AG], b6[f + 640 + AG] = 1, 0, 7   # ζωντανός, έξω, ακμή 7
-    adj, own = L["G_node_adj"], lambda n: L["G_rt_nodes"] + 32 + n
+    adj, own = L["G_node_adj"], lambda n: LK_OWN(L) + n
     built = (m.peek(own(64)), m.peek(own(65)))
-    if (built[1] & 0x5F) != 64:
+    if (built[1] & 0x3F | 0x40) != 64:
         return f"ΓΩΝΙΑ: το ηλιακό δεν κρέμεται από το σκάφος (LK_OWN {built[1]:#x})"
     # ΟΙ ΔΟΜΕΣ ΕΙΝΑΙ ΤΕΤΡΑΓΩΝΕΣ: το fw_leg διαβάζει το μισό ύψος ως μισό πλάτος
     d = L["G_struct_dims"]
@@ -585,15 +594,15 @@ def corner(w, patch=(), quiet=False):
         if a[0] == b[0] or a[1] == b[1]:
             return f"ΓΩΝΙΑ: {where}, το ηλιακό στη στήλη ή στη σειρά του σκάφους — κανένα Γ"
         why = (both(f"{where}, όπως χτίστηκε", *built)
-               or both(f"{where}, πρώτα κατά x", 0, 64)
-               or both(f"{where}, πρώτα κατά y", 0, 64 | 0x80)
-               or both(f"{where}, σύνδεση εδάφους", 0, 64 | 0x20)
-               or both(f"{where}, εδάφους πρώτα κατά y", 0, 64 | 0xA0)
-               or both(f"{where}, το σκάφος από το ηλιακό", 65 | 0x80, 0)
-               or both(f"{where}, από έναν τρίτο", 0, 66 | 0x80)
-               or both(f"{where}, από κανέναν", 0, 0)
-               or case(f"{where}, θόλος", 64, 0, 0x80, 0)
-               or case(f"{where}, θόλος", 0, 64, 0x80, 0))
+               or both(f"{where}, πρώτα κατά x", NONE, 64)
+               or both(f"{where}, πρώτα κατά y", NONE, 64 | 0x80)
+               or both(f"{where}, σύνδεση εδάφους", NONE, 64 & 0x3F)
+               or both(f"{where}, εδάφους πρώτα κατά y", NONE, 64 & 0x3F | 0x80)
+               or both(f"{where}, το σκάφος από το ηλιακό", 65 | 0x80, NONE)
+               or both(f"{where}, από έναν τρίτο", NONE, 66 | 0x80)
+               or both(f"{where}, από κανέναν", NONE, NONE)
+               or case(f"{where}, θόλος", 64, 0, 0x80, NONE)
+               or case(f"{where}, θόλος", 0, 64, 0x80, NONE))
         if why:
             return why
     b6[st(65, 0)], b6[st(65, 1)] = home
@@ -1252,8 +1261,8 @@ def main():
 
     cl = sym["FWL_OWN"] - 1
     a64 = find6(fl, [0xE6, 0x40, 0x28])                           # and 64 / jr z,fwl_x
-    g1 = find6(fl, [0xE6, 0x5F])
-    g2 = g1 and find6(g1 + 2, [0xE6, 0x5F])
+    g1 = find6(fl, [0xE6, 0x3F])                       # and LKO_MASK (βήμα 154)
+    g2 = g1 and find6(g1 + 2, [0xE6, 0x3F])
     ly = find6(fl, [0x7A, 0xBC, 0x28])                            # ld a,d / cp h / jr z,fwl_ly
     lx = find6(fl, [0x7B, 0xBD, 0x28])                            # ld a,e / cp l / jr z,fwl_lx
     dh = find6(sym["FWL_X"], [0x30], 8)                           # jr nc,fwl_mx / ld d,h

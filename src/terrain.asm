@@ -135,6 +135,6 @@ bd_half:    db 0                        ; 0 ή 1 << ST_HALF (bd_res)
 
         assert  K_MINE == K_EXTRACT + 1
         assert  (W_WATER & 1) == 0 && ((W_MOUNTAIN + 8) & 1) == 1    ; το rra του βήματος 123
-        assert  ST_KIND + 2 == ST_STATE && (G_struct_tbl & 255) == 0 && MAX_STRUCT * STRUCT_REC == 256
+        assert  ST_KIND + 2 == ST_STATE
         assert  ST_OPS + 1 == ST_OWED
         assert  W_DEEPWATER == W_WATER + 1 && (W_WATER & 6) == W_WATER

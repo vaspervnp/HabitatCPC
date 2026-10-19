@@ -142,13 +142,12 @@ swa_b:
         set     1,e
         jr      swa_out
 swa_st:
-        sub     MAX_DOME
         add     a,a
-        add     a,a
-        add     a,a                     ; x STRUCT_REC: ο πίνακας σε σελίδα
-        add     a,ST_STATE
+        add     a,a                     ; 4 x κόμβος = 4 x δομή σε 8 bits
+        add     a,STB_C + ST_STATE / 2
         ld      l,a
-        ld      h,G_struct_tbl >> 8
+        ld      h,STB_H
+        add     hl,hl                   ; -> ST_STATE (src/const.asm, βήμα 154)
         ld      e,0
         ld      a,(hl)
         cp      DS_BUILDING
@@ -175,5 +174,5 @@ swa_out:
 
         assert  DS_EMPTY == 0 && DS_BUILDING == 1 && J_BUILD == 0
         assert  D_POWER == D_STATE + 2 && D_OPS == D_STATE + 3 && ST_OWED == ST_STATE + 3
-        assert  (G_struct_tbl & 255) == 0 && MAX_STRUCT * STRUCT_REC == 256
+        assert  MAX_DOME == 64 && (ST_STATE & 1) == 0
         assert  MACH_HP & 128 && MACH_OWED == 7

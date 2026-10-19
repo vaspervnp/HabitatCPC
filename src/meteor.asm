@@ -377,12 +377,15 @@ mt_rec:
         cp      MAX_DOME
         jp      c,jb_dome_ptr
         add     a,a
-        add     a,a
-        add     a,a                     ; *STRUCT_REC: (64 + δομή) x 8 = δομή x 8
+        add     a,a                     ; (64 + δομή) x 4 = δομή x 4 σε 8 bits
+        if      STB_C
+        add     a,STB_C
+        endif
         ld      l,a
-        ld      h,G_struct_tbl >> 8     ; μία σελίδα (assert)
+        ld      h,STB_H
+        add     hl,hl                   ; η εγγραφή (src/const.asm, βήμα 154)
         ret
-        assert  (G_struct_tbl & 255) == 0 && MAX_STRUCT * STRUCT_REC == 256 && MAX_DOME == 64
+        assert  MAX_DOME == 64
 
 ; mt_byte — οκτώ βήματα της EC_MRND: A = L = ένα καινούργιο byte, H το
 ; προηγούμενο. Χαλάει B.

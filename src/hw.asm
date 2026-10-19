@@ -27,10 +27,12 @@ hw_clear:
 ; ng_zero — HL = αρχή, BC = μήκος - 1: μηδέν. Εδώ από το βήμα 101 (ως τότε στο
 ; newgame.asm), ώστε το hw_clear να είναι η αρχή του.
 ng_zero:
+        ld      (hl),0
+; ng_dup — το (HL) σε BC bytes ακόμη από πάνω του (βήμα 154, τα LK_OWN).
+ng_dup:
         ld      d,h
         ld      e,l
         inc     de
-        ld      (hl),0
         ldir
         ret
 

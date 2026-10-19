@@ -39,10 +39,17 @@ AL_RANGE    equ 12
 AL_MAX      equ 4
 CORR_M      equ 6                   ; ο διάδρομος ανά πλακίδιο: build.asm, bld_items
 CORR_B      equ 3
-LK_OWN      equ NODE_DEG + MAX_NODE     ; ποια ακμή είναι η σύνδεση κάθε δομής (lk_keep)
-LKO_GROUND   equ #20                     ; ...και αν είναι σύνδεση εδάφους
-LKO_LOST     equ #FF                     ; ...η άκρη της γκρεμίστηκε (src/dm_ovl.asm)
-        assert  MAX_NODE + MAX_STRUCT <= 128 && MAX_NODE - MAX_DOME == 32  ; το set 5 του lk_keep
+; ΠΟΥ ΠΗΓΕ Η ΣΥΝΔΕΣΗ ΚΑΘΕ ΔΟΜΗΣ (lk_keep, πιο κάτω). Από το βήμα 154 στην
+; τελευταία σελίδα του node_adj, στις οκτάδες των κόμβων 120-125, που δεν
+; υπάρχουν: H = LKOPG, L = κόμβος | 128 — όσο κόστιζε το set 5 στις θέσεις
+; 96-127 του node_deg ως τότε, που με 48 δομές είναι κόμβοι.
+LKOPG       equ (G_node_adj >> 8) + 3
+LK_OWN      equ LKOPG * 256 + 128 + MAX_DOME
+LKO_MASK    equ #3F                     ; η δομή: το xor με τον κόμβο της δίνει 0
+LKO_NONE    equ #3F                     ; τίποτα κρατημένο (game_new)
+LKO_LOST    equ #FF                     ; η άκρη της γκρεμίστηκε (src/dm_ovl.asm)
+        assert  (G_node_adj & 1023) == 768 && MAX_NODE <= 120   ; οι 120-125 δεν υπάρχουν
+        assert  MAX_DOME == 64 && MAX_STRUCT < LKO_NONE         ; το LKO_NONE δεν είναι δομή
 
         ; ΤΑ ΧΡΕΗ ΜΙΑΣ ΔΟΜΗΣ ΧΩΡΑΝΕ ΣΕ ΤΕΣΣΕΡΑ BITS ΤΟ ΚΑΘΕΝΑ (src/supply.asm,
         ; ST_OWED, βήμα 88): η ακριβότερη δομή είναι η πλατφόρμα (45, χωρίς
@@ -270,6 +277,11 @@ asc_live:
         pop     de
         pop     bc
         jr      asc_nx
+; asc_b5 — η τράπεζα 5 (βήμα 154: οι διάδρομοι, src/door.asm). Κρατά τα πάντα.
+asc_b5:
+        push    bc
+        ld      bc,GA_PORT + PAGE_B5
+        jr      asc_out
 asc_b6:
         push    bc
         ld      bc,GA_PORT + PAGE_B6
@@ -325,11 +337,11 @@ al_cor1:
 al_cor1a:
         ld      c,a
         add     a,a
-        add     a,a
-        add     a,a                     ; (64 + δομή) x 8 = δομή x 8 σε 8 bits
-        add     a,ST_KIND
+        add     a,a                     ; (64 + δομή) x 4 = δομή x 4 σε 8 bits
+        add     a,STB_C + ST_KIND / 2
         ld      l,a
-        ld      h,G_struct_tbl >> 8     ; μία σελίδα (assert στο τέλος)
+        ld      h,STB_H
+        add     hl,hl                   ; -> ST_KIND (src/const.asm, βήμα 154)
         ld      a,(hl)
         cp      K_AIRLOCK
         ret     nz
@@ -675,11 +687,11 @@ al_node:
         jr      aln_go
 aln_st:
         add     a,a
-        add     a,a
-        add     a,a                     ; (64 + δομή) x 8 = δομή x 8 σε 8 bits
-        add     a,ST_KIND
+        add     a,a                     ; (64 + δομή) x 4 = δομή x 4 σε 8 bits
+        add     a,STB_C + ST_KIND / 2
         ld      l,a
-        ld      h,G_struct_tbl >> 8
+        ld      h,STB_H
+        add     hl,hl                   ; -> ST_KIND (src/const.asm, βήμα 154)
         ld      a,(hl)                  ; ST_KIND
         inc     hl
         add     a,a
@@ -978,22 +990,31 @@ lk_ground:
         bit     6,b
         jp      z,cr_link_bc            ; θόλος: τη χάνει όταν τελειώσει (lk_done)
         ld      a,c
-        or      LKO_GROUND
+        and     LKO_MASK                ; σύνδεση εδάφους: χωρίς το bit 6
         jr      lk_keep
 
 ; ---------------------------------------------------------------------------
 ; ΠΟΥ ΠΗΓΕ Η ΣΥΝΔΕΣΗ ΜΙΑΣ ΔΟΜΗΣ (βήμα 102). Ενα byte ανά δομή, στο LK_OWN +
-; δομή: ο κόμβος στην άλλη άκρη (64-95), το bit 5 (LKO_GROUND) αν είναι σύνδεση
-; εδάφους, και το bit 7 το σχήμα του μονοπατιού, 1 = πρώτα κατά y (al_po). 0 =
-; καμία, αυτή που δεν κράτησε κανείς: η ακμή της αποικίας δοκιμών, ένα σώσιμο
-; πριν από το βήμα 102. Ως τότε το Γ ενός μονοπατιού δεν το θυμόταν τίποτα, και
-; η κατεδάφιση το άφηνε να κόβει το έδαφος για πάντα· με αυτό ξαναδένει όποιον
+; δομή. Ενα μονοπάτι κρατιέται ως ο κόμβος στην άλλη άκρη (64 + δομή), με το
+; bit 7 για το σχήμα του, 1 = πρώτα κατά y (al_po). Μια σύνδεση εδάφους
+; κρατιέται ως η δομή στην άλλη άκρη, χωρίς το bit 6 του κόμβου, και δεν έχει
+; bit 7: ζωγραφίζεται πρώτα κατά x (lk_draw). LKO_NONE (#3F) = καμία, αυτή που
+; δεν κράτησε κανείς: η ακμή της αποικίας δοκιμών. Ως το βήμα 153 η σύνδεση
+; εδάφους είχε το bit 5 του κόμβου, και το «καμία» ήταν 0· με 48 δομές το bit
+; 5 είναι μέρος του κόμβου (96-111), και το 0 είναι η σύνδεση εδάφους ως το
+; σκάφος. Ως το βήμα 102 το Γ ενός μονοπατιού δεν το θυμόταν τίποτα, και η
+; κατεδάφιση το άφηνε να κόβει το έδαφος για πάντα· με αυτό ξαναδένει όποιον
 ; έχασε τη σύνδεσή του (src/dm_ovl.asm), και ως το βήμα 130 έσβηνε και τα
 ; tiles του. Το Γ το περπατούν οι άποικοι (src/walk6.asm, βήμα 118).
 ;
-; ΣΤΙΣ ΘΕΣΕΙΣ 96-127 ΤΟΥ NODE_DEG: ο γράφος έχει 96 κόμβους (graph.asm) και ο
-; πίνακας 128, το game_new τον μηδενίζει ολόκληρο, και σώζεται με τον γράφο
-; (src/save.asm). Ο κόμβος 64 + δομή με το bit 5 αναμμένο είναι 96 + δομή.
+; Η ΔΟΜΗ ΣΤΗΝ ΑΚΡΗ, και από τα δύο σχήματα, είναι τα έξι κάτω bits
+; (LKO_MASK): ο κόμβος C ταιριάζει αν (C xor byte) and LKO_MASK = 0. Ο κόμβος
+; της είναι αυτά or 64· το LKO_NONE και το LKO_LOST δίνουν 127, πάνω από το
+; MAX_NODE (dm_up).
+;
+; ΣΤΗΝ ΤΕΛΕΥΤΑΙΑ ΣΕΛΙΔΑ ΤΟΥ node_adj από το βήμα 154 (στις θέσεις 96-127 του
+; node_deg ως τότε): το game_new τη γεμίζει με LKO_NONE, και σώζεται με τον
+; γράφο (src/save.asm, SV_STATE).
 ; ---------------------------------------------------------------------------
 ; lk_keepp — B = η νέα δομή, C = η άκρη του μονοπατιού της (al_po το σχήμα):
 ; κρατιέται, και μετά η ακμή.
@@ -1003,9 +1024,9 @@ lk_keepp:
         or      c
 ; lk_keep — A = ό,τι κρατιέται, B = η δομή, C = η άλλη άκρη: και η ακμή.
 lk_keep:
-        ld      h,NODEPG
+        ld      h,LKOPG
         ld      l,b
-        set     5,l                     ; LK_OWN + δομή
+        set     7,l                     ; LK_OWN + δομή
         ld      (hl),a
         jp      cr_link_bc
 
@@ -1121,5 +1142,5 @@ al_lb:      db 0
         assert  W_DUST == 1                     ; το bd_ok μέσα στο al_cbk
         assert  D_STATE == 4 && ST_STATE == 4 && ST_KIND == 2 && ST_SIZE == 3
         assert  D_SIZE == 2 && D_CX == 0 && D_CY == 1
-        assert  (G_struct_tbl & 255) == 0 && MAX_STRUCT * STRUCT_REC == 256 && MAX_DOME == 64
+        assert  MAX_DOME == 64 && (ST_KIND & 1) == 0
         assert  STRUCT_REC == 8 && ST_JOINED == ST_KIND + 4   ; al_cor1a, al_node

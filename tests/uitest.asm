@@ -253,7 +253,6 @@ bd_mflags:  ret                         ; εδώ το ορυχείο πληρώ�
         include "../src/route.asm"
         include "../src/link.asm"           ; βήμα 85: το ui.asm το καλεί
         include "../src/commit.asm"         ; βήμα 94: το al_commit, στην τράπεζα 1 του παιχνιδιού
-        include "../src/edges.asm"          ; βήμα 87: οι ακμές
         include "../src/ui.asm"
         include "../src/fit.asm"
         include "../src/rooms.asm"
@@ -291,6 +290,9 @@ vs_coins:                               ; βήμα 134: src/ship.asm, που ε�
         include "../src/bend.asm"           ; βήμα 97: στο παιχνίδι στο b6code (129)
         include "../src/corner.asm"         ; βήμα 129: στο παιχνίδι στο b6code
         include "../src/objindex.asm"
+        ; ΚΑΙ ΟΙ ΑΚΜΕΣ (βήμα 154), όπως στο παιχνίδι: η επίπεδη περιοχή περνούσε
+        ; το #3F00 κατά 14 bytes, με τον πίνακα των δομών σε δύο σελίδες.
+        include "../src/edges.asm"          ; βήμα 87: οι ακμές
         assert  $ <= #C000
         org     #7000
         incbin  "../build/bank1.bin"     ; εικονίδια m και l (§4.2)
@@ -299,7 +301,7 @@ vs_coins:                               ; βήμα 134: src/ship.asm, που ε�
         org     #0000
         incbin  "../build/world_col.bin"
         org     B5_BASE                 ; οι μηχανές στην τράπεζα 5 (βήμα 85)
-        incbin  "../build/bank5.bin", 0, G_b5code - B5_BASE
+        incbin  "../build/bank5_col.bin", 0, G_b5code - B5_BASE   ; και οι διάδρομοι (βήμα 154)
         ; οι κοντές στροφές ήταν εδώ ως το βήμα 128 (src/bend.asm): πήγαν στο
         ; b6code, εδώ στο #8000 με τα υπόλοιπα· και εδώ τα σχέδια των γωνιών
         org     G_b5code

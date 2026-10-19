@@ -51,7 +51,7 @@ TU_MEALS    equ 6
 TU_MEAT     equ 9
         assert  SK_COLONIST == 0 && EC_SHKIND == EC_SHSTATE + 1
         assert  ST_STATE == ST_KIND + 2 && DS_EMPTY == 0     ; και M_OXYGEN == 0 (src/newgame.asm)
-        assert  (G_struct_tbl & 255) == 0 && MAX_STRUCT * STRUCT_REC == 256
+        assert  (G_struct_tbl & 7) == 0 && STRUCT_REC == 8
 
 ; tuo_go — από το tu_run, με την 1 στο παράθυρο. Γυρίζει με την 1.
 tuo_go:
@@ -213,11 +213,16 @@ tuo_slp:
         ret     z
 tuo_snx:
         ld      a,l
-        add     a,STRUCT_REC            ; μία σελίδα, όλες οι δομές (assert)
+        add     a,STRUCT_REC
         ld      l,a
+        jr      c,tuo_pg                ; δύο σελίδες (βήμα 154): 2 us ανά εγγραφή
+tuo_sc:
         djnz    tuo_slp
         or      a
         ret
+tuo_pg:
+        inc     h                       ; μία φορά, στο τέλος της πρώτης σελίδας
+        jr      tuo_sc
         ; --- πλοίο αποίκων στον δρόμο: το έφερε το C ---
 tuo_ship:
         ld      hl,(EC_SHSTATE)         ; L = κατάσταση, H = είδος

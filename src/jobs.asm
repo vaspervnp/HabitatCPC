@@ -402,6 +402,8 @@ jp_have:
         ; Δύο ξεχωριστές σαρώσεις των 32 ήταν η μισή δουλειά της δημοσίευσης.
         ; Η ελεύθερη στο DE, όχι σε μεταβλητή με push / pop σε κάθε εγγραφή.
         ld      a,(jb_d)
+; jp_hava — το ίδιο, με τον κόμβο ήδη στον A (το st_post, src/drill.asm: 4 us).
+jp_hava:
         ld      c,a
         ld      hl,G_job_tbl
         ld      b,MAX_JOB
@@ -613,13 +615,13 @@ op_ptr:
         ret
 opp_st:
         add     a,a
-        add     a,a
-        add     a,a                     ; (κόμβος - 64) * 8: το 512 φεύγει από το byte
-        add     a,ST_OPS
+        add     a,a                     ; 4 x κόμβος = 4 x δομή σε 8 bits
+        add     a,STB_C + ST_OPS / 2
         ld      l,a
-        ld      h,G_struct_tbl >> 8
+        ld      h,STB_H
+        add     hl,hl                   ; -> ST_OPS (src/const.asm, βήμα 154)
         ret
-        assert  (G_struct_tbl & 255) == 0 && STRUCT_REC == 8 && MAX_DOME == 64
+        assert  (ST_OPS & 1) == 0 && STRUCT_REC == 8 && MAX_DOME == 64
 
 ; Η HAUL ΣΤΟ 5, πάνω από τη Drill (4), από το βήμα 95 (ως τότε 2, και δεν τη
 ; δημοσίευε τίποτα): οι εργάτες κάνουν και τα δύο, και με λίγους εργάτες μια

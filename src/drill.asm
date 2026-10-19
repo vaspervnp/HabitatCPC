@@ -29,8 +29,8 @@ MINE_OPS    equ 3
         assert  DRILL_LOW < 3 && DRILL_PRIO == 4    ; κάτω από κάθε room_prio
         assert  ST_DLOW != 6 && ST_DLOW != 7 && ST_DLOW > 3   ; όχι Haul, Drill, μισό, δωρεάν
 
-        assert  ST_OPS == 6 && STRUCT_REC == 8 && (G_struct_tbl & 255) == 0
-        assert  MAX_STRUCT * STRUCT_REC == 256
+        assert  ST_OPS == 6 && STRUCT_REC == 8 && (G_struct_tbl & 7) == 0
+        assert  MAX_STRUCT <= 48
 
 ; ---------------------------------------------------------------------------
 ; dr_post — IX -> ένα ορυχείο έτοιμο, με λιγότερους από MINE_OPS και χωρίς
@@ -82,14 +82,18 @@ drp_p:  ld      (job_prio + J_DRILL),a  ; το jp_have τη διαβάζει α�
 ; ---------------------------------------------------------------------------
 st_post:
         ld      (jb_kind2),a
+        ld      a,ixh
+        rra                             ; CY: η δεύτερη σελίδα, οι δομές 16-47
         ld      a,ixl
-        rrca
-        rrca
-        rrca                            ; η δομή: ο πίνακας αρχίζει σε σελίδα
-        add     a,MAX_DOME              ; ο κόμβος της
+        rra
+        rra
+        rra                             ; 32 x CY + L / 8 (βήμα 154, src/const.asm)
+        add     a,MAX_DOME - ((G_struct_tbl & 255) >> 3)    ; ο κόμβος της
         ld      (jb_d),a
         push    bc
-        call    jp_have                 ; το διπλότυπο, η θέση, η προτεραιότητα
+        call    jp_hava                 ; το διπλότυπο, η θέση, η προτεραιότητα·
+                                        ; με τον κόμβο στον A, χωρίς να τον ξαναδιαβάσει:
+                                        ; τα 4 us πληρώνουν τα 3 του ixh (βήμα 154)
         pop     bc
         ld      a,h
         or      l

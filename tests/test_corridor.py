@@ -74,7 +74,8 @@ from test_route import tiles_of                          # noqa: E402
 PROBE, OUT, CB, CBRET, PTR, LOG = 0x3E80, 0x3EF0, 0x3EC0, 0x3EE0, 0x3EF8, 0x3400
 SA, SB = 50, 51
 W_OCC_MASK, W_DUST, W_FOUNDATION = 0x30, 1, 7            # src/const.asm
-MAX_CORR, CORR_REC, MAX_DEGREE = 96, 5, 8
+MAX_CORR, CORR_REC, MAX_DEGREE = 96, 4, 8             # 4 bytes από το βήμα 154
+CT_EMPTY = 254                                           # άδεια θέση: το C_A
 DK_CONN, DK_CROW, VIEW_TW, VIEW_TH = 3, 7, 20, 10
 # Τα stubs ΠΑΝΩ από το PROBE, στο #3F00 (βήμα 95· ως τότε στο #3D60): βλ. test_place.
 RLOG, RPTR, STUB = 0x3800, 0x3EFC, 0x3F00                 # το ημερολόγιο του cr_redraw
@@ -372,7 +373,7 @@ def commit_rules(sym, patch=(), n=400):
     rnd = random.Random(7272)
     seen = {"στροφές": 0, "χωρίς θέση": 0, "τελευταία θέση": 0, "γεμάτος βαθμός": 0,
             "ζευγάρι μόνο με την τελευταία": 0, "εργοτάξιο: καμία ακμή": 0}
-    tbl = ctypes.addressof(G.ptr[6].contents) + G.gc
+    tbl = ctypes.addressof(G.ptr[5].contents) + G.gc     # στην τράπεζα 5 (βήμα 154)
     span = MAX_CORR * CORR_REC + 32                       # και 32 bytes μετά τον πίνακα
     pairs = {1: [], 2: []}                                # ευθείες και στροφές, μισές-μισές
     while min(len(v) for v in pairs.values()) < 30:
@@ -407,13 +408,18 @@ def commit_rules(sym, patch=(), n=400):
         else:
             st = [0] * MAX_CORR
         raw = bytearray(rnd.randrange(256) for _ in range(span))
+        # ΤΟ C_A ΛΕΕΙ ΚΑΙ ΑΝ ΕΙΝΑΙ ΠΙΑΣΜΕΝΗ (βήμα 154): CT_EMPTY η άδεια, κάθε
+        # άλλη τιμή πιασμένη (και η συνέχεια, 255)
         for i in range(MAX_CORR):
-            raw[CORR_REC * i + 4] = st[i]
-        # μετά τον πίνακα είναι το G_worldinfo και το G_dome_fig, και το byte
-        # «κατάστασης» μιας 97ης εγγραφής είναι το πρώτο της κρυφής μνήμης
-        # φιγούρων: μπορεί να είναι 0, και μόνο τότε φαίνεται το λάθος
+            if st[i] == 0:
+                raw[CORR_REC * i] = CT_EMPTY
+            elif raw[CORR_REC * i] == CT_EMPTY:
+                raw[CORR_REC * i] = st[i]
+        # μετά τον πίνακα είναι η 97η εγγραφή, πάντα άδεια στο παιχνίδι
+        # (game_new): εδώ άδεια τις μισές φορές, και μόνο τότε θα φαινόταν ένα
+        # ζευγάρι που ξεκινά από την τελευταία θέση
         if rnd.random() < 0.5:
-            raw[CORR_REC * MAX_CORR + 4] = 0
+            raw[CORR_REC * MAX_CORR] = CT_EMPTY
         ctypes.memmove(tbl, bytes(raw), span)
         deg = [rnd.choice([0, 1, 3, 7, 8, 8]) for _ in range(2)]
         m.poke(G.nodes + SA, deg[0])
@@ -436,10 +442,10 @@ def commit_rules(sym, patch=(), n=400):
         frm, to = (SA, SB) if side == 0 else (SB, SA)
         if at is not None:
             (d0, l0) = runs[0]
-            want[CORR_REC * at:CORR_REC * at + 5] = bytes([frm, to, d0, l0, 2])
+            want[CORR_REC * at:CORR_REC * at + 4] = bytes([frm, to, d0, l0])
             if len(runs) > 1:
                 (d1, l1) = runs[1]
-                want[CORR_REC * (at + 1):CORR_REC * (at + 2)] = bytes([255, 255, d1, l1, 2])
+                want[CORR_REC * (at + 1):CORR_REC * (at + 2)] = bytes([255, 255, d1, l1])
         if (A == 0) != (at is not None) or got != bytes(want):
             k = next((i for i in range(span) if got[i] != want[i]), None)
             return (f"{where}: A = {A}, η θέση κατά τον κανόνα {at}, πρώτο λάθος byte "
@@ -673,10 +679,10 @@ def timing(sym):
             m.poke(sym["BD_BIOP"], 3)
             m.write_ram(G.g + 6, bytes([0xE8, 3, 0xE8, 3]))
             t_aff, _, _ = G.run("CR_AFFORD", step=1)
-            raw = bytearray(MAX_CORR * CORR_REC)
+            raw = bytearray([CT_EMPTY]) * (MAX_CORR * CORR_REC)
             for i in range(MAX_CORR - 2):
-                raw[CORR_REC * i + 4] = 2
-            ctypes.memmove(ctypes.addressof(G.ptr[6].contents) + G.gc, bytes(raw), len(raw))
+                raw[CORR_REC * i] = 1                    # πιασμένες, οι δύο τελευταίες όχι
+            ctypes.memmove(ctypes.addressof(G.ptr[5].contents) + G.gc, bytes(raw), len(raw))
             t_com, _, _ = G.run("CR_COMMIT", step=1)
         out[name] = (t_plan, t_walk, t_check, t_aff, t_com)
     return out

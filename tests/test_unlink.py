@@ -4,10 +4,12 @@
 Η πρόζα:
 
   ΚΡΑΤΙΕΤΑΙ  κάθε δομή θυμάται πού πήγε η σύνδεσή της τη στιγμή που μπήκε,
-             ένα byte στις θέσεις 96-127 του node_deg (LK_OWN): ο κόμβος στην
-             άλλη άκρη, το bit 7 αν το μονοπάτι πάει πρώτα κατά y, το bit 5
-             (LKO_GROUND) αν είναι σύνδεση εδάφους. Ενας θόλος δεν γράφει
-             τίποτα: η σύνδεσή του φεύγει όταν τελειώσει.
+             ένα byte ανά δομή (LK_OWN, από το βήμα 154 στην τελευταία σελίδα
+             του node_adj· ως τότε στις θέσεις 96-127 του node_deg): για
+             μονοπάτι ο κόμβος στην άλλη άκρη, με το bit 7 αν πάει πρώτα κατά
+             y· για σύνδεση εδάφους η δομή στην άλλη άκρη, χωρίς το bit 6 του
+             κόμβου· #3F (LKO_NONE) τίποτα. Ενας θόλος δεν γράφει τίποτα: η
+             σύνδεσή του φεύγει όταν τελειώσει.
   ΦΕΥΓΕΙ     όταν γκρεμίζεται μια δομή, φεύγει η σύνδεσή της, και κάθε
              σύνδεση που τελείωνε σε αυτήν. Τα tiles του μονοπατιού μένουν
              θεμέλιο χωρίς κατοχή, όπως ήταν από την τοποθέτηση (βήμα 131· ως
@@ -58,7 +60,8 @@ import reach                                             # noqa: E402
 FAIL = []
 SOLAR, AIRLOCK = 4, 9                                    # σειρές του bld_items
 K_SHIP = 7                                               # src/const.asm
-LKG, LOST = 0x20, 0xFF                                   # LKO_GROUND, LKO_LOST
+NONE, LOST = 0x3F, 0xFF                                  # LKO_NONE, LKO_LOST
+NS = 32                                                  # MAX_STRUCT (src/const.asm)
 MS = 1000
 CEIL_US = D.CEIL_US
 WORST = {}
@@ -75,12 +78,31 @@ def check(ok, msg):
 # --------------------------------------------------------------------------
 # ανάγνωση
 # --------------------------------------------------------------------------
+# ΤΟ LK_OWN (src/link.asm, βήμα 154): LKOPG * 256 + 128 + κόμβος, LKOPG η
+# τελευταία σελίδα του node_adj.
+LK_OWN = ((L["G_node_adj"] >> 8) + 3) * 256 + 128
+
+
 def own(G, n):
-    return G.m.peek(L["G_rt_nodes"] + 96 + n - 64)
+    return G.m.peek(LK_OWN + n)
 
 
 def owns(G):
-    return {n: own(G, n) for n in range(64, 96) if own(G, n)}
+    return {n: own(G, n) for n in range(64, 64 + NS) if own(G, n) != NONE}
+
+
+def gnd(n):
+    """Το byte μιας σύνδεσης εδάφους ως τον κόμβο n: χωρίς το bit 6."""
+    return n & 0x3F
+
+
+def end(b):
+    """Ο κόμβος στην άκρη του byte b· 127 για το NONE και το LOST."""
+    return b & 0x3F | 0x40
+
+
+def is_gnd(b):
+    return not b & 0x40 and b != NONE
 
 
 def recs(G):
@@ -108,7 +130,7 @@ def fp(rc, n):
 def path_tiles(rc, n, b):
     """Τα tiles του μονοπατιού του n όπως τα λέει το byte b: το Γ από κέντρο σε
     κέντρο, έξω από τα δύο αποτυπώματα (al_walk)."""
-    a, ori = b & 0x5F, b >> 7
+    a, ori = end(b), b >> 7
     fn, fa = fp(rc, n), fp(rc, a)
     return [(x, y) for x, y in reach.lwalk(fn[1], fa[1], ori)
             if not reach.in_rect(fn[0], x, y) and not reach.in_rect(fa[0], x, y)]
@@ -123,7 +145,7 @@ def paths_ok(G):
     if five:
         return f"bit 5 σε {len(five)} tiles (π.χ. {five[:3]})"
     for n, b in owns(G).items():
-        if b & LKG or b == LOST or not rc[1][n - 64][4]:
+        if is_gnd(b) or b == LOST or not rc[1][n - 64][4]:
             continue
         bad = [t for t in path_tiles(rc, n, b) if w[reach.widx(*t)] & 7 != 7]
         if bad:
@@ -250,12 +272,12 @@ def expect(G, s, gone):
     for n, b in s["owns"].items():
         if n == gone:
             del own2[n]
-        elif b & 0x5F == gone:
+        elif end(b) == gone:
             lost.append(n)
             del own2[n]
         else:
             continue
-        if not b & LKG:
+        if not is_gnd(b):
             cleared += path_tiles(rc0, n, b)
     if gone < 64:
         domes[gone][3] = 0
@@ -265,7 +287,7 @@ def expect(G, s, gone):
     for v in s["adj"][gone]:
         deg[v] -= 1
     deg[gone] = 0
-    par = s["owns"][gone] & 0x5F if gone in s["owns"] else None
+    par = end(s["owns"][gone]) if gone in s["owns"] else None
 
     def up(p):
         """Το dm_up (βήμα 116): ο γονιός αν έχει θέση, αλλιώς ο δικός του, και
@@ -275,13 +297,13 @@ def expect(G, s, gone):
         for _ in range(32):
             if p is None or deg[p] < 8:
                 return p
-            p = own2.get(p, 0) & 0x5F or None
+            p = end(own2[p]) if p in own2 and end(own2[p]) < 64 + NS else None
         return None
     grounds = []
     for t in sorted(lost):
         a = up(par)
         if a is not None:
-            own2[t] = a | LKG
+            own2[t] = gnd(a)
             deg[t] += 1
             deg[a] += 1
             grounds.append((t, a))
@@ -425,9 +447,9 @@ def kept(sym, g, patch=(), quiet=False):
     domes, structs, dims = recs(G)
     want = reach.anchor(structs, [D.deg(G, n) for n in range(96)], 255, *at3)
     a3 = place(G, sym, g, AIRLOCK, at3)
-    if not a3 or own(G, a3) != want | LKG:
+    if not a3 or own(G, a3) != gnd(want):
         return (f"ΚΡΑΤΙΕΤΑΙ: το airlock {a3}: LK_OWN #{own(G, a3 or 64):02X}, η πρόζα λέει "
-                f"#{want | LKG:02X} (σύνδεση εδάφους ως το {want})")
+                f"#{gnd(want):02X} (σύνδεση εδάφους ως το {want})")
     # ένας θόλος: τίποτα στο LK_OWN, και ο βαθμός του = η λίστα του
     o0 = owns(G)
     at4, _ = find_spot(G, sym, 0, lambda r, a: bool(r["corridors"]), (d0[0] - 2, d0[1] + 8))
@@ -493,7 +515,7 @@ def anchor_gone(sym, g, patch=(), quiet=False):
     at, _ = find_spot(G, sym, AIRLOCK, lambda r, a: True, (sh[0] + 9, sh[1]))
     G.camera(sh[0] - 3, sh[1] - 6)
     a1 = place(G, sym, g, AIRLOCK, at)
-    if not a1 or own(G, a1) != 64 | LKG:
+    if not a1 or own(G, a1) != gnd(64):
         return f"ΑΓΚΥΡΑ: το A1 {a1}: LK_OWN #{own(G, a1 or 64):02X}, όχι σύνδεση εδάφους ως το σκάφος"
     c1 = tile(at)
     at, _ = find_spot(G, sym, SOLAR, path_to(a1, None, 3), (c1[0] + 1, c1[1] - 5))
@@ -506,7 +528,7 @@ def anchor_gone(sym, g, patch=(), quiet=False):
     a3 = at and place(G, sym, g, AIRLOCK, at)
     if not (s1 and s2 and a2 and a3):
         return f"ΑΓΚΥΡΑ: η σκηνή δεν στήθηκε: S1 {s1}, S2 {s2}, A2 {a2}, A3 {a3}"
-    if own(G, a2) != a1 | LKG or own(G, a3) != a2 | LKG:
+    if own(G, a2) != gnd(a1) or own(G, a3) != gnd(a2):
         return (f"ΑΓΚΥΡΑ: A2 {a2} #{own(G, a2):02X}, A3 {a3} #{own(G, a3):02X}: η σκηνή "
                 f"θέλει το A2 στο A1 και το A3 στο A2")
     G.run(3_000_000)
@@ -525,7 +547,7 @@ def anchor_gone(sym, g, patch=(), quiet=False):
     w = world(G)
     if not all(w[reach.widx(x, y)] & 0x37 == 7 for x, y in s2path):
         return f"ΑΓΚΥΡΑ: το μονοπάτι του S2 {s2} (ως τον S1) δεν έμεινε θεμέλιο"
-    if [own(G, n) for n in (s1, a2, a3)] != [64 | LKG, 64 | LKG, a2 | LKG]:
+    if [own(G, n) for n in (s1, a2, a3)] != [gnd(64), gnd(64), gnd(a2)]:
         return (f"ΑΓΚΥΡΑ: S1 #{own(G, s1):02X}, A2 #{own(G, a2):02X}, A3 #{own(G, a3):02X}: "
                 f"η πρόζα λέει το σκάφος, το σκάφος, το A2")
     if not quiet:
@@ -544,7 +566,7 @@ def anchor_gone(sym, g, patch=(), quiet=False):
     err, worst = gone_at(G, F, s, s1, "ΑΓΚΥΡΑ, ο S1")
     if err:
         return err
-    if own(G, s2) != 64 | LKG:
+    if own(G, s2) != gnd(64):
         return f"ΑΓΚΥΡΑ: ο S2 {s2} δεν κρέμεται από το σκάφος: LK_OWN #{own(G, s2):02X}"
     if not quiet:
         WORST["ο ηλιακός S1, ένας ξαναδεμένος"] = worst
@@ -569,7 +591,7 @@ def orphan(sym, g, patch=(), quiet=False):
                           lambda r, a: bool(r["corridors"]) and anchor_is(G, 65)(r, a),
                           (c[0] + dx, c[1] + dy))
         n = at and place(G, sym, g, AIRLOCK, at)
-        if not n or own(G, n) != 65 | LKG:
+        if not n or own(G, n) != gnd(65):
             return f"ΧΩΡΙΣ ΓΟΝΙΟ: το airlock {n} στο {at}: LK_OWN #{own(G, n or 64):02X}, όχι ως το 65"
         out.append(n)
     c = tile(D.centre(G, 65))
@@ -580,7 +602,7 @@ def orphan(sym, g, patch=(), quiet=False):
     err, _ = gone_at(G, F, s, 65, "ΧΩΡΙΣ ΓΟΝΙΟ")
     if err:
         return err
-    if any(own(G, n) for n in out) or any(D.deg(G, n) != s["deg"][n] - s["adj"][65].count(n)
+    if any(own(G, n) != NONE for n in out) or any(D.deg(G, n) != s["deg"][n] - s["adj"][65].count(n)
                                           for n in out):
         return (f"ΧΩΡΙΣ ΓΟΝΙΟ: LK_OWN {[own(G, n) for n in out]}, βαθμοί "
                 f"{[D.deg(G, n) for n in out]} (πριν {[s['deg'][n] for n in out]})")
@@ -590,16 +612,18 @@ def orphan(sym, g, patch=(), quiet=False):
 
 def saved(sym, g):
     """Τα LK_OWN σώζονται με τον γράφο (SV_STATE, 2 KB κάτω από το
-    G_hud_shadow), και το game_new τα μηδενίζει μαζί με το node_deg."""
+    G_hud_shadow), και το game_new τα γεμίζει με LKO_NONE (βήμα 154· ως τότε
+    τα μηδένιζε μαζί με το node_deg, και το 0 έλεγε «τίποτα»)."""
     lo = L["G_hud_shadow"] - 2048
-    a = L["G_rt_nodes"] + 96
-    if not (lo <= a and a + 32 <= L["G_hud_shadow"]):
+    a = LK_OWN + 64
+    if not (lo <= a and a + NS <= L["G_hud_shadow"]):
         return f"ΣΩΖΕΤΑΙ: το LK_OWN #{a:04X} έξω από το SV_STATE #{lo:04X}-#{L['G_hud_shadow']:04X}"
     G, F = D.game(sym, g, (), TG.SNA)
-    if owns(G):
-        return f"ΣΩΖΕΤΑΙ: νέο παιχνίδι με LK_OWN {owns(G)}"
-    print(f"    ΣΩΖΕΤΑΙ: LK_OWN στο #{a:04X}-#{a + 31:04X}, μέσα στο SV_STATE "
-          f"#{lo:04X}-#{L['G_hud_shadow'] - 1:04X}· νέο παιχνίδι: όλα μηδέν")
+    raw = [own(G, n) for n in range(64, 64 + NS)]
+    if any(b != NONE for b in raw):
+        return f"ΣΩΖΕΤΑΙ: νέο παιχνίδι με LK_OWN {raw}"
+    print(f"    ΣΩΖΕΤΑΙ: LK_OWN στο #{a:04X}-#{a + NS - 1:04X}, μέσα στο SV_STATE "
+          f"#{lo:04X}-#{L['G_hud_shadow'] - 1:04X}· νέο παιχνίδι: όλα #{NONE:02X}")
     return None
 
 
@@ -625,7 +649,7 @@ def negatives(sym, g):
         ("πάντα πρώτα κατά x", ram("LK_KEEPP", 8, [0x3A] + w(sym["AL_PO"]),
                                    [(0, 0xAF), (1, 0), (2, 0)]), kept),
         ("τίποτα δεν κρατιέται", ram("LK_KEEP", 8, [0x77, 0xC3], [(0, 0)]), kept),
-        ("η σύνδεση εδάφους σαν μονοπάτι", ram("LK_GROUND", 24, [0xF6, LKG], [(1, 0)]), kept),
+        ("η σύνδεση εδάφους σαν μονοπάτι", ram("LK_GROUND", 24, [0xE6, 0x3F], [(1, 0xFF)]), kept),
         ("μόνο το δικό του μονοπάτι", ovl("DMP_LP", 30, [0xB8, 0x20], [(1, 0x18)]), anchor_gone),
         ("κανένα ξαναδέσιμο", ovl("DMV_LP", 40, cd("DM_RELINK"), nop3), anchor_gone),
         ("χωρίς γονιό, δένεται κάπου", ovl("DML_LP", 24, cd("DM_UP") + [0x30], [(3, 0), (4, 0)]), orphan),
@@ -636,7 +660,7 @@ def negatives(sym, g):
 def main():
     sym, g = TG.build()
     err = saved(sym, g)
-    check(err is None, err or "ΣΩΖΕΤΑΙ: με τον γράφο, μηδέν σε νέο παιχνίδι")
+    check(err is None, err or "ΣΩΖΕΤΑΙ: με τον γράφο, «τίποτα» (#3F) σε νέο παιχνίδι")
     for fn, what in ((kept, "ΚΡΑΤΙΕΤΑΙ: το Γ και η άκρη κάθε σύνδεσης, τίποτα για θόλο"),
                      (mine, "ΔΙΚΟ ΤΟΥ: η σύνδεση φεύγει, το μονοπάτι μένει θεμέλιο, χτίζεται πάλι"),
                      (anchor_gone, "ΑΓΚΥΡΑ: φεύγουν όσα τελείωναν εκεί, κρέμονται από τον γονιό, ως το σκάφος"),

@@ -12,7 +12,9 @@ Z80 ζωγραφίζει τα σχέδια που φτιάχνει το tools/pa
 υλοποιήσεις: όταν συμφωνούν, συμφωνεί και ο κανόνας. Αρνητικά, με τον Z80
 πειραγμένο: ο νότιος και ο ανατολικός διάδρομος όπως ως το 95 (από τον άξονα
 προς τα δεξιά ή κάτω), χωρίς αρμούς, ο b χωρίς αρμό, οι νότιοι αρμοί χωρίς
-κάθετο καθρέφτισμα, ο ανατολικός αρμός ένα byte δεξιά — καθένα πρέπει να
+κάθετο καθρέφτισμα, ο ανατολικός αρμός ένα byte δεξιά, και από το βήμα 154,
+που έστειλε τους διαδρόμους στην τράπεζα 5 με 4 bytes, το ob_corr που τους
+διαβάζει από την 6 — καθένα πρέπει να
 διαφέρει από την αναφορά σε κάποια κάμερα. Τις στροφές τις συγκρίνει το
 test_route, και τον αρμό του b μετά από στροφή το test_link.
 
@@ -162,9 +164,14 @@ def negatives(sym, refs):
     k1 = at("SP2_FL", [0xDD, 0xE5, 0xE1, 0x2B]) + 3
     k2 = at("BOF_RUN", [0xDD, 0x2B]) + 1
     k3 = at("SP_GRP", [0x78, 0x87, 0x92, 0x5F]) + 2
+    # ΟΙ ΔΙΑΔΡΟΜΟΙ ΣΤΗΝ ΤΡΑΠΕΖΑ 5 (βήμα 154): το ob_corr διαβάζει την 6 (ld bc,#7FC5
+    # -> #7FC6). Ο άδειος (CT_EMPTY) που ζωγραφίζεται δεν είναι αρνητικό εδώ: ο
+    # «θόλος 254» του είναι έξω από τον πίνακα, και δεν φαίνεται σε καμία κάμερα.
+    k4 = at("OB_CORR", [0x01, 0xC5, 0x7F, 0xED, 0x49]) + 1
     for label, patch in (("το sp2_fl χωρίς το dec hl (το βήμα 114)", [(k1, 0)]),
                          ("το blt_op_flip προς τα εμπρός (inc ix)", [(k2, 0x23)]),
                          ("η γραμμή 2n αντί για 2n - k (sp_grp)", [(k3, 0)]),
+                         ("οι διάδρομοι από την τράπεζα 6 (το 153)", [(k4, 0xC6)]),
                          ("ο νότιος διάδρομος από τον άξονα (το 95)", [(cd + 4 * 9 + 6, 0)]),
                          ("ο ανατολικός από τον άξονα (το 95)", [(cd + 2 * 9 + 7, 0)]),
                          ("χωρίς αρμούς (το ob_fittings δεν καλεί το jt_dome)",
@@ -226,8 +233,7 @@ def bend_scenes():
             for k in range(8):
                 c.dome[b + S.D_MACH + k] = S.NO_MACH
         (d0, n0), (d1, n1) = runs
-        c.corr[0:2 * S.CORR_REC] = bytes([0, 1, d0, n0, S.DS_ACTIVE,
-                                          255, 255, d1, n1, S.DS_ACTIVE])
+        c.corr[0:2 * S.CORR_REC] = bytes([0, 1, d0, n0, 255, 255, d1, n1])   # βήμα 154
         if d1 in (0, 4):
             # Κι ένας οριζόντιος αξονικός στον ίδιο θόλο, από την άλλη μεριά
             # της διαγωνίου: ο θόλος έχει αρμό ανατολικά ή δυτικά, και μόνο ο
@@ -245,7 +251,7 @@ def bend_scenes():
             c.dome[b + 5] = 255
             for k in range(8):
                 c.dome[b + S.D_MACH + k] = S.NO_MACH
-            c.corr[2 * S.CORR_REC:3 * S.CORR_REC] = bytes([1, 2, *p[1][0], S.DS_ACTIVE])
+            c.corr[2 * S.CORR_REC:3 * S.CORR_REC] = bytes([1, 2, *p[1][0]])
             c.n_dome, c.n_corr = 3, 3
         cam = S.Camera((BEND_T[0] >> 1) - S.VIEW_TW // 2, (BEND_T[1] >> 1) - S.VIEW_TH // 2)
         out.append((name, c, cam))
@@ -268,10 +274,10 @@ def shoot_colony(sym, c, cam, patch=()):
     m = CPC()
     m.run_frames(60)
     assert m.quickload(SNA, start=False), "quickload απέτυχε"
-    b6 = _lib.cpcemu_ram_ptr(m._h, 6)
-    for name, data in (("G_dome_tbl", c.dome), ("G_struct_tbl", c.struct),
-                       ("G_corr_tbl", c.corr)):
-        ctypes.memmove(ctypes.addressof(b6.contents) + layout_addr(name) - 0x4000,
+    b6, b5 = _lib.cpcemu_ram_ptr(m._h, 6), _lib.cpcemu_ram_ptr(m._h, 5)
+    for name, data, bank in (("G_dome_tbl", c.dome, b6), ("G_struct_tbl", c.struct, b6),
+                             ("G_corr_tbl", c.corr, b5)):    # οι διάδρομοι στην 5 (βήμα 154)
+        ctypes.memmove(ctypes.addressof(bank.contents) + layout_addr(name) - 0x4000,
                        bytes(data), len(data))
     for at, v in patch:
         m.poke(at, v)

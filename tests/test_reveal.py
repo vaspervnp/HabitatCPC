@@ -58,13 +58,22 @@ import test_game as T                                              # noqa: E402
 import world as W                                                  # noqa: E402
 from cpc import JOY_FIRE, KEY_SPACE, KEY_RIGHT                     # noqa: E402
 
+def _lay(name):
+    """Μια διεύθυνση του build/layout.asm (βήμα 154: οι πίνακες της 6 κουνήθηκαν)."""
+    for line in open(os.path.join(ROOT, "build", "layout.asm"), encoding="utf-8"):
+        p = line.split()
+        if len(p) >= 3 and p[0] == name and p[1] == "equ":
+            return int(p[2].lstrip("#"), 16)
+    raise SystemExit(f"δεν βρέθηκε το {name}")
+
+
 FAIL = []
 PROBE = 0x3F10                           # η σκαλωσιά των δοκιμών (§4.2)
 HOOK, CNT, RING = 0x3EC0, 0x3EE0, 0x3EF0  # ο μετρητής γύρων, κάτω από το PROBE
 I_DOME_S, I_DOME_L, I_CORR, I_SOLAR = 0, 2, 3, 4
 R_FACTORY = 4
 DS_ACTIVE = 2
-DOME_TBL, STRUCT_TBL = 0x7500 - 0x4000, 0x7B00 - 0x4000   # μέσα στην τράπεζα 6
+DOME_TBL, STRUCT_TBL = _lay("G_dome_tbl") - 0x4000, _lay("G_struct_tbl") - 0x4000   # μέσα στην τράπεζα 6
 # Το χειρότερο φάντασμα: θόλος L κόκκινος σε όλα του τα tiles. Πλαίσιο 32 x 128
 # σε τέσσερα ορθογώνια (κεφαλίδα 4 το καθένα, πάνω και κάτω πάχους 2) και 64
 # σημάδια 2x4. Από το βήμα 41 το GH_LOG είναι ΑΚΡΙΒΩΣ αυτό (src/const.asm).
