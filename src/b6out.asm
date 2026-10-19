@@ -14,6 +14,14 @@
 ; nd_nearest — A = είδος δωματίου, D = κόμβος. A = θόλος ή 255.
 ;
 ; Η τράπεζα 1 μπαίνει μία φορά για ως οκτώ υποψηφίους, όχι μία ανά υποψήφιο.
+;
+; ΔΥΟ ΒΡΟΧΟΙ ΑΠΟ ΤΟ ΒΗΜΑ 153. Από θόλο, η γραμμή του: το H μένει σε όλον τον
+; βρόχο, και το κάτω byte της (0 ή 128) είναι το immediate ενός add — ως τότε
+; push/pop του HL γύρω από κάθε ανάγνωση, 20 T περισσότερα ανά υποψήφιο. Από
+; δομή, η στήλη της (το DIST με συμμετρία, rt_flush στο src/graph.asm): η
+; γραμμή του υποψηφίου, #40 + t/2 και (t & 1) * 128 + κόμβος, με δύο rra — 1 T
+; λιγότερο από τον παλιό βρόχο. Το B περνά το out μέσα από το A, όχι με
+; push/pop: 13 T λιγότερα ανά κλήση, που πληρώνουν το διάλεγμα του βρόχου.
 ; ---------------------------------------------------------------------------
 nd_nearest:
         ld      c,a
@@ -27,15 +35,8 @@ nd_nearest:
         dec     b
         ret     z                       ; δεν υπάρχει κανένα τέτοιο δωμάτιο
 
-        ; Η ΓΡΑΜΜΗ ΤΟΥ DIST ΥΠΟΛΟΓΙΖΕΤΑΙ ΜΙΑ ΦΟΡΑ. Ηταν μέσα στον βρόχο, και
-        ; ο πολλαπλασιασμός x128 ανά υποψήφιο ήταν το μισό κόστος της
-        ; αναζήτησης — που τρέχει για κάθε άποικο που του λείπει κάτι.
-        ld      h,d
-        ld      l,0
-        srl     h
-        rr      l
-        set     6,h                     ; το DIST κάθεται στο &4000
-        ; DE = η λίστα υποψηφίων
+        ld      l,d                     ; ο κόμβος
+        ; DE = η λίστα υποψηφίων, σε μία σελίδα (το assert του src/needs.asm)
         ld      a,c
         add     a,a
         add     a,a
@@ -43,34 +44,66 @@ nd_nearest:
         add     a,G_room_list & 255
         ld      e,a
         ld      d,G_room_list >> 8
-
-        push    bc
+        ld      a,b
         ld      bc,GA_PORT + PAGE_B1
         out     (c),c
-        pop     bc
+        ld      b,a
         ld      c,255                   ; η καλύτερη απόσταση ως τώρα
+        ld      a,l
+        cp      MAX_DOME
+        jr      nc,nds_go
+        add     a,#80
+        rra
+        ld      h,a                     ; #40 + κόμβος/2: η γραμμή του
+        sbc     a,a
+        and     #80
+        ld      (ndn_lo + 1),a          ; (κόμβος & 1) * 128
 ndn_lp:
         ld      a,(de)                  ; υποψήφιος θόλος
-        inc     de
-        push    hl
-        add     a,l                     ; ο θόλος είναι < 64: δεν κρατάει
+        inc     e
+ndn_lo: add     a,0                     ; ο θόλος είναι < 64: δεν κρατάει
         ld      l,a
         ld      a,(hl)                  ; απόσταση
-        pop     hl
         cp      c
         jr      nc,ndn_n
         ld      c,a
-        dec     de
+        dec     e
         ld      a,(de)
-        inc     de
+        inc     e
         ld      (nd_best),a
 ndn_n:
         djnz    ndn_lp
-
+ndn_out:
         ld      bc,GA_PORT + PAGE_B6
         out     (c),c
         ld      a,(nd_best)
         ret
+
+nds_go:
+        add     a,a
+        ld      (nds_2s + 1),a          ; 2 x κόμβος: το rra βάζει μπροστά το t & 1
+nds_lp:
+        ld      a,(de)                  ; υποψήφιος θόλος t
+        inc     e
+        add     a,#80
+        rra
+        ld      h,a                     ; #40 + t/2, CY = t & 1
+nds_2s: ld      a,0
+        rra
+        ld      l,a                     ; (t & 1) * 128 + κόμβος
+        ld      a,(hl)                  ; DIST[t][κόμβος] = DIST[κόμβος][t]
+        cp      c
+        jr      nc,nds_n
+        ld      c,a
+        dec     e
+        ld      a,(de)
+        inc     e
+        ld      (nd_best),a
+nds_n:
+        djnz    nds_lp
+        jr      ndn_out
+
+        assert  MAX_NODE <= 128                 ; 2 x κόμβος σε byte
 
 ; ---------------------------------------------------------------------------
 ; mt_crater — HL = ένα tile του κόσμου (τράπεζα 4), από το mt_ground: γίνεται

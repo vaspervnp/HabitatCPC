@@ -104,6 +104,20 @@ def tick_us(m, sym):
     return us
 
 
+def poison(m):
+    """Μηδέν στις στήλες των θόλων των γραμμών των δομών του DIST (βήμα 153).
+    Το DIST με συμμετρία δεν τις γράφει, και κανείς δεν τις διαβάζει: από δομή σε
+    θόλο η απόσταση είναι η γραμμή του θόλου (G.zd_off). Ενας αναγνώστης που θα
+    διάβαζε ακόμη τη γραμμή της δομής βρίσκει εδώ κάθε θόλο σε απόσταση 0 — που
+    δεν είναι ποτέ η αληθινή — και διαλέγει τον πρώτο αντί για τον κοντινότερο,
+    αντί να περνά επειδή έμειναν του χθες."""
+    import cpc
+    b1 = cpc._lib.cpcemu_ram_ptr(m._h, 1)
+    for r in range(G.MAX_DOME, EC.MAX_DOME + EC.MAX_STRUCT):
+        for c in range(G.MAX_DOME):
+            b1[r * 128 + c] = 0
+
+
 def z80_load(sym, g, sim, rt_n=None, patch=()):
     """Ο Z80 με την κατάσταση της αναφοράς φορτωμένη, πριν από το πρώτο frame."""
     from cpc import CPC
@@ -119,6 +133,7 @@ def z80_load(sym, g, sim, rt_n=None, patch=()):
     # η αναφορά ξέρει «απρόσιτο» (βήμα 38).
     m.poke(sym["RT_N"], g.hw if rt_n is None else rt_n)
     enter(m, sym, "BUILD_ROUTES")
+    poison(m)
 
     m.write_ram(STAGE_AG, sim.a.to_bytes())
     # Το πάνω μισό της σελίδας: τα σημάδια των φιγούρων μηδέν, και από το
@@ -265,6 +280,9 @@ def main():
         return 1
     print(f"OK ταυτότητα: {TICKS} frames, 2048 bytes πεδίων + 128 μάσκες "
           f"ταυτόσημα με την αναφορά")
+
+    if src_check(sym, g, nexthop, dist, sim0):
+        return 1
 
     moved, intransit, arrived = describe(got_a, type("S", (), {"a": before})())
     if moved == 0 or intransit == 0:
@@ -3076,6 +3094,87 @@ WH_RT_B = 15                    # src/wheel.asm, DESIGN §7.2
 
 SUPPLY_TICKS = 2400             # 150 περιστροφές: ταξίδια, παραδόσεις, χτίσιμο (2.173 με αποθήκη)
 SITES = ((12, 2, 1), (5, 0, 2), (9, 3, 0))      # θόλος, φορτία μετάλλου, βιοπλαστικού
+
+
+SRC_TICKS = 64                  # τέσσερις περιστροφές: ανάγκες και εργασίες από δομή
+
+
+def src_scene(g, nexthop, dist, sim0):
+    """ΑΠΟ ΔΟΜΗ (βήμα 153). Ενας εργάτης σε δομή, χωρίς δουλειά, και τέσσερις
+    Operate ανοιχτές σε θόλους με την ίδια προτεραιότητα (9, πάνω από κάθε
+    άλλη): στον πίνακα από τη μακρύτερη στην κοντινότερη. Και ένας πεινασμένος
+    σε δομή όπου η κοντινότερη καντίνα δεν είναι η πρώτη της λίστας. Οι
+    ανάθεση αρχίζει από τον εργάτη. Με το DIST με συμμετρία η απόσταση από δομή σε θόλο
+    είναι η γραμμή του θόλου· όποιος διαβάζει τη γραμμή της δομής βρίσκει εκεί
+    το 0 του poison() για όλους, και διαλέγει τον πρώτο. -> (st, εργάτης, θόλος
+    που πρέπει να πάρει, πεινασμένος, καντίνα)."""
+    st = fresh(g, nexthop, sim0)
+    a, e = st.a, st.e
+    nodes = range(EC.MAX_DOME, EC.MAX_DOME + EC.POP_STRUCT)
+    d = lambda x, y: dist[x * 128 + y]
+    cant = [e.room_list[EC.R_CANTEEN * EC.ROOM_MAX + k] for k in range(e.room_n[EC.R_CANTEEN])]
+    domes = sorted({a.node[i] for i in range(EC.MAXAGENT_J) if a.flags[i] & E.F_ALIVE
+                    and a.node[i] < EC.MAX_DOME})
+    n_job = next(n for n in nodes if len({d(n, t) for t in domes[:8]}) >= 4)
+    far = sorted({d(n_job, t): t for t in domes[:8]}.items(), reverse=True)[:4]
+    n_need = next(n for n in nodes if n != n_job and min(d(n, c) for c in cant[1:]) < d(n, cant[0]))
+    near_c = min(cant, key=lambda c: (d(n_need, c), cant.index(c)))
+    alive = [i for i in range(EC.MAXAGENT_J) if a.flags[i] & E.F_ALIVE]
+    w = next(i for i in alive if a.role[i] == 0)
+    h = next(i for i in alive if a.role[i] == 3)
+    e.job_agent = w                 # ο πρώτος που κοιτάζει η ανάθεση
+    for i, n in ((w, n_job), (h, n_need)):
+        if a.slot[i] != E.NO_SLOT:
+            E.release(st.occ, a.node[i], a.slot[i])
+        a.node[i] = a.dest[i] = n
+        a.slot[i] = E.claim(st.occ, n)
+        a.edge[i], a.progress[i], a.task[i] = E.NO_EDGE, 0, E.NO_TASK
+        a.flags[i] &= ~E.F_WORKING & 0xFF
+        a.health[i] = a.food[i] = a.water[i] = a.sleep[i] = 220
+    a.food[h] = 20
+    for _, t in far:
+        EC.post_job(e, EC.J_OPERATE, t, 9)
+    return st, w, far[-1][1], h, near_c
+
+
+def src_check(sym, g, nexthop, dist, sim0):
+    """ΑΠΟ ΔΟΜΗ: Z80 και αναφορά byte προς byte, ο εργάτης στην κοντινότερη
+    Operate και ο πεινασμένος στην κοντινότερη καντίνα, και ΑΡΝΗΤΙΚΑ: με το
+    jb_best ή το nd_nearest να διαβάζουν από δομή τη γραμμή της, όπως ως το
+    βήμα 152, ο Z80 διαφωνεί."""
+    st, w, job_d, h, cant_d = src_scene(g, nexthop, dist, sim0)
+    end = same(sym, g, nexthop, st, SRC_TICKS, "από δομή")
+    if end is None:
+        return 1
+    jobs = [(end.e.job[k * EC.JOB_REC + EC.J_NODE], end.e.job[k * EC.JOB_REC + EC.J_AGENT])
+            for k in range(EC.MAX_JOB) if end.e.job[k * EC.JOB_REC + EC.J_KIND] == EC.J_OPERATE]
+    took = [n for n, ag in jobs if ag == w]
+    walk = fresh(g, nexthop, st)
+    went = None
+    for _ in range(SRC_TICKS):
+        walk.tick()
+        if went is None and walk.a.task[h] == E.T_NEED:
+            went = walk.a.dest[h]
+    if took != [job_d] or went != cant_d:
+        print(f"ΑΠΟΤΥΧΙΑ από δομή: ο εργάτης {w} πήρε {took} (η κοντινότερη {job_d}), ο "
+              f"πεινασμένος {h} πήγε στο {went} (η κοντινότερη καντίνα {cant_d})")
+        return 1
+    m = boot_only()
+    for label, name in (("η ανάθεση από δομή διαβάζει τη γραμμή της", "JB_BEST"),
+                        ("η αναζήτηση δωματίου από δομή διαβάζει τη γραμμή της", "ND_NEAREST")):
+        code = list(m.read_ram(sym[name], 48))
+        k = next((k for k in range(46) if code[k:k + 3] == [0xFE, EC.MAX_DOME, 0x30]), None)
+        if k is None or same(sym, g, nexthop, st, SRC_TICKS, label,
+                             [(sym[name] + k + 2, 0), (sym[name] + k + 3, 0)], quiet=True):
+            print(f"ΑΠΟΤΥΧΙΑ από δομή: ΑΡΝΗΤΙΚΟ «{label}» — "
+                  + ("ο Z80 συμφώνησε" if k is not None else "το cp MAX_DOME · jr nc δεν βρέθηκε"))
+            return 1
+    print(f"OK από δομή: ο εργάτης στη δομή {st.a.node[w]} πήρε την Operate του θόλου "
+          f"{job_d}, την τελευταία και κοντινότερη από τέσσερις της ίδιας προτεραιότητας, "
+          f"και ο πεινασμένος στη δομή {st.a.node[h]} πήγε στην καντίνα {cant_d}, όχι στην "
+          f"πρώτη της λίστας — ίδια bytes στον Z80. ΑΡΝΗΤΙΚΑ: με τη γραμμή της δομής "
+          f"(το 0 του poison) η ανάθεση και η αναζήτηση διαφωνούν")
+    return 0
 
 
 def supply_scene(g, nexthop, sim0, storage=True):

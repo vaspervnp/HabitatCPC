@@ -53,6 +53,8 @@ import test_game as TG                                   # noqa: E402
 import test_drill as TD                                  # noqa: E402
 import balance as B                                      # noqa: E402
 import econ as EC                                        # noqa: E402
+import graph as GR                                       # noqa: E402
+import cpc                                               # noqa: E402
 
 FAIL = []
 HAUL_LOAD, HAUL_CAP, BIT = 10, 30, 0x40
@@ -269,6 +271,30 @@ def arrive(sym, patch=(), quiet=False):
                 f"προς το {SHIP}, η Supply γυρίζει στο {MINE}")
     say(f"ΜΙΣΟΔΡΟΜΙΣ: ο φορτωμένος πέθανε — η Haul μένει προς το σκάφος, η Supply γυρίζει "
         f"στο εργοτάξιο")
+    # (vii) ΑΠΟ ΔΟΜΗ ΣΤΗΝ ΑΠΟΘΗΚΗ (βήμα 153): χωρίς σκάφος, δύο θόλοι-αποθήκες,
+    # η κοντινότερη δεύτερη στη λίστα. Από το ορυχείο (δομή) η απόσταση ως
+    # θόλο είναι η γραμμή του θόλου (το DIST με συμμετρία). Η γραμμή του
+    # ορυχείου, στις στήλες των θόλων, γίνεται μηδέν: όποιος διαβάζει εκεί
+    # βρίσκει και τις δύο στο 0 και παίρνει την πρώτη.
+    G, j = scene(sym, patch, ship=False)
+    b1 = cpc._lib.cpcemu_ram_ptr(G.m._h, 1)
+    by = sorted({b1[GR.zd_off(MINE, t)]: t for t in range(EC.MAX_DOME)
+                 if 0 < b1[GR.zd_off(MINE, t)] < 255}.items())
+    (dn, near), (df, far) = by[0], by[-1]
+    for c in range(EC.MAX_DOME):
+        b1[MINE * 128 + c] = 0
+    G.m.poke(G.L["G_room_n"] + EC.R_STORAGE, 2)
+    G.m.write_ram(G.L["G_room_list"] + EC.R_STORAGE * EC.ROOM_MAX, bytes([far, near]))
+    G.call("JOBS_TICK")
+    got = (G.job(j)[1], G.ag_get(WHO, "dest"), G.ag_get(WHO, "spare"), G.rec(1)[ST_OWED])
+    want = (near, near, S_ORE, 10)
+    if got != want:
+        return (f"ΑΠΟ ΔΟΜΗ ΣΤΗΝ ΑΠΟΘΗΚΗ: J_NODE {got[0]}, dest {got[1]}, spare {got[2]}, "
+                f"σωρός {got[3]} — η πρόζα λέει η αποθήκη {near} (απόσταση {dn}), όχι η "
+                f"{far} ({df}) που είναι πρώτη στη λίστα")
+    say(f"ΑΠΟ ΔΟΜΗ ΣΤΗΝ ΑΠΟΘΗΚΗ: από το ορυχείο η κοντινότερη από δύο αποθήκες, ο θόλος "
+        f"{near} σε {dn} άλματα, όχι ο {far} σε {df} που είναι πρώτος στη λίστα· η απόσταση "
+        f"από τη γραμμή του θόλου")
     # (vi) Haul και Drill ανοιχτές στο ίδιο ορυχείο, ένας εργάτης ελεύθερος
     G = Game(sym, patch)
     rec = G.rec(1)
@@ -412,6 +438,17 @@ def negatives(sym, g):
         out.append((label, [(hits[0] + k, v) for k, v in edits] if len(hits) == 1 else None,
                     False, test))
 
+    # sp_take: η αποθήκη από τη γραμμή του κόμβου, όπως ως το 152. Το
+    # add a,#80 · rra · ld h,a · ld a,2s · rra · ld l,a του sps_lp γίνεται
+    # add a,0 · ld l,a · nop · ld h,ROW · nop · nop: H = η γραμμή του ορυχείου (65).
+    sl = sym["SPS_LP"]
+    row = 0x40 + MINE // 2
+    out.append(("η πηγή από δομή στη γραμμή της",
+                [(sl + 1, 0xC6), (sl + 2, (MINE & 1) * 128), (sl + 3, 0x6F), (sl + 4, 0),
+                 (sl + 5, 0x26), (sl + 6, row), (sl + 7, 0), (sl + 8, 0)]
+                if list(m.read_ram(sl, 9))[1:9] == [0xC6, 0x80, 0x1F, 0x67, 0x3E,
+                                                       m.peek(sl + 6), 0x1F, 0x6F] else None,
+                False, "arrive"))
     # econ_flow: call hl_pile -> nop
     at6("το hl_pile δεν καλείται", "ECON_FLOW", 400, [0xCD] + w(sym["HL_PILE"]),
         [(0, 0), (1, 0), (2, 0)], "piles")

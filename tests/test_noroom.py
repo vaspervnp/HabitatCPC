@@ -102,9 +102,13 @@ class Rig:
         b1 = cpc._lib.cpcemu_ram_ptr(m._h, 1)
         for i, room in st.far:                 # το DIST της τράπεζας 1
             for k in range(st.e.room_n[room]):
-                d = st.e.room_list[room * EC.ROOM_MAX + k]
-                b1[st.a.node[i] * 128 + d] = 255
-                st.e.dist[st.a.node[i] * 128 + d] = 255
+                d, n = st.e.room_list[room * EC.ROOM_MAX + k], st.a.node[i]
+                # από δομή, η γραμμή του θόλου (βήμα 153): το ίδιο byte είναι και
+                # το DIST[d][n], και η αναφορά το μαθαίνει κι αυτό
+                b1[S.G.zd_off(n, d)] = 255
+                st.e.dist[n * 128 + d] = 255
+                if n >= S.G.MAX_DOME:
+                    st.e.dist[d * 128 + n] = 255
         return m
 
     def run(self, st, ticks=4, patch=()):

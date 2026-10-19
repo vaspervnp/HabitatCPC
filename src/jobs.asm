@@ -683,24 +683,17 @@ jas_lp:
 jas_rb:
         rlca
         djnz    jas_rb                  ; A = 1 << ρόλος
-        ld      (jb_rolebit),a
         ld      e,a
         ld      a,(jb_om)
         and     e
         jr      z,jas_nx                ; καμία ανοιχτή για τον ρόλο του
+        ld      a,e
+        ld      (jbb_rb + 1),a          ; ο ρόλος, στους δύο βρόχους του jb_best
+        ld      (jbs_rb + 1),a
         res     7,l
         inc     h                       ; AG_PG + 1: node
         ld      a,(hl)
-        ; Η ΓΡΑΜΜΗ ΤΟΥ DIST μία φορά ανά πράκτορα: #4000 + 128 * κόμβος. Ως το
-        ; βήμα 46 υπολογιζόταν ξανά για καθεμία από τις 32 εργασίες.
-        ld      h,a
-        ld      l,0
-        srl     h
-        rr      l
-        set     6,h
-        ld      (jb_row),hl
-
-        call    jb_best
+        call    jb_best                 ; A = ο κόμβος του
         cp      NO_JOB
         jr      z,jas_nx
         call    jb_take
@@ -735,30 +728,54 @@ jas_done:
         ret
 
 ; ---------------------------------------------------------------------------
-; jb_best — η καλύτερη ανοιχτή εργασία για τον (jb_i). A = δείκτης ή NO_JOB.
+; jb_best — A = ο κόμβος του (jb_i): η καλύτερη ανοιχτή εργασία του. A =
+; δείκτης ή NO_JOB.
 ;
 ; Η τράπεζα 1 μπαίνει ΜΙΑ φορά για όλη τη σάρωση των 32 εργασιών, όχι μία ανά
 ; ανάγνωση: ο πίνακας εργασιών είναι στην τράπεζα 2 και φαίνεται πάντα. Ο
 ; δείκτης της εργασίας είναι MAX_JOB - B, όχι δική του μεταβλητή.
+;
+; ΔΥΟ ΑΡΧΕΣ ΒΡΟΧΟΥ ΑΠΟ ΤΟ ΒΗΜΑ 153, ΜΙΑ ΟΥΡΑ. Από θόλο η απόσταση είναι η
+; γραμμή του στη στήλη της εργασίας: το H και το κάτω byte της γραμμής στα
+; immediates του jbb_hi και του jbb_lo, μία φορά (ως τότε ένα ld hl,(jb_row)
+; ανά εργασία). Από δομή, η στήλη της στη γραμμή της εργασίας (το DIST με
+; συμμετρία, rt_flush στο src/graph.asm): #40 + t/2 και (t & 1) * 128 +
+; κόμβος, με δύο rra, και ένα jr στην ουρά. Η ουρά γυρίζει με το djnz του
+; jbb_dj, που το jb_best γράφει για τη μία ή την άλλη αρχή.
+;
+; Για να μη γίνει πιο αργός κανένας δρόμος: το B δεν αλλάζει μέσα στον βρόχο,
+; και το push/pop του BC έφυγε (21 T σε κάθε θέση)· μια άδεια θέση δεν κάνει
+; ούτε το push/pop του HL (42 T λιγότερα)· ο ρόλος είναι το immediate του and
+; (6 T, το γράφει το jb_assign). Μια ανοιχτή εργασία του ρόλου του κοστίζει 33
+; T λιγότερα από θόλο, 9 από δομή.
 ; ---------------------------------------------------------------------------
 jb_best:
+        cp      MAX_DOME
+        jr      nc,jbs_src
+        add     a,#80
+        rra
+        ld      (jbb_hi + 1),a          ; #40 + κόμβος/2
+        sbc     a,a
+        and     #80
+        ld      (jbb_lo + 1),a          ; (κόμβος & 1) * 128
+        ld      a,jbb_lp - jbb_dj - 2
+        ld      (jbb_dj + 1),a
         ld      hl,NO_JOB               ; jb_bj = NO_JOB, jb_bp = 0
         ld      (jb_bj),hl
         ld      a,l                     ; 255 (assert)
         assert  NO_JOB == 255
         ld      (jb_bd),a
-
         ld      bc,GA_PORT + PAGE_B1
         out     (c),c
-
         ld      hl,G_job_tbl
         ld      b,MAX_JOB
+
+; --- από θόλο ---
 jbb_lp:
-        push    bc
-        push    hl
         ld      a,(hl)
         cp      NO_JOB
-        jr      z,jbb_next
+        jr      z,jbb_skip
+        push    hl
         ld      c,a                     ; C = είδος
         inc     hl
         ld      e,(hl)                  ; E = κόμβος εργασίας
@@ -768,7 +785,6 @@ jbb_lp:
         jr      nz,jbb_next             ; ήδη ανατεθειμένη
         inc     hl
         ld      d,(hl)                  ; D = προτεραιότητα
-
         ld      hl,job_roles
         ld      a,c
         add     a,l
@@ -776,16 +792,16 @@ jbb_lp:
         adc     a,h
         sub     l
         ld      h,a
-        ld      a,(jb_rolebit)
-        and     (hl)
+        ld      a,(hl)
+jbb_rb: and     0                       ; ο ρόλος του (jb_assign)
         jr      z,jbb_next              ; λάθος ρόλος
-
-        ld      hl,(jb_row)             ; DIST[κόμβος πράκτορα][κόμβος εργασίας]
-        ld      a,l
-        add     a,e
+        ld      a,e
+jbb_lo: add     a,0                     ; DIST[κόμβος πράκτορα][κόμβος εργασίας]
         ld      l,a
+jbb_hi: ld      h,0
         ld      c,(hl)                  ; C = απόσταση
 
+jbb_cmp:
         ld      hl,jb_bp
         ld      a,d
         cp      (hl)
@@ -804,15 +820,66 @@ jbb_better:
         ld      (jb_bj),a
 jbb_next:
         pop     hl
+jbb_skip:
         ld      de,JOB_REC
         add     hl,de
-        pop     bc
-        djnz    jbb_lp
+jbb_dj: djnz    jbb_lp                  ; ή jbs_lp (jb_best)
 
         ld      bc,GA_PORT + PAGE_B6
         out     (c),c
         ld      a,(jb_bj)
         ret
+
+; --- από δομή ---
+jbs_src:
+        add     a,a
+        ld      (jbs_2s + 1),a          ; 2 x κόμβος: το rra βάζει μπροστά το t & 1
+        ld      a,jbs_lp - jbb_dj - 2
+        ld      (jbb_dj + 1),a
+        ld      hl,NO_JOB
+        ld      (jb_bj),hl
+        ld      a,l
+        ld      (jb_bd),a
+        ld      bc,GA_PORT + PAGE_B1
+        out     (c),c
+        ld      hl,G_job_tbl
+        ld      b,MAX_JOB
+jbs_lp:
+        ld      a,(hl)
+        cp      NO_JOB
+        jr      z,jbb_skip
+        push    hl
+        ld      c,a                     ; C = είδος
+        inc     hl
+        ld      e,(hl)                  ; E = κόμβος εργασίας
+        inc     hl
+        ld      a,(hl)
+        inc     a
+        jr      nz,jbb_next             ; ήδη ανατεθειμένη
+        inc     hl
+        ld      d,(hl)                  ; D = προτεραιότητα
+        ld      hl,job_roles
+        ld      a,c
+        add     a,l
+        ld      l,a
+        adc     a,h
+        sub     l
+        ld      h,a
+        ld      a,(hl)
+jbs_rb: and     0                       ; ο ρόλος του (jb_assign)
+        jr      z,jbb_next              ; λάθος ρόλος
+        ld      a,e
+        add     a,#80
+        rra
+        ld      h,a                     ; #40 + t/2, CY = t & 1
+jbs_2s: ld      a,0
+        rra
+        ld      l,a                     ; (t & 1) * 128 + κόμβος
+        ld      c,(hl)                  ; C = DIST[t][κόμβος] = DIST[κόμβος][t]
+        jr      jbb_cmp
+
+        assert  jbs_lp - (jbb_dj + 2) <= 127    ; το djnz φτάνει και τις δύο
+        assert  MAX_NODE <= 128                 ; 2 x κόμβος σε byte
 
 ; ---------------------------------------------------------------------------
 ; jb_take — ο (jb_i) παίρνει την εργασία A. Χαλάει B, C, DE, HL.
@@ -861,8 +928,6 @@ jb_kind2:   db 0
 jb_room:    db 0                    ; το δωμάτιο του jb_need, για την προτεραιότητα
 jb_i:       db 0
 jb_done:    db 0
-jb_rolebit: db 0
-jb_row:     dw 0                    ; η γραμμή του DIST για τον (jb_i)
 jb_bj:      db 0                    ; jb_bj, jb_bp, jb_bd διπλανά
 jb_bp:      db 0
 jb_bd:      db 0

@@ -251,61 +251,77 @@ sp_take:
         ld      a,(de)                  ; ο κόμβος του
         push    de
         push    hl
-        ld      h,a
-        ld      l,0
-        srl     h
-        rr      l
-        set     6,h                     ; η γραμμή του στο DIST: #4000 + 128 x κόμβος
-        ld      a,(G_struct_tbl + ST_KIND)  ; με την 6 ακόμη μέσα
-        cp      K_SHIP                  ; Z: υπάρχει σκάφος
+        ld      hl,G_struct_tbl + ST_KIND
+        ld      l,(hl)                  ; L = το είδος της δομής 0, με την 6 ακόμη μέσα
         ld      bc,GA_PORT + PAGE_B1
         out     (c),c
-        ld      bc,#FFFF                ; B = η πηγή, C = η απόστασή της
-        jr      nz,spt_st               ; του cp: ld και out δεν αγγίζουν το F
-        ld      a,MAX_DOME              ; το σκάφος, κόμβος 64
-        call    spt_one
-spt_st:
-        ld      de,G_room_list + R_STORAGE * ROOM_MAX
+        ; ΤΟ DIST ΜΕ ΣΥΜΜΕΤΡΙΑ (βήμα 153, rt_flush στο src/graph.asm), χωρίς να
+        ; ρωτά από τι ξεκινά: το σκάφος είναι δομή, και η γραμμή κάθε κόμβου
+        ; έχει τη στήλη 64· οι αποθήκες είναι θόλοι, και η γραμμή κάθε θόλου
+        ; έχει τη στήλη κάθε κόμβου. Οι υποψήφιοι μέσα στον βρόχο, χωρίς call:
+        ; ως το βήμα 152 ένα spt_one ανά υποψήφιο, 161 T· εδώ 77. Το spt_best
+        ; λέει κάτι μόνο αν το C έπεσε κάτω από 255.
+        ld      e,a                     ; E = ο κόμβος
+        ld      c,255                   ; η απόσταση της καλύτερης
+        ld      a,l
+        cp      K_SHIP
+        jr      nz,sps_st
+        ld      a,e
+        add     a,#80
+        rra
+        ld      h,a                     ; #40 + κόμβος/2
+        sbc     a,a
+        and     #80
+        or      MAX_DOME
+        ld      l,a                     ; DIST[κόμβος][64]: το σκάφος
+        ld      a,(hl)
+        cp      c
+        jr      nc,sps_st               ; απρόσιτο (255)
+        ld      c,a
+        ld      a,MAX_DOME
+        ld      (spt_best),a
+sps_st:
         ld      a,(G_room_n + R_STORAGE)
-spt_lp:
         or      a
         jr      z,spt_got
-        push    af
+        ld      b,a
+        ld      a,e
+        add     a,a
+        ld      (sps_2s + 1),a          ; 2 x κόμβος: το rra βάζει μπροστά το t & 1
+        ld      de,G_room_list + R_STORAGE * ROOM_MAX
+sps_lp:
+        ld      a,(de)                  ; μια αποθήκη t
+        add     a,#80
+        rra
+        ld      h,a                     ; #40 + t/2, CY = t & 1
+sps_2s: ld      a,0
+        rra
+        ld      l,a                     ; (t & 1) * 128 + κόμβος
+        ld      a,(hl)                  ; DIST[t][κόμβος] = DIST[κόμβος][t]
+        cp      c
+        jr      nc,sps_n                ; στην ισοπαλία το σκάφος, ή η πρώτη
+        ld      c,a
         ld      a,(de)
-        inc     de
-        call    spt_one
-        pop     af
-        dec     a
-        jr      spt_lp
+        ld      (spt_best),a
+sps_n:  inc     e                       ; μία σελίδα (assert)
+        djnz    sps_lp
 spt_got:
-        ld      a,b
+        ld      a,c
+        inc     a                       ; Z: καμία πηγή δεν φτάνεται
+        ld      a,(spt_best)
         ld      bc,GA_PORT + PAGE_B6
         out     (c),c
         pop     hl
         pop     de
-        inc     a
         ret     z                       ; καμία πηγή: το εργοτάξιο, όπως είναι
-        dec     a
         ld      (hl),a                  ; J_NODE = η πηγή
         inc     d
         ld      (de),a                  ; dest = η πηγή
         ret
-; spt_one — A = κόμβος-πηγή, HL = η γραμμή του DIST (L = 0 ή 128): αν είναι
-; πιο κοντά από τον C, B = αυτός και C = η απόστασή του. Κρατά DE, HL.
-spt_one:
-        push    hl
-        push    af
-        add     a,l
-        ld      l,a
-        ld      a,(hl)                  ; η απόστασή του
-        cp      c
-        pop     hl                      ; H = ο κόμβος
-        jr      nc,spto_n
-        ld      c,a
-        ld      b,h
-spto_n:
-        pop     hl
-        ret
+
+        assert  MAX_NODE <= 128                 ; 2 x κόμβος σε byte
+        assert  (G_room_list & 255) + 12 * ROOM_MAX <= 256  ; το inc e
+spt_best:   db 255                      ; η πηγή ως τώρα (αν C < 255)
 
 ; ---------------------------------------------------------------------------
 ; sp_arrive — από το jb_arrive (src/jobs.asm): ο πράκτορας μιας Supply στέκεται

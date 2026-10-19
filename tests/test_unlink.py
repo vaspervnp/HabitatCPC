@@ -50,6 +50,7 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 sys.path.insert(0, "/home/vasilhs/cpcemu")
 import test_game as TG                                   # noqa: E402
+import graph as GR                                       # noqa: E402
 import test_demolish as D                                # noqa: E402
 import balance as B                                      # noqa: E402
 import reach                                             # noqa: E402
@@ -177,7 +178,7 @@ def shot(G, name):
 
 
 def dist(G, a, b):
-    return G.bank(1)[128 * a + b]
+    return G.bank(1)[GR.zd_off(a, b)]           # το DIST με συμμετρία (βήμα 153)
 
 
 # --------------------------------------------------------------------------
