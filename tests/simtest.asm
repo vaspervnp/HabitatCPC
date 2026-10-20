@@ -203,6 +203,7 @@ ng_dup:
         include "../src/top.asm"            ; βήμα 157: το st_set του st_recount (στο παιχνίδι στο OV_R1)
         include "../src/sound.asm"
         include "../src/meteor.asm"
+        include "../src/calm.asm"           ; βήμα 158: η ηρεμία (στο παιχνίδι στη σελίδα 2, ως το 157 στο meteor.asm)
         include "../src/b6out.asm"          ; βήμα 110: ό,τι των needs/meteor θέλει άλλη τράπεζα
         include "../src/door.asm"           ; βήμα 87: το ja_build το καλεί
         include "../src/edges.asm"          ; βήμα 87: οι ακμές

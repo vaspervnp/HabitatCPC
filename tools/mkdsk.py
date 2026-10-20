@@ -194,7 +194,9 @@ def symbols():
 
 
 def check_page2(sym):
-    lo, hi = sym["ZZ_PAGE2_CODE"], sym["ZZ_PAGE2_END"]
+    # Το game2.bin αρχίζει από τον κώδικα της εκκίνησης, στο τέλος του GH_BUF
+    # (βήμα 158, src/startup.asm): ως τότε από το PAGE2_CODE.
+    lo, hi = sym["ZZ_BOOT"], sym["ZZ_PAGE2_END"]
     if hi > PAGE2_END:
         sys.exit(f"ο κώδικας της τράπεζας 2 φτάνει στο #{hi:04X} και ξεπερνά "
                  f"το #{PAGE2_END:04X} ({hi - PAGE2_END} bytes πάνω από το όριο)")

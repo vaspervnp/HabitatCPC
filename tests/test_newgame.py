@@ -121,7 +121,15 @@ class Game:
         m = self.m = cpc.CPC()
         m.run_frames(60)
         assert m.quickload(sna, start=False), "quickload απέτυχε"
+        # Ο ΚΩΔΙΚΑΣ ΤΗΣ ΕΚΚΙΝΗΣΗΣ ΣΤΟ GH_BUF (βήμα 158, src/startup.asm): το
+        # game_new και η αποικία από κάτω του τρέχουν μία φορά και μετά είναι
+        # αρχείο φαντάσματος. Κρατιούνται όπως στο snapshot και ξαναγράφονται
+        # μετά τα 400 frames, πριν από τα πειράγματα: η κλήση εδώ τρέχει τον
+        # κώδικα που έτρεξε η εκκίνηση, όχι ό,τι άφησε ένα φάντασμα.
+        lo, hi = sym["ZZ_COLONY"], sym["ZZ_BOOT_END"]
+        boot = m.read_ram(lo, hi - lo)
         m.run_frames(400)                                # ξεκίνησε και τρέχει
+        m.write_ram(lo, boot)
         for at, v in patch:
             m.poke(at, v)
         self.ptr = [cpc._lib.cpcemu_ram_ptr(m._h, n) for n in range(8)]

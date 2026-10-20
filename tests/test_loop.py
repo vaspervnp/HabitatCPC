@@ -376,7 +376,9 @@ def main():
     ish = loop.find(bytes([0xCD, show & 255, show >> 8]))
     inc = m.read_ram(al, 32).find(bytes([0xD0, 0x3E, SFX_ALERT]))   # ret nc · ld a,SFX_ALERT
     pb = sym["PAL_BORDER"]
-    ixa = m.read_ram(sym["START"], top - sym["START"]).find(bytes([0xAF, 0xCD, pb & 255, pb >> 8]))
+    # ΤΟ start ΣΤΟ GH_BUF από το βήμα 158 (src/startup.asm): το boot_go, ως το game_new
+    bg = sym["BOOT_GO"]
+    ixa = m.read_ram(bg, sym["GAME_NEW"] - bg).find(bytes([0xAF, 0xCD, pb & 255, pb >> 8]))
     assert min(i16, ib, ish, inc, ixa) >= 0, \
         "δεν βρέθηκαν τα ld (hl),16 / ld (hl),b / call ui_show / ret nc / xor a · call pal_border"
     for label, patch in (("ρολόι 15", [(top + i16 + 1, 15)]),
@@ -384,7 +386,7 @@ def main():
                          ("το mt_boom χωρίς σβήσιμο", [(top + ib, 0)]),
                          ("το ui_show σβησμένο", [(top + ish + j, 0) for j in range(3)]),
                          ("δύο κλήσεις αναμονής", [(sym["ML_WARM"], 7)]),
-                         ("inc a αντί xor a πριν το pal_border", [(sym["START"] + ixa, 0x3C)])):
+                         ("inc a αντί xor a πριν το pal_border", [(bg + ixa, 0x3C)])):
         why = run(sym, g, patch)
         if why:
             print(f"OK ΑΡΝΗΤΙΚΟ: με {label} αποτυγχάνει ({why[:90]})")
