@@ -201,7 +201,8 @@ tuo_st:
         and     #7F
         ld      c,a
         ld      hl,G_struct_tbl + ST_KIND
-        ld      b,MAX_STRUCT
+        ld      a,(ST_TOP)              ; ως την ψηλότερη θέση σε χρήση (βήμα 157)
+        ld      b,a
 tuo_slp:
         ld      a,(hl)
         cp      c

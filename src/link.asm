@@ -225,7 +225,8 @@ al_scans:
         call    asc_b6
         ld      hl,G_struct_tbl + ST_STATE
         ld      de,STRUCT_REC
-        ld      bc,(MAX_STRUCT >> 1) * 256 + MAX_DOME + MAX_STRUCT
+        ld      bc,(ST_TEND)            ; B = ST_THALF ζεύγη, C = MAX_DOME + ST_TOP
+        assert  ST_THALF == ST_TEND + 1    ; (βήμα 157, src/top.asm: ως τότε 24 και 112)
         ; ΤΟ ΣΚΑΦΟΣ ΔΕΝ ΕΙΝΑΙ ΚΤΙΡΙΟ (βήμα 87): δεν είναι «κοντά», ούτε κάνει
         ; τον ηλιακό να μην είναι ο πρώτος. Στέκεται πάντα στη θέση 0 — το
         ; game_new το βάζει εκεί, και κτίριο δεν γκρεμίζεται — οπότε το πέρασμα

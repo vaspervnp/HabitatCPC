@@ -731,8 +731,17 @@ def build_runs(smap, blob):
     # τις γραμμές της στις τράπεζες 1 και 5, άρα το παράθυρο &4000 αλλάζει μέσα
     # στη ρουτίνα. Ο,τι διαβάζει ή γράφει η BFS πρέπει να είναι ΕΚΤΟΣ παραθύρου.
     # Η τράπεζα 2 είναι πάντα ορατή — και έχει χώρο από το βήμα 5.
-    arena.append(Run("rt_nodes", 256, None, align=256,
-                     note="ΔΕΣΜΕΥΣΗ — node_deg[0..127] + rt_queue[128..255]"))
+    # ΤΟ ΟΡΙΟ ΣΑΡΩΣΗΣ (βήμα 157, src/top.asm) ζει στις θέσεις 112-116 του
+    # node_deg, που δεν είναι κόμβος κανενός. Στην εικόνα ξεκινά «όλες οι 48»,
+    # οι μορφές του st_set για ST_TOP = 48: ό,τι τρέχει χωρίς να έχει περάσει από
+    # το wheel_reset — μια δοκιμή που φορτώνει το main.sna χωρίς να το ξεκινήσει
+    # — σαρώνει όλο τον πίνακα, όπως ως το βήμα 156, και ποτέ λιγότερο.
+    nodes = bytearray(256)
+    top = econ.MAX_STRUCT
+    nodes[econ.MAX_DOME + top:econ.MAX_DOME + top + 5] = bytes(
+        [econ.MAX_DOME + top, top // 2, top, 0, max(top - 16, 1)])
+    arena.append(Run("rt_nodes", 256, bytes(nodes), align=256,
+                     note="ΔΕΣΜΕΥΣΗ — node_deg[0..127] + rt_queue[128..255]· το όριο σάρωσης"))
     arena.append(Run("rt_row", 256, None, align=256,
                      note="ΔΕΣΜΕΥΣΗ — rt_dist[0..127] + rt_next[128..255]"))
     arena.append(Run("node_adj", 1024, None, align=256,

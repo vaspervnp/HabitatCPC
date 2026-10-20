@@ -707,24 +707,31 @@ rr_capok:
         ; C_CSTATE) γινόταν πίστα στον κόμβο 96 — που δεν υπάρχει — και διπλάσιος
         ; δρόμος σε κάθε περιστροφή χωρίς πλατφόρμα. Από το βήμα 156 οι δομές
         ; είναι 48, και μετά τον πίνακά τους είναι το node_occ.
+        ; ΩΣ ΤΟ ST_TOP (βήμα 157, src/top.asm), σε ΚΑΘΕ περιστροφή: χωρίς
+        ; πλατφόρμα οι 48 θέσεις ήταν 20 us η καθεμιά. Και φθηνότερη η θέση:
+        ; το bit 1 της κατάστασης (μόνο το DS_ACTIVE το έχει) αντί για ld και
+        ; cp, το DE έξω από τον βρόχο, και ο κόμβος της πλατφόρμας από το B
+        ; όταν βρεθεί — MAX_DOME + ST_TOP - B — αντί για ένα inc c ανά θέση:
+        ; 17 us η θέση.
         ld      ix,G_struct_tbl
-        ld      bc,MAX_STRUCT * 256 + MAX_DOME  ; B = δομές, C = ο κόμβος της πρώτης
+        ld      a,(ST_TOP)
+        ld      b,a
+        ld      de,STRUCT_REC
 rr_pad:
-        ld      a,(ix+ST_STATE)
-        cp      DS_ACTIVE
-        jr      nz,rr_pad_n
+        bit     1,(ix+ST_STATE)
+        jr      z,rr_pad_n
         ld      a,(ix+ST_KIND)
         cp      K_PAD
         jr      nz,rr_pad_n
-        ld      a,c
+        ld      a,(ST_TEND)
+        sub     b
         ld      (EC_PADNODE),a
         ret
 rr_pad_n:
-        ld      de,STRUCT_REC
         add     ix,de
-        inc     c
         djnz    rr_pad
         ret
+        assert  DS_ACTIVE == 2 && DS_BUILDING == 1 && ST_TEND == ST_TOP - 2
 
 ; rr_amenity — A = είδος δωματίου, IX -> θόλος. Μετράει σαλόνια και δέντρα.
 ; Το δέντρο είναι φυτό κατηγορίας 3 σε θερμοκήπιο. Χαλάει B, DE, HL.

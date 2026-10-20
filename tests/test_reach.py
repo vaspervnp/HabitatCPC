@@ -90,6 +90,7 @@ import test_game as TG                                   # noqa: E402
 import test_place as TP                                  # noqa: E402
 from test_terrain import model as res_model, HALF        # noqa: E402
 import reach                                             # noqa: E402
+import codeat                                            # noqa: E402
 import cpc                                               # noqa: E402
 
 UI_PLACE = 2
@@ -233,6 +234,9 @@ def put_scene(G, world, domes, structs, deg=None):
         s6[8 * k + 6] = reach.joined(s)         # ST_JOINED (βήμα 87)
     G.put(6, G.gd, d6)
     G.put(6, G.gs, s6)
+    # ΚΑΙ ΤΟ ΟΡΙΟ ΣΑΡΩΣΗΣ (βήμα 157): η σκηνή γράφει τον πίνακα και το node_deg
+    # μόνη της, και το ST_TOP ζει στις θέσεις 112-116 του node_deg.
+    codeat.set_top(G.m, G.sym, codeat.top_of(s6))
 
 
 def expect(G, i, cx, cy, world, domes, structs, dims, half=0):
@@ -932,6 +936,8 @@ def first_lock(sym, g, patch=()):
     # κόμβο 0, και θα κληρονομούσε τη γραμμή του παλιού (βήμα 87: η σύνδεση
     # εδάφους του ελέγχεται ακμή προς ακμή).
     m.write_ram(layout("G_rt_nodes"), bytes(128))
+    # ...και το όριο σάρωσης ξανά, που ζει εκεί (βήμα 157)
+    codeat.set_top(m, G.sym, codeat.top_of(bytes(b6[R.STRUCT_TBL:R.STRUCT_TBL + 384])))
     b4 = G.bank(4)
     for y in range(18, 35):                 # ένα χωράφι από χώμα
         for x in range(-52, -43):

@@ -70,14 +70,21 @@ mt_tick:
 mts_seed:
         ld      (EC_MRND),hl
         ; --- το κέντρο: το πρώτο ζωντανό κτίριο από ένα τυχαίο σημείο ---
+        ; Οι κόμβοι από το ST_TEND και πάνω δεν είναι κτίρια (βήμα 157, src/
+        ; top.asm): το όριο γράφεται στο cp, όπως στο sp_sweep, και μια δομή
+        ; πάνω από την ψηλότερη σε χρήση κοστίζει 40 us λιγότερα — προσπερνιέται
+        ; χωρίς το mt_rec. Ο ίδιος κόμβος βγαίνει: εκεί ήταν όλες άδειες.
         call    mt_byte
         and     127
         ld      c,a
+        ld      a,(ST_TEND)
+        ld      (mts_end + 1),a
         ld      b,128
 mts_lp:
         ld      a,c
-        cp      MAX_NODE
-        jr      nc,mts_nx               ; 112-127 (96-127 ως το 155): όχι κόμβος
+mts_end:
+        cp      MAX_NODE                ; το ST_TEND (γράφεται πάνω)
+        jr      nc,mts_nx               ; ως το 127 (96-127 ως το 155): όχι κτίριο
         call    mt_rec
         push    hl
         ld      de,D_STATE
@@ -140,9 +147,12 @@ mt_impact:
         call    mt_scan
         ld      a,MAX_DOME
         jr      c,mt_hit
-        ld      de,MAX_STRUCT * 256 + STRUCT_REC
+        ; οι δομές ως το ST_TOP (βήμα 157, src/top.asm): 19 us η θέση
+        ld      a,(ST_TOP)
+        ld      d,a
+        ld      e,STRUCT_REC
         call    mt_scan                 ; το HL είναι ήδη στο G_struct_tbl
-        ld      a,MAX_NODE
+        ld      a,(ST_TEND)              ; = MAX_DOME + ST_TOP· οι σημαίες μένουν
         jr      nc,mt_ground
         assert  G_struct_tbl == G_dome_tbl + MAX_DOME * DOME_REC
 
@@ -389,11 +399,22 @@ mt_rec:
 
 ; mt_byte — οκτώ βήματα της EC_MRND: A = L = ένα καινούργιο byte, H το
 ; προηγούμενο. Χαλάει B.
+; ΤΟ lfsr_hl (src/econ.asm) ΜΕΣΑ ΣΤΟΝ ΒΡΟΧΟ (βήμα 157): ο ίδιος Galois, με το
+; κρατούμενο του rr l για το bit που φεύγει, χωρίς call και ret — 11 us το
+; βήμα αντί για 20, 14 αντί για 25 όταν το bit είναι 1: ~80 us λιγότερα σε
+; κάθε κρούση και σε κάθε αρχή βροχής. Πληρώνουν το όριο σάρωσης των δομών της
+; κρούσης (+6 us), που σε κρούση πάνω σε κτίριο σταματά εκεί ούτως ή άλλως.
 mt_byte:
         ld      hl,(EC_MRND)
         ld      b,8
 mtb_lp:
-        call    lfsr_hl
+        srl     h
+        rr      l
+        jr      nc,mtb_nx
+        ld      a,h
+        xor     #B4
+        ld      h,a
+mtb_nx:
         djnz    mtb_lp
         ld      (EC_MRND),hl
         ld      a,l

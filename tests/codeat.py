@@ -17,15 +17,15 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 B6_END = 0x6C00                         # G_agent_fields: εκεί τελειώνει το b6code
 
 
-def _b6code():
+def _layout(name):
     for line in open(os.path.join(ROOT, "build", "layout.asm"), encoding="utf-8"):
         p = line.split()
-        if len(p) >= 3 and p[0] == "G_b6code":
+        if len(p) >= 3 and p[0] == name:
             return int(p[2].lstrip("#"), 16)
-    raise KeyError("G_b6code")
+    raise KeyError(name)
 
 
-B6_START = _b6code()
+B6_START = _layout("G_b6code")
 
 
 def in_b6(addr):
@@ -88,3 +88,39 @@ def phase(m):
     ph = t - (19 + CTRL_N)
     assert ph in (0, 1), f"ο μάρτυρας της φάσης μέτρησε {t} µs, όχι {19 + CTRL_N} ή {20 + CTRL_N}"
     return ph
+
+
+# --- ΤΟ ΟΡΙΟ ΣΑΡΩΣΗΣ (βήμα 157, src/top.asm) --------------------------------
+# Κάθε πέρασμα του πίνακα των δομών σταματά στο ST_TOP. Το γράφουν μόνο το
+# st_recount (wheel_reset: αρχή, φόρτωμα) και το st_raise (al_commit), οπότε
+# μια δοκιμή που γράφει τον πίνακα μόνη της γράφει και το όριο — αλλιώς τα
+# περάσματα δεν βλέπουν ό,τι έβαλε πάνω από αυτό. Οι πέντε μορφές είναι στο
+# node_deg, μετά τον τελευταίο κόμβο (src/const.asm).
+MAX_DOME, MAX_STRUCT = 64, 48
+TOP_AT = _layout("G_rt_nodes") + MAX_DOME + MAX_STRUCT     # ST_TEND
+
+
+def top_of(st):
+    """ST_TOP για τα bytes ενός πίνακα δομών, όπως το st_count: η ψηλότερη θέση
+    που δεν είναι άδεια + 1, ζυγό, τουλάχιστον 2."""
+    used = [s for s in range(len(st) // 8) if st[8 * s + 4]]
+    return (max(used) + 2) & ~1 if used else 2
+
+
+def top_bytes(t):
+    """Ό,τι γράφει το st_set για ST_TOP = t: ST_TEND, ST_THALF, ST_TOP,
+    ST_TZERO, ST_THI. Το test_sttop κρατά αυτό το αντίγραφο ίδιο με το st_set."""
+    assert t % 2 == 0 and 2 <= t <= MAX_STRUCT, t
+    return bytes([MAX_DOME + t, t // 2, t, 0, max(t - 16, 1)])
+
+
+def set_top(m, sym, t):
+    """Το όριο t, όπως το γράφει το st_set: οι μορφές και το rt_n."""
+    m.write_ram(TOP_AT, top_bytes(t))
+    m.poke(sym["RT_N"], MAX_DOME + t)
+
+
+def top(m):
+    """Το ST_TOP του m, και οι πέντε μορφές του."""
+    b = bytes(m.read_ram(TOP_AT, 5))
+    return b[2], b

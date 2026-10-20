@@ -255,7 +255,6 @@ bd_mflags:  ret                         ; εδώ το ορυχείο πληρώ�
         include "../src/graph.asm"
         include "../src/route.asm"
         include "../src/link.asm"           ; βήμα 85: το ui.asm το καλεί
-        include "../src/commit.asm"         ; βήμα 94: το al_commit, στην τράπεζα 1 του παιχνιδιού
         include "../src/ui.asm"
         include "../src/fit.asm"
         include "../src/rooms.asm"
@@ -296,6 +295,11 @@ vs_coins:                               ; βήμα 134: src/ship.asm, που ε�
         ; ΚΑΙ ΟΙ ΑΚΜΕΣ (βήμα 154), όπως στο παιχνίδι: η επίπεδη περιοχή περνούσε
         ; το #3F00 κατά 14 bytes, με τον πίνακα των δομών σε δύο σελίδες.
         include "../src/edges.asm"          ; βήμα 87: οι ακμές
+        ; ΚΑΙ ΤΟ ΟΡΙΟ ΣΑΡΩΣΗΣ (βήμα 157), στο παιχνίδι στο OV_R1, με το al_commit
+        ; που το ανεβάζει, στο παιχνίδι στο b1code: η επίπεδη περιοχή περνούσε
+        ; το #3F00 κατά 15 bytes — 5 κώδικα, και το align του rm_nbuf.
+        include "../src/commit.asm"         ; βήμα 94: το al_commit, στην τράπεζα 1 του παιχνιδιού
+        include "../src/top.asm"
         assert  $ <= #C000
         org     #7000
         incbin  "../build/bank1.bin"     ; εικονίδια m και l (§4.2)

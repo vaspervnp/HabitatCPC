@@ -63,6 +63,19 @@ MAX_CORR    equ 96
 ; ζει στις τρύπες τους είναι πια πάνω από τη στήλη NODE_CAP.
 STRUCT_CAP  equ 48
 NODE_CAP    equ MAX_DOME + STRUCT_CAP
+; ΤΟ ΟΡΙΟ ΣΑΡΩΣΗΣ (βήμα 157, src/top.asm): ST_TOP = η ψηλότερη θέση δομής σε
+; χρήση + 1, στρογγυλεμένη πάνω σε ζυγό (2-48), και κάθε πέρασμα του πίνακα
+; των δομών σταματά εκεί. Πέντε bytes στις θέσεις 112-116 του node_deg, που
+; δεν είναι κόμβος κανενός: φαίνονται από κάθε τράπεζα, σώζονται με τον γράφο
+; (SV_STATE) και το game_new τα μηδενίζει. Οι μορφές είναι για όσους τις
+; διαβάζουν: [ST_TEND, ST_THALF] είναι το BC του al_scans, [ST_TZERO, ST_THI] το
+; BC του ob_struct_sort. Τα γράφει μόνο το st_set.
+ST_TEND     equ G_rt_nodes + MAX_NODE   ; MAX_DOME + ST_TOP: ο πρώτος κόμβος έξω
+ST_THALF    equ ST_TEND + 1             ; ST_TOP / 2: τα ζεύγη του al_scans
+ST_TOP      equ ST_TEND + 2
+ST_TZERO    equ ST_TEND + 3             ; πάντα 0: το C του ob_struct_sort
+ST_THI      equ ST_TEND + 4             ; ST_TOP - 16, τουλάχιστον 1: η δεύτερη σελίδα
+        assert  MAX_NODE + 5 <= 128 && (MAX_STRUCT & 1) == 0
 ; ΤΟ DIST ΣΤΗΝ ΤΡΑΠΕΖΑ 1 (βήμα 155, DESIGN §6.4): οι 64 γραμμές των θόλων, 128
 ; bytes η καθεμία, με τις στήλες 0 ως NODE_CAP - 1· η τρύπα κάθε γραμμής είναι
 ; οι στήλες NODE_CAP-127. Από το βήμα 153 η γραμμή μιας δομής χρειάζεται μόνο

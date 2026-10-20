@@ -72,6 +72,7 @@ load_state:
         out     (c),c
         ld      a,(ec_full)             ; ο κώδικας της γεμάτης αποθήκης, όπως τον
         call    ec_setfull              ; αφήνει το st_check (βήμα 122)
+        call    st_recount              ; το όριο σάρωσης από τον πίνακα που ήρθε (157)
         ld      bc,GA_PORT + PAGE_B1
         out     (c),c
         ld      a,#5A
@@ -155,6 +156,10 @@ rtr_lp:
 
 ; asc_b5 / asc_b6 — του src/link.asm, που εδώ δεν υπάρχει (το lkd_corr του
 ; src/door.asm τα καλεί από το βήμα 154). Κρατούν τα πάντα.
+asc_b1:                                 ; βήμα 157: το st_recount (src/wheel.asm)
+        push    bc
+        ld      bc,GA_PORT + PAGE_B1
+        jr      asc_out
 asc_b5:
         push    bc
         ld      bc,GA_PORT + PAGE_B5
@@ -195,6 +200,7 @@ ng_dup:
         include "../src/crew.asm"           ; βήμα 91: οι ειδικότητες
         include "../src/bots.asm"           ; βήμα 92: τα ρομπότ (στο παιχνίδι στην τράπεζα 6)
         include "../src/wheel.asm"
+        include "../src/top.asm"            ; βήμα 157: το st_set του st_recount (στο παιχνίδι στο OV_R1)
         include "../src/sound.asm"
         include "../src/meteor.asm"
         include "../src/b6out.asm"          ; βήμα 110: ό,τι των needs/meteor θέλει άλλη τράπεζα
@@ -204,6 +210,8 @@ ng_dup:
 done_flag:   db 0
 tick_count:  dw 0
 pin_slot:    db 255
+bd_node:     db 0                   ; src/build.asm, που εδώ δεν υπάρχει: το st_raise
+                                    ; (src/top.asm, βήμα 157) το διαβάζει, κανείς δεν το καλεί
 al_brk:      db 0, 255              ; src/hud.asm (βήμα 119): η χαλασμένη μηχανή της γραμμής
                                     ; ειδοποιήσεων· το ec_break_d και το jp_one τη γράφουν
 

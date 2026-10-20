@@ -56,6 +56,7 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, "/home/vasilhs/cpcemu")
 import test_game as TG                                   # noqa: E402
 import cpc                                               # noqa: E402
+import codeat                                            # noqa: E402
 from test_terrain import model, HALF                     # noqa: E402
 
 PROBE, OUT = 0x3E80, 0x3EF0
@@ -235,6 +236,7 @@ def rules(sym, patch=(), n=600):
             k = rnd.randrange(NS)
             structs[8 * k + 2], structs[8 * k + 4] = K_MINE, rnd.choice([0, 1, 2])
             G.put(6, G.gs, structs)
+            codeat.set_top(m, sym, codeat.top_of(structs))      # το όριο σάρωσης (157)
         mine = any(structs[8 * k + 2] == K_MINE and structs[8 * k + 4] for k in range(NS))
         m.poke(sym["BD_HALF"], HALF)
         before = m.read_ram(sym["BD_KIND"], 9)
@@ -379,6 +381,7 @@ def commit_rules(sym, patch=(), n=300):
             structs[8 * s_ + 4] = 2 if k < 0.05 or (k < 0.9 and rnd.random() < 0.6) else 0
         G.put(6, G.gd, domes)
         G.put(6, G.gs, structs)
+        codeat.set_top(m, sym, codeat.top_of(structs))          # το όριο σάρωσης (157)
         deg = bytearray(m.read_ram(G.nodes, 112))           # MAX_NODE (96 ως το βήμα 155)
         for x in range(112):
             deg[x] = rnd.choice([0, 1, 3, 7, 8]) if rnd.random() < 0.3 else deg[x] & 7
@@ -547,6 +550,7 @@ def timing(sym):
             s_[8 * k + 4] = 0 if k == NS - 1 else 2
         G.put(6, G.gd, d)
         G.put(6, G.gs, s_)
+        codeat.set_top(m, sym, codeat.top_of(s_))               # το όριο σάρωσης (157)
         # το κόστος του ίδιου του κτίσματος, όπως το αφήνει το al_plan (βήμα 88)
         m.write_ram(sym["CR_METAL"], bytes([G.items[i][4], 0]))
         m.write_ram(sym["CR_BIOP"], bytes([G.items[i][5], 0]))

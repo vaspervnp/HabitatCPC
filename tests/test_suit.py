@@ -42,7 +42,8 @@
              ως το βήμα 89 ο ύπνος του γινόταν 255 στην πρώτη επίσκεψη.
   ΠΙΣΤΑ      χωρίς πλατφόρμα, μια έτοιμη «πίστα» αμέσως μετά τις δομές (ως
              το βήμα 153 ο διάδρομος 0 με κατεύθυνση 6· από το 156 το
-             node_occ): το rooms_rebuild δεν βρίσκει πίστα. Ως το βήμα 89
+             node_occ), με το όριο σάρωσης στις 48 (βήμα 157): το
+             rooms_rebuild δεν βρίσκει πίστα. Ως το βήμα 89
              κοίταζε 64 «δομές», οι 32 τελευταίες ήταν ο πίνακας διαδρόμων, και
              ο διάδρομος γινόταν πίστα στον κόμβο 96 — που δεν υπάρχει.
 
@@ -532,6 +533,9 @@ def pad(sym, g, patch=(), quiet=False):
     # το 156, με 48, το node_occ
     c = w.L["G_struct_tbl"] + 8 * EC.MAX_STRUCT
     w.put6(c, [0, 1, 6, 2, TO.DS_ACTIVE])
+    # ΜΕ ΟΛΕΣ ΤΙΣ ΘΕΣΕΙΣ (βήμα 157): το πέρασμα σταματά στο όριο σάρωσης, και
+    # με το όριο της αποικίας (μόνο το σκάφος) δεν θα έφτανε καν ως εκεί
+    codeat.set_top(w.m, sym, EC.MAX_STRUCT)
     if not w.probe(call(sym, "ROOMS_REBUILD")):
         return "ΠΙΣΤΑ: το rooms_rebuild δεν γύρισε"
     p = w.m.peek(w.g + 81)
@@ -575,7 +579,10 @@ def main():
     lk = find(sym["SU_TICK"], [0xCD] + w(sym["SU_LOCK"]), 96)
     sh = find(sym["HUD_ALERT"], [0xCD] + w(sym["SU_HUD"]), 8)
     lo = find(sym["LKS_OUT"], [0xCB, 0x8E], 8)                  # res 1,(hl)
-    rr = find(sym["ROOMS_REBUILD"], [0x01, 64, EC.MAX_STRUCT], 200)  # ld bc,48*256+64
+    # ld a,(ST_TOP) / ld b,a: από το βήμα 157 το rr_pad σταματά στο όριο σάρωσης
+    # (ως τότε ld bc,48*256+64), και το αρνητικό το κάνει 64
+    tp = codeat.TOP_AT + 2
+    rr = find(sym["ROOMS_REBUILD"], [0x3A, tp & 255, tp >> 8, 0x47], 200)
     # το su_tick γυρίζει στο nd_d2, όπως ως το βήμα 89: ξανά το nd_sat έξω
     ld = find(sym["SU_TICK"], [0xC3] + w(sym["ND_LOAD"]), 200)
     # βήμα 104: μετά το πρώτο lk_each του lk_air_out, pop bc / ret (ως το 103)
@@ -591,7 +598,7 @@ def main():
             ("ο μετρητής του HUD μόνο όταν φαίνεται", trip, sh and [(sh + k, 0) for k in range(3)]),
             ("χωρίς airlock στο su_lock", trip, lk and [(lk, 0x3E), (lk + 1, 0xFF), (lk + 2, 0)]),
             ("το lks_out χωρίς το F_INDOORS", meteor, lo and [(lo, 0), (lo + 1, 0)]),
-            ("64 δομές στο rooms_rebuild", pad, rr and [(rr + 2, 64)]),
+            ("64 δομές στο rooms_rebuild", pad, rr and [(rr, 0x3E), (rr + 1, 64), (rr + 2, 0)]),
             ("το nd_sat και έξω", site, ld and [(ld + 1 + k, v) for k, v in enumerate(w(sym["ND_D2"]))]),
             ("το lk_air_out χωρίς τον σωλήνα (βήμα 103)", tube,
              ao and [(ao + 3, 0xC1), (ao + 4, 0xC9)]),

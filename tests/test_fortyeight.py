@@ -29,7 +29,9 @@ test_place, test_oibuild, test_impact ρωτούν ένα-ένα τα κομμά
 Αρνητικά, με τον κώδικα πειραγμένο όπως ήταν ως το βήμα 155, μία θέση τη
 φορά: το bd_commit που ψάχνει 32 θέσεις (οι ΘΕΣΕΙΣ σταματούν στην 33η), η
 δρομολόγηση με 96 πηγές (rt_n: οι ΔΡΟΜΟΙ), το ob_struct_sort με 32 (η ΟΘΟΝΗ),
-το ef_lp του κύκλου ροής με 32 (το ΡΕΥΜΑ).
+το ef_lp του κύκλου ροής με 32 (το ΡΕΥΜΑ). Από το βήμα 157 τα τρία τελευταία
+στη θέση του ορίου σάρωσης (src/top.asm), που εδώ ανεβαίνει ως τις 48: το
+st_set χωρίς το rt_n, το ld bc,(ST_TZERO), το ld a,(ST_TOP).
 """
 import contextlib, io, os, sys
 
@@ -292,14 +294,26 @@ def negatives(sym):
 
     st = layout()["G_struct_tbl"]
     bc = find("BD_COMMIT", [0x01, EC.MAX_DOME + NS, NS >> 2], 120)
-    so = find("OB_STRUCT_SORT", [0x01, 0x00, NS - 16], 12)
+    # ΤΟ ΟΡΙΟ ΣΑΡΩΣΗΣ (βήμα 157, src/top.asm): το ob_struct_sort παίρνει το BC
+    # από το ld bc,(ST_TZERO), το ef_lp το B από το ld a,(ST_TOP), η
+    # δρομολόγηση το rt_n από το st_set (στο OV_R1, τράπεζα 1) — εκεί μπαίνουν
+    # τα 32 και τα 96 του βήματος 155
+    tz, tp = codeat.TOP_AT + 3, codeat.TOP_AT + 2
+    so = find("OB_STRUCT_SORT", [0xED, 0x4B, tz & 255, tz >> 8], 12)
     # το econ_flow ζει στο b6code (τράπεζα 6): codeat, και το πείραγμα στην 6
-    ef = codeat.find(m, sym["ECON_FLOW"], [0xDD, 0x21, st & 255, st >> 8, 0x06, NS], 120)
+    ef = codeat.find(m, sym["ECON_FLOW"], [0xDD, 0x21, st & 255, st >> 8, 0x3A,
+                                           tp & 255, tp >> 8], 120)
+    rn = bytes(m.read_ram(sym["ST_SET"], 24)).find(bytes([0x32, sym["RT_N"] & 255,
+                                                          sym["RT_N"] >> 8]))
     return [("το bd_commit που ψάχνει 32 θέσεις",
              bc and [("ram", bc + 1, EC.MAX_DOME + 32), ("ram", bc + 2, 8)]),
-            ("η δρομολόγηση με 96 πηγές (rt_n)", [("ram", sym["RT_N"], 96)]),
-            ("το ob_struct_sort με 32", so and [("ram", so + 2, 16)]),
-            ("το ef_lp με 32", ef and [("hole", (6, ef + 5 - 0x4000), 32)])]
+            ("η δρομολόγηση με 96 πηγές (rt_n)", rn >= 0 and
+             [("hole", (1, sym["ST_SET"] + rn + k - 0x4000), 0) for k in range(3)]
+             + [("ram", sym["RT_N"], 96)]),
+            ("το ob_struct_sort με 32", so and [("ram", so + k, v)
+                                                for k, v in enumerate([0x01, 0, 16, 0])]),
+            ("το ef_lp με 32", ef and [("hole", (6, ef + 4 + k - 0x4000), v)
+                                       for k, v in enumerate([0x3E, 32, 0])])]
 
 
 def main():

@@ -21,7 +21,9 @@
              αποίκων φέρνουν 50% εργάτες, 10% μηχανικούς, 20% βιολόγους, 10% γιατρούς
              και 10% φρουρούς (EC_LAND, 92-96, βήμα 91· 20% η καθεμία ως το 137)
   εργασίες   το είδος κάθε θέσης 255 (NO_JOB), τα άλλα bytes όπως ήταν
-  γράφος     κανένας βαθμός: ούτε θόλος ούτε ακμή
+  γράφος     κανένας βαθμός: ούτε θόλος ούτε ακμή· στις θέσεις 112-116 του
+             node_deg, που δεν είναι κόμβοι, το όριο σάρωσης (βήμα 157,
+             src/top.asm) του πίνακα: 2, μόνο το σκάφος
   τράπεζα 6  από τους πράκτορες ως το τέλος των διαδρόμων μηδέν, εκτός από:
              το σκάφος, δομή 0 (κόμβος 64): (0,0), K_SHIP, μέγεθος 0, ενεργό,
              ζωή 255· έξι αποίκους (ρόλοι 0, 0, 1, 2, 0, 0) στον κόμβο 64, ΕΞΩ
@@ -35,7 +37,7 @@
   οικονομία  όπως πάνω, με μέταλλο 75, βιοπλαστικό 45 και ταβάνι 8, και τα
              φαΐ 40, ανταλλακτικά 4 και 4 ζωντανοί του βήματος 119
   γράφος     0-1, 0-2, 2-64 (η πλατφόρμα), 0-65 (το airlock), και οι δύο
-             κατευθύνσεις· κανένας άλλος βαθμός
+             κατευθύνσεις· κανένας άλλος βαθμός, και το όριο σάρωσης 2
   τράπεζα 6  τρεις μικρούς θόλους (οξυγόνο, κατάλυμα, κυλικείο) στα (0,0),
              (16,0), (0,16), ενεργούς, με μία μηχανή — τη γεννήτρια οξυγόνου
              του πρώτου, 200 ζωή· την πλατφόρμα στο (-16,16)· το airlock στο
@@ -44,7 +46,7 @@
              ίδια στολή: τη γεμίζει το ng_people, που είναι κοινό
   κόσμος     θεμέλιο και κατοχή στα 4x4 των τεσσάρων και στα 2x2 του airlock,
              και μόνο κατοχή στα tiles των τριών διαδρόμων
-  και στις δύο: rt_dirty = 1, wh_slot = 0
+  και στις δύο: rt_dirty = 1, wh_slot = 0, rt_n = 64 + ST_TOP
 
 Σε οκτώ αφετηρίες η καθεμία: η πρώτη είναι το παιχνίδι όπως τρέχει, οι άλλες
 γεμίζουν με σκουπίδια ό,τι σκουπίζει ή γράφει το game_new και όλο το επίπεδο.
@@ -80,6 +82,7 @@ import cpc                                               # noqa: E402
 import route                                             # noqa: E402
 import reach                                             # noqa: E402
 import econ as EC                                        # noqa: E402
+import codeat                                            # noqa: E402
 from test_route import tiles_of                          # noqa: E402
 from test_corridor import Ends                           # noqa: E402
 
@@ -170,6 +173,13 @@ def econ_jobs(L, b2, stock, popcap, alive, seed):
     b2[lk:lk + EC.MAX_STRUCT] = b"\x3f" * EC.MAX_STRUCT
 
 
+def limit(L, b2, b6):
+    """Το όριο σάρωσης (βήμα 157): το st_recount του wheel_reset, στο τέλος του
+    game_new, από τον πίνακα που έμεινε."""
+    gs, top = L["G_struct_tbl"] - 0x4000, codeat.TOP_AT - 0x8000
+    b2[top:top + 5] = codeat.top_bytes(codeat.top_of(b6[gs:gs + 8 * EC.MAX_STRUCT]))
+
+
 def wipe6(L, before):
     """Η τράπεζα 6 από τους πράκτορες ως το worldinfo (βήμα 154· ως τότε ως το
     τέλος των διαδρόμων): μηδέν, και τρεις στήλες πρακτόρων στο 255."""
@@ -220,6 +230,7 @@ def rule_empty(L, before, fill):
     gs = L["G_struct_tbl"] - 0x4000
     b6[gs:gs + 6] = bytes([0, 0, K_SHIP, 0, DS_ACTIVE, 255])
     crew(L, b6, fill, [(r, SHIP_NODE) for r in CREW], 1)          # F_ALIVE: έξω
+    limit(L, b2, b6)
     for x in (-1, 0):                                    # κατοχή, όχι θεμέλιο
         for y in (-1, 0):
             b4[(y + 64) * 128 + x + 64] |= 0x10
@@ -245,6 +256,7 @@ def rule_colony(L, before, fill):
     b6[gs + 8:gs + 15] = bytes([LOCK[0], LOCK[1] & 255, LOCK[2], 0, DS_ACTIVE, 255, 1])
     b5[gc:gc + 12] = bytes([0, 1, 2, 4, 0, 2, 4, 4, 0, 65, 0, 2])   # στην 5, 4 bytes
     crew(L, b6, fill, ROLES, 3)                          # F_ALIVE + F_INDOORS
+    limit(L, b2, b6)
     # ο κόσμος: έδαφος και κατοχή κάτω από τα τέσσερα, το decor μένει — ΟΧΙ
     # θεμέλιο από το βήμα 94 (src/colony.asm: οι θόλοι στο έδαφός τους)...
     for cx, cy in [(d[0], d[1]) for d in DOMES] + [PAD[:2]]:
@@ -319,6 +331,9 @@ def check(sym, patch=(), n=8, timing=False, colony=False):
         if (m.peek(sym["RT_DIRTY"]), m.peek(sym["WH_SLOT"])) != (1, 0):
             return f"αφετηρία {case}: rt_dirty {m.peek(sym['RT_DIRTY'])}, wh_slot " \
                    f"{m.peek(sym['WH_SLOT'])}", t0
+        top = b2[codeat.TOP_AT - 0x8000 + 2]
+        if m.peek(sym["RT_N"]) != EC.MAX_DOME + top:
+            return f"αφετηρία {case}: rt_n {m.peek(sym['RT_N'])}, όχι {EC.MAX_DOME + top}", t0
     return None, t0
 
 

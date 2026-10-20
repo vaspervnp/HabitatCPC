@@ -302,7 +302,6 @@ bk_held:    dw BT_NONE * 257
 bk_ids:     defs BK_MAX
 bsg_was:    defs BSG_N, 255
 bs_gen:     db 255
-bs_pend:    db 0                        ; μένουν κουμπιά για το επόμενο frame
 bw_fitp:    db 255                      ; το μέγεθος του bw_fitm
 bw_fitm:    dw 0
 ; Τα τέσσερα μαζί και με αυτή τη σειρά: το bsd_lp τα βρίσκει ανά BAR_N.
@@ -337,8 +336,10 @@ sl_ctw:     db #00,#11,#22,#33,#44,#55,#66,#77,#88,#99,#AA,#BB,#CC,#DD,#EE,#FF
 sl_ctr:     db #00,#10,#20,#30,#40,#50,#60,#70,#80,#90,#A0,#B0,#C0,#D0,#E0,#F0
         assert  sl_ctw == sl_ctg + 16 && sl_ctr == sl_ctw + 16
 ; ΜΕΤΑ ΤΟΝ ΠΙΝΑΚΑ, όχι πριν (βήμα 155): τα 3 bytes τους γύρισαν το align 16 στο
-; μηδέν, αφού το rt_flush (src/graph.asm) πήρε 4 και το έσπρωξε 13 bytes.
+; μηδέν, αφού το rt_flush (src/graph.asm) πήρε 4 και το έσπρωξε 13 bytes. Και
+; το bs_pend από το βήμα 157, για το byte του ob_struct_sort (src/object.asm).
 sl_gly:     dw 0
 sl_id:      db 0
+bs_pend:    db 0                        ; μένουν κουμπιά για το επόμενο frame
         assert  sl_pi == sl_po + 1 && sl_ctl == sl_pi + 1
 
