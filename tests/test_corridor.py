@@ -74,7 +74,7 @@ from test_route import tiles_of                          # noqa: E402
 
 PROBE, OUT, CB, CBRET, PTR, LOG = 0x3E80, 0x3EF0, 0x3EC0, 0x3EE0, 0x3EF8, 0x3400
 SA, SB = 50, 51
-W_OCC_MASK, W_DUST, W_FOUNDATION = 0x30, 1, 7            # src/const.asm
+W_OCC_MASK, W_DUST, W_ROCK, W_FOUNDATION = 0x30, 1, 2, 7    # src/const.asm
 MAX_CORR, CORR_REC, MAX_DEGREE = 128, 4, 8            # 4 bytes από το βήμα 154· 128 από το 159
 CT_EMPTY = 254                                           # άδεια θέση: το C_A
 DK_CONN, DK_CROW, VIEW_TW, VIEW_TH = 3, 7, 20, 10
@@ -216,8 +216,8 @@ def check_rule(world, tiles, ends):
             bad += 1
             continue
         b = world[(y + 64) * 128 + x + 64]
-        if not (b & W_OCC_MASK) and (b & 7) in (0, W_DUST, W_FOUNDATION):
-            continue
+        if not (b & W_OCC_MASK) and (b & 7) in (0, W_DUST, W_ROCK, W_FOUNDATION):
+            continue                    # ο βράχος από το βήμα 161
         inside = False
         for cx, cy, size in ends:
             r = size + 2
@@ -312,7 +312,8 @@ def rules(sym, patch=(), n=1500):
                     f"{want[k_:k_ + 1]} ({len(tiles)} / {len(want)} tiles)")
         # ο έλεγχος σε τυχαίο κόσμο
         wr = random.Random(case)
-        world = bytes(wr.choice([0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 0x10, 0x20, 0x30, 0x17, 0x11])
+        world = bytes(wr.choice([0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 0x10, 0x20, 0x30, 0x17, 0x11,
+                                 0x42, 0x83, 0xC1, 0x12])   # το decor, βήμα 161
                       for _ in range(0x4000))
         ctypes.memmove(G.ptr[4], world, 0x4000)
         _, A, _ = G.run("CR_CHECK")
@@ -776,6 +777,9 @@ def main():
     cs = sym["CR_SIDE"]
     ipe = m.read_ram(cs, 20).find(bytes([0x96, 0xEA]))          # sub (hl) · jp pe
     i64 = m.read_ram(cs, 120).find(bytes([0xCB, 0x77, 0xC2]))    # bit 6,a · jp nz
+    # βήμα 161: and W_OCC_MASK + 7 · cp W_ROCK + 1 · ret c · cp W_FOUNDATION · ret z
+    irk = m.read_ram(ck, 30).find(bytes([0xE6, 0x37, 0xFE, 3, 0xD8, 0xFE, 7, 0xC8]))
+    assert irk >= 0, "δεν βρέθηκε ο κανόνας του βράχου στο cr_cb_chk"
     assert min(i2, i4, ik, iy, im, il, iv, ipe, i64, ih) >= 0, \
         "δεν βρέθηκαν τα inc a,ret z,inc a / add a,cr_dtab+4 / ld a,c / ret m / jr z / cp VIEW_TW+2" \
         " / jp pe / bit 6,a"
@@ -787,7 +791,12 @@ def main():
                           [(dr + i4 + 1, (m.peek(dr + i4 + 1) - 1) & 255)]),
                          ("αποτύπωμα size+1 στον έλεγχο", [(ki + ik + 2, 1)]),
                          ("το y έξω από τον κόσμο αόρατο", [(ck + iy, 0x78)]),
-                         ("σφραγίδα και έξω από τον κόσμο", [(st + im + 1, 0)])):
+                         ("σφραγίδα και έξω από τον κόσμο", [(st + im + 1, 0)]),
+                         # βήμα 161: ο κανόνας ως το 160, και δύο λάθη γύρω του
+                         ("βράχο απαγορευμένο (το bd_ok, ως το βήμα 160)", [(ck + irk + 3, 2)]),
+                         ("και βουνό", [(ck + irk + 3, 4)]),
+                         ("το decor να μετρά", [(ck + irk + 1, 0xF7)]),
+                         ("την κατοχή να μη μετρά", [(ck + irk + 1, 0x07)])):
         why = rules(sym, patch, n=400)
         if why:
             print(f"OK ΑΡΝΗΤΙΚΟ: με {label} αποτυγχάνει ({why[:90]})")

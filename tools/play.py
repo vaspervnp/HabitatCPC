@@ -38,6 +38,8 @@ STOCKS = ["νερό", "τροφή", "μετάλλ", "μέταλ", "βιοπλ", 
           "όπλα", "ρομπ", "άμυλο", "λαχαν", "βότ", "κρέας"]
 S_WATER, S_FOOD, S_ORE, S_METAL, S_BIOPL = 0, 1, 2, 3, 4
 O2_PER_COL = 2                     # tools/econ.py O2_PER_COLONIST
+# βήμα 161: 1 για ένα tile βράχου με κατοχή (#12, ένας διάδρομος από πάνω), 0 αλλιώς
+ROCK_CORR = bytes(1 if b & 0x37 == 0x12 else 0 for b in range(256))
 ROOM = dict(oxygen=0, canteen=1, quarters=2, green=3, factory=4, lab=5, medbay=6,
             control=7, storage=8, lounge=9)
 OXYGEN, METAL, PLASTIC, WEAPONS, CHIPS, ROBOTS, MEALS, SPARES, DRUGS, MEAT = range(10)
@@ -315,6 +317,8 @@ class Game:
             # οι διάδρομοι (βήμα 159): το CT_TOP, η ψηλότερη εγγραφή σε χρήση +1,
             # και πόσες από τις 128 είναι σε χρήση (με τις συνέχειες των στροφών)
             ct=p(self.L["G_rt_nodes"] + 117), nc=self.corr_used(),
+            # βήμα 161: πόσα tiles βράχου έχουν διάδρομο από πάνω (#12)
+            rk=bytes(self.world()).translate(ROCK_CORR).count(1),
             need={i: (a["o2"], a["water"], a["food"], a["sleep"], a["health"], a["suit"],
                       a["flags"]) for i, a in ag.items() if i < 80}))
 
@@ -1977,7 +1981,8 @@ def main():
                                   mm=r["mm"], bots=r["bots"], jfree=r["jfree"],
                                   jk=r["jk"], pp=r["pp"], pu=r["pu"], bat=r["bat"],
                                   bcap=r["bcap"], o2p=r["o2p"], o2u=r["o2u"], sk=r["sk"],
-                                  dm=r["dm"], ct=r["ct"], nc=r["nc"], hb=r.get("hb")) for r in G.rows],
+                                  dm=r["dm"], ct=r["ct"], nc=r["nc"], rk=r["rk"],
+                                  hb=r.get("hb")) for r in G.rows],
                        events=G.events, probes=G.probes, trades=G.trades), open(a.json, "w"))
     return 0
 

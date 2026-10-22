@@ -61,6 +61,11 @@ def ok_tile(b):
     return not b & 0x30 and b & 7 in (0, 1, 7)
 
 
+def ok_corr(b):
+    """Το cr_cb_chk (βήμα 161): και ο βράχος, για τα tiles ενός διαδρόμου."""
+    return not b & 0x30 and b & 7 in (0, 1, 2, 7)
+
+
 def widx(x, y):
     return (y + 64) * 128 + x + 64
 
@@ -204,7 +209,7 @@ def plan(world, domes, structs, dims, kind, param, w, h, cx, cy):
             if not (-64 <= x < 64 and -64 <= y < 64):
                 why["blocked"] = True
                 return None
-            if ok_tile(wl[widx(x, y)]):
+            if ok_corr(wl[widx(x, y)]):     # και βράχος (βήμα 161)
                 continue
             if in_dome(*a, x, y) or in_dome(*bb, x, y):
                 continue
