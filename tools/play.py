@@ -53,7 +53,7 @@ DROOM = dict(oxygen=4, canteen=3, quarters=2, green=5, factory=8, lab=9, medbay=
              control=1, storage=6, lounge=11)
 MACHINE_COUNT = (1, 4, 8)          # υποδοχές ανά μέγεθος s/m/l (tools/econ.py)
 GROW_AT = 14                       # από τόσους αποίκους τα «+» χτίζουν μεσαίο θόλο
-CORE_R = (14, 20, 26, 32)          # tiles γύρω από το κέντρο των θόλων, με τη σειρά
+CORE_R = (14, 20, 26, 32, 44, 60)  # tiles γύρω από το κέντρο των θόλων, με τη σειρά (44, 60: βήμα 160)
 SHORE_AHEAD = 1                    # βήμα 145: ελεύθερες θέσεις αντλίας που κρατά
 SHORE_R = 16                       # ως τόσα tiles από το σκάφος
 SHORE_AT = GROW_AT                 # από τόσους αποίκους
@@ -1435,6 +1435,12 @@ def plan_big():
         step("μέταλλο+", DOME_S, None, "factory", [METAL], zone="core", fill=True, grow=True, after=["εργοστάσιο"],
              when=demand("μέταλλο+", lambda G: st(G, S_METAL) < 40 and st(G, S_ORE) >= 30
                          and machines(G, METAL) < 1 + alive(G) // 10), again=True),
+        # ΔΕΝ ΧΤΙΖΕΤΑΙ ΠΟΤΕ (βρέθηκε στο βήμα 160): ζητείται κάτω από 40 μέταλλα
+        # και κοστίζει 30 + 30 του αποθέματος (reserve), οπότε κάθε αποικία μένει
+        # με ένα ορυχείο — και το μέταλλο+ έχει παράθυρο 38-39. Χωρίς το αδιέξοδο
+        # (x160a, x160c) τα ορυχεία γίνονται 2-5, με μεγάλη διασπορά: ACE1 1 30 ->
+        # 78, ACE1 0 68 -> 27 από αέρα χωρίς ανταλλακτικά. Μένει όπως ήταν, με
+        # επιλογή του χρήστη, για ένα βήμα μαζί με τα ανταλλακτικά (DESIGN §15).
         step("ορυχείο+", MINE, "ore", after=["ορυχείο"],
              when=demand("ορυχείο+", lambda G: st(G, S_ORE) < 10 and st(G, S_METAL) < 40
                          and len(G.rows[-1]["mines"]) < 1 + alive(G) // 10, 2.0), again=True),
@@ -1603,6 +1609,7 @@ def reserve(G, s):
 
 def try_step(G, s):
     """-> True αν το στάδιο έγινε (και φεύγει από τη λίστα)."""
+    G.need = None
     if s["item"] == "ship":
         ok = G.call_ship()
         r = G.rows[-1]
@@ -1642,6 +1649,7 @@ def try_step(G, s):
     if item == MINE and not any(t[2] == MINE_K and t[4] for t in G.structs()):
         m = 0                               # το πρώτο ορυχείο δωρεάν (βήμα 123)
     if G.stock(S_METAL) < m or G.stock(S_BIOPL) < bp:
+        G.need = (m, bp)                    # ΓΙΑ ΤΗ ΜΕΤΡΗΣΗ (βήμα 160): τι θέλει
         return False                        # ούτε χωρίς διαδρόμους: μην ψάξεις
     # ΟΙ ΔΥΟ ΤΕΛΕΥΤΑΙΕΣ ΘΕΣΕΙΣ ΔΟΜΩΝ ΓΙΑ ΤΙΣ ΑΝΤΛΙΕΣ (βήμα 147): στον 1048 0 οι 32
     # γέμισαν (11 ηλιακοί, 8 airlock, 7 αντλίες) και η όγδοη αντλία δεν έμπαινε·
@@ -1664,6 +1672,12 @@ def try_step(G, s):
         # θέση στους δεκατέσσερις, ενώ έξι αποθήκες βρήκαν.
         # ΚΑΙ ΣΤΑ 32 (βήμα 147): στα 120 sol τέσσερις αποικίες των 47-54 δεν
         # έβρισκαν θέση για δεύτερο Control ως τα 26, και το ταβάνι έμενε 54.
+        # ΚΑΙ ΣΤΑ 44 ΚΑΙ 60 (βήμα 160): μια αποικία που γέμισε την κοιλάδα της
+        # μεγαλώνει μακρόστενη, και οι θέσεις που περνούν τον κανόνα είναι πια
+        # μακριά από το κέντρο των θόλων — στο C0DE 0 του βήματος 159 από το
+        # sol 63 όλες έξω από τα 32 (19 σε όλο τον κόσμο, κανένα θερμοκήπιο,
+        # αποθήκη ή ιατρείο ως το τέλος, 361 μέταλλα στην αποθήκη). Με τα 60,
+        # 42 -> 65 άποικοι στο sol 120. Τα 60 είναι όλος ο κόσμος.
         for it in ((DOME_M, DOME_S) if item == DOME_M else (item,)):
             for R in (CORE_R if s["zone"] == "core" and G.grow else (None,)):
                 got = G.spot_zone(it, s["zone"], R)
@@ -1815,6 +1829,7 @@ def play(G, plan, sols):
         # κρατούσε για πάντα τα έξι μέταλλα του MEALS, και ο παίκτης πέθαινε
         # από πείνα με 300 άμυλο στην αποθήκη.
         held = False
+        G.hb = None                         # ΠΟΙΟ ΚΡΑΤΑ ΤΑ ΕΠΟΜΕΝΑ (βήμα 160), και γιατί
         for s in list(todo):
             cheap = s["item"] in ("ship", "fit")
             if held and not cheap and not s.get("aside"):
@@ -1824,6 +1839,8 @@ def play(G, plan, sols):
             if s["when"] and not s["when"](G):
                 continue
             if not cheap and G.sites() >= open_sites(G):
+                if not held and not s.get("aside"):
+                    G.hb = (s["name"], "sites")
                 held = held or not s.get("aside")
                 continue
             r = try_step(G, s)
@@ -1838,7 +1855,10 @@ def play(G, plan, sols):
                     todo.remove(s)
                 break                       # ένα πράγμα ανά δείγμα
             if not s.get("aside"):
+                if not held:
+                    G.hb = (s["name"], G.need)
                 held = True
+        G.rows[-1]["hb"] = G.hb
     return todo
 
 
@@ -1910,6 +1930,8 @@ def main():
     ap.add_argument("--dump", action="store_true")
     ap.add_argument("--tweak", default="", help="π.χ. spares=12,metal=250,nofault,fault=0xFF")
     ap.add_argument("--json", default=None, help="τα δείγματα και τα συμβάντα, για διαγράμματα")
+    ap.add_argument("--ram", default=None,
+                    help="στο τέλος, οι οκτώ τράπεζες των 16 KB σε ένα αρχείο (βήμα 160)")
     ap.add_argument("--tutorial", action="store_true",
                     help="ο κόσμος ως κόσμος του tutorial (βήμα 149): για --make και για το τρέξιμο")
     a = ap.parse_args()
@@ -1941,6 +1963,9 @@ def main():
         worldmap(G)
     if left:
         print("δεν χτίστηκαν:", ", ".join(s["name"] for s in left if not s["again"]))
+    if a.ram:
+        import ctypes
+        open(a.ram, "wb").write(b"".join(ctypes.string_at(G.bank(n), 0x4000) for n in range(8)))
     if a.json:
         import json
         json.dump(dict(seed=a.seed, planet=a.planet, plan=a.plan, tweak=a.tweak,
@@ -1952,7 +1977,7 @@ def main():
                                   mm=r["mm"], bots=r["bots"], jfree=r["jfree"],
                                   jk=r["jk"], pp=r["pp"], pu=r["pu"], bat=r["bat"],
                                   bcap=r["bcap"], o2p=r["o2p"], o2u=r["o2u"], sk=r["sk"],
-                                  dm=r["dm"], ct=r["ct"], nc=r["nc"]) for r in G.rows],
+                                  dm=r["dm"], ct=r["ct"], nc=r["nc"], hb=r.get("hb")) for r in G.rows],
                        events=G.events, probes=G.probes, trades=G.trades), open(a.json, "w"))
     return 0
 
