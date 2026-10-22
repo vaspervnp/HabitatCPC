@@ -64,7 +64,8 @@ oib_c:
         call    jt_clear                ; οι αρμοί από την αρχή (βήμα 96)
         ld      hl,OI_CORR
         ld      de,ob_corr
-        ld      b,MAX_CORR
+        ld      a,(CT_TOP)              ; ως την ψηλότερη σε χρήση (βήμα 159), τουλάχιστον 1
+        ld      b,a
         call    oi_pass
         ld      (oi_nc),a
 oib_s:

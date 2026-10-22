@@ -1066,6 +1066,20 @@ crm_next:
         ld      a,1
         jp      dt_end                  ; η 1 (src/dirty.asm)· το A μένει
 crm_got:
+        ; ΤΟ ΟΡΙΟ ΤΩΝ ΔΙΑΔΡΟΜΩΝ (βήμα 159, CT_TOP): η θέση είναι MAX_CORR - B, και
+        ; η διαδρομή πιάνει cr_n εγγραφές από εκεί — το όριο ανεβαίνει ως το
+        ; τέλος της, και ποτέ δεν κατεβαίνει. Ως 128: μια στροφή δεν ξεκινά
+        ; στην τελευταία θέση (crm_nx). Χαλάει τον C, που ξαναγράφεται πιο κάτω.
+        ld      a,(cr_n)
+        sub     b
+        add     a,MAX_CORR
+        ld      c,a
+        ld      a,(CT_TOP)
+        cp      c
+        jr      nc,crm_top
+        ld      a,c
+        ld      (CT_TOP),a
+crm_top:
         ld      de,(cr_d0)              ; E = d0, D = l0
         ld      a,(cr_from)
         ld      c,a

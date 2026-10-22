@@ -46,6 +46,26 @@ wheel_reset:
         call    ec_setfull              ; η αποθήκη χωρά ως τον πρώτο κύκλο ροής (βήμα 122)
         ld      a,#80                   ; οι εισβολείς: η θέση 15 τους μετρά (βήμα 111)
         ld      (fo_n),a
+; ct_recount — ΤΟ ΟΡΙΟ ΤΩΝ ΔΙΑΔΡΟΜΩΝ ΑΠΟ ΤΟΝ ΠΙΝΑΚΑ (βήμα 159, src/const.asm):
+; CT_TOP = η ψηλότερη εγγραφή που δεν είναι CT_EMPTY + 1, από την 127 προς τα
+; κάτω, με την 5 μέσα· 1 χωρίς κανέναν διάδρομο, ώστε ένα djnz να μη γυρίσει
+; 256 φορές. Πέφτει στο st_recount, που ξαναβάζει την 6.
+ct_recount:
+        call    asc_b5
+        ld      hl,G_corr_tbl + (MAX_CORR - 1) * CORR_REC
+        ld      de,-CORR_REC
+        ld      b,MAX_CORR
+        ld      a,CT_EMPTY
+ctr_lp:
+        cp      (hl)
+        jr      nz,ctr_got
+        add     hl,de
+        djnz    ctr_lp
+        inc     b                       ; κανένας διάδρομος: 1
+ctr_got:
+        ld      a,b
+        ld      (CT_TOP),a
+        ; fall through
 ; st_recount — ΤΟ ΟΡΙΟ ΣΑΡΩΣΗΣ ΑΠΟ ΤΟΝ ΠΙΝΑΚΑ (βήμα 157, src/top.asm): το
 ; st_count με την 6, το st_set με την 1, που μένει. Εδώ περνούν η αρχή κάθε
 ; παιχνιδιού, η αποικία δοκιμών και κάθε φόρτωμα· και οι δοκιμές που γράφουν

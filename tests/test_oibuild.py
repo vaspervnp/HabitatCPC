@@ -70,6 +70,10 @@
 το βήμα 157 κάθε σκηνή γράφει και το όριο σάρωσης του πίνακά της
 (codeat.set_top): το ob_struct_sort σταματά εκεί, και οι σκηνές του 155 το
 έχουν ως 32.
+
+ΒΗΜΑ 159, 128 διάδρομοι: το δεύτερο πέρασμα γράφει και τις εγγραφές 96-127,
+από τη δική τους ζαριά (crnd)· το πρώτο τις αφήνει άδειες. Κάθε σκηνή γράφει
+και το CT_TOP της (codeat.set_ctop): το oi_build των διαδρόμων σταματά εκεί.
 """
 import ctypes, os, random, sys
 
@@ -85,6 +89,7 @@ import codeat                                            # noqa: E402
 
 PROBE = 0x3E80
 OLD_NS = 32                 # οι δομές ως το βήμα 155: η ζαριά τους μένει ίδια
+OLD_NC = 96                 # οι διάδρομοι ως το βήμα 158: το ίδιο
 OI_REC = 5
 def _obj_index():
     for line in open(os.path.join(ROOT, "build", "layout.asm"), encoding="utf-8"):
@@ -127,7 +132,14 @@ CEIL = {
 # ταβάνια. Με δομές και στις θέσεις 32-47 (xrnd) οι δομές 41.665, πάνω από το
 # ταβάνι των 32 — 16 sprites ακόμη το πολύ —, τα όλα 139.899 και με τις
 # φιγούρες 141.659, κάτω από τα δικά τους.
-CEIL48 = {"δομές": 41700, "όλα": 148201, "όλα + φιγούρες": 147178}
+# Βήμα 159: οι διάδρομοι 128, με όριο σάρωσης (CT_TOP). Στις σκηνές ως το 158
+# το πέρασμα σταματά στην ψηλότερη εγγραφή τους: οι διάδρομοι 108.476 (108.466),
+# τα όλα 139.468 — το ld a,(CT_TOP) · ld b,a είναι 3 us πάνω από το ld b,96, και
+# το ευρετήριο ξεκινά 128 bytes πιο πάνω (#7A04 αντί για #7984), οπότε αλλάζει
+# πού περνά σελίδα. Με διαδρόμους και στις 96-127 (crnd, ως 32 ζωντανούς ακόμη)
+# οι διάδρομοι 148.865, τα όλα 178.596, με τις φιγούρες 179.517: η δουλειά των
+# ζωντανών, όχι η σάρωση — 32 άδειες θέσεις κοστίζουν ~3.700 us.
+CEIL48 = {"δομές": 41700, "διάδρομοι": 148900, "όλα": 178650, "όλα + φιγούρες": 179550}
 KIND = {DOME: "θόλοι", CORR: "διάδρομοι", STRUCT: "δομές",
         DOME | CORR | STRUCT: "όλα", 15: "όλα + φιγούρες"}
 
@@ -342,8 +354,12 @@ def scene(R, a, rnd, case, extra=True):
     col.struct[:] = (bytes(rnd.randrange(256) for _ in range(OLD_NS * S.STRUCT_REC))
                      + bytes(xrnd.randrange(256)
                              for _ in range((S.MAX_STRUCT - OLD_NS) * S.STRUCT_REC)))
-    # ΟΣΑ ΤΥΧΑΙΑ ΚΑΙ ΩΣ ΤΟ ΒΗΜΑ 153 (96 x 5): οι 300 καταστάσεις μένουν ίδιες
-    col.corr[:] = bytes(rnd.randrange(256) for _ in range(96 * 5))[:len(col.corr)]
+    # ΟΣΑ ΤΥΧΑΙΑ ΚΑΙ ΩΣ ΤΟ ΒΗΜΑ 153 (96 x 5): οι 300 καταστάσεις μένουν ίδιες.
+    # Οι εγγραφές 96-127 (βήμα 159) από δική τους ζαριά, crnd, όπως οι δομές 32-47.
+    crnd = random.Random(15900 + case)
+    old = (OLD_NC + 1) * S.CORR_REC
+    col.corr[:old] = bytes(rnd.randrange(256) for _ in range(96 * 5))[:old]
+    col.corr[old:] = bytes(crnd.randrange(256) for _ in range(len(col.corr) - old))
     hub = rnd.randrange(-100, 100), rnd.randrange(-100, 100)
 
     def near(c, r, z=None):
@@ -368,18 +384,22 @@ def scene(R, a, rnd, case, extra=True):
     dens = 0.0 if not ids else rnd.choice([0.0, 0.1, 0.4, 0.8])
     for i in range(S.MAX_CORR):
         b = i * S.CORR_REC
+        z = rnd if i < OLD_NC else crnd
         prev = col.corr[b - S.CORR_REC: b] if i else bytes([S.CT_EMPTY]) * 4
-        if i and prev[0] < S.CT_EMPTY and prev[2] & 1 and rnd.random() < 0.6:
+        if i >= OLD_NC and not extra:
+            col.corr[b] = S.CT_EMPTY                     # οι σκηνές ως το βήμα 158
+        elif i and prev[0] < S.CT_EMPTY and prev[2] & 1 and z.random() < 0.6:
             # η συνέχεια μιας διαγωνίου: αξονική, C_A = C_B = 255 (crm_put)
-            col.corr[b:b + 4] = bytes([255, 255, rnd.choice([0, 2, 4, 6]),
-                                       rnd.choice([0, 1, 2, 3, 6])])
-        elif rnd.random() < dens or (edges and ids and i in (0, 95) and rnd.random() < 0.5):
-            col.corr[b:b + 4] = bytes([rnd.choice(ids), rnd.choice(ids), rnd.randrange(8),
-                                       rnd.choice([1, 1, 2, 3, 4, 7, 0])])
-            rnd.choice([S.DS_BUILDING, S.DS_ACTIVE])     # ως το βήμα 153 η κατάσταση
+            col.corr[b:b + 4] = bytes([255, 255, z.choice([0, 2, 4, 6]),
+                                       z.choice([0, 1, 2, 3, 6])])
+        elif z.random() < dens or (edges and ids and i in (0, 95, 96, 127)
+                                   and z.random() < 0.5):
+            col.corr[b:b + 4] = bytes([z.choice(ids), z.choice(ids), z.randrange(8),
+                                       z.choice([1, 1, 2, 3, 4, 7, 0])])
+            z.choice([S.DS_BUILDING, S.DS_ACTIVE])       # ως το βήμα 153 η κατάσταση
         else:
             col.corr[b] = S.CT_EMPTY                     # άδεια (βήμα 154: το C_A)
-    col.corr[S.MAX_CORR * S.CORR_REC] = S.CT_EMPTY       # η 97η, πάντα άδεια
+    col.corr[S.MAX_CORR * S.CORR_REC] = S.CT_EMPTY       # η 129η, πάντα άδεια
     ns = rnd.choice([0, 0, 1, 2, 5, 12, 32])
     sl = set(rnd.sample(range(OLD_NS), ns))
     if edges:
@@ -412,10 +432,16 @@ def scene(R, a, rnd, case, extra=True):
     R.put(6, L["G_dome_tbl"] - 0x4000, col.dome)
     R.put(6, L["G_struct_tbl"] - 0x4000, col.struct)
     codeat.set_top(m, sym, codeat.top_of(col.struct))   # το όριο σάρωσης (βήμα 157)
+    codeat.set_ctop(m, codeat.ctop_of(col.corr))        # και των διαδρόμων (βήμα 159)
     R.put(5, L["G_corr_tbl"] - 0x4000, col.corr)        # στην τράπεζα 5 (βήμα 154)
-    # το παλιό ευρετήριο και οι μετρητές του: ό,τι δεν ξαναχτίζεται μένει
-    R.put(5, OI_DOME - 0x4000, bytes(rnd.randrange(256)
-                                     for _ in range(OI_STRUCT + OLD_NS * OI_REC - OI_DOME))
+    # το παλιό ευρετήριο και οι μετρητές του: ό,τι δεν ξαναχτίζεται μένει. Οι
+    # θόλοι και οι διάδρομοι 0-95 από το rnd όπως ως το βήμα 158, οι 96-127 από
+    # το crnd, οι δομές 0-31 από το rnd, οι 32-47 από το xrnd.
+    head = bytes(rnd.randrange(256) for _ in range(OI_CORR + OLD_NC * OI_REC - OI_DOME))
+    tail = bytes(rnd.randrange(256) for _ in range(OLD_NS * OI_REC))
+    R.put(5, OI_DOME - 0x4000, head
+          + bytes(crnd.randrange(256) for _ in range((S.MAX_CORR - OLD_NC) * OI_REC))
+          + tail
           + bytes(xrnd.randrange(256) for _ in range((S.MAX_STRUCT - OLD_NS) * OI_REC)))
     for v in ("OI_ND", "OI_NC", "OI_NS", "ST_N"):
         m.poke(sym[v], rnd.randrange(256))
@@ -532,7 +558,7 @@ def main():
     fails = 0
     times, times48 = {}, {}
     for extra, tm, what in ((False, times, "οι 300 σκηνές του βήματος 155, δομές ως 32"),
-                            (True, times48, "οι ίδιες με δομές και στις 32-47")):
+                            (True, times48, "οι ίδιες με δομές και στις 32-47, διαδρόμους στις 96-127")):
         why = run(sym, a, times=tm, extra=extra)
         if why:
             print(f"ΑΠΟΤΥΧΙΑ: {what}: {why}")
@@ -543,14 +569,15 @@ def main():
     print(f"    ΦΑΣΗ: ο μάρτυρας των {codeat.CTRL_N} nop μετρά +{times.get('_ph', 0)} µs από εδώ, "
           f"και αφαιρείται από κάθε μέτρηση (βήμα 155, tests/codeat.py)")
     for tm, ceil, why in ((times, CEIL, "βήματα 82, 86, 89 και 96"),
-                          (times48, CEIL48, "βήμα 156, δομές ως 48")):
+                          (times48, CEIL48, "βήματα 156 και 159, δομές ως 48, διάδρομοι ως 128")):
         for k, c in ceil.items():
             t = tm.get(k, 0)
             if t > c:
                 print(f"ΑΠΟΤΥΧΙΑ: {k} {t} us > {c} ({why})")
                 fails += 1
             else:
-                print(f"OK {k:13s} {t:6d} us <= {c}" + ("" if ceil is CEIL else "   (ως 48 δομές)"))
+                print(f"OK {k:13s} {t:6d} us <= {c}" + ("" if ceil is CEIL else
+                                                         "   (ως 48 δομές, 128 διάδρομοι)"))
 
     m = cpc.CPC()
     m.run_frames(60)

@@ -11,6 +11,8 @@
         include "../src/const.asm"
         include "../build/sprite_consts.asm"
         include "../build/layout.asm"
+        include "../build/corner_spr.asm"   ; τα σχέδια των γωνιών στην τράπεζα 6 (βήμα 159)
+        include "../build/col_top.asm"      ; το COL_CTOP (βήμα 159, tools/mkcolony.py)
 
 FLIPTAB     equ G_flip_mode0
 
@@ -267,7 +269,11 @@ bd_mflags:  ret                         ; εδώ το ορυχείο πληρώ�
         assert  $ <= #3F00
 
         org     #8000
-        incbin  "../build/page2.bin"
+        ; Το CT_TOP της αποικίας (βήμα 159), όπως θα το έγραφε το ct_recount
+        ; όταν φορτώνεται: tools/mkcolony.py. Η εικόνα έχει 128 (το πλήρες).
+        incbin  "../build/page2.bin", 0, CT_TOP - #8000
+        db      COL_CTOP
+        incbin  "../build/page2.bin", CT_TOP - #8000 + 1
         ; Πάνω από το αρχείο του φαντάσματος, όπου το παιχνίδι έχει τον κώδικα
         ; της τράπεζας 2 και εδώ δεν υπάρχει τίποτα: πάντα στο παράθυρο.
         org     PAGE2_CODE
@@ -308,11 +314,10 @@ vs_coins:                               ; βήμα 134: src/ship.asm, που ε�
         org     #0000
         incbin  "../build/world_col.bin"
         org     B5_BASE                 ; οι μηχανές στην τράπεζα 5 (βήμα 85)
-        incbin  "../build/bank5_col.bin", 0, G_b5code - B5_BASE   ; και οι διάδρομοι (βήμα 154)
+        incbin  "../build/bank5_col.bin"   ; και οι διάδρομοι (βήμα 154)
         ; οι κοντές στροφές ήταν εδώ ως το βήμα 128 (src/bend.asm): πήγαν στο
-        ; b6code, εδώ στο #8000 με τα υπόλοιπα· και εδώ τα σχέδια των γωνιών
-        org     G_b5code
-        include "../build/corner_spr.asm"
+        ; b6code, εδώ στο #8000 με τα υπόλοιπα· και τα σχέδια των γωνιών ως το
+        ; βήμα 158, που είναι πια στην τράπεζα 6 (bank6_col.bin, corner_spr)
         org     #8000
         incbin  "../build/bank6_col.bin"
         org     #C000

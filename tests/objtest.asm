@@ -17,6 +17,8 @@ REPS        equ 1
         include "../src/const.asm"
         include "../build/sprite_consts.asm"
         include "../build/layout.asm"
+        include "../build/corner_spr.asm"   ; τα σχέδια των γωνιών στην τράπεζα 6 (βήμα 159)
+        include "../build/col_top.asm"      ; το COL_CTOP (βήμα 159, tools/mkcolony.py)
 
 FLIPTAB     equ G_flip_mode0
 
@@ -308,7 +310,11 @@ cr_d1:  db 0
         include "../src/sound.asm"
 
         org     #8000
-        incbin  "../build/page2.bin"
+        ; Το CT_TOP της αποικίας (βήμα 159), όπως θα το έγραφε το ct_recount
+        ; όταν φορτώνεται: tools/mkcolony.py. Η εικόνα έχει 128 (το πλήρες).
+        incbin  "../build/page2.bin", 0, CT_TOP - #8000
+        db      COL_CTOP
+        incbin  "../build/page2.bin", CT_TOP - #8000 + 1
         org     #7000
         incbin  "../build/bank1.bin"     ; εικονίδια m και l (§4.2)
 
@@ -316,9 +322,8 @@ cr_d1:  db 0
         org     #0000                   ; τράπεζα 4 — το επίπεδο κόσμου
         incbin  "../build/world_col.bin"
         org     B5_BASE                 ; τράπεζα 5 — οι μηχανές (βήμα 85)
-        incbin  "../build/bank5_col.bin", 0, G_b5code - B5_BASE   ; και οι διάδρομοι (βήμα 154)
-        org     G_b5code                ; και τα σχέδια των γωνιών (βήμα 129)
-        include "../build/corner_spr.asm"
+        incbin  "../build/bank5_col.bin"   ; και οι διάδρομοι (βήμα 154)· τα σχέδια
+                                        ; των γωνιών στην τράπεζα 6 από το βήμα 159
         org     #8000                   ; τράπεζα 6 — τεταρτημόρια ΚΑΙ πίνακες
         incbin  "../build/bank6_col.bin"
         org     #C000                   ; τράπεζα 7

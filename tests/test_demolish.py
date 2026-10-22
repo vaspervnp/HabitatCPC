@@ -74,6 +74,7 @@ F_ALIVE, F_INDOORS, F_WORKING = 1, 2, 32
 NO_TASK, SUIT_TRIP = 255, 70
 AF_DEMO = 2
 DK_RSIZE, DK_RECT = 9, 10                                # src/const.asm (βήμα 101)
+MAX_CORR = 128                                           # src/const.asm (βήμα 159· 96 ως το 158)
 MS = 1000
 CEIL_US = 150_000         # ο χειρότερος γύρος από το FIRE ως να αδειάσει η λίστα:
                           # 92 ms το εργοστάσιο, 125 ο θόλος 0 της αποικίας
@@ -121,7 +122,7 @@ def corridors(G):
     t = L["G_corr_tbl"] - 0x4000
     b5 = G.bank(5)
     return [list(b5[t + 4 * k:t + 4 * k + 4]) + [0 if b5[t + 4 * k] == 254 else 2]
-            for k in range(96)]
+            for k in range(MAX_CORR)]
 
 
 def jobs(G):

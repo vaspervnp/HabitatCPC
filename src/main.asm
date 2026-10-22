@@ -19,6 +19,7 @@
         include "const.asm"
         include "../build/sprite_consts.asm"
         include "../build/layout.asm"
+        include "../build/corner_spr.asm"   ; τα σχέδια των γωνιών στην τράπεζα 6 (βήμα 159)
 
 FLIPTAB     equ G_flip_mode0
 HAS_DISC    equ 1                        ; το ui.asm δίνει S/L μόνο εδώ (§11)
@@ -463,19 +464,14 @@ zz_b1code_end:
         bankset 1
         org     #0000
         incbin  "../build/world_new.bin"
-        org     B5_BASE                 ; οι μηχανές στην τράπεζα 5 (βήμα 85)
-        incbin  "../build/bank5.bin", 0, G_b5code - B5_BASE
-        ; ΚΑΙ ΚΩΔΙΚΑΣ ΠΑΝΩ ΤΟΥΣ (βήμα 97): οι κοντές στροφές, που έτρεχαν με την
-        ; 5 στο παράθυρο. Από το βήμα 129 το src/bend.asm είναι στο b6code, και
-        ; εδώ τα σχέδια των γωνιών (src/corner.asm), που τα ζωγραφίζει το
-        ; ob_put_in με την 5 μέσα, όπως τους αρμούς. Η BANK5.BIN του δίσκου
+        org     B5_BASE                 ; οι διάδρομοι, το ευρετήριο και οι αρμοί (βήμα 155)
+        incbin  "../build/bank5.bin"
+        ; ΧΩΡΙΣ ΚΩΔΙΚΑ ΑΠΟ ΤΟ ΒΗΜΑ 159: η δέσμευση b5code (βήμα 97, οι κοντές
+        ; στροφές· από το 129 τα σχέδια των γωνιών) έφυγε, και τα σχέδια είναι
+        ; στην τράπεζα 6 (tools/pack.py, corner_spr). Η BANK5.BIN του δίσκου
         ; είναι ολόκληρο αυτό το κομμάτι (tools/mkdsk.py).
-B5C_MAX     equ 248                     ; = B5C_MAX του tools/pack.py (272 ως το βήμα 99: 24 στα σήματα των μηχανών)
-        org     G_b5code
-        include "../build/corner_spr.asm"   ; βήμα 129: τα σχέδια των γωνιών
-zz_b5code_end:
-        assert  zz_b5code_end <= G_b5code + B5C_MAX
-        assert  G_b5code + B5C_MAX == #8000
+        assert  G_corr_tbl == B5_BASE && G_obj_index == G_corr_tbl + (MAX_CORR + 1) * CORR_REC
+        assert  OI_END <= G_joints
         save    "../build/bank5c.bin", B5_BASE, #8000 - B5_BASE
         ; Η ΤΡΑΠΕΖΑ 6 ΣΕ ΔΥΟ ΚΟΜΜΑΤΙΑ, με τον κώδικα του τροχού στη μέση (βήμα
         ; 92), όπως η 7 με τα κείμενα. Τα bytes γράφονται στη φυσική θέση του

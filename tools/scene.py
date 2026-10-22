@@ -44,7 +44,7 @@ CORR_REC = 4
 C_A, C_B, C_DIR, C_LEN = range(4)
 CT_EMPTY, CT_CONT = 254, 255
 
-MAX_DOME, MAX_STRUCT, MAX_CORR = 64, 48, 96   # 48 δομές από το βήμα 156
+MAX_DOME, MAX_STRUCT, MAX_CORR = 64, 48, 128  # 48 δομές από το βήμα 156, 128 διάδρομοι από το 159
 DS_EMPTY, DS_BUILDING, DS_ACTIVE = 0, 1, 2
 
 SIZES = ("s", "m", "l")

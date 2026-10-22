@@ -103,7 +103,8 @@ dmd_corr:
         ; τότε το έλεγε το byte της κατάστασης, που δεν υπάρχει πια).
         call    asc_b5
         ld      hl,G_corr_tbl
-        ld      b,MAX_CORR
+        ld      a,(CT_TOP)              ; ως την ψηλότερη σε χρήση (βήμα 159)
+        ld      b,a
 dmk_lp:
         push    bc
         push    hl
@@ -553,7 +554,8 @@ dmw_fn:
         cp      MAX_NODE
         jr      c,dmw_fp
         ld      hl,G_corr_tbl
-        ld      b,MAX_CORR
+        ld      a,(CT_TOP)              ; ως την ψηλότερη σε χρήση (βήμα 159)
+        ld      b,a
 dmw_cl:
         push    bc
         push    hl

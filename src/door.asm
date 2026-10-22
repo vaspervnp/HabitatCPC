@@ -59,7 +59,8 @@ lkd_st:
 lkd_corr:
         call    asc_b5
         ld      hl,G_corr_tbl
-        ld      b,MAX_CORR
+        ld      a,(CT_TOP)              ; ως την ψηλότερη σε χρήση (βήμα 159)
+        ld      b,a
 lkd_lp:
         push    bc
         push    hl

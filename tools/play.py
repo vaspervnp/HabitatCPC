@@ -312,8 +312,16 @@ class Game:
             sites=self.sites(), jobs=len(jobs),
             jk=[j[0] for j in jobs], jfree=sum(1 for j in jobs if j[2] == 255),
             mile=p(X["EC_MILE"]),
+            # οι διάδρομοι (βήμα 159): το CT_TOP, η ψηλότερη εγγραφή σε χρήση +1,
+            # και πόσες από τις 128 είναι σε χρήση (με τις συνέχειες των στροφών)
+            ct=p(self.L["G_rt_nodes"] + 117), nc=self.corr_used(),
             need={i: (a["o2"], a["water"], a["food"], a["sleep"], a["health"], a["suit"],
                       a["flags"]) for i, a in ag.items() if i < 80}))
+
+    def corr_used(self):
+        """Πόσες από τις 128 εγγραφές διαδρόμων (τράπεζα 5) δεν είναι άδειες."""
+        b5, c0 = self.bank(5), self.L["G_corr_tbl"] - 0x4000
+        return sum(1 for k in range(128) if b5[c0 + 4 * k] != 254)
 
     def watch(self):
         """Ο,τι άλλαξε από το προηγούμενο δείγμα: κτίσματα που χτυπήθηκαν,
@@ -1944,7 +1952,7 @@ def main():
                                   mm=r["mm"], bots=r["bots"], jfree=r["jfree"],
                                   jk=r["jk"], pp=r["pp"], pu=r["pu"], bat=r["bat"],
                                   bcap=r["bcap"], o2p=r["o2p"], o2u=r["o2u"], sk=r["sk"],
-                                  dm=r["dm"]) for r in G.rows],
+                                  dm=r["dm"], ct=r["ct"], nc=r["nc"]) for r in G.rows],
                        events=G.events, probes=G.probes, trades=G.trades), open(a.json, "w"))
     return 0
 

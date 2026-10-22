@@ -124,3 +124,32 @@ def top(m):
     """Το ST_TOP του m, και οι πέντε μορφές του."""
     b = bytes(m.read_ram(TOP_AT, 5))
     return b[2], b
+
+
+# ΤΟ ΟΡΙΟ ΤΩΝ ΔΙΑΔΡΟΜΩΝ (βήμα 159, CT_TOP, src/const.asm): ένα byte στη θέση
+# 117 του node_deg, αμέσως μετά τις πέντε μορφές του ST_TOP. Το γράφουν το
+# ct_recount (wheel_reset: αρχή, φόρτωμα) και το cr_commit· μια δοκιμή που
+# γράφει τον πίνακα των διαδρόμων μόνη της γράφει και αυτό, αλλιώς το
+# ευρετήριο, το lk_done και η κατεδάφιση δεν βλέπουν ό,τι έβαλε πάνω από αυτό.
+MAX_CORR, CORR_REC, CT_EMPTY = 128, 4, 254
+CT_AT = TOP_AT + 5
+
+
+def ctop_of(ct):
+    """CT_TOP για τα bytes ενός πίνακα διαδρόμων, όπως το ct_recount: η
+    ψηλότερη εγγραφή που δεν είναι CT_EMPTY + 1 (και η συνέχεια μιας στροφής),
+    τουλάχιστον 1. Κοιτάζει ως MAX_CORR εγγραφές: την άδεια μετά από αυτές όχι."""
+    n = min(len(ct) // CORR_REC, MAX_CORR)
+    used = [k for k in range(n) if ct[CORR_REC * k] != CT_EMPTY]
+    return max(used) + 1 if used else 1
+
+
+def set_ctop(m, n):
+    """Το όριο των διαδρόμων n (1-128) στο m."""
+    assert 1 <= n <= MAX_CORR, n
+    m.poke(CT_AT, n)
+
+
+def ctop(m):
+    """Το CT_TOP του m."""
+    return m.peek(CT_AT)

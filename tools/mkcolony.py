@@ -4,6 +4,7 @@
     build/bank6_col.bin   η τράπεζα 6 με τους πίνακες της αποικίας μέσα
     build/bank5_col.bin   η τράπεζα 5 με τους διαδρόμους της (βήμα 154)
     build/world_col.bin   το επίπεδο κόσμου με τα θεμέλια των θόλων
+    build/col_top.asm     το COL_CTOP: το όριο σάρωσης των διαδρόμων της (βήμα 159)
 
 Οι πίνακες μπαίνουν στην ΕΙΚΟΝΑ και όχι με staging κώδικα, για έναν λόγο που
 μετράει εδώ: η περιοχή #C000 που χρησιμοποιούσε το simtest για staging είναι
@@ -63,6 +64,13 @@ def build(seed=1):
     b5[off["corr5"]:off["corr5"] + len(c.corr)] = c.corr
     open(os.path.join(out, "bank5_col.bin"), "wb").write(bytes(b5))
     open(os.path.join(out, "world_col.bin"), "wb").write(bytes(plane.buf))
+    # ΤΟ ΟΡΙΟ ΣΑΡΩΣΗΣ ΤΩΝ ΔΙΑΔΡΟΜΩΝ (βήμα 159, CT_TOP): στο παιχνίδι το γράφει
+    # το ct_recount όταν φορτώνεται μια αποικία — η ψηλότερη εγγραφή που δεν
+    # είναι άδεια, +1. Το objtest και το uitest δεν το τρέχουν· το βάζουν στη
+    # σελίδα 2 τους από εδώ, αλλιώς θα είχαν το 128 της εικόνας.
+    used = [i for i in range(pack.MAX_CORR) if c.corr[i * S.CORR_REC] != S.CT_EMPTY]
+    with open(os.path.join(out, "col_top.asm"), "w", encoding="utf-8") as f:
+        f.write(f"COL_CTOP equ {max(used) + 1 if used else 1}\n")
     return c, ag, plane
 
 

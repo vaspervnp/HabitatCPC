@@ -181,11 +181,14 @@ def econ_jobs(L, b2, stock, popcap, alive, seed):
     b2[lk:lk + EC.MAX_STRUCT] = b"\x3f" * EC.MAX_STRUCT
 
 
-def limit(L, b2, b6):
+def limit(L, b2, b6, b5):
     """Το όριο σάρωσης (βήμα 157): το st_recount του wheel_reset, στο τέλος του
-    game_new, από τον πίνακα που έμεινε."""
+    game_new, από τον πίνακα που έμεινε· και από το βήμα 159 το όριο των
+    διαδρόμων (ct_recount), από τον δικό τους."""
     gs, top = L["G_struct_tbl"] - 0x4000, codeat.TOP_AT - 0x8000
     b2[top:top + 5] = codeat.top_bytes(codeat.top_of(b6[gs:gs + 8 * EC.MAX_STRUCT]))
+    gc = L["G_corr_tbl"] - 0x4000
+    b2[codeat.CT_AT - 0x8000] = codeat.ctop_of(b5[gc:gc + codeat.CORR_REC * codeat.MAX_CORR])
 
 
 def wipe6(L, before):
@@ -201,12 +204,12 @@ def wipe6(L, before):
 
 
 def wipe5(L, before):
-    """Οι διάδρομοι στην τράπεζα 5 (βήμα 154): 96 εγγραφές των 4 και μία
+    """Οι διάδρομοι στην τράπεζα 5 (βήμα 154): 128 εγγραφές των 4 (96 ως το βήμα 158) και μία
     ακόμη, όλες CT_EMPTY (254) — όχι 0, που θα ήταν ένας διάδρομος από τον
     θόλο 0."""
     c = L["G_corr_tbl"] - 0x4000
     b5 = bytearray(before[5])
-    b5[c:c + 97 * 4] = b"\xfe" * (97 * 4)
+    b5[c:c + (codeat.MAX_CORR + 1) * 4] = b"\xfe" * ((codeat.MAX_CORR + 1) * 4)
     return b5
 
 
@@ -238,11 +241,12 @@ def rule_empty(L, before, fill):
     gs = L["G_struct_tbl"] - 0x4000
     b6[gs:gs + 6] = bytes([0, 0, K_SHIP, 0, DS_ACTIVE, 255])
     crew(L, b6, fill, [(r, SHIP_NODE) for r in CREW], 1)          # F_ALIVE: έξω
-    limit(L, b2, b6)
+    b5 = wipe5(L, before)
+    limit(L, b2, b6, b5)
     for x in (-1, 0):                                    # κατοχή, όχι θεμέλιο
         for y in (-1, 0):
             b4[(y + 64) * 128 + x + 64] |= 0x10
-    return b2, b6, b4, wipe5(L, before)
+    return b2, b6, b4, b5
 
 
 def rule_colony(L, before, fill):
@@ -264,7 +268,7 @@ def rule_colony(L, before, fill):
     b6[gs + 8:gs + 15] = bytes([LOCK[0], LOCK[1] & 255, LOCK[2], 0, DS_ACTIVE, 255, 1])
     b5[gc:gc + 12] = bytes([0, 1, 2, 4, 0, 2, 4, 4, 0, 65, 0, 2])   # στην 5, 4 bytes
     crew(L, b6, fill, ROLES, 3)                          # F_ALIVE + F_INDOORS
-    limit(L, b2, b6)
+    limit(L, b2, b6, b5)
     # ο κόσμος: έδαφος και κατοχή κάτω από τα τέσσερα, το decor μένει — ΟΧΙ
     # θεμέλιο από το βήμα 94 (src/colony.asm: οι θόλοι στο έδαφός τους)...
     for cx, cy in [(d[0], d[1]) for d in DOMES] + [PAD[:2]]:
@@ -307,7 +311,7 @@ def check(sym, patch=(), n=8, timing=False, colony=False):
         G.restore()
         if case:
             G.put(6, 0x2C00, bytes(rnd.randrange(256) for _ in range(0x1400)))
-            G.put(5, L["G_corr_tbl"] - 0x4000, bytes(rnd.randrange(256) for _ in range(97 * 4)))
+            G.put(5, L["G_corr_tbl"] - 0x4000, bytes(rnd.randrange(256) for _ in range((codeat.MAX_CORR + 1) * 4)))
             G.put(2, L["G_econ_state"] - 0x8000,
                   bytes(rnd.randrange(256) for _ in range(L["G_hud_shadow"] - L["G_econ_state"])))
             G.put(4, 0, bytes(rnd.choice([0, 1, 7, 0x40, 0x88, 0xC5, 0x17, rnd.randrange(256)])
@@ -327,7 +331,7 @@ def check(sym, patch=(), n=8, timing=False, colony=False):
         c5 = L["G_corr_tbl"] - 0x4000
         for name, k, want, a, z in (("η τράπεζα 2", 2, b2, lo, L["G_hud_shadow"] - 0x8000),
                                     ("η τράπεζα 6", 6, b6, 0x2C00, b6end),
-                                    ("οι διάδρομοι", 5, b5, c5, c5 + 97 * 4),
+                                    ("οι διάδρομοι", 5, b5, c5, c5 + (codeat.MAX_CORR + 1) * 4),
                                     ("ο κόσμος", 4, b4, 0, 0x4000)):
             got = G.bank(k)
             if got[a:z] != bytes(want[a:z]):

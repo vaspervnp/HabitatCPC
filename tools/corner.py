@@ -273,26 +273,42 @@ def asm_lines():
     return out
 
 
-def spr_lines():
-    """Τα σχέδια, για τη δέσμευση b5code της τράπεζας 5 (src/main.asm): ανά
-    είδος ανατολικό και δυτικό, ήδη καθρεφτισμένο — ο οριζόντιος καθρεφτισμός
-    του ob_blit θέλει το flip_mode0 της τράπεζας 6, που δεν φαίνεται όσο η 5
-    είναι μέσα, και στο 5 x 8 της κάθετης κόστιζε ~250 µs. Το κάθετο
-    καθρέφτισμα (βόρεια) το κάνει το ob_blit."""
+def spr_data():
+    """Τα σχέδια των γωνιών, ανά είδος ανατολικό και δυτικό, ήδη καθρεφτισμένο —
+    ο οριζόντιος καθρεφτισμός του ob_blit θέλει το flip_mode0, και στο 5 x 8 της
+    κάθετης κόστιζε ~250 µs· το κάθετο καθρέφτισμα (βόρεια) το κάνει το ob_blit.
+    -> (bytes, [(ετικέτα, μετατόπιση)], [(είδος, w * h * 2)])."""
     from refrender import flip_byte
-    out = ["; ΠΑΡΑΓΕΤΑΙ από tools/pack.py (tools/corner.py) — μην το επεξεργάζεσαι.",
-           "; Τα σχέδια των γωνιών (βήμα 129), με μάσκα: νοτιοανατολικά και",
-           "; νοτιοδυτικά· βόρεια με το κάθετο καθρέφτισμα του ob_blit."]
+    data, labels, sizes = bytearray(), [], []
     for kind in ("h", "v"):
         rows = patch(kind)[4]
         for name, rr in ((f"cn_{kind}pat", rows),
                          (f"cn_{kind}patw", [[(flip_byte(m), flip_byte(d)) for m, d in reversed(r)]
                                              for r in rows])):
-            out.append(f"{name}:")
+            labels.append((name, len(data)))
             for row in rr:
-                out.append("        db      " + ", ".join(f"#{m:02X},#{d:02X}" for m, d in row))
+                for m, d in row:
+                    data += bytes([m, d])
         x0, y0, w, h, _ = patch(kind)
-        out.append(f"        assert  cn_{kind}patw == cn_{kind}pat + {w * h * 2}"
+        sizes.append((kind, w * h * 2))
+    return bytes(data), labels, sizes
+
+
+def spr_lines():
+    """Οι ετικέτες των σχεδίων (build/corner_spr.asm): ΣΤΗΝ ΤΡΑΠΕΖΑ 6 από το
+    βήμα 159, στο τέλος της (G_corner_spr, tools/pack.py), όπου τα γράφει το
+    pack.py ως δεδομένα· ως τότε στη δέσμευση b5code της τράπεζας 5, που την
+    πήραν οι 128 διάδρομοι. Τα ζωγραφίζει το ob_put_in με την 6 μέσα
+    (src/corner.asm)."""
+    _, labels, sizes = spr_data()
+    out = ["; ΠΑΡΑΓΕΤΑΙ από tools/pack.py (tools/corner.py) — μην το επεξεργάζεσαι.",
+           "; Τα σχέδια των γωνιών (βήμα 129), με μάσκα: νοτιοανατολικά και",
+           "; νοτιοδυτικά· βόρεια με το κάθετο καθρέφτισμα του ob_blit. Τα bytes",
+           "; είναι στην τράπεζα 6, στο G_corner_spr (βήμα 159· στην 5 ως το 158)."]
+    for name, off in labels:
+        out.append(f"{name:<11} equ G_corner_spr + {off}")
+    for kind, n in sizes:
+        out.append(f"        assert  cn_{kind}patw == cn_{kind}pat + {n}"
                    f"   ; το δυτικό αμέσως μετά (src/corner.asm)")
     return out
 
