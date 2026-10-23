@@ -14176,7 +14176,8 @@ changes nothing, and that batch came out byte for byte as `m161`.)
   at sol 50 it had 17 domes and no dome site anywhere, under either rule, where
   milestone 160 had 14 domes and 14 sites. It stays at 18 colonists for 70 sols: a ship
   comes only when the oxygen made covers the newcomers (40 < 44), and the oxygen dome
-  has no site.
+  has no site. From milestone 165 the player does not put a medium dome in a neck
+  ([§10.1](#the-neck-of-the-valley-at-milestone-165)).
 - **`ACE1` 0 and `C0DE` 0 stop at the first Control's 54.** The player's queue waits
   for Metal — a greenhouse, a solar panel or the medbay, a far site's corridor pieces
   on top: milestone 160's third cause — and the medbay, the second airlock and the
@@ -16199,11 +16200,85 @@ colonies end at 71–80, and `C0DE` 0, whose store had held 392–546 Starch, re
 ([§9.4](#over-rock-too-at-milestone-161)): no dome site anywhere from sol 44–56, not
 even for the oxygen dome, so the oxygen made stayed at 40 for its 18 and four more
 (44), no ship came, and 600 Metal sat in the store. At milestone 163 the same world had
-found its sites, on another path. The control agrees on 18.
+found its sites, on another path. The control agrees on 18. The player's medium domes
+changed at milestone 165 ([below](#the-neck-of-the-valley-at-milestone-165)).
 
 **Still open**: what holds the ships now. From sol 40, in the old rule's terms, Vegetables
 stand at 1.7 sols, Meat at 2.4 and Starch at 4.2, and the food in store under five sols
 is still the commonest failure (1,257 of 2,263 samples with room).
+
+#### The neck of the valley, at milestone 165
+
+The user's choice after [milestone 164](#gardens-by-what-is-short-at-milestone-164),
+which left `5A5A` 2 at 18 colonists: **the valley of `5A5A` 2**, measured first, fixed in
+`tools/play.py`. The game is milestone 161's byte for byte.
+
+**What was measured.** At sol 37 of `v164b` the `γεύματα+` step (a `MEALS` maker, in
+a medium dome from 14 colonists, [milestone 140](#past-thirty-three-at-milestone-140))
+put its dome at (34, 0) in half tiles, tiles 14–19 by −3–2: the pass between the
+mountain and the lake east of the colony. At sol 36.6 the world had 32 sites for a
+small dome that pass `reach.plan`, as `spot_zone` tests them. Every medium candidate
+left 13. The colony spent those 13 by sol 44, and from sol 44 to 56 no dome fitted
+anywhere, not even the oxygen one. At milestone 163 the same world had gone east through
+the pass with small domes at (30, −4), (34, 4) and (40, −4).
+
+**The batches**, eight worlds and 120 sols:
+
+| Batch | The player's medium dome | Alive at sol 120 | at sol 60 | Deaths | `1048` 1 | `5A5A` 2 |
+|---|---|---|---|---|---|---|
+| `v164b` | milestone 164: the best site | 547 | 353 | 50 | 78 | 18 |
+| `v165a` | of the 8 best sites, the first that leaves 3 sites for a small dome | 540 | 362 | 60 | 58 | 18 |
+| `v165b` | the same, 6 sites | 550 | 348 | 70 | 67 | 18 |
+| `v165c` | none while the world has under 40 sites: a small dome | 587 | 373 | 65 | **50** | 78 |
+| `n165c` | `v165c`, a `nop` in `ob_corr` | 595 | 373 | 67 | 50 | 80 |
+| `v165d` | none under 25 sites | 556 | 352 | 52 | 78 | 18 |
+| **`v165e`** | **under 40 sites, not one that closes over three times what a small one closes, plus 2** | **595** | **371** | **62** | **78** | **64** |
+| `n165e` | `v165e`, a `nop` in `ob_corr` | 596 | 371 | 61 | 78 | 64 |
+
+| World | `v164b` | `v165c` | `v165e` | `n165e` |
+|---|---|---|---|---|
+| `1048` 0 | 78 | 77 | 80 | 80 |
+| `1048` 1 | 78 | **50** | 78 | 78 |
+| `5A5A` 2 | 18 | **78** | **64** | 64 |
+| `ACE1` 0 | 80 | 80 | 80 | 80 |
+| `ACE1` 1 | 77 | 77 | 77 | 77 |
+| `BEEF` 0 | 78 | 78 | 78 | 78 |
+| `BEEF` 2 | 71 | 71 | 71 | 71 |
+| `C0DE` 0 | 67 | **76** | 67 | 68 |
+
+**Looking ahead was not enough.** `v165a` and `v165b` asked only that some sites stay,
+and the medium dome in the pass left 13. **A fixed limit fixed `5A5A` 2 and broke
+`1048` 1.** Under 40 sites every `+` step there built small domes. They spent the valley
+in more, smaller domes, and from sol 62.9 there was no site for the second Control, so
+the colony stayed at the first one's 50. At 25 the limit never applied to `5A5A` 2,
+which had 32 sites.
+
+**`v165e` is kept: the neck.** When the world has under 40 small-dome sites
+(`NECK_C`) and a step would build a medium dome, the player also finds the best site
+for a small one. It then counts the sites left after each (`Game.dome_sites`, stopping
+at 40). Each count stamps the dome's footprint and its corridors on a copy of the world
+and adds the dome as a site. If the medium closes more than three times what the small
+closes, plus 2, the step builds the small one. At `5A5A` 2 the medium in the pass
+closed 19 and the small ones 1 to 4. So `γεύματα+` and `εργαστήριο+` went into small
+domes west and south, and `οξυγόνο+` went east through the pass at sol 41, as at
+milestone 163. The colony reached 69 by sol 90. No world ends below milestone 164.
+`1048` 1 refused one medium, which closed 20 sites where a small one opened 2, and ends
+at 78 as before. `ACE1` 1 refused two near the end. The control, at another speed, ends
+the same in seven worlds and one colonist off in the eighth: 596.
+
+**What it costs** is Python, not the game: a count scans the world and runs
+`reach.plan` until it reaches 40. In `v165e` the eight games made 21–174 counts each,
+1–21 s on games of about 21 minutes. The line «ο λαιμός: N μετρήματα θέσεων, T s» at
+the end of a play reports it.
+
+**Still open.** From sol 92, `5A5A` 2 stays at 64–68 with the food in store under five
+sols: the late wall of [milestone 164](#gardens-by-what-is-short-at-milestone-164), not
+the valley. The deaths went up from 50 to 62, ten of them in `5A5A` 2 and two in
+`1048` 0. Intruders land at colonies of 20 or more
+([milestone 111](#intruders-at-milestone-111)), and they killed 8 in `5A5A` 2, which
+has 20 now. Two were thirst: one outside at sol 54, one inside at sol 87 with 12 water
+in store. The rule compares only the medium and the small dome of the same step. A small
+dome can still close a neck, and so can a structure's path.
 
 ### 10.2 Milestones
 
@@ -17223,7 +17298,7 @@ gap.
 | **Eight domes of a kind** (milestone 140) | Low | The room lists hold eight domes of each type: a ninth Storage adds no capacity, a ninth canteen or quarters is never chosen for a need, a ninth factory is never searched for a Bot. **The user chose to keep it, written down** ([§6.8](#eight-of-a-kind-measured-at-milestone-140)): a medium Storage holds 300 and a large 600. |
 | **Growth outruns the food chain** (found at milestone 131) | Medium | With materials topped up, colonies of 10–22 starved: one lab feeds about fourteen, and the scripted player found no room for a second. A ship comes when the store is full, not when production can follow ([§10.1](#past-twenty-at-milestone-131)). |
 | **Spares run out when Metal runs short** (found at milestone 158) | Medium | In one game of eight at 120 sols ([§4.2](#the-start-in-the-ghosts-log-at-milestone-158), `ACE1` 1, a timing-only divergence from milestone 157's): no Storage dome built, the store full, Ore 0–10 and Metal at its reserve of 30, so the `SPARES` machine stopped; repairs took the Spares from 20 to 0 in 20 sols, then the `SPARES` machine and two `OXYGEN` broke with none, and 42 colonists suffocated at sol 109.1. The same world lives in milestone 157's game (46) and in the control (61). Milestones 143–144 closed this for 60 sols by the player; at 120 the Metal reserve can still starve the Spares. Not chosen yet: Spares exempt from the Metal reserve, a repair priority for `SPARES` and `OXYGEN`, the player buying Spares when Metal is short. **Milestone 160 found the player's second mine is never built**: it is asked for under 40 Metal and costs 30 plus the reserve of 30 ([§10.1](#colonies-that-stop-at-milestone-160)). Without that dead end, five off-vein mines left `ACE1` 0's Metal at the reserve, the Spares ran out from sol 105, and 21 died of air. The user chose to treat the mines with this risk. At milestone 159 ([§4.2](#128-corridors-and-their-scan-limit-at-milestone-159)) `ACE1` 1 lives (30, and 18 in its control), but it and `5A5A` 2 stop at the first Control's 54 with the Ore at 0 most of the time: the player's steps behind a held mine never come. |
-| **A colony fills its valley** (found at milestone 160) | Medium | A dome needs a corridor of up to 12 pieces to another dome, over ground, dust or foundation ([§9.3](#every-building-needs-a-neighbour-at-milestone-85)) and, since milestone 161, rock ([§9.4](#over-rock-too-at-milestone-161)). Where rock, mountain and water close a colony in, the valley runs out. `1048` 1 at sol 80 had no site for a dome anywhere in the world, 50 colonists and 600 Metal in store ([§10.1](#colonies-that-stop-at-milestone-160)). The player's own limit, 32 tiles from the domes' centre, was lifted at milestone 160. **Milestone 161, the user's choice, lets a corridor cross rock**: a third to a half more dome sites in the stuck colonies that still had some (32 → 49, 19 → 31, 180 → 232), none for `1048` 1 at sol 80, which mountain and a lake close. **Played, it gave fewer colonists, not more**: 410 at sol 120 against 446 with the old rule at the same speed. The scripted player spends the sites sooner — `5A5A` 2 filled its valley at 17 domes by sol 45 and stayed at 18 colonists — and two colonies stopped at the first Control's cap behind the Metal-held medbay — the player's order, changed at milestone 162 ([§10.1](#the-players-order-at-milestone-162)). Open: what the player does with the sites (its order and its choice), and mountain or shallow water, which the user did not take. |
+| **A colony fills its valley** (found at milestone 160) | Low | A dome needs a corridor of up to 12 pieces to another dome, over ground, dust or foundation ([§9.3](#every-building-needs-a-neighbour-at-milestone-85)) and, since milestone 161, rock ([§9.4](#over-rock-too-at-milestone-161)). Where rock, mountain and water close a colony in, the valley runs out. `1048` 1 at sol 80 had no site for a dome anywhere in the world, 50 colonists and 600 Metal in store ([§10.1](#colonies-that-stop-at-milestone-160)). The player's own limit, 32 tiles from the domes' centre, was lifted at milestone 160. **Milestone 161, the user's choice, lets a corridor cross rock**: a third to a half more dome sites in the stuck colonies that still had some (32 → 49, 19 → 31, 180 → 232), none for `1048` 1 at sol 80, which mountain and a lake close. **Played, it gave fewer colonists, not more**: 410 at sol 120 against 446 with the old rule at the same speed. The scripted player spends the sites sooner — `5A5A` 2 filled its valley at 17 domes by sol 45 and stayed at 18 colonists — and two colonies stopped at the first Control's cap behind the Metal-held medbay — the player's order, changed at milestone 162 ([§10.1](#the-players-order-at-milestone-162)). **At milestone 164 `5A5A` 2 filled its valley again**: a medium dome at sol 37 closed the pass between mountain and lake, 32 sites for a small dome became 13, and none was left from sol 44. **Milestone 165, the user's choice, changes the player's choice, and the risk is Low since** ([§10.1](#the-neck-of-the-valley-at-milestone-165)). Under 40 sites, a medium dome that closes over three times what the step's small one would close, plus 2, is built small. `5A5A` 2 went east through the pass and ends at 64, and no world ends below milestone 164: 547 → 595 (control 596). A fixed limit, no medium dome under 40 sites, also saved `5A5A` 2 but left `1048` 1 at 50: its small domes spent the valley before the second Control. Open: a small dome or a structure's path can still close a neck, since only the step's two domes are compared. Also open: mountain or shallow water, which the user did not take. |
 | **Water at seventy** (found at milestone 162) | Medium | Milestone 145 keeps one pump site ahead for the scripted player ([§10.1](#water-kept-at-milestone-145)), which held to sixty-odd colonists. In two of milestone 162's batches `1048` 0 grew to 76 and 68 by sol 85–95, the water fell to 0 — once with no site for another pump, once with pumps built to sol 78 and the power at its life-support level — and the `OXYGEN` machines stopped: 66 and 49 died of air at once ([§10.1](#the-players-order-at-milestone-162)). The batch the user chose reached 77 there with one death; the same can happen to it. |
 | ~~The store fills with Starch~~ (found at milestone 163) | ~~Medium~~ | **Resolved at milestone 164, in the player** ([§10.1](#gardens-by-what-is-short-at-milestone-164)). A Starch plant gives 3 a round, a Vegetables plant and a `VITROMEAT` 2, and `MEALS` eats one of each; the scripted player added a garden whenever an ingredient fell, and 45 of 54 Starch gardens came with the store full, when the game stops the gardens and all three fall. At sol 120 the colonies had 62 Starch plants for 54 and 52. Now, with the store full, an ingredient asks only under one sol, and over one sol one made faster than another asks for nothing: 38, 52 and 50, the store full 23 % of the time instead of 49 %, 547 alive at sol 120 instead of 518. The game's 3 against 2 is unchanged. |
 | A `FIRE` ceiling that holds at one phase (found at milestone 161) | Low | `tests/test_reach.py`'s solar panel with the long path has a ceiling of 140 ms for its worst round. At the test's own phase the round is 105; started 25 ms later five and six times, it is 144, at milestone 160 as at 161 ([§9.4](#over-rock-too-at-milestone-161)). The six placements before it come out within 10 ms of their default phase there. A change that moves the phase can fail the test with no slower code; the cause of the 144 has not been looked at. |

@@ -19,7 +19,7 @@ FIRE, εξοπλισμός υποδοχή-υποδοχή, C και FIRE για �
 
     python3 tools/play.py [--planet P] [--seed S] [--sols N] [--plan ΟΝΟΜΑ]
 """
-import argparse, os, re, subprocess, sys
+import argparse, os, re, subprocess, sys, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -38,6 +38,7 @@ STOCKS = ["νερό", "τροφή", "μετάλλ", "μέταλ", "βιοπλ", 
           "όπλα", "ρομπ", "άμυλο", "λαχαν", "βότ", "κρέας"]
 S_WATER, S_FOOD, S_ORE, S_METAL, S_BIOPL = 0, 1, 2, 3, 4
 O2_PER_COL = 2                     # tools/econ.py O2_PER_COLONIST
+NECK_C = 40                        # βήμα 165: κάτω από τόσες θέσεις θόλου ο λαιμός μετρά
 # βήμα 161: 1 για ένα tile βράχου με κατοχή (#12, ένας διάδρομος από πάνω), 0 αλλιώς
 ROCK_CORR = bytes(1 if b & 0x37 == 0x12 else 0 for b in range(256))
 ROOM = dict(oxygen=0, canteen=1, quarters=2, green=3, factory=4, lab=5, medbay=6,
@@ -173,6 +174,7 @@ class Game:
         self.shore, self.shore_key = [], None   # βήμα 145: οι θέσεις των αντλιών (Game.keep_shore)
         self.shore_path = set()                 # και τα tiles των μονοπατιών τους
         self.anchors = 0                        # βήμα 147: σκαλοπάτια προς μακρινό νερό
+        self.neck_n, self.neck_t = 0, 0.0       # βήμα 165: μετρήματα θέσεων, δευτερόλεπτα
         self.feed = None                        # --tweak feed=M:B
         self.plast = None                       # --tweak skeep=N / bmax=N (βήμα 138)
         self.trader = False                     # το εμπόριο (βήμα 139): τα σχέδια big*
@@ -746,6 +748,49 @@ class Game:
         if not best:
             return None
         return best[1], (best[0][2] if zone == "core" else 0)
+
+    def dome_sites(self, cap, place=None):
+        """Ο ΛΑΙΜΟΣ (βήμα 165): πόσες θέσεις μικρού θόλου περνούν τον κανόνα του
+        reach.plan σε όλο τον κόσμο, ως cap — με τον θόλο place = (item, θέση)
+        χτισμένο πρώτα, αν δοθεί: το αποτύπωμά του κατειλημμένο, οι διάδρομοι
+        του σχεδίου του σφραγισμένοι, και ο ίδιος στους θόλους (ως εργοτάξιο)."""
+        t0 = time.time()
+        b4 = self.world()
+        dl = [list(d[:4]) for d in self.domes()]
+        sl = [t[:7] for t in self.structs()]
+        dims = self.m.read_ram(self.L["G_struct_dims"], 64)
+        ks, ps, ws, hs = self.m.read_ram(self.sym["BLD_ITEMS"] + 8 * DOME_S, 4)
+        if place:
+            it, at = place
+            kind, param, w, h = self.m.read_ram(self.sym["BLD_ITEMS"] + 8 * it, 4)
+            p = reach.plan(b4, dl, sl, dims, kind, param, w, h, at[0] & 255, at[1] & 255)
+            sb = lambda v: v - 256 if v > 127 else v
+            tx, ty = (sb(at[0] & 255) - w) >> 1, (sb(at[1] & 255) - h) >> 1
+            wl = bytearray(b4)
+            for j in range(h):
+                for i in range(w):
+                    wl[reach.widx(tx + i, ty + j)] |= 0x10
+            b4 = reach.stamp(bytes(wl), p) if p["ok"] else bytes(wl)
+            slot = next((d for d in range(64) if not dl[d][3]), None)
+            if slot is not None:
+                dl[slot] = [at[0] & 255, at[1] & 255, param, 1]
+        n = 0
+        for ty in range(-60, 61 - hs):
+            for tx in range(-60, 61 - ws):
+                if not all(reach.ok_tile(b4[reach.widx(tx + i, ty + j)])
+                           for i in range(ws) for j in range(hs)):
+                    continue
+                if self.on_shore(tx, ty, ws, hs):
+                    continue
+                if reach.plan(b4, dl, sl, dims, ks, ps, ws, hs, 2 * tx + ws, 2 * ty + hs)["ok"]:
+                    n += 1
+                    if n >= cap:
+                        break
+            if n >= cap:
+                break
+        self.neck_t += time.time() - t0
+        self.neck_n += 1
+        return n
 
     def fill(self, room, code):
         """ΓΕΜΙΣΜΑ ΠΡΩΤΑ (βήμα 140): μια ελεύθερη υποδοχή σε έναν μεσαίο ή μεγάλο
@@ -1754,11 +1799,36 @@ def try_step(G, s):
         # sol 63 όλες έξω από τα 32 (19 σε όλο τον κόσμο, κανένα θερμοκήπιο,
         # αποθήκη ή ιατρείο ως το τέλος, 361 μέταλλα στην αποθήκη). Με τα 60,
         # 42 -> 65 άποικοι στο sol 120. Τα 60 είναι όλος ο κόσμος.
+        # Ο ΛΑΙΜΟΣ (βήμα 165): στο 5A5A 2 ο μεσαίος θόλος του γεύματα+ στο
+        # (34, 0), στο sol 37, έκλεισε το πέρασμα ανάμεσα στο βουνό και στη
+        # λίμνη: από τις 32 θέσεις θόλου του κόσμου έμειναν 13, από το sol 44
+        # καμία, και η αποικία έμεινε 18 ως το τέλος. Όταν οι θέσεις είναι
+        # λιγότερες από NECK_C, ο μεσαίος μετρά πόσες κλείνει· αν κλείνει
+        # πάνω από τρεις φορές όσες ο μικρός (+2), χτίζεται ο μικρός. Ένα
+        # σταθερό όριο (κανένας μεσαίος κάτω από 40 θέσεις) έφερε κι αυτό το
+        # 5A5A 2 στους 78, αλλά στο 1048 1 οι μικροί θόλοι έφαγαν τις θέσεις
+        # του δεύτερου Control και η αποικία έμεινε 50 αντί για 78.
         for it in ((DOME_M, DOME_S) if item == DOME_M else (item,)):
             for R in (CORE_R if s["zone"] == "core" and G.grow else (None,)):
                 got = G.spot_zone(it, s["zone"], R)
                 if got is not None:
                     break
+            if got is not None and it == DOME_M and NECK_C:
+                n0 = G.dome_sites(NECK_C)
+                if n0 < NECK_C:
+                    gs = None
+                    for R in (CORE_R if s["zone"] == "core" and G.grow else (None,)):
+                        gs = G.spot_zone(DOME_S, s["zone"], R)
+                        if gs is not None:
+                            break
+                    if gs is not None:
+                        lm = n0 - G.dome_sites(NECK_C, (DOME_M, got[0]))
+                        ls = n0 - G.dome_sites(NECK_C, (DOME_S, gs[0]))
+                        if lm > 3 * max(ls, 1) + 2:
+                            G.event(f"ο λαιμός: από {n0} θέσεις θόλου ο μεσαίος στο {got[0]} "
+                                    f"αφήνει {n0 - lm}, ο μικρός στο {gs[0]} {n0 - ls}")
+                            got = None
+                            continue
             if got is not None:
                 if it != item:
                     item = it
@@ -2039,6 +2109,8 @@ def main():
         worldmap(G)
     if left:
         print("δεν χτίστηκαν:", ", ".join(s["name"] for s in left if not s["again"]))
+    if G.neck_n:
+        print(f"ο λαιμός: {G.neck_n} μετρήματα θέσεων, {G.neck_t:.0f} s")
     if a.ram:
         import ctypes
         open(a.ram, "wb").write(b"".join(ctypes.string_at(G.bank(n), 0x4000) for n in range(8)))
