@@ -2101,6 +2101,34 @@ def land_foes(e, a, node, F_ALIVE, occ):
         a.task[i] = T_FIGHT
         a.health[i] = FOE_HP
         n -= 1
+    foe_alert(e, a, F_ALIVE)
+
+
+SH_MAX = 32                     # src/alert.asm (SH_MAX): τα πρώτα 32 έτοιμα airlock, κατά θέση
+T_NEED = 254                    # το T_NEED του tools/entity.py (§6.7)
+
+
+def foe_alert(e, a, F_ALIVE, F_INDOORS=2):
+    """Ο ΣΥΝΑΓΕΡΜΟΣ (βήμα 166, src/alert.asm), στην προσγείωση των εισβολέων:
+    όποιος άποικος (0-79) είναι έξω, ζει, δεν είναι φρουρός και δεν πάει ήδη
+    μέσα (T_NEED) πάει στο κοντινότερο από τα πρώτα SH_MAX έτοιμα airlock που
+    φτάνεται (ισοπαλία: το πρώτο), με T_FIGHT· αν κανένα, μένει ό,τι ήταν."""
+    locks = [MAX_DOME + s for s in range(MAX_STRUCT)
+             if e.struct[s * STRUCT_REC + ST_KIND] == K_AIRLOCK
+             and e.struct[s * STRUCT_REC + ST_STATE] == DS_ACTIVE][:SH_MAX]
+    for c in range(AG_BOT0):
+        if a.flags[c] & (F_ALIVE | F_INDOORS) != F_ALIVE:
+            continue
+        if a.role[c] == RL_GUARD or a.task[c] == T_NEED:
+            continue
+        best, best_d = 255, 255
+        for n in locks:
+            d = e.dist[a.node[c] * 128 + n]
+            if d < best_d:
+                best, best_d = n, d
+        if best != 255:
+            a.dest[c] = best
+            a.task[c] = T_FIGHT
 
 
 def sol_rollover(e, a, F_ALIVE, F_WORKING, NEED_LOW):

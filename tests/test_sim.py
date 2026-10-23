@@ -630,6 +630,10 @@ def main():
     if foe_battle(sym, g, nexthop, sim0):
         return 1
 
+    # --- ο συναγερμός: όλοι μέσα (βήμα 166) ---
+    if alert_branches(sym):
+        return 1
+
     # --- η κίνηση στα όριά της (βήμα 59) ---
     if move_check(sym, sim0):
         return 1
@@ -2000,6 +2004,203 @@ def suit_branches(sym):
           f"το 90-91, {len(bots)} ρομπότ ανέγγιχτα, {len(gone)} βγήκαν με γεμάτη στολή — "
           f"ίδια bytes στον Z80 και στην αναφορά. ΑΡΝΗΤΙΚΑ: κάθε επίσκεψη, κανένα "
           f"airlock, T_NEED που σβήνει έξω, χωρίς γέμισμα — διαφέρουν")
+    return 0
+
+
+# --- ο συναγερμός (βήμα 166, src/alert.asm): όλοι μέσα ----------------------
+ALERT_PAD = 71                      # η πίστα: μια δομή έξω, στη suit_graph
+ALERT_DOME = 5                      # ένας θόλος· όποιος στέκεται εκεί έξω (εργοτάξιο)
+# Η ΠΡΟΣΓΕΙΩΣΗ ΜΕ ΤΟΝ ΣΥΝΑΓΕΡΜΟ, στον Z80 με τέσσερις εισβολείς: ως τόσα us η
+# θέση 15 εκείνης της περιστροφής με επτά έξω σε τρεις κόμβους, όπως στα
+# παιχνίδια (τέσσερις νεοφερμένοι στην πίστα, δύο σε μια δομή, ένας σε άλλη),
+# και με 48 έξω σε κόμβους που αλλάζουν κάθε φορά (καμία απάντηση από τον
+# προηγούμενο). Μετρημένα στο βήμα 166: 3.620 us η προσγείωση χωρίς τον
+# συναγερμό, +2.040 για τα δύο περάσματα (5.660), ~150 ανά άποικο έξω σε νέο
+# κόμβο: 6.500 οι επτά, 19.060 οι 48.
+ALERT_US = 6650
+ALERT_HEAVY_US = 19400
+
+
+def alert_scene(lock69=EC.DS_ACTIVE, heavy=False):
+    """Το πλοίο των εισβολέων προσγειώνεται στην πίστα (71) της suit_graph, με
+    60 ζωντανούς. Εξω στέκονται, με τη σειρά των ταυτοτήτων: τέσσερις χωρίς
+    δουλειά στην πίστα, δύο στο 65 πίσω από το airlock 64 (ο ένας με δουλειά),
+    ένας στο 67 πίσω από το 66, ένας ακόμη στην πίστα (ξανά ερώτηση), ένας που
+    περπατά από το 68, ένας στον θόλο ALERT_DOME (εργοτάξιο: η γραμμή θόλου του
+    DIST), ένας φρουρός στην πίστα, ένας στο 67 με T_NEED (πάει ήδη μέσα), δύο
+    στο 90-91 (κανένα airlock δεν φτάνεται) και ένας νεκρός στο 70. Οι άλλοι
+    μέσα. Το airlock 69 είναι lock69 (DS_BUILDING: δεν μετρά). Με heavy, 48
+    έξω, ένας σε κάθε κόμβο του κύκλου 65, 67, 68, 70, 71."""
+    g = suit_graph()
+    dist, nexthop = G.all_pairs(g)
+    st = E.Sim(g, nexthop, dist)
+    EC.populate(st.e)
+    E.populate(st)
+    for n in SUIT_LOCKS + SUIT_OUT:
+        b = (n - EC.MAX_DOME) * EC.STRUCT_REC
+        k = EC.K_AIRLOCK if n in SUIT_LOCKS else EC.K_PAD if n == ALERT_PAD else 0
+        st.e.struct[b:b + 8] = bytes([0, 0, k, 0, lock69 if n == 69 else EC.DS_ACTIVE,
+                                      255, 0, 0])
+    EC.rooms_rebuild(st.e, st.pc)
+    assert st.e.pad_node == ALERT_PAD
+    e, a = st.e, st.a
+    e.ship_state, e.ship_kind, e.ship_eta = EC.SHIP_INCOMING, EC.SK_FOE, 0
+    e.alive, e.lands = 60, 9
+    alive = [i for i in range(EC.AG_BOT0) if a.flags[i] & E.F_ALIVE]
+    if heavy:
+        ring = (65, 67, 68, 70, 71)
+        plan = [(ring[k % 5], None, None) for k in range(48)]
+    else:
+        T = E.NO_TASK
+        plan = [(ALERT_PAD, T, None)] * 4 + [(65, 3, None), (65, T, None), (67, T, None),
+                (ALERT_PAD, T, None), (68, T, "walk"), (ALERT_DOME, T, None),
+                (ALERT_PAD, T, "guard"), (67, E.T_NEED, None), (90, T, None),
+                (91, T, None), (70, T, "dead")]
+    for i, (n, task, how) in zip(alive, plan):
+        E.release(st.occ, a.node[i], a.slot[i])
+        a.node[i] = a.dest[i] = n
+        a.flags[i] &= ~(E.F_INDOORS | E.F_WORKING) & 0xFF
+        a.edge[i], a.progress[i] = E.NO_EDGE, 0
+        a.slot[i] = E.claim(st.occ, n)
+        if task is not None:
+            a.task[i] = task
+        if task == E.T_NEED:
+            a.dest[i] = 66
+        if how == "walk":
+            E.release(st.occ, n, a.slot[i])
+            a.slot[i], a.edge[i], a.progress[i], a.dest[i] = E.NO_SLOT, 0, 50, 70
+        elif how == "guard":
+            a.role[i] = EC.RL_GUARD
+        elif a.role[i] == EC.RL_GUARD:
+            a.role[i] = 0                   # μόνο ένας φρουρός στη σκηνή
+        elif how == "dead":
+            E.release(st.occ, n, a.slot[i])
+            a.flags[i], a.slot[i] = 0, E.NO_SLOT
+    return g, nexthop, st, alive[:len(plan)], plan
+
+
+def alert_branches(sym):
+    """Ο ΣΥΝΑΓΕΡΜΟΣ, byte προς byte: η θέση 15 μίας περιστροφής, όπου προσγειώνεται
+    το πλοίο των εισβολέων. Στην αναφορά: όσοι ήταν έξω, ζωντανοί, όχι φρουροί
+    και όχι σε T_NEED, έχουν T_FIGHT και προορισμό το κοντινότερο έτοιμο airlock·
+    οι άλλοι ό,τι ήταν. ΑΡΝΗΤΙΚΑ: και οι φρουροί, και το T_NEED, πάντα η απάντηση
+    του προηγούμενου, και το airlock που χτίζεται, το πιο μακρινό, ο θόλος ως
+    δομή, χωρίς τον συναγερμό. Και το κόστος της περιστροφής."""
+    keys = lambda z: (z.a.to_bytes(), bytes(z.e.dome), bytes(z.e.struct),
+                      econ_bytes(z.e), bytes(z.e.job), bytes(z.occ[:128]))
+
+    def z80(g, nexthop, st, patch=()):
+        got = run_z80(sym, g, fresh(g, nexthop, st), 1, pin=15,
+                      rt_n=EC.MAX_DOME + EC.MAX_STRUCT, patch=patch)
+        return (got[0], got[3], got[4], got[5], got[6], got[1])
+
+    def ref(g, nexthop, st):
+        want = fresh(g, nexthop, st)
+        slot15(want, 1)
+        return want
+
+    g, nexthop, st, ids, plan = alert_scene(lock69=EC.DS_BUILDING)
+    want = ref(g, nexthop, st)
+    got = z80(g, nexthop, st)
+    if got != keys(want):
+        bad = [(k, [(i, x, y) for i, (x, y) in enumerate(zip(a_, b_)) if x != y][:5])
+               for k, (a_, b_) in enumerate(zip(got, keys(want))) if a_ != b_]
+        print(f"ΑΠΟΤΥΧΙΑ συναγερμός: ο Z80 διαφέρει από την αναφορά: {bad}")
+        return 1
+    # Η ΑΝΑΦΟΡΑ ΚΑΝΕΙ ΟΣΑ ΛΕΕΙ Η ΠΡΟΖΑ: το κοντινότερο έτοιμο airlock του κόμβου.
+    a0, a1, e = st.a, want.a, st.e
+
+    def near(n, locks=(64, 66)):
+        d = [(e.dist[n * 128 + q], q) for q in locks if e.dist[n * 128 + q] != 255]
+        return min(d)[1] if d else 255
+    # Ο ΚΑΝΟΝΑΣ σε όλους τους 0-79, όχι μόνο στη σκηνή: και όσους άφησε έξω
+    # το populate.
+    why, went, kept = [], [], []
+    for i in range(EC.AG_BOT0):
+        n = a0.node[i]
+        go = (a0.flags[i] & (E.F_ALIVE | E.F_INDOORS) == E.F_ALIVE
+              and a0.role[i] != EC.RL_GUARD and a0.task[i] != E.T_NEED and near(n) != 255)
+        now = (a1.task[i], a1.dest[i])
+        if go:
+            went.append(i)
+            if now != (EC.T_FIGHT, near(n)):
+                why.append(f"ο {i} στο {n}: {now}, όχι (T_FIGHT, {near(n)})")
+        elif i in ids:
+            kept.append(i)
+            if now != (a0.task[i], a0.dest[i]):
+                why.append(f"ο {i} στο {n} άλλαξε: {now}")
+        elif a1.task[i] == EC.T_FIGHT:
+            why.append(f"ο {i} ({a0.flags[i]:#x}, στο {n}) πήρε T_FIGHT")
+    if not any(a1.flags[i] & E.F_ALIVE for i in range(EC.AG_FOE0, EC.AG_FOE0 + 4)):
+        why.append("δεν προσγειώθηκε κανείς")
+    if any(i not in went for i, (n, t, how) in zip(ids, plan)
+           if how not in ("guard", "dead") and t != E.T_NEED and n not in (90, 91)):
+        why.append("κάποιος της σκηνής που έπρεπε δεν πήγε")
+    dests = {near(a0.node[i]) for i in went}
+    near69 = [n for n, _, _ in plan if near(n) != near(n, (64, 66, 69))]
+    if len(dests) < 2 or not near69:
+        why.append(f"η σκηνή: airlock {dests}, κόμβοι πιο κοντά στο 69 {near69}")
+    if why:
+        print("ΑΠΟΤΥΧΙΑ συναγερμός: " + "· ".join(why))
+        return 1
+    # ΑΡΝΗΤΙΚΑ
+    m = boot_only()
+    find = lambda at, pat, n=96: next((at + k for k in range(n)
+                                       if list(m.read_ram(at + k, len(pat))) == pat), None)
+    w = lambda v: [v & 255, v >> 8]
+    rg = find(sym["FO_ALERT"], [0xFE, EC.RL_GUARD, 0x28])
+    tn = find(sym["FO_ALERT"], [0xFE, E.T_NEED, 0x28])
+    ca = find(sym["FO_ALERT"], [0x3A] + w(sym["FO_LA"]) + [0x28])
+    ac = find(sym["SH_BUILD"], [0xFE, EC.DS_ACTIVE, 0x20], 40)
+    nr = find(sym["SH_NEAR"], [0xB8, 0x30], 64)                    # cp b · jr nc
+    dm = find(sym["SH_NEAR"], [0xFE, EC.MAX_DOME, 0x30], 8)         # cp MAX_DOME · jr nc
+    cl = find(sym["FO_LAND"], [0xCD] + w(sym["FO_ALERT"]), 64)
+    for label, patch in (("και οι φρουροί", rg and [(rg + 1, 0xFF)]),
+                         ("και όποιος πάει ήδη μέσα", tn and [(tn + 1, 0)]),
+                         ("πάντα η απάντηση του προηγούμενου", ca and [(ca + 3, 0x18)]),
+                         ("και το airlock που χτίζεται", ac and [(ac + 2, 0x18), (ac + 3, 0)]),
+                         ("όχι το κοντινότερο", nr and [(nr + 1, 0x38)]),
+                         ("ο θόλος ως δομή", dm and [(dm + 2, 0x18)]),
+                         ("χωρίς τον συναγερμό", cl and [(cl + k, 0) for k in range(3)])):
+        if not patch or z80(g, nexthop, st, patch) == got:
+            print(f"ΑΠΟΤΥΧΙΑ ΑΡΝΗΤΙΚΟ συναγερμού: με «{label}» ο Z80 βγαίνει ίδιος "
+                  f"(ή δεν βρέθηκε)")
+            return 1
+    # ΤΟ ΚΟΣΤΟΣ: η θέση 15 της περιστροφής της προσγείωσης.
+    def land_us(st):
+        mm = z80_load(sym, g, fresh(g, nexthop, st), EC.MAX_DOME + EC.MAX_STRUCT)
+        mm.poke(sym["PIN_SLOT"], 15)
+        return tick_us(mm, sym)
+    def inside_but(keep):
+        _, _, s, ids_, _ = alert_scene()
+        for i in range(EC.AG_BOT0):
+            if i not in ids_[:keep] and s.a.flags[i] & E.F_ALIVE:
+                s.a.flags[i] |= E.F_INDOORS
+        return s
+    us = land_us(st)
+    real = land_us(inside_but(7))                   # η πίστα, το 65 δύο, το 67
+    st0 = inside_but(0)                             # κανείς έξω: τα δύο περάσματα
+    base = land_us(st0)
+    m0 = z80_load(sym, g, fresh(g, nexthop, st0), EC.MAX_DOME + EC.MAX_STRUCT,
+                  patch=[(cl + k, 0) for k in range(3)])
+    m0.poke(sym["PIN_SLOT"], 15)
+    bare = tick_us(m0, sym)
+    _, _, sth, idh, _ = alert_scene(heavy=True)
+    heavy = land_us(sth)
+    print(f"OK συναγερμός: η προσγείωση με {len(ids)} της σκηνής έξω — {len(went)} "
+          f"(και όσους άφησε έξω το populate) πήγαν στο κοντινότερο έτοιμο airlock "
+          f"({sorted(dests)}) με T_FIGHT, {len(kept)} ό,τι ήταν (φρουρός, T_NEED, "
+          f"90-91 χωρίς airlock, νεκρός), οι μέσα ανέγγιχτοι — ίδια "
+          f"bytes στον Z80 και στην αναφορά. ΑΡΝΗΤΙΚΑ: και οι φρουροί, και το T_NEED, "
+          f"πάντα η απάντηση του προηγούμενου, και το airlock που χτίζεται, όχι το "
+          f"κοντινότερο, ο θόλος ως δομή, χωρίς τον συναγερμό — διαφέρουν")
+    print(f"              η θέση 15 της προσγείωσης: {real} us με επτά έξω σε τρεις "
+          f"κόμβους (ταβάνι {ALERT_US}), {base} us με όλους μέσα, {bare} χωρίς τον "
+          f"συναγερμό· {us} us με τους {len(went)} της σκηνής, {heavy} us με "
+          f"{len(idh)} έξω σε κόμβους που αλλάζουν (ταβάνι {ALERT_HEAVY_US})")
+    if real > ALERT_US or heavy > ALERT_HEAVY_US:
+        print("ΑΠΟΤΥΧΙΑ συναγερμός: η προσγείωση κοστίζει πάνω από το ταβάνι")
+        return 1
     return 0
 
 
