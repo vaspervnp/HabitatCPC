@@ -16352,7 +16352,9 @@ changed at milestone 165 ([below](#the-neck-of-the-valley-at-milestone-165)).
 
 **Still open**: what holds the ships now. From sol 40, in the old rule's terms, Vegetables
 stand at 1.7 sols, Meat at 2.4 and Starch at 4.2, and the food in store under five sols
-is still the commonest failure (1,257 of 2,263 samples with room).
+is still the commonest failure (1,257 of 2,263 samples with room). Since milestone 167 the
+player asks for food until it passes the ship's test
+([below](#food-enough-for-a-ship-at-milestone-167)).
 
 #### The neck of the valley, at milestone 165
 
@@ -16428,6 +16430,73 @@ in store. The rule compares only the medium and the small dome of the same step.
 dome can still close a neck, and so can a structure's path. The intruders' deaths fell at
 milestone 166, which sends everyone outside in when they land
 ([§6.10](#everyone-inside-at-milestone-166)).
+
+#### Food enough for a ship, at milestone 167
+
+The user's choice after [milestone 166](#everyone-inside-at-milestone-166): **the food
+wall**. In `v166` three colonies stopped below 76, `1048` 0 and `ACE1` 0 at 74 and
+`5A5A` 2 at 69, all with the food in store under five sols. The fix is in
+`tools/play.py`, and the game is milestone 166's byte for byte.
+
+**What was measured.** The colonies had the machines and the ingredients:
+- in `1048` 0 from sol 90, 10.8 `MEALS` machines with 10.3 operators;
+- the ingredients at zero in at most 13 % of the samples;
+- one biologist waters a whole greenhouse.
+
+The food was not falling. It stood at 2.6 sols in `1048` 0 and 3.0 in `ACE1` 0 from sol
+90: production matched what was eaten. `ship_ok` wants five sols of food that grow
+by 4 a sol ([milestone 138](#the-balance-fixed-at-milestone-138)). The player asked for
+a cook (`γεύματα+`, through `food_short`) only when the food was **falling**. So the
+food balanced under five sols: no ship came, and no machine was built.
+
+**And the gardens held one plant each.** For a plant, the fit's list offers the class
+(250–253, `FT_CLS`), and the slot keeps the variety (0–9, `fit_new`). The player's
+`fit` compared the slot with the code it asked for, and that never matched for a plant.
+So every greenhouse stayed among the fits waiting for materials (`G.fits`), and
+`fill` ([milestone 140](#past-thirty-three-at-milestone-140)) never filled a dome that
+had one. In `v166` the eight colonies had **107 greenhouses with 332 slots and 107
+plants**, no fills, and 92 new garden domes. This has been so since the scripted
+player began ([milestone 120](#the-scripted-player-at-milestone-120)).
+
+**The batches**, eight worlds and 120 sols:
+
+| Batch | The player | Alive at sol 120 | at sol 60 | Deaths | Greenhouses, plants | `5A5A` 2 | Deaths to intruders in `C0DE` 0 |
+|---|---|---|---|---|---|---|---|
+| `v166` | milestone 166 | 606 | 376 | 14 | 107, 107 | 69 | 7 |
+| `v167a` | a slot holds a plant of the class asked for | 546 | 378 | 32 | 52, 152 | **21** | **18** |
+| `v167b` | that, and the food rule below | 561 | 395 | 23 | 54, 142 | **18** | **17** |
+| **`v167c`** | **the food rule** | **617** | 368 | 15 | 105, 105 | 69 | 7 |
+| `n167c` | `v167c`, a `nop` in `ob_corr` | 608 | 375 | 12 | 110, 110 | 68 | 5 |
+
+| World | `v166` | `v167b` | `v167c` | `n167c` |
+|---|---|---|---|---|
+| `1048` 0 | 74 | 78 | 78 | 77 |
+| `1048` 1 | 77 | 77 | 77 | 77 |
+| `5A5A` 2 | 69 | 18 | 69 | 68 |
+| `ACE1` 0 | 74 | 78 | 77 | 78 |
+| `ACE1` 1 | 80 | 78 | 80 | 77 |
+| `BEEF` 0 | 78 | 78 | 80 | 77 |
+| `BEEF` 2 | 76 | 77 | 78 | 78 |
+| `C0DE` 0 | 78 | 77 | 78 | 76 |
+
+**The plants, fixed, broke two colonies.** With fills the colonies became compact: 292
+domes against 355, and 39 airlocks against 58.
+- **`5A5A` 2 closed its valley again**, from sol 40 to 42: no site for the lab, the
+  vegetables, the storage or the oxygen. Its small domes have one slot each, so
+  nothing could be filled, and 9 died of hunger at sol 80.
+- **`C0DE` 0's fewer airlocks gathered more of those who went in**, and the intruders
+  killed 17–18 there ([§6.10](#everyone-inside-at-milestone-166)).
+
+**`v167c` is kept, the user's choice.** `food_short` now also asks when the food is
+under five sols and grows less than 4 a sol, unless the store is full (then it cannot
+grow). That is the same test as `ship_ok`'s. `1048` 0 went from 74 to 78, `ACE1` 0 from
+74 to 77, and `BEEF` 2 from 76 to 78, and no world ends lower. The control, at another
+speed, ends at 608. The two colonies the rule was for reach 77 and 78 there too. The
+rest of the 11 is timing: a few colonists either way in the other worlds. The fix of
+the plants waits for a milestone that takes the valley and the airlock with it
+([§15](#15-open-risks)).
+
+**Still open.** `5A5A` 2 stays at 69, and `C0DE` 0 loses 7 to intruders at its airlock.
 
 ### 10.2 Milestones
 
@@ -17451,6 +17520,7 @@ gap.
 | **Water at seventy** (found at milestone 162) | Medium | Milestone 145 keeps one pump site ahead for the scripted player ([§10.1](#water-kept-at-milestone-145)), which held to sixty-odd colonists. In two of milestone 162's batches `1048` 0 grew to 76 and 68 by sol 85–95, the water fell to 0 — once with no site for another pump, once with pumps built to sol 78 and the power at its life-support level — and the `OXYGEN` machines stopped: 66 and 49 died of air at once ([§10.1](#the-players-order-at-milestone-162)). The batch the user chose reached 77 there with one death; the same can happen to it. **It happened again at milestone 166**, on the path of a variant that was not kept (`v166d`): `1048` 0 at 77, the water at 0 by sol 109–112, 53 dead of air at sol 113 ([§6.10](#everyone-inside-at-milestone-166)). |
 | ~~Intruders kill whoever is outside~~ (found at milestone 165) | ~~Medium~~ | **Resolved at milestone 166, the user's choice: the alert, everyone inside** ([§6.10](#everyone-inside-at-milestone-166)). In the eight big plays of milestone 165, 60 of 62 deaths were to intruders, and a probe of the 95 raids found all 67 dead outside: 33 newcomers waiting for work at the pad where the intruders' ship lands, 30 at the mine, 55 before any guard struck. At the landing every colonist outside who is not a guard and not already going in now takes `T_FIGHT` and walks to the nearest ready airlock. Probed again: 13 raid deaths, 6 before a guard's blow, 82 of 95 raids without a death; 14 deaths in all, 606 alive at sol 120 against 595. Open: five guards died against one, since the intruders now meet them, and the late food wall still stops `1048` 0 and `ACE1` 0 at 74. |
 | **The intruders' landing is the heaviest slot** (milestone 166) | Low | Slot 15 of the landing revolution sends everyone outside in ([§6.10](#everyone-inside-at-milestone-166)): 3,620 µs before, 5,660 with nobody outside (the passes over 48 structures and 80 colonists), **6,500 with seven outside at three nodes** as in the plays, and 19,060 with 48 outside each at another node, under a frame. About 150 µs per colonist at a node other than the previous one's. It happens once a raid; the fight's revolutions (≤ 6,060 µs) are unchanged. `tests/test_sim.py` holds 6,650 and 19,400. If it shows on the screen, the pass can be spread over revolutions before the intruders reach anyone. |
+| **The player plants one plant per greenhouse** (found at milestone 167) | Medium | `tools/play.py`'s `fit` compares a slot with the code it asked for, and for a plant the fit's list gives the class (250–253) while the slot keeps the variety (0–9): a greenhouse never counts as fitted, stays among `G.fits`, and `fill` never fills it. In `v166`, 107 greenhouses had 332 slots and 107 plants, and 92 garden domes were built where fills would have done ([§10.1](#food-enough-for-a-ship-at-milestone-167)). It has been so since milestone 120, so every play since measured gardens at a quarter. Fixed in `v167a` and `v167b`, the colonies grew compact (292 domes against 355, 39 airlocks against 58): `5A5A` 2 closed its valley at sol 40 and ended at 18–21, and `C0DE` 0 lost 17–18 to intruders at its fewer airlocks. The user kept the food rule alone at milestone 167; the fix waits for a milestone that takes the valley and the airlock with it. |
 | ~~The store fills with Starch~~ (found at milestone 163) | ~~Medium~~ | **Resolved at milestone 164, in the player** ([§10.1](#gardens-by-what-is-short-at-milestone-164)). A Starch plant gives 3 a round, a Vegetables plant and a `VITROMEAT` 2, and `MEALS` eats one of each; the scripted player added a garden whenever an ingredient fell, and 45 of 54 Starch gardens came with the store full, when the game stops the gardens and all three fall. At sol 120 the colonies had 62 Starch plants for 54 and 52. Now, with the store full, an ingredient asks only under one sol, and over one sol one made faster than another asks for nothing: 38, 52 and 50, the store full 23 % of the time instead of 49 %, 547 alive at sol 120 instead of 518. The game's 3 against 2 is unchanged. |
 | A `FIRE` ceiling that holds at one phase (found at milestone 161) | Low | `tests/test_reach.py`'s solar panel with the long path has a ceiling of 140 ms for its worst round. At the test's own phase the round is 105; started 25 ms later five and six times, it is 144, at milestone 160 as at 161 ([§9.4](#over-rock-too-at-milestone-161)). The six placements before it come out within 10 ms of their default phase there. A change that moves the phase can fail the test with no slower code; the cause of the 144 has not been looked at. |
 | **The start runs from the ghost's log** (milestone 158) | Low | `boot_go` and `game_new` are at the end of `GH_BUF` ([§4.2](#the-start-in-the-ghosts-log-at-milestone-158)), and the first large ghost writes over them. Nothing calls them after the start: the world is the loader's menu's, and a load does not start a game. A new game chosen inside the game would need them back — from the disc, or kept elsewhere — and `tests/test_boot.py` fails if anything runs there after the start. |
