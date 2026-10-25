@@ -30,16 +30,19 @@
              το ξαναγράφουν οι ανάγκες: η θέση 15 τρέχει πριν από την κίνηση.
   ΣΥΝΑΓΕΡΜΟΣ (βήμα 166) ο 1 βγαίνει και στέκεται στην πίστα, χωρίς δουλειά,
              και εκεί προσγειώνονται οι εισβολείς. Με την προσγείωση έχει
-             T_FIGHT και προορισμό το airlock της αποικίας· μπαίνει (F_INDOORS)
-             χωρίς να τον χτυπήσει κανείς — η υγεία του όση ήταν — ενώ οι
-             εισβολείς ζουν ακόμη.
+             T_FIGHT και προορισμό τον θόλο του airlock της αποικίας (βήμα
+             168: τον πρώτο γείτονά του που είναι έτοιμος θόλος)· μπαίνει
+             (F_INDOORS) και φτάνει στον θόλο χωρίς να τον χτυπήσει κανείς — η
+             υγεία του όση ήταν — ενώ οι εισβολείς ζουν ακόμη.
 
 Αρνητικά, με τον κώδικα πειραγμένο: το πλοίο τους χωρίς το cp SK_FOE του
 st_here (ΠΛΟΙΟ)· ο ρόλος 8 με τη φιγούρα του αποίκου (ΚΟΚΚΙΝΟΙ)· το HUD χωρίς το
 INTRUDERS (ΠΛΟΙΟ)· οι φρουροί χωρίς το set 7,(hl) του όπλου, και χωρίς το
 NO_TASK του fo_over (ΦΡΟΥΡΟΙ)· ο κανόνας ως το βήμα 149, όποιος πάει για ανάγκη
 δεν πολεμά (το and F_INDOORS του fg_need -> and 0) (ΔΙΨΑ)· η προσγείωση χωρίς
-τον συναγερμό (το call fo_alert του fo_land -> nop) (ΣΥΝΑΓΕΡΜΟΣ).
+τον συναγερμό (το call fo_alert του fo_land -> nop), ο συναγερμός ως το
+airlock και όχι ως τον θόλο του (βήμα 168: το jr z του sh_near -> jr)
+(ΣΥΝΑΓΕΡΜΟΣ).
 """
 import os, re, sys
 
@@ -316,6 +319,13 @@ def alert(sym, g, patch=(), patch6=(), quiet=False):
              and b6[st + 8 * k + EC.ST_STATE] == EC.DS_ACTIVE]
     if len(locks) != 1:
         return f"ΣΥΝΑΓΕΡΜΟΣ: η αποικία έχει airlock {locks}, όχι ένα"
+    # Ο ΘΟΛΟΣ ΤΟΥ (βήμα 168): ο πρώτος γείτονάς του στον γράφο που είναι έτοιμος θόλος.
+    lk, dt = locks[0], G.L["G_dome_tbl"] - 0x4000
+    nb = list(G.m.read_ram(G.L["G_node_adj"] + 8 * lk, G.m.peek(G.L["G_rt_nodes"] + lk)))
+    home = next((n for n in nb if n < EC.MAX_DOME
+                 and b6[dt + EC.DOME_REC * n + EC.D_STATE] == EC.DS_ACTIVE), None)
+    if home is None:
+        return f"ΣΥΝΑΓΕΡΜΟΣ: το airlock {lk} δεν έχει έτοιμο θόλο ({nb})"
     # Στην πίστα με T_FIGHT, που ο πίνακας εργασιών δεν το πιάνει (κανένας
     # εισβολέας ακόμη: fo_n 0, και κανένα fo_over δεν το σβήνει).
     b6[G.ag + 512 + c] = PAD                        # προορισμός
@@ -333,9 +343,9 @@ def alert(sym, g, patch=(), patch6=(), quiet=False):
     if not G.until(lambda: G.alive(EC.AG_FOE0, EC.AG_FOE0 + EC.AG_NFOE), 64, 1):
         return "ΣΥΝΑΓΕΡΜΟΣ: δεν κατέβηκαν"
     a = G.a()
-    if (a.task[c], a.dest[c]) != (EC.T_FIGHT, locks[0]):
+    if (a.task[c], a.dest[c]) != (EC.T_FIGHT, home):
         return (f"ΣΥΝΑΓΕΡΜΟΣ: με την προσγείωση ο 1 έχει εργασία {a.task[c]}, προορισμό "
-                f"{a.dest[c]}, όχι T_FIGHT και το airlock {locks[0]}")
+                f"{a.dest[c]}, όχι T_FIGHT και τον θόλο {home} του airlock {lk}")
     if not G.until(lambda: G.a().flags[c] & E.F_INDOORS, 2000, 4):
         a = G.a()
         return f"ΣΥΝΑΓΕΡΜΟΣ: ο 1 δεν μπήκε σε 2000 frames ({a.node[c]}, υγεία {a.health[c]})"
@@ -343,9 +353,16 @@ def alert(sym, g, patch=(), patch6=(), quiet=False):
     foes = G.alive(EC.AG_FOE0, EC.AG_FOE0 + EC.AG_NFOE)
     if a.health[c] != hp or not foes:
         return f"ΣΥΝΑΓΕΡΜΟΣ: μέσα με υγεία {a.health[c]} (ήταν {hp}), εισβολείς {foes}"
-    say(f"ΣΥΝΑΓΕΡΜΟΣ: ο 1 στην πίστα πήρε T_FIGHT και το airlock {locks[0]} με την "
-        f"προσγείωση, και μπήκε (κόμβος {a.node[c]}) με την υγεία του, {hp}· ζουν "
-        f"εισβολείς {foes}")
+    at = a.node[c]
+    if not G.until(lambda: G.a().node[c] == home and G.a().edge[c] == E.NO_EDGE, 2000, 4):
+        a = G.a()
+        return f"ΣΥΝΑΓΕΡΜΟΣ: ο 1 δεν έφτασε στον θόλο {home} ({a.node[c]}, {a.edge[c]})"
+    a = G.a()
+    if a.health[c] != hp:
+        return f"ΣΥΝΑΓΕΡΜΟΣ: στον θόλο με υγεία {a.health[c]} (ήταν {hp})"
+    say(f"ΣΥΝΑΓΕΡΜΟΣ: ο 1 στην πίστα πήρε T_FIGHT και τον θόλο {home} του airlock {lk} "
+        f"με την προσγείωση, μπήκε (κόμβος {at}) και έφτασε στον θόλο με την υγεία "
+        f"του, {hp}· ζουν εισβολείς {foes}")
     return None
 
 
@@ -367,6 +384,7 @@ def main():
     nt = at("FOO_LP", [0x36, E.NO_TASK], 12)                       # ld (hl),NO_TASK
     fi = at("FG_NEED", [0xE6, E.F_INDOORS], 16)                    # and F_INDOORS
     fa = at("FO_LAND", [0xCD] + w(sym["FO_ALERT"]), 64)            # call fo_alert
+    sd = at("SH_NEAR", [0x04, 0x05, 0x28], 128)                    # inc b / dec b / jr z
     for label, fn, patch in (
             ("το πλοίο τους χωρίς το cp SK_FOE", ship, sk and [(sk + 1, 99)]),
             ("ο ρόλος 8 με τη φιγούρα του αποίκου", ship, [(rf, FC_COLONIST)]),
@@ -374,7 +392,8 @@ def main():
             ("οι φρουροί χωρίς όπλο", guards, gn and [(gn, 0), (gn + 1, 0)]),
             ("οι φρουροί μένουν στη μάχη", guards, nt and [(nt, 0), (nt + 1, 0)]),
             ("όποιος πάει για ανάγκη δεν πολεμά", thirst, fi and [(fi + 1, 0)]),
-            ("η προσγείωση χωρίς τον συναγερμό", alert, fa and [(fa + k, 0) for k in range(3)])):
+            ("η προσγείωση χωρίς τον συναγερμό", alert, fa and [(fa + k, 0) for k in range(3)]),
+            ("ο συναγερμός ως το airlock", alert, sd and [(sd + 2, 0x18)])):
         if not patch:
             check(False, f"δεν βρέθηκε πού να πειραχτεί για «{label}»")
             continue

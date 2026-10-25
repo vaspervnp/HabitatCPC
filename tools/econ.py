@@ -1848,8 +1848,9 @@ def call_ship(e, kind):
     return True
 
 
-def ship_tick(e, a, spawn_node, F_ALIVE, occ):
-    """Μία περιστροφή του πλοίου. Τρέχει στη θέση 15, μαζί με τα συμβάντα."""
+def ship_tick(e, a, spawn_node, F_ALIVE, occ, g=None):
+    """Μία περιστροφή του πλοίου. Τρέχει στη θέση 15, μαζί με τα συμβάντα. Ο
+    γράφος g για τον συναγερμό των εισβολέων (βήμα 168)."""
     if e.ship_state == SHIP_NONE:
         return
     if e.ship_eta:
@@ -1862,7 +1863,7 @@ def ship_tick(e, a, spawn_node, F_ALIVE, occ):
         # επισκέπτες, έμποροι. Των εισβολέων μηδενίζει το μέτρημα.
         if e.ship_kind == SK_FOE:
             e.lands = 0
-            land_foes(e, a, spawn_node, F_ALIVE, occ)
+            land_foes(e, a, spawn_node, F_ALIVE, occ, g)
             return
         e.lands = min(255, e.lands + 1)
         if e.ship_kind == SK_COLONIST:
@@ -2087,7 +2088,7 @@ def unbidden(e, kind):
     return SK_FOE if e.alive >= FOE_POP and e.lands >= FOE_EVERY else kind
 
 
-def land_foes(e, a, node, F_ALIVE, occ):
+def land_foes(e, a, node, F_ALIVE, occ, g):
     """Το in_land (src/ship.asm): 2-4 εισβολείς στην πίστα, έξω, στις πρώτες
     ελεύθερες από τις θέσεις 96-99. Γεννιούνται όπως ο άποικος (born) και
     μετά: εργασία T_FIGHT, υγεία FOE_HP."""
@@ -2101,18 +2102,20 @@ def land_foes(e, a, node, F_ALIVE, occ):
         a.task[i] = T_FIGHT
         a.health[i] = FOE_HP
         n -= 1
-    foe_alert(e, a, F_ALIVE)
+    foe_alert(e, a, F_ALIVE, g)
 
 
-SH_MAX = 32                     # src/alert.asm (SH_MAX): τα πρώτα 32 έτοιμα airlock, κατά θέση
+SH_MAX = 16                     # src/alert.asm (SH_MAX): τα πρώτα 16 έτοιμα airlock, κατά θέση (32 ως το 167)
 T_NEED = 254                    # το T_NEED του tools/entity.py (§6.7)
 
 
-def foe_alert(e, a, F_ALIVE, F_INDOORS=2):
+def foe_alert(e, a, F_ALIVE, g, F_INDOORS=2):
     """Ο ΣΥΝΑΓΕΡΜΟΣ (βήμα 166, src/alert.asm), στην προσγείωση των εισβολέων:
     όποιος άποικος (0-79) είναι έξω, ζει, δεν είναι φρουρός και δεν πάει ήδη
     μέσα (T_NEED) πάει στο κοντινότερο από τα πρώτα SH_MAX έτοιμα airlock που
-    φτάνεται (ισοπαλία: το πρώτο), με T_FIGHT· αν κανένα, μένει ό,τι ήταν."""
+    φτάνεται (ισοπαλία: το πρώτο), και από εκεί στον πρώτο γείτονά του στον
+    γράφο g που είναι έτοιμος θόλος (βήμα 168), με T_FIGHT· αν κανένα airlock,
+    μένει ό,τι ήταν."""
     locks = [MAX_DOME + s for s in range(MAX_STRUCT)
              if e.struct[s * STRUCT_REC + ST_KIND] == K_AIRLOCK
              and e.struct[s * STRUCT_REC + ST_STATE] == DS_ACTIVE][:SH_MAX]
@@ -2127,6 +2130,9 @@ def foe_alert(e, a, F_ALIVE, F_INDOORS=2):
             if d < best_d:
                 best, best_d = n, d
         if best != 255:
+            # ως τον θόλο του (βήμα 168): ο πρώτος γείτονας που είναι έτοιμος θόλος
+            best = next((n for n in g.neighbours(best)
+                         if n < MAX_DOME and indoor_node(e, n)), best)
             a.dest[c] = best
             a.task[c] = T_FIGHT
 

@@ -679,7 +679,7 @@ def ship_tick(e, a, g, nexthop, occ):
     πρώτα οι επισκέπτες (βήμα 136), και μετά το πλοίο."""
     if e.ship_state == EC.SHIP_LANDED and e.ship_kind == EC.SK_VISITOR:
         visit_tick(e, a, g, nexthop, occ)
-    EC.ship_tick(e, a, e.pad_node, F_ALIVE, occ)
+    EC.ship_tick(e, a, e.pad_node, F_ALIVE, occ, g)
 
 
 def air_out(a, n, g):

@@ -1894,11 +1894,14 @@ SUIT_OUT = (65, 67, 68, 70, 71, 90, 91)     # δομές έξω· 90-91 δεν �
 SUIT_TICKS = 640
 
 
-def suit_graph():
+def suit_graph(pre=()):
     """Ο γράφος της αποικίας με δομές (64-71) σε θόλους, μία πίσω από το
-    airlock 64 και μία πίσω από το 66, και ένα ζευγάρι 90-91 μόνο του."""
+    airlock 64 και μία πίσω από το 66, και ένα ζευγάρι 90-91 μόνο του. Οι
+    ακμές pre μπαίνουν πρώτες (βήμα 168: η σειρά των γειτόνων)."""
     g = G.GRAPHS["colony"]()
     g.n = g.hw = 93
+    for x, y in pre:
+        g.link(x, y)
     for k, s in enumerate(range(64, 72)):
         if s not in (65, 67):
             g.link(k * 5 % 48, s)
@@ -2010,15 +2013,22 @@ def suit_branches(sym):
 # --- ο συναγερμός (βήμα 166, src/alert.asm): όλοι μέσα ----------------------
 ALERT_PAD = 71                      # η πίστα: μια δομή έξω, στη suit_graph
 ALERT_DOME = 5                      # ένας θόλος· όποιος στέκεται εκεί έξω (εργοτάξιο)
+# ΩΣ ΤΟΝ ΘΟΛΟ ΤΟΥ (βήμα 168): ο πρώτος γείτονας του airlock 66 είναι ο θόλος 48,
+# που δεν είναι έτοιμος (το populate έχει 24) και δεν έχει άλλη ακμή — καμία
+# απόσταση δεν αλλάζει. Ο επόμενος, ο 10, είναι. Ο θόλος του 69 (25) δεν είναι.
+ALERT_SKIP = 48
 # Η ΠΡΟΣΓΕΙΩΣΗ ΜΕ ΤΟΝ ΣΥΝΑΓΕΡΜΟ, στον Z80 με τέσσερις εισβολείς: ως τόσα us η
 # θέση 15 εκείνης της περιστροφής με επτά έξω σε τρεις κόμβους, όπως στα
 # παιχνίδια (τέσσερις νεοφερμένοι στην πίστα, δύο σε μια δομή, ένας σε άλλη),
 # και με 48 έξω σε κόμβους που αλλάζουν κάθε φορά (καμία απάντηση από τον
 # προηγούμενο). Μετρημένα στο βήμα 166: 3.620 us η προσγείωση χωρίς τον
 # συναγερμό, +2.040 για τα δύο περάσματα (5.660), ~150 ανά άποικο έξω σε νέο
-# κόμβο: 6.500 οι επτά, 19.060 οι 48.
-ALERT_US = 6650
-ALERT_HEAVY_US = 19400
+# κόμβο: 6.500 οι επτά, 19.060 οι 48. ΚΑΙ Ο ΘΟΛΟΣ ΤΟΥ (βήμα 168): μία φορά ανά
+# airlock που διαλέγεται, και μετά από τη λίστα — 5.700 με όλους μέσα, 6.940 οι
+# επτά (τρία airlock, τρεις θόλοι), 19.850 οι 48: κάτω από ένα frame. Ψαγμένος
+# για κάθε νέο κόμβο, οι 48 έφταναν τα 25.540.
+ALERT_US = 7100
+ALERT_HEAVY_US = 20000                  # ένα frame
 
 
 def alert_scene(lock69=EC.DS_ACTIVE, heavy=False):
@@ -2030,8 +2040,9 @@ def alert_scene(lock69=EC.DS_ACTIVE, heavy=False):
     DIST), ένας φρουρός στην πίστα, ένας στο 67 με T_NEED (πάει ήδη μέσα), δύο
     στο 90-91 (κανένα airlock δεν φτάνεται) και ένας νεκρός στο 70. Οι άλλοι
     μέσα. Το airlock 69 είναι lock69 (DS_BUILDING: δεν μετρά). Με heavy, 48
-    έξω, ένας σε κάθε κόμβο του κύκλου 65, 67, 68, 70, 71."""
-    g = suit_graph()
+    έξω, ένας σε κάθε κόμβο του κύκλου 65, 67, 68, 70, 71. Ο πρώτος γείτονας
+    του 66 είναι ο θόλος ALERT_SKIP, που δεν είναι έτοιμος (βήμα 168)."""
+    g = suit_graph(pre=((ALERT_SKIP, 66),))
     dist, nexthop = G.all_pairs(g)
     st = E.Sim(g, nexthop, dist)
     EC.populate(st.e)
@@ -2082,10 +2093,14 @@ def alert_scene(lock69=EC.DS_ACTIVE, heavy=False):
 def alert_branches(sym):
     """Ο ΣΥΝΑΓΕΡΜΟΣ, byte προς byte: η θέση 15 μίας περιστροφής, όπου προσγειώνεται
     το πλοίο των εισβολέων. Στην αναφορά: όσοι ήταν έξω, ζωντανοί, όχι φρουροί
-    και όχι σε T_NEED, έχουν T_FIGHT και προορισμό το κοντινότερο έτοιμο airlock·
-    οι άλλοι ό,τι ήταν. ΑΡΝΗΤΙΚΑ: και οι φρουροί, και το T_NEED, πάντα η απάντηση
-    του προηγούμενου, και το airlock που χτίζεται, το πιο μακρινό, ο θόλος ως
-    δομή, χωρίς τον συναγερμό. Και το κόστος της περιστροφής."""
+    και όχι σε T_NEED, έχουν T_FIGHT και προορισμό τον θόλο του κοντινότερου
+    έτοιμου airlock (βήμα 168: τον πρώτο γείτονά του που είναι έτοιμος θόλος,
+    αλλιώς το ίδιο)· οι άλλοι ό,τι ήταν. Και η σκηνή των 48, byte προς byte.
+    ΑΡΝΗΤΙΚΑ: και οι φρουροί, και το T_NEED, πάντα η απάντηση του προηγούμενου,
+    και το airlock που χτίζεται, το πιο μακρινό, ο θόλος ως δομή, χωρίς τον
+    συναγερμό, ως το airlock, και ο θόλος που δεν είναι έτοιμος, κανένας θόλος
+    χωρίς το airlock, ο θόλος της λίστας γνωστός από πριν. Και το κόστος της
+    περιστροφής."""
     keys = lambda z: (z.a.to_bytes(), bytes(z.e.dome), bytes(z.e.struct),
                       econ_bytes(z.e), bytes(z.e.job), bytes(z.occ[:128]))
 
@@ -2107,12 +2122,18 @@ def alert_branches(sym):
                for k, (a_, b_) in enumerate(zip(got, keys(want))) if a_ != b_]
         print(f"ΑΠΟΤΥΧΙΑ συναγερμός: ο Z80 διαφέρει από την αναφορά: {bad}")
         return 1
-    # Η ΑΝΑΦΟΡΑ ΚΑΝΕΙ ΟΣΑ ΛΕΕΙ Η ΠΡΟΖΑ: το κοντινότερο έτοιμο airlock του κόμβου.
+    # Η ΑΝΑΦΟΡΑ ΚΑΝΕΙ ΟΣΑ ΛΕΕΙ Η ΠΡΟΖΑ: το κοντινότερο έτοιμο airlock του κόμβου,
+    # και ο θόλος του.
     a0, a1, e = st.a, want.a, st.e
 
     def near(n, locks=(64, 66)):
         d = [(e.dist[n * 128 + q], q) for q in locks if e.dist[n * 128 + q] != 255]
         return min(d)[1] if d else 255
+
+    def dome(q):
+        return next((x for x in g.neighbours(q) if x < EC.MAX_DOME and
+                     e.dome[x * EC.DOME_REC + EC.D_STATE] == EC.DS_ACTIVE), q)
+    shelter = lambda n: dome(near(n)) if near(n) != 255 else 255
     # Ο ΚΑΝΟΝΑΣ σε όλους τους 0-79, όχι μόνο στη σκηνή: και όσους άφησε έξω
     # το populate.
     why, went, kept = [], [], []
@@ -2123,8 +2144,8 @@ def alert_branches(sym):
         now = (a1.task[i], a1.dest[i])
         if go:
             went.append(i)
-            if now != (EC.T_FIGHT, near(n)):
-                why.append(f"ο {i} στο {n}: {now}, όχι (T_FIGHT, {near(n)})")
+            if now != (EC.T_FIGHT, shelter(n)):
+                why.append(f"ο {i} στο {n}: {now}, όχι (T_FIGHT, {shelter(n)})")
         elif i in ids:
             kept.append(i)
             if now != (a0.task[i], a0.dest[i]):
@@ -2137,9 +2158,23 @@ def alert_branches(sym):
            if how not in ("guard", "dead") and t != E.T_NEED and n not in (90, 91)):
         why.append("κάποιος της σκηνής που έπρεπε δεν πήγε")
     dests = {near(a0.node[i]) for i in went}
+    domes = {a1.dest[i] for i in went}
     near69 = [n for n, _, _ in plan if near(n) != near(n, (64, 66, 69))]
-    if len(dests) < 2 or not near69:
-        why.append(f"η σκηνή: airlock {dests}, κόμβοι πιο κοντά στο 69 {near69}")
+    if len(dests) < 2 or not near69 or g.neighbours(66)[0] != ALERT_SKIP \
+            or not domes <= {dome(64), dome(66)} or dome(66) == ALERT_SKIP \
+            or any(x >= EC.MAX_DOME for x in domes):
+        why.append(f"η σκηνή: airlock {dests}, θόλοι {domes}, κόμβοι πιο κοντά στο 69 "
+                   f"{near69}, οι γείτονες του 66 {g.neighbours(66)}")
+    # ΚΑΙ Η ΣΚΗΝΗ ΤΩΝ 48 (βήμα 168), byte προς byte: εκεί το 69 είναι έτοιμο και ο
+    # θόλος του (25) όχι — όποιος το έχει πιο κοντά πάει στο ίδιο το airlock.
+    _, _, sth, idh, _ = alert_scene(heavy=True)
+    wanth = ref(g, nexthop, sth)
+    goth = z80(g, nexthop, sth)
+    to69 = [i for i in idh if wanth.a.dest[i] == 69 and wanth.a.task[i] == EC.T_FIGHT]
+    if goth != keys(wanth):
+        why.append("η σκηνή των 48: ο Z80 διαφέρει από την αναφορά")
+    if not to69 or dome(69) != 69:
+        why.append(f"η σκηνή των 48: κανείς στο 69 χωρίς θόλο ({dome(69)})")
     if why:
         print("ΑΠΟΤΥΧΙΑ συναγερμός: " + "· ".join(why))
         return 1
@@ -2155,6 +2190,22 @@ def alert_branches(sym):
     nr = find(sym["SH_NEAR"], [0xB8, 0x30], 64)                    # cp b · jr nc
     dm = find(sym["SH_NEAR"], [0xFE, EC.MAX_DOME, 0x30], 8)         # cp MAX_DOME · jr nc
     cl = find(sym["FO_LAND"], [0xCD] + w(sym["FO_ALERT"]), 64)
+    sd = find(sym["SH_NEAR"], [0x04, 0x05, 0x28], 128)               # inc b · dec b · jr z
+    rc = find(sym["SH_NEAR"], [0xE1, 0x7E, 0x38], 128)               # pop hl · ld a,(hl) · jr c
+    no = next((sym["SH_NEAR"] + k for k in range(160)                # djnz · ld a,e · pop hl
+               if m.peek(sym["SH_NEAR"] + k) == 0x10
+               and list(m.read_ram(sym["SH_NEAR"] + k + 2, 2)) == [0x7B, 0xE1]), None)
+    un = find(sym["SH_BUILD"], [0x3E, 0xFE, 0x12], 64)                # ld a,SH_UNK · ld (de),a
+    for label, patch, scene in (
+            ("ως το airlock", sd and [(sd + 2, 0x18)], None),
+            ("και ο θόλος που δεν είναι έτοιμος", rc and [(rc + 2, 0x18)], None),
+            ("κανένας θόλος: ο θόλος 0 αντί για το airlock", no and [(no + 2, 0xAF)], "48"),
+            ("ο θόλος της λίστας γνωστός από πριν (ο 0)", un and [(un + 1, 0)], None)):
+        z = (z80(g, nexthop, sth, patch) == goth) if scene else (z80(g, nexthop, st, patch) == got)
+        if not patch or z:
+            print(f"ΑΠΟΤΥΧΙΑ ΑΡΝΗΤΙΚΟ συναγερμού: με «{label}» ο Z80 βγαίνει ίδιος "
+                  f"(ή δεν βρέθηκε)")
+            return 1
     for label, patch in (("και οι φρουροί", rg and [(rg + 1, 0xFF)]),
                          ("και όποιος πάει ήδη μέσα", tn and [(tn + 1, 0)]),
                          ("πάντα η απάντηση του προηγούμενου", ca and [(ca + 3, 0x18)]),
@@ -2185,15 +2236,18 @@ def alert_branches(sym):
                   patch=[(cl + k, 0) for k in range(3)])
     m0.poke(sym["PIN_SLOT"], 15)
     bare = tick_us(m0, sym)
-    _, _, sth, idh, _ = alert_scene(heavy=True)
     heavy = land_us(sth)
     print(f"OK συναγερμός: η προσγείωση με {len(ids)} της σκηνής έξω — {len(went)} "
-          f"(και όσους άφησε έξω το populate) πήγαν στο κοντινότερο έτοιμο airlock "
-          f"({sorted(dests)}) με T_FIGHT, {len(kept)} ό,τι ήταν (φρουρός, T_NEED, "
-          f"90-91 χωρίς airlock, νεκρός), οι μέσα ανέγγιχτοι — ίδια "
+          f"(και όσους άφησε έξω το populate) πήγαν στον θόλο του κοντινότερου έτοιμου "
+          f"airlock ({sorted(dests)} -> {sorted(domes)}, πέρα από τον {ALERT_SKIP} που "
+          f"δεν είναι έτοιμος) με T_FIGHT, {len(kept)} ό,τι ήταν (φρουρός, T_NEED, "
+          f"90-91 χωρίς airlock, νεκρός), οι μέσα ανέγγιχτοι; στη σκηνή των "
+          f"{len(idh)} {len(to69)} στο 69, που δεν έχει έτοιμο θόλο — ίδια "
           f"bytes στον Z80 και στην αναφορά. ΑΡΝΗΤΙΚΑ: και οι φρουροί, και το T_NEED, "
           f"πάντα η απάντηση του προηγούμενου, και το airlock που χτίζεται, όχι το "
-          f"κοντινότερο, ο θόλος ως δομή, χωρίς τον συναγερμό — διαφέρουν")
+          f"κοντινότερο, ο θόλος ως δομή, χωρίς τον συναγερμό, ως το airlock, και ο "
+          f"θόλος που δεν είναι έτοιμος, κανένας θόλος χωρίς το airlock, ο θόλος της "
+          f"λίστας γνωστός από πριν — διαφέρουν")
     print(f"              η θέση 15 της προσγείωσης: {real} us με επτά έξω σε τρεις "
           f"κόμβους (ταβάνι {ALERT_US}), {base} us με όλους μέσα, {bare} χωρίς τον "
           f"συναγερμό· {us} us με τους {len(went)} της σκηνής, {heavy} us με "

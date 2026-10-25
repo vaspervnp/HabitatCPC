@@ -167,6 +167,7 @@ class Game:
         self.alive_prev = {}
         self.built = {}                         # όνομα σταδίου -> (κόμβος, θέση)
         self.fits = []                          # [όνομα, θέση, κωδικοί] που περιμένουν υλικά
+        self.pclass = None                      # βήμα 168: η κλάση κάθε ποικιλίας φυτού
         self.spot_cache = {}
         self.lastb = {}                         # όνομα σταδίου -> sol του τελευταίου
         self.zones = False                      # το σχέδιο big: διάταξη με ζώνες
@@ -834,15 +835,8 @@ class Game:
     def fit(self, at, codes):
         """Ο εξοπλισμός του θόλου στο at, υποδοχή-υποδοχή: codes[s] στην
         υποδοχή s (None = άφησέ την). -> οι υποδοχές που έμειναν χωρίς ό,τι
-        ζητήθηκε (για αργότερα, όταν φτάσουν τα υλικά).
-
-        ΓΝΩΣΤΟ ΛΑΘΟΣ (βήμα 167, DESIGN §15): για ένα φυτό ο κατάλογος δίνει την
-        κλάση (STARCH-TREE) και η υποδοχή κρατά την ποικιλία (0-9), οπότε το
-        «== code» δεν πετυχαίνει ποτέ: κάθε θερμοκήπιο μένει στα G.fits, το fill
-        δεν το γεμίζει, και ένα μεσαίο έχει ένα φυτό στις τέσσερις υποδοχές.
-        Διορθωμένο (v167a/b) οι αποικίες έγιναν πυκνότερες και έσπασαν αλλού
-        (η κοιλάδα του 5A5A 2, το πλήθος στο airlock του C0DE 0)· μένει για
-        επόμενο βήμα, μαζί με αυτά."""
+        ζητήθηκε (για αργότερα, όταν φτάσουν τα υλικά). Ενα φυτό είναι «ό,τι
+        ζητήθηκε» όταν είναι της κλάσης του (holds, βήμα 168)."""
         from cpc import KEY_DOWN, KEY_UP, KEY_RIGHT, KEY_LEFT, JOY_FIRE
         m, sym = self.m, self.sym
         p = lambda n, k=0: m.peek(sym[n] + k)
@@ -859,7 +853,7 @@ class Game:
         for s, code in enumerate(codes[:n]):
             if code is None or code not in lst:
                 continue
-            if self.domes()[d][8 + s] == code:
+            if self.holds(self.domes()[d][8 + s], code):
                 left[s] = None
                 continue
             for _ in range(16):
@@ -873,10 +867,26 @@ class Game:
                     break
                 self.tap(KEY_DOWN if dd <= c // 2 else KEY_UP)
             self.stick(JOY_FIRE)
-            if self.domes()[d][8 + s] == code:
+            if self.holds(self.domes()[d][8 + s], code):
                 left[s] = None
         self.look()
         return left if any(x is not None for x in left) else []
+
+    def holds(self, have, code):
+        """ΤΟ ΦΥΤΟ ΤΗΣ ΚΛΑΣΗΣ (βήμα 168): η υποδοχή έχει ό,τι ζητήθηκε. Μια μηχανή
+        είναι ο αριθμός της. Ενα φυτό ο κατάλογος του εξοπλισμού το δίνει ως κλάση
+        (STARCH-TREE = FT_CLS του src/fit.asm), και η υποδοχή κρατά την ποικιλία
+        (fit_new: 0-4 άμυλο, 5-9 λαχανικά, G_plant_class). Ως τότε κανένα φυτό
+        δεν ήταν «ό,τι ζητήθηκε»: κάθε θερμοκήπιο έμενε για πάντα στα G.fits, το
+        fill δεν γέμιζε ποτέ θόλο με εκκρεμότητα, και κάθε μεσαίο θερμοκήπιο είχε
+        ένα φυτό στις τέσσερις υποδοχές — στο v166 107 θερμοκήπια, 332 υποδοχές
+        και 107 φυτά στους οκτώ κόσμους, και κάθε «άμυλο+» έχτιζε νέο θόλο. Ετσι
+        από το βήμα 120."""
+        if code < STARCH:
+            return have == code
+        if self.pclass is None:
+            self.pclass = self.m.read_ram(self.L["G_plant_class"], 12)
+        return have < len(self.pclass) and self.pclass[have] == code - STARCH
 
     def trade(self, net):
         """Η γραμμή του εμπόρου (ΜΕΤΑΦΟΡΑ, M), ένα αγαθό τη φορά: δεξιά ώσπου το
@@ -1449,7 +1459,13 @@ def plan_tutorial():
     τους: το καθένα μόλις ΜΠΕΙ το προηγούμενο — το εργοτάξιο μετράει. Οι μηχανές
     που λέει η γραμμή: OXYGEN, MEALS, METAL, άμυλο και λαχανικά, MEAT. Το πλοίο
     θέλει τον έλεγχο και την πίστα χτισμένα (ship_call). Δεκατρία ήταν, χωρίς τον
-    δεύτερο ηλιακό: το ρεύμα κομμένο το 60% του χρόνου ως το πλοίο (DESIGN §9.6)."""
+    δεύτερο ηλιακό: το ρεύμα κομμένο το 60% του χρόνου ως το πλοίο (DESIGN §9.6).
+
+    ΚΑΙ ΜΕΤΑ ΤΟ ΠΛΟΙΟ ΟΙ ΚΟΙΤΩΝΕΣ (βήμα 168): το «THE COLONY IS YOURS» μένει ως
+    το επόμενο γεγονός. Ως το βήμα 167 το έφερνε ένα fit του θερμοκηπίου που ο
+    παίκτης ξαναδοκίμαζε για πάντα (holds: τα φυτά του δεν μετρούσαν ποτέ ως
+    μπαλμένα)· με τα φυτά διορθωμένα το θερμοκήπιο γεμίζει στο sol 2,5, και ως
+    το sol 14 δεν ερχόταν κανένα γεγονός."""
     return [
         step("ηλιακός", SOLAR, (10, -6)),
         step("οξυγόνο", DOME_S, (6, 2), "oxygen", [OXYGEN], after=["ηλιακός"], seq=True),
@@ -1466,6 +1482,7 @@ def plan_tutorial():
         step("έλεγχος", DOME_S, (30, -10), "control", after=["εργαστήριο"], seq=True),
         step("πίστα", PAD, (-14, -14), after=["έλεγχος"], seq=True),
         step("πλοίο", "ship", None, after=["πίστα", "έλεγχος"]),
+        step("κοιτώνες", DOME_S, (30, 2), "quarters", when=lambda G: "πλοίο" in G.lastb),
     ]
 
 
@@ -1511,10 +1528,14 @@ def plan_big():
              when=demand("ηλιακός+", lambda G: power_short(G, False)), again=True),
         step("συλλέκτης+", COLLECTOR, None, zone="edge", after=["συλλέκτης"],
              when=demand("συλλέκτης+", lambda G: power_short(G, True)), again=True),
-        step("οξυγόνο+", DOME_S, None, "oxygen", [OXYGEN], zone="core", after=["οξυγόνο"],
-             when=demand("οξυγόνο+", o2_short), again=True),
+        # ΤΟ ΝΕΡΟ ΠΡΙΝ ΑΠΟ ΤΟ ΟΞΥΓΟΝΟ (βήμα 168): το οξυγόνο γίνεται από νερό.
+        # Ενα «οξυγόνο+» με εννέα κομμάτια διαδρόμου μάζευε μέταλλα δυόμισι sol
+        # και κρατούσε πίσω την «αντλία+» των 22: στο BEEF 2 του v168d το νερό
+        # 229 -> 0, το οξυγόνο σταμάτησε, και 82 πέθαναν από αέρα.
         step("αντλία+", EXTRACTOR, "water", after=["αντλία"],
              when=demand("αντλία+", water_short, 1.5), again=True),
+        step("οξυγόνο+", DOME_S, None, "oxygen", [OXYGEN], zone="core", after=["οξυγόνο"],
+             when=demand("οξυγόνο+", o2_short), again=True),
         # ΠΡΙΝ ΑΠΟ ΤΗΝ ΤΡΟΦΗ (βήμα 162, η επιλογή του χρήστη): το ιατρείο, η
         # δεύτερη πόρτα και το δεύτερο Control ήταν τελευταία, και κάθε «+» της
         # τροφής που δεν πληρωνόταν τα κρατούσε πίσω — ενώ όταν μάζευε μέταλλα
@@ -1734,7 +1755,11 @@ def ready(G, s):
     return all(a in G.built and G.state(G.built[a][0]) == DS_ACTIVE for a in s["after"])
 
 
-LIFE = ("οξυγόνο+", "αντλία+", "airlock 2")
+# ΚΑΙ ΤΑ ΓΕΥΜΑΤΑ (βήμα 168): με την αντλία πριν από το οξυγόνο, οι αντλίες
+# έπαιρναν πρώτες το μέταλλο, και η «γεύματα+» περίμενε πίσω από τα 30 με
+# άμυλο 340 και λαχανικά 315 στην αποθήκη: σε δύο από τα τρία batch 7 πέθαναν
+# από πείνα στο sol 106-118. Χωρίς το απόθεμα, κανένας (v168f, n168f).
+LIFE = ("οξυγόνο+", "αντλία+", "airlock 2", "γεύματα+")
 
 
 def reserve(G, s):
@@ -1828,6 +1853,10 @@ def try_step(G, s):
         # σταθερό όριο (κανένας μεσαίος κάτω από 40 θέσεις) έφερε κι αυτό το
         # 5A5A 2 στους 78, αλλά στο 1048 1 οι μικροί θόλοι έφαγαν τις θέσεις
         # του δεύτερου Control και η αποικία έμεινε 50 αντί για 78.
+        # ΚΑΙ ΟΤΑΝ ΑΦΗΝΕΙ ΛΙΓΟΤΕΡΕΣ ΑΠΟ ΤΙΣ ΜΙΣΕΣ ΤΟΥ ΜΙΚΡΟΥ (βήμα 168): με τα
+        # φυτά διορθωμένα, στο 5A5A 2 στο sol 38,7, από 19 θέσεις ο μεσαίος του
+        # λαχανικά+ στο (34, 0) τις έκλεινε όλες και ο μικρός στο (30, -4) 12 —
+        # 19 δεν είναι πάνω από 3 x 12 + 2, και η αποικία έμεινε 18 ως το τέλος.
         for it in ((DOME_M, DOME_S) if item == DOME_M else (item,)):
             for R in (CORE_R if s["zone"] == "core" and G.grow else (None,)):
                 got = G.spot_zone(it, s["zone"], R)
@@ -1844,7 +1873,7 @@ def try_step(G, s):
                     if gs is not None:
                         lm = n0 - G.dome_sites(NECK_C, (DOME_M, got[0]))
                         ls = n0 - G.dome_sites(NECK_C, (DOME_S, gs[0]))
-                        if lm > 3 * max(ls, 1) + 2:
+                        if lm > 3 * max(ls, 1) + 2 or 2 * (n0 - lm) < n0 - ls:
                             G.event(f"ο λαιμός: από {n0} θέσεις θόλου ο μεσαίος στο {got[0]} "
                                     f"αφήνει {n0 - lm}, ο μικρός στο {gs[0]} {n0 - ls}")
                             got = None
