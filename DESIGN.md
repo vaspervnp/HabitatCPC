@@ -3247,6 +3247,100 @@ went past 95, but the cap was 4 + 48 per Control room up to 128 — 100 with two
 where it landed for ever, never hungry and never working. No colony had got there.
 The cap is 80 now, and ids 96–127 hold nobody.
 
+#### More than 80 colonists: the plan, at milestone 169
+
+The user's choice after [milestone 168](#the-players-plants-at-milestone-168) was **past
+the 80**. Almost every scripted colony now ends at 77–80, and the 80 comes from the
+table, not from the game. It was measured first. The user then chose **160 colonists
+or more**, and **a fourth needs slot**. Nothing in the game changed at this milestone.
+
+**What ties the 80 to the table.**
+- **The fields.** The 16 fields are 128 wide, two to a page
+  ([above](#61-entities)). 59 routines in 20 files read or write them.
+  - 94 `set/res 7,l` and 13 `set/res 7,e` switch between the two halves of a page.
+  - Four wraps keep an id under 128: three `res 7,c` and one `and 127`.
+  - 16 loops walk a column with `inc l` and rely on the second half starting at +128.
+- **The ids.** Colonists are 0–79, bots 80–95, intruders 96–99 and visitors 112–119.
+  The figure marks of 100–111, 120 and 121 in `node_occ` are the economy's (`EC_X`,
+  `EC_VIN`, `EC_TU`).
+- **The jobs.** A job's agent is one byte, and 255 means nobody, so no id may reach
+  255.
+- **The addresses.** `FO_MAP` sits right under `agent_fields`. A save writes
+  `&6C00–&7DFF` as it is, nine sectors. `game_new` clears everything from
+  `agent_fields` to `worldinfo`.
+- **The limit inside 128 ids is 96.** Ninety-six colonists would fit if the bots,
+  intruders and visitors moved up and `EC_X` went to the gap at `&7400`. Nothing more
+  fits.
+
+**The layout for 160.** Ids 0–159 are colonists, 160–175 bots, 176–179 intruders and
+180–187 visitors: 188 of 255. Every field gets a page of its own, 256 wide (`ld h,field`
+/ `ld l,id`, with no `set 7,l` anywhere), and the figure marks get a seventeenth page.
+That is **4,352 bytes against 2,048 today: 2,304 more in the window of bank 6**, which
+has 216 free. The tails of the seventeen pages, ids 188–255, are 68 bytes each and
+1,156 in all, for small tables or short routines.
+
+**Where 2,304 bytes come from.** Bank 6 is full, and bank 7 nearly so.
+- **Bank 7's structures keep a mask byte beside every pixel pair, and most of them
+  are opaque.** Of the cells, 2,692 have a mask of zero:
+
+  | Structure | Opaque cells |
+  |---|---|
+  | solar | 576 of 576 |
+  | mine | 804 of 1,024 |
+  | collector | 436 of 576 |
+  | extractor | 436 of 576 |
+  | airlock | 184 of 256 |
+  | ship | 162 of 256 |
+  | turbine | 94 of 576 |
+
+  Keeping a mask only where something shows through, as the domes' solid ends do
+  since [milestone 114](#the-domes-opaque-inside-at-milestone-114), frees about 2.5 KB
+  of bank 7.
+- **Then the object pass's drawings go from bank 6 to bank 7.** The corridors' 640,
+  the corners' 164 and the empty ring slots' 384 make 1,188, and with the 216 free,
+  1,404.
+- **The other 900** come from the tails, or from also moving the figures' drawings
+  (642) and `dome_fig` (512). The object pass reads both in bank 6 today.
+
+**What it costs in time**, from the pinned wheel of `tests/test_sim.py` at milestone
+168:
+
+| Pass | Today | At 160 |
+|---|---|---|
+| movement | 8 slots × 12, 799 µs | 7 slots × 25 (176 movers), ~1,660 µs |
+| needs | 3 slots × 8 colonists, 1,797 µs (2,592 with everyone inside), each colonist every 4 revolutions | **4 slots × 10**, ~2,250 µs (~3,240), still every 4 revolutions: the user's fourth slot |
+| a whole revolution | 28,950 µs, 9 % of the machine | ~37,800 µs, 12 % |
+
+The worst frame stays slot 14's 4,593 µs. Three passes grow with the colonists and are
+measured at step 4:
+- slot 12's count of the living, `en_count`, from 80 to 160;
+- slot 15's fight, whose loops walk the colonists;
+- the landing's alert ([§6.10](#into-the-airlocks-dome-at-milestone-168)), whose scene
+  of 48 outside is already at 19,850 µs, a frame.
+
+**The steps.**
+1. **Milestone 170: bank 7's structures without the masks of their opaque bytes.**
+   The same pixels on screen (the golden images), and the blit's cost measured.
+2. **Milestone 171: the drawings move from bank 6 to bank 7.** The corridors', the
+   corners' and the empty ring slots' drawings go, and the object pass pages bank 7
+   for them. `b6code` moves down by what left.
+3. **Milestone 172: one field to a page, with the ids still where they are.**
+   - The 59 routines are rewritten, and the reference (`tools/entity.py`) and the
+     tests with them.
+   - The save's entity block grows by five sectors: a slot has 54 and uses 47 today.
+   - The proof is the same plays, event for event.
+4. **Milestone 173: the ids.**
+   - Colonists take 0–159.
+   - The wheel gets 7 movement slots and 4 needs slots.
+   - The cap goes to 160 (the Control rooms).
+   - The ships' crews, the fight's and the alert's passes go over 160, and the save
+     gets a new version.
+5. **Milestone 174: the scripted player and the balance at 160**, with plays of 160
+   sols.
+
+Each step is measured before the next one starts. If the bytes do not come, the
+fallback is 96 colonists inside the 128 ids, which needs none of steps 1–3.
+
 ### 6.2 The node graph
 
 The colony is a graph, and almost every system reads it rather than the tile grid.
@@ -17684,6 +17778,7 @@ gap.
 | **A colony fills its valley** (found at milestone 160) | Low | A dome needs a corridor of up to 12 pieces to another dome, over ground, dust or foundation ([§9.3](#every-building-needs-a-neighbour-at-milestone-85)) and, since milestone 161, rock ([§9.4](#over-rock-too-at-milestone-161)). Where rock, mountain and water close a colony in, the valley runs out. `1048` 1 at sol 80 had no site for a dome anywhere in the world, 50 colonists and 600 Metal in store ([§10.1](#colonies-that-stop-at-milestone-160)). The player's own limit, 32 tiles from the domes' centre, was lifted at milestone 160. **Milestone 161, the user's choice, lets a corridor cross rock**: a third to a half more dome sites in the stuck colonies that still had some (32 → 49, 19 → 31, 180 → 232), none for `1048` 1 at sol 80, which mountain and a lake close. **Played, it gave fewer colonists, not more**: 410 at sol 120 against 446 with the old rule at the same speed. The scripted player spends the sites sooner — `5A5A` 2 filled its valley at 17 domes by sol 45 and stayed at 18 colonists — and two colonies stopped at the first Control's cap behind the Metal-held medbay — the player's order, changed at milestone 162 ([§10.1](#the-players-order-at-milestone-162)). **At milestone 164 `5A5A` 2 filled its valley again**: a medium dome at sol 37 closed the pass between mountain and lake, 32 sites for a small dome became 13, and none was left from sol 44. **Milestone 165, the user's choice, changes the player's choice, and the risk is Low since** ([§10.1](#the-neck-of-the-valley-at-milestone-165)). Under 40 sites, a medium dome that closes over three times what the step's small one would close, plus 2, is built small. `5A5A` 2 went east through the pass and ends at 64, and no world ends below milestone 164: 547 → 595 (control 596). A fixed limit, no medium dome under 40 sites, also saved `5A5A` 2 but left `1048` 1 at 50: its small domes spent the valley before the second Control. Open: a small dome or a structure's path can still close a neck, since only the step's two domes are compared. Also open: mountain or shallow water, which the user did not take. |
 | **Water at seventy** (found at milestone 162) | Medium | Milestone 145 keeps one pump site ahead for the scripted player ([§10.1](#water-kept-at-milestone-145)), which held to sixty-odd colonists. In two of milestone 162's batches `1048` 0 grew to 76 and 68 by sol 85–95, the water fell to 0 — once with no site for another pump, once with pumps built to sol 78 and the power at its life-support level — and the `OXYGEN` machines stopped: 66 and 49 died of air at once ([§10.1](#the-players-order-at-milestone-162)). The batch the user chose reached 77 there with one death; the same can happen to it. **It happened again at milestone 166**, on the path of a variant that was not kept (`v166d`): `1048` 0 at 77, the water at 0 by sol 109–112, 53 dead of air at sol 113 ([§6.10](#everyone-inside-at-milestone-166)). **At milestone 168 it was found to be the player's order**, not the water: an `οξυγόνο+` waiting for the metal of nine pieces of corridor held back the `αντλία+` of 22 for two and a half sols, and `BEEF` 2 of `v168d` lost 82 to air at sols 54 and 112. The pump now comes before the oxygen ([§10.1](#the-players-plants-at-milestone-168)), and in `v168g` no world has water under 20 after sol 30 (`v168a`: 30 samples in `1048` 0, 15 in `5A5A` 2). The game still has no warning before the water runs out. |
 | ~~Intruders kill whoever is outside~~ (found at milestone 165) | ~~Medium~~ | **Resolved at milestone 166, the user's choice: the alert, everyone inside** ([§6.10](#everyone-inside-at-milestone-166)). In the eight big plays of milestone 165, 60 of 62 deaths were to intruders, and a probe of the 95 raids found all 67 dead outside: 33 newcomers waiting for work at the pad where the intruders' ship lands, 30 at the mine, 55 before any guard struck. At the landing every colonist outside who is not a guard and not already going in now takes `T_FIGHT` and walks to the nearest ready airlock. Probed again: 13 raid deaths, 6 before a guard's blow, 82 of 95 raids without a death; 14 deaths in all, 606 alive at sol 120 against 595. Open: five guards died against one, since the intruders now meet them, and the late food wall still stops `1048` 0 and `ACE1` 0 at 74. |
+| **160 colonists need 2,304 more bytes in bank 6** (milestone 169) | High | The user chose 160 colonists or more ([§6.1](#more-than-80-colonists-the-plan-at-milestone-169)): every agent field on a page of its own, 4,352 bytes against 2,048, with 216 free in bank 6. The plan finds them in two steps that move nothing of the agents: bank 7's structures without the masks of their opaque bytes (2,692 of them), and then the corridors', corners' and empty slots' drawings (1,188) from bank 6 to bank 7; the rest from the pages' own tails. If the bytes do not come, the fallback is 96 colonists inside the 128 ids. |
 | **The intruders' landing is the heaviest slot** (milestone 166) | Low | Slot 15 of the landing revolution sends everyone outside in ([§6.10](#everyone-inside-at-milestone-166)), and since milestone 168 into the airlock's dome ([§6.10](#into-the-airlocks-dome-at-milestone-168)): 3,620 µs before, 5,700 with nobody outside (the passes over 48 structures and 80 colonists; 5,660 at milestone 166), **6,940 with seven outside at three nodes** as in the plays (6,500), and 19,850 with 48 outside each at another node (19,060), **at a frame**. About 150 µs per colonist at a node other than the previous one's, and about 100 the first time an airlock is chosen. It happens once a raid; the fight's revolutions (≤ 6,060 µs) are unchanged. `tests/test_sim.py` holds 7,100 and 20,000. If it shows on the screen, the pass can be spread over revolutions before the intruders reach anyone. |
 | ~~**The player plants one plant per greenhouse**~~ (found at milestone 167) | ~~Medium~~ | **Resolved at milestone 168, the user's choice** ([§10.1](#the-players-plants-at-milestone-168)). `tools/play.py`'s `fit` compared a slot with the code it asked for, and for a plant the fit's list gives the class (250–253) while the slot keeps the variety (0–9): a greenhouse never counted as fitted, and `fill` never filled it — 107 greenhouses, 332 slots and 107 plants in `v166`, since milestone 120. `fit` now asks `holds`, any variety of the class. The colonies grew compact, and what that broke was taken with it: `5A5A` 2's valley by a second test of the neck, `C0DE` 0's crowd at its airlock by sending those who come in on into the airlock's dome ([§6.10](#into-the-airlocks-dome-at-milestone-168)), and two walls it showed by the pump before the oxygen and the meals as life support. |
 | ~~The store fills with Starch~~ (found at milestone 163) | ~~Medium~~ | **Resolved at milestone 164, in the player** ([§10.1](#gardens-by-what-is-short-at-milestone-164)). A Starch plant gives 3 a round, a Vegetables plant and a `VITROMEAT` 2, and `MEALS` eats one of each; the scripted player added a garden whenever an ingredient fell, and 45 of 54 Starch gardens came with the store full, when the game stops the gardens and all three fall. At sol 120 the colonies had 62 Starch plants for 54 and 52. Now, with the store full, an ingredient asks only under one sol, and over one sol one made faster than another asks for nothing: 38, 52 and 50, the store full 23 % of the time instead of 49 %, 547 alive at sol 120 instead of 518. The game's 3 against 2 is unchanged. |
