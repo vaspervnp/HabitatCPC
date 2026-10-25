@@ -13,9 +13,10 @@
 M_OXYGEN    equ 0
 
 NG_SEED     equ #ACE1
-; οι πίνακες οντοτήτων της τράπεζας 6, ένα συνεχές μπλοκ (src/layout), ως το
-; worldinfo (βήμα 154: ως τότε ως το τέλος των διαδρόμων, που πήγαν στην 5)
-NG_B6_LEN   equ G_worldinfo - G_agent_fields
+; οι πίνακες οντοτήτων της τράπεζας 6, ένα συνεχές μπλοκ (src/layout), από
+; τους θόλους ως το τέλος της τράπεζας (βήμα 172: ως τότε από τους πράκτορες ως
+; το worldinfo, και ως το βήμα 154 ως το τέλος των διαδρόμων, που πήγαν στην 5)
+NG_B6_LEN   equ #8000 - G_dome_tbl
 
 ; ---------------------------------------------------------------------------
 ; game_new — από το μηδέν ως το πρώτο frame.
@@ -53,26 +54,29 @@ ngw_job:
         ld      (hl),a
         add     hl,de
         djnz    ngw_job
-        ; --- οι πίνακες οντοτήτων: ΕΝΑ μπλοκ στην τράπεζα 6, από τους
-        ; πράκτορες ως το τέλος των διαδρόμων (τα assert στο τέλος).
+        ; --- οι πίνακες οντοτήτων: ΕΝΑ μπλοκ στην τράπεζα 6, από τους θόλους
+        ; ως το τέλος της τράπεζας (τα assert στο τέλος).
         ld      bc,GA_PORT + PAGE_B6
         out     (c),c
-        ld      hl,G_agent_fields
+        ld      hl,G_dome_tbl
         ld      bc,NG_B6_LEN - 1
         call    ng_zero
         ; Τρεις στήλες πρακτόρων θέλουν 255, όχι 0: μια θέση 0 σημαίνει «στην
         ; πρώτη θέση του δακτυλίου», μια ακμή 0 «στον δρόμο για τον πρώτο
-        ; γείτονα», και μια εργασία 0 «κρατάει την εργασία μηδέν». Είναι οι
-        ; στήλες +128 τριών διαδοχικών σελίδων: AG_NODE, AG_DEST, AG_PROG.
-        ld      hl,AG_NODE + 128
+        ; γείτονα», και μια εργασία 0 «κρατάει την εργασία μηδέν». Είναι τρεις
+        ; διαδοχικές σελίδες: AG_SLOT, AG_EDGE, AG_TASK (ως το βήμα 171 οι
+        ; στήλες +128 των AG_NODE, AG_DEST, AG_PROG). Οι 128, όχι η σελίδα: η
+        ; ουρά της πρώτης είναι η στήλη 1 του DF_PG (src/object.asm).
+        ld      hl,AG_SLOT
         ld      c,3                     ; το A είναι ακόμη 255
 ngw_ff:
         ld      b,128
 ngw_fl:
         ld      (hl),a
-        inc     hl
+        inc     l
         djnz    ngw_fl
-        set     7,l                     ; η στήλη +128 της επόμενης σελίδας
+        ld      l,b                     ; 0
+        inc     h                       ; η επόμενη σελίδα
         dec     c
         jr      nz,ngw_ff
         ; --- οι διάδρομοι, στην τράπεζα 5 από το βήμα 154: CT_EMPTY, όχι 0, και
@@ -129,13 +133,13 @@ ngp_lp:
         ld      l,c
         ld      a,(ng_r)
         ld      (hl),a
-        set     7,l
+        set     3,h                     ; AG_ROLE
         ld      a,(de)
         inc     de
         ld      (hl),a                  ; ρόλος
         ld      a,(de)
         inc     de
-        res     7,l
+        res     3,h
         inc     h
         ld      (hl),a                  ; κόμβος
         inc     h
@@ -145,22 +149,21 @@ ngp_lp:
         call    ent_claim               ; A = κόμβος -> A = θέση
         pop     de
         pop     bc
-        ld      h,AG_PG + 1
+        ld      h,AG_SLOT >> 8
         ld      l,c
-        set     7,l
         ld      (hl),a                  ; η θέση στον δακτύλιο
-        ; οι ανάγκες γεμάτες, και οι δύο στήλες τριών σελίδων: ένας άποικος
+        ; οι ανάγκες γεμάτες, και τα δύο πεδία τριών σελίδων: ένας άποικος
         ; που ξεκινά στο μηδέν πεθαίνει πριν προλάβει να περπατήσει ως το ψυγείο.
-        ld      h,AG_PG + 4
+        ld      h,AG_WATER >> 8
         ld      b,3
 ngp_n:
         ld      (hl),255
-        res     7,l
+        res     3,h
         ld      (hl),255
-        set     7,l
+        set     3,h
         inc     h
         djnz    ngp_n
-        res     7,l
+        res     3,h                     ; AG_SUIT
         ld      (hl),SUIT_START         ; δέκα λεπτά αέρα στην αρχή (βήμα 90)
         inc     c
         ld      a,(de)
@@ -319,12 +322,13 @@ ng_econ_end:
         NG_BYTE EC_ALIVE, 4
 ng_econ_col_end:
 
-        ; ΤΟ ΜΠΛΟΚ (βήμα 154): πράκτορες, 128 ελεύθερα, θόλοι, οι 48 δομές,
-        ; κατοχή — και το worldinfo αμέσως μετά, έξω από αυτό
-        assert  G_dome_tbl >= G_agent_fields + 8 * 256
+        ; ΤΟ ΜΠΛΟΚ (βήμα 172): θόλοι, οι 48 δομές, κατοχή, σημάδια, και τα 16
+        ; πεδία ως το τέλος της τράπεζας — και το worldinfo πριν, έξω από αυτό
+        ; (ως το 171: πράκτορες, 128 ελεύθερα, θόλοι, δομές, κατοχή, worldinfo)
         assert  G_struct_tbl == G_dome_tbl + MAX_DOME * DOME_REC
         assert  G_node_occ == G_struct_tbl + 48 * STRUCT_REC
-        assert  G_worldinfo == G_node_occ + 256
+        assert  G_agent_marks == G_node_occ + 256 && G_agent_fields == G_agent_marks + 256
+        assert  G_agent_fields + 16 * 256 == #8000 && G_worldinfo + 4 <= G_dome_tbl
         ; οι διευθύνσεις του src/const.asm: STB_H, STB_C, CT_H
         assert  (G_struct_tbl & 7) == 0 && STB_C + 4 * 47 + 3 <= 255
         assert  ((G_struct_tbl + 48 * STRUCT_REC) & 255) == 0

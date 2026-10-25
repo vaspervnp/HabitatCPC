@@ -267,7 +267,7 @@ def scene(R, rnd, case, extra=True):
     near = set()
     for i in range(128):
         if ag[i] & 1:                                       # F_ALIVE
-            node, edge = ag[256 + i], ag[512 + 128 + i]
+            node, edge = ag[256 + i], ag[2560 + i]          # AG_EDGE (βήμα 172)
             near.add(node if edge == 255 else adj[node * 8 + edge] if ag[i] & 2 else node)
     for s_ in range(EC.MAX_STRUCT):
         if EC.MAX_DOME + s_ in near and st[s_ * EC.STRUCT_REC + 2] == K_AIRLOCK:

@@ -199,12 +199,9 @@ lke_a:
         dec     h                       ; AG_PG: οι σημαίες
         bit     0,(hl)                  ; F_ALIVE
         jr      z,lke_no                ; νεκρός, ή άδεια θέση: κόμβος 0
-        inc     h
-        inc     h
-        set     7,l
+        ld      h,AG_EDGE >> 8
         ld      a,(hl)                  ; edge
-        res     7,l
-        dec     h                       ; ξανά στους κόμβους
+        ld      h,AG_PG + 1             ; ξανά στους κόμβους
         inc     a
         jr      nz,lke_nx               ; στον δρόμο
         push    bc
@@ -240,7 +237,7 @@ lks_in:
 ; στολή, στο έδαφος. «Ερχόταν» είναι ό,τι ρωτά η άφιξη (em_arrive): ο κόμβος
 ; στην άλλη άκρη της ακμής του, node_adj[node * 8 + edge].
 ;
-; Ενα πέρασμα των 128 στη στήλη των edge: όσοι δεν ταξιδεύουν κοστίζουν 35 T,
+; Ενα πέρασμα των 128 στη στήλη των edge (AG_EDGE): όσοι δεν ταξιδεύουν κοστίζουν 35 T,
 ; ~1,1 ms. Μόνο σε κρούση σε έτοιμο airlock.
 lk_air_out:
         ld      (lk_n),a
@@ -249,7 +246,7 @@ lk_air_out:
         call    lk_each
         ld      a,(lk_n)
         ld      e,a                     ; E = το airlock
-        ld      hl,(AG_PG + 2) * 256 + 128      ; τα edge· L - 128 = ο πράκτορας
+        ld      hl,AG_EDGE              ; τα edge· L = ο πράκτορας
         ld      b,N_AGENT
 lkt_lp:
         ld      a,(hl)
@@ -265,8 +262,7 @@ lkt_tr:
         push    hl
         dec     a
         ld      c,a                     ; C = edge
-        res     7,l
-        dec     h                       ; AG_PG + 1: ο κόμβος
+        ld      h,AG_PG + 1             ; ο κόμβος
         ld      a,(hl)
         push    hl
         call    lk_adj                  ; κρατά A, BC, DE
@@ -329,7 +325,7 @@ lko_out:
         inc     h
         ld      (hl),a                  ; dest: δεν ξαναγυρίζει στον θόλο
         dec     h
-        set     7,l
+        set     3,h                     ; AG_SLOT
         ld      (hl),c                  ; slot
         jp      fg_mark                 ; φαίνεται στη δομή (βήμα 89)
 

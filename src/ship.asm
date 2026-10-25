@@ -120,8 +120,7 @@ sv_lp:                                  ; (ως το βήμα 93 και οι 128
         and     F_ALIVE
         jr      z,sv_n
         push    hl
-        ld      h,AG_PG + 6
-        set     7,l                     ; ηθικό
+        ld      h,AG_MORALE >> 8
         ld      a,(hl)
         add     a,VIS_MORALE
         jr      nc,sv_st
@@ -191,41 +190,41 @@ sk_n:
         ret
 
 ; sh_born — A = ταυτότητα. Γεννιέται στην πίστα, με γεμάτες μπάρες: σημαίες
-; και ρόλος στη σελίδα AG_PG, και οι σελίδες +1..+7 από το sb_tab, κάτω μισό
-; και πάνω μισό (set 7,l) η καθεμία — η +7 από το βήμα 90: στολή, φορτίο.
+; και ρόλος στις σελίδες AG_PG και AG_ROLE, και οι σελίδες +1..+7 από το
+; sb_tab, η καθεμία και η +8 της (set 3,h· ως το βήμα 171 κάτω και πάνω μισό
+; της ίδιας, set 7,l) — η +7 από το βήμα 90: στολή, φορτίο.
 sh_born:
         ld      l,a
         ld      h,AG_PG
         ld      (hl),F_ALIVE
-        set     7,l
+        set     3,h                     ; AG_ROLE
         call    cw_pick                 ; η ειδικότητα που λείπει (βήμα 91·
         ld      (hl),a                  ; ως τότε id & 7, και ρομπότ)
-; sb_rest — H = AG_PG, L = ταυτότητα (το bit 7 δεν μετρά): ό,τι μένει μετά από
-; σημαίες και ρόλο. Τα ρομπότ του src/bots.asm γράφουν τα δύο δικά τους και
-; μπαίνουν εδώ (βήμα 92) — και ο άποικος περνά από τις ίδιες εντολές με το 91.
+; sb_rest — H = AG_PG ή AG_ROLE (το bit 3 δεν μετρά), L = ταυτότητα: ό,τι μένει
+; μετά από σημαίες και ρόλο. Τα ρομπότ του src/bots.asm γράφουν τα δύο δικά
+; τους και μπαίνουν εδώ (βήμα 92) — και ο άποικος περνά από τις ίδιες εντολές
+; με το 91.
 sb_rest:
         ld      de,sb_tab
         ld      b,7
 sb_lp:
         inc     h
-        res     7,l
+        res     3,h                     ; AG_PG + k
         ld      a,(de)
         ld      (hl),a
         inc     de
-        set     7,l
+        set     3,h                     ; AG_PG + 8 + k
         ld      a,(de)
         ld      (hl),a
         inc     de
         djnz    sb_lp
         ; ΘΕΣΗ ΣΤΗΝ ΠΙΣΤΑ (βήμα 89), όπως σε κάθε άφιξη (em_arrive): ως τότε
         ; γεννιόταν χωρίς, και μια φιγούρα έξω στέκεται στη θέση της.
-        res     7,l
         push    hl
         ld      a,(sb_tab)              ; ο κόμβος: η πίστα
         call    ent_claim
         pop     hl
-        ld      h,AG_PG + 1
-        set     7,l
+        ld      h,AG_SLOT >> 8
         ld      (hl),a                  ; η θέση, ή NO_SLOT αν γέμισε
         jp      fg_mark                 ; φαίνεται στην πίστα
 
@@ -251,18 +250,16 @@ agl_lp:
         push    de
         push    hl
         ld      (hl),F_ALIVE            ; έξω
-        set     7,l
+        set     3,h                     ; AG_ROLE
         ld      (hl),d
         call    sb_rest
         pop     hl
         pop     de
         push    de
         push    hl
-        ld      h,AG_PG + 3
-        set     7,l
+        ld      h,AG_TASK >> 8
         ld      (hl),e                  ; η εργασία
         ld      h,AG_PG + 6
-        res     7,l
         ld      (hl),FOE_HP             ; η υγεία
         pop     hl
         pop     de

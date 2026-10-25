@@ -192,13 +192,14 @@ def limit(L, b2, b6, b5):
 
 
 def wipe6(L, before):
-    """Η τράπεζα 6 από τους πράκτορες ως το worldinfo (βήμα 154· ως τότε ως το
-    τέλος των διαδρόμων): μηδέν, και τρεις στήλες πρακτόρων στο 255."""
-    ag, end = L["G_agent_fields"] - 0x4000, L["G_worldinfo"] - 0x4000
+    """Η τράπεζα 6 από τους θόλους ως το τέλος της (βήμα 172· ως τότε από τους
+    πράκτορες ως το worldinfo, και ως το 154 ως το τέλος των διαδρόμων): μηδέν,
+    και τρία πεδία πρακτόρων, οι 0-127, στο 255."""
+    dome, ag = L["G_dome_tbl"] - 0x4000, L["G_agent_fields"] - 0x4000
     b6 = bytearray(before[6])
-    b6[ag:end] = bytes(end - ag)
-    for page in (1, 2, 3):                               # θέση, ακμή, εργασία
-        o = ag + 256 * page + 128
+    b6[dome:0x4000] = bytes(0x4000 - dome)
+    for page in (9, 10, 11):                             # θέση, ακμή, εργασία
+        o = ag + 256 * page
         b6[o:o + 128] = b"\xff" * 128
     return b6
 
@@ -219,11 +220,11 @@ def crew(L, b6, fill, people, flags):
     for a, (role, node) in enumerate(people):
         slot = next(s_ for s_ in fill if not b6[occ + node] >> s_ & 1)
         b6[occ + node] |= 1 << slot
-        b6[ag + a], b6[ag + a + 128] = flags, role
-        b6[ag + 256 + a], b6[ag + 256 + a + 128] = node, slot
+        b6[ag + a], b6[ag + 2048 + a] = flags, role      # ένα πεδίο ανά σελίδα (βήμα 172)
+        b6[ag + 256 + a], b6[ag + 2304 + a] = node, slot
         b6[ag + 512 + a] = node                          # προορισμός
         for page in (4, 5, 6):
-            b6[ag + 256 * page + a] = b6[ag + 256 * page + a + 128] = 255
+            b6[ag + 256 * page + a] = b6[ag + 256 * (page + 8) + a] = 255
         b6[ag + 256 * 7 + a] = SUIT_START                # η στολή· το φορτίο 0
 
 
@@ -310,7 +311,10 @@ def check(sym, patch=(), n=8, timing=False, colony=False):
     for case in range(n):
         G.restore()
         if case:
-            G.put(6, 0x2C00, bytes(rnd.randrange(256) for _ in range(0x1400)))
+            # το μπλοκ της τράπεζας 6 από το worldinfo ως το τέλος (βήμα 172·
+            # ως τότε #6C00-#7FFF, με το worldinfo στο #7D00)
+            w6 = L["G_worldinfo"] - 0x4000
+            G.put(6, w6, bytes(rnd.randrange(256) for _ in range(0x4000 - w6)))
             G.put(5, L["G_corr_tbl"] - 0x4000, bytes(rnd.randrange(256) for _ in range((codeat.MAX_CORR + 1) * 4)))
             G.put(2, L["G_econ_state"] - 0x8000,
                   bytes(rnd.randrange(256) for _ in range(L["G_hud_shadow"] - L["G_econ_state"])))
@@ -325,12 +329,18 @@ def check(sym, patch=(), n=8, timing=False, colony=False):
         # ως την κρυφή μνήμη του HUD, που τη γράφει η πρώτη σχεδίαση· ως το βήμα
         # 84 ήταν σταθερά στο #A500, από το 85 (οι μηχανές στην τράπεζα 5) πιο
         # κάτω — και ένα σταθερό #A500 έγραφε σκουπίδια πάνω στον κώδικα
-        # ως το worldinfo (ως το βήμα 153 ως το τέλος των διαδρόμων): μετά είναι
-        # η κρυφή μνήμη φιγούρων, που την ξαναχτίζει η πρώτη σχεδίαση του ui_init
-        b6end = L["G_worldinfo"] - 0x4000
+        # η τράπεζα 6 από το worldinfo ως το τέλος (βήμα 172· ως τότε από τους
+        # πράκτορες ως το worldinfo, και ως το 153 ως το τέλος των διαδρόμων),
+        # έξω από την κρυφή μνήμη φιγούρων, που την ξαναχτίζει η πρώτη σχεδίαση
+        # του ui_init: οκτώ στήλες των 64 στο 192 των σελίδων 8-15 των πεδίων
+        # (of_at· ως το 171 μετά το worldinfo, έξω από το διάστημα)
+        ag6, got6 = L["G_agent_fields"] - 0x4000, G.bank(6)
+        for s_ in range(8):
+            o = ag6 + (8 + s_) * 256 + 192
+            b6[o:o + 64] = bytes(got6[o:o + 64])
         c5 = L["G_corr_tbl"] - 0x4000
         for name, k, want, a, z in (("η τράπεζα 2", 2, b2, lo, L["G_hud_shadow"] - 0x8000),
-                                    ("η τράπεζα 6", 6, b6, 0x2C00, b6end),
+                                    ("η τράπεζα 6", 6, b6, L["G_worldinfo"] - 0x4000, 0x4000),
                                     ("οι διάδρομοι", 5, b5, c5, c5 + (codeat.MAX_CORR + 1) * 4),
                                     ("ο κόσμος", 4, b4, 0, 0x4000)):
             got = G.bank(k)

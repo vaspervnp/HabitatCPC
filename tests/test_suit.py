@@ -94,8 +94,9 @@ def check(ok, msg):
 class W(TO.World):
     def a(self, i):
         f = lambda o: self.b6(self.L["G_agent_fields"] + o + i)[0]
-        return {"f": f(0), "role": f(128), "node": f(256), "dest": f(512),
-                "edge": f(640), "task": f(896), "sleep": f(1408), "health": f(1536),
+        # ένα πεδίο ανά σελίδα (βήμα 172): τα δεύτερα κάθε ζεύγους 2.048 πιο πάνω
+        return {"f": f(0), "role": f(2048), "node": f(256), "dest": f(512),
+                "edge": f(2560), "task": f(2816), "sleep": f(3328), "health": f(1536),
                 "suit": f(1792)}
 
     def put(self, i, off, v):
@@ -288,7 +289,7 @@ def meteor(sym, g, patch=(), quiet=False):
     if not at:
         return f"ΜΕΤΕΩΡΙΤΗΣ: κανείς στο airlock: {[w.a(i) for i in range(4)]}"
     before = {i: w.a(i) for i in range(4)}
-    mk = w.L["G_node_occ"] + 128
+    mk = w.L["G_agent_marks"]                       # τα σημάδια (βήμα 172· ως τότε node_occ + 128)
     for i in range(4):
         w.put6(mk + i, [0])
     if not w.probe([0x3E, LOCK] + call(sym, "LK_AIR_OUT")):
@@ -443,9 +444,9 @@ def rand_state(rnd, w):
     gr = types.SimpleNamespace(adj=bytearray(rnd.choice(near) if rnd.random() < 0.6
                                              else rnd.randrange(96) for _ in range(768)))
     deg = bytes(rnd.randrange(9) for _ in range(96))
-    for col, data in ((0, a.flags), (256, a.node), (640, a.edge), (1792, a.suit)):
+    for col, data in ((0, a.flags), (256, a.node), (2560, a.edge), (1792, a.suit)):
         w.put6(L["G_agent_fields"] + col, data)
-    w.put6(L["G_node_occ"] + 128, bytes(128))
+    w.put6(L["G_agent_marks"], bytes(128))
     m.write_ram(L["G_rt_nodes"], deg)
     m.write_ram(L["G_node_adj"], bytes(gr.adj))
     m.poke(w.sym["DIRTY_NUM"], 0)
@@ -469,8 +470,8 @@ def random_calls(sym, g, patch=(), quiet=False, n=400):
             return f"ΤΥΧΑΙΑ {case}: το lk_air_out δεν γύρισε"
         E.air_out(a, node, gr)
         got = {c: w.b6(L["G_agent_fields"] + off, 128)
-               for c, off in (("flags", 0), ("node", 256), ("edge", 640), ("suit", 1792))}
-        marks = w.b6(L["G_node_occ"] + 128, 128)
+               for c, off in (("flags", 0), ("node", 256), ("edge", 2560), ("suit", 1792))}
+        marks = w.b6(L["G_agent_marks"], 128)
         out = {k for k in range(128) if a.flags[k] != before.flags[k] or a.suit[k] != before.suit[k]}
         for c in ("flags", "node", "edge", "suit"):
             want = bytes(getattr(a, c))
@@ -506,7 +507,7 @@ def site(sym, g, patch=(), quiet=False):
     if w.wait(there, 20000, 4) is None:
         return "ΕΡΓΟΤΑΞΙΟ: κανείς δεν στάθηκε στο εργοτάξιο του κοιτώνα"
     i = there()[0]
-    w.put(i, 1408, 10)                      # ύπνος
+    w.put(i, 3328, 10)                      # ύπνος (AG_SLEEP, βήμα 172)
     log = []
 
     def look():

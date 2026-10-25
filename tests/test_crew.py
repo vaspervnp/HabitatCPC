@@ -99,7 +99,7 @@ class Game(TA.Game):
 
     def agents(self):
         return ([self.b6[self.ag + i] for i in range(128)],
-                [self.b6[self.ag + 128 + i] for i in range(128)])
+                [self.b6[self.ag + 2048 + i] for i in range(128)])
 
     def probe(self, body):
         m = self.m
@@ -301,7 +301,7 @@ def rules(sym, patch6=()):
     out = []
     for name, land, (flags, roles), stale, _ in RULE_CASES:
         for i in range(128):
-            G.b6[G.ag + i], G.b6[G.ag + 128 + i] = flags[i], roles[i]
+            G.b6[G.ag + i], G.b6[G.ag + 2048 + i] = flags[i], roles[i]
         n = sum(1 for f in flags if f & 1)
         for r in range(5):
             G.m.poke(G.EC["EC_LAND"] + r, land[r])
@@ -404,7 +404,7 @@ def cost(sym, patch6=()):
         G = Game(sym, patch6=patch6)
         m = G.m
         for i in range(128):
-            G.b6[G.ag + i], G.b6[G.ag + 128 + i] = (3 if i < n else 0), i % 5
+            G.b6[G.ag + i], G.b6[G.ag + 2048 + i] = (3 if i < n else 0), i % 5
         m.poke(G.EC["EC_ALIVE"], n)
         m.poke(G.EC["EC_POPCAP"], n + 4)
 

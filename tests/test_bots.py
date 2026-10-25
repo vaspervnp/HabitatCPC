@@ -112,7 +112,7 @@ class Game(TA.Game):
         self.s16(self.EC["EC_STOCK"] + 2 * EC.S_BOT, n)
 
     def agent(self, i):
-        a = E.Agents().from_bytes(bytes(self.b6[self.ag:self.ag + 2048]))
+        a = E.Agents().from_bytes(bytes(self.b6[self.ag:self.ag + 4096]))
         return {f: getattr(a, f)[i] for f in E.FIELDS}
 
     def alive(self, lo, hi):
@@ -174,7 +174,7 @@ RULE_CASES = (
 
 def setup_rule(G, stock, facs, alive, ring):
     for i in ALL:
-        G.b6[G.ag + i], G.b6[G.ag + 128 + i] = (1 if i in alive else 0), CBOT + (i & 1)
+        G.b6[G.ag + i], G.b6[G.ag + 2048 + i] = (1 if i in alive else 0), CBOT + (i & 1)
     for d in range(3):                               # οι τρεις θόλοι: όχι εργοστάσια
         G.b6[G.dome + 24 * d + 3] = (EC.R_OXYGEN, EC.R_QUARTERS, EC.R_CANTEEN)[d]
     for d, size, at in facs:
@@ -191,7 +191,7 @@ def reference(G):
     e.dome = bytearray(G.b6[G.dome:G.dome + 64 * 24])
     e.room_n = bytearray(G.m.read_ram(G.L["G_room_n"], 12))
     e.room_list = bytearray(G.m.read_ram(G.L["G_room_list"], 96))
-    a = E.Agents().from_bytes(bytes(G.b6[G.ag:G.ag + 2048]))
+    a = E.Agents().from_bytes(bytes(G.b6[G.ag:G.ag + 4096]))
     occ = bytearray(G.b6[G.occ:G.occ + 128])
     EC.bot_tick(e, a, occ)
     return a.to_bytes(), e.stock[EC.S_BOT], bytes(occ)
@@ -202,11 +202,11 @@ def rules(sym, patch=(), patch6=(), quiet=False):
     G = Game(sym, patch, patch6)
     for name, stock, facs, alive, ring, want in RULE_CASES:
         setup_rule(G, stock, facs, alive, ring)
-        before = bytes(G.b6[G.ag:G.ag + 2048])
+        before = bytes(G.b6[G.ag:G.ag + 4096])
         ref = reference(G)
         if G.call("BOT_TICK") is None:
             return f"ΚΑΝΟΝΑΣ «{name}»: το bot_tick δεν τερμάτισε"
-        got = (bytes(G.b6[G.ag:G.ag + 2048]), G.bots(), bytes(G.b6[G.occ:G.occ + 128]))
+        got = (bytes(G.b6[G.ag:G.ag + 4096]), G.bots(), bytes(G.b6[G.occ:G.occ + 128]))
         born = [i for i in ALL if G.b6[G.ag + i] & 1 and not before[i] & 1]
         if want is None:
             if born or got[1] != stock or got[0] != before:
@@ -352,7 +352,7 @@ def work(sym, g, patch=(), quiet=False):
     w = TS.W(sym, g, patch)
     m = w.m
     AGF = w.L["G_agent_fields"]
-    w.put6(AGF + 128 + TS.ENGINEER, [0])            # ο μηχανικός γίνεται εργάτης
+    w.put6(AGF + 2048 + TS.ENGINEER, [0])           # ο μηχανικός γίνεται εργάτης (AG_ROLE)
     # Τα δύο ρομπότ με τα bytes που γράφει το bot_tick, στο σκάφος (κόμβος 64),
     # έξω: η γέννηση ελέγχεται στον ΚΑΝΟΝΑ, εδώ η δουλειά.
     for i, role in ((80, CBOT), (81, CARRY)):
@@ -360,7 +360,7 @@ def work(sym, g, patch=(), quiet=False):
             v = {"flags": 1, "role": role, "node": TS.SHIP, "slot": 255, "dest": TS.SHIP,
                  "edge": 255, "progress": 0, "task": 255, "morale": 160,
                  "suit": EC.SUIT_TRIP, "spare": 0}.get(f, 200)
-            w.put6(AGF + 128 * k + i, [v])
+            w.put6(AGF + E.page_of(k) * 256 + i, [v])   # ένα πεδίο ανά σελίδα (βήμα 172)
     B.build(m, sym, 4, g + 6, at=TS.SOLAR_AT, fit=False)
     takers, t = set(), 0
     while t < 6000 and w.struct(1)[4] != TS.DS_ACTIVE:

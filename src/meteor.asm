@@ -419,4 +419,4 @@ mtb_nx:
         ld      (EC_MRND),hl
         ld      a,l
         ret
-        assert  EC_MCOIN < G_node_occ + 128 + 112  ; στα άδεια των πρακτόρων 100-111
+        assert  EC_MCOIN < G_node_occ + 255      ; στο node_occ, μετά τον χάρτη (βήμα 172)

@@ -117,7 +117,7 @@ class Rig:
         m.poke(self.sym["TICK_COUNT"] + 1, 0)
         S.enter(m, self.sym, "RUN_TICKS")
         S.enter(m, self.sym, "SAVE_STATE")
-        return E.Agents().from_bytes(m.read_ram(S.STAGE_AG, 2048))
+        return E.Agents().from_bytes(m.read_ram(S.STAGE_AG, S.AG_BYTES))
 
     def cost(self, st, n=60, patch=()):
         m = self.load(st, patch)
@@ -213,7 +213,7 @@ def main():
         m.poke(rig.sym["TICK_COUNT"] + 1, 0)
         S.enter(m, rig.sym, "RUN_TICKS")
         S.enter(m, rig.sym, "SAVE_STATE")
-        got = m.read_ram(S.STAGE_AG, 2048)
+        got = m.read_ram(S.STAGE_AG, S.AG_BYTES)
         for _ in range(4):
             E.needs_slice(st.a, st.e, st.occ, 0, 8)
         check(bytes(got) == st.a.to_bytes(), f"ΑΝΑΦΟΡΑ {name}: ίδια bytes στον Z80 "

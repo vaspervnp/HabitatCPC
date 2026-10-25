@@ -59,8 +59,7 @@ jr_lp:
         ld      a,(de)
         and     F_ALIVE
         jr      z,jr_free
-        set     7,e                     ; το task είναι στο ΠΑΝΩ μισό
-        ld      d,AG_PG + 3
+        ld      d,AG_TASK >> 8
         ld      a,(de)
         cp      c
         jr      z,jr_pop
@@ -127,8 +126,7 @@ ja_lp:
         ld      a,(de)
         cp      c
         jr      nz,ja_next              ; δεν έφτασε ακόμη
-        set     7,e
-        inc     d                       ; AG_PG + 2: το edge, στο πάνω μισό
+        ld      d,AG_EDGE >> 8
         ld      a,(de)
         inc     a
         jr      nz,ja_next              ; ακόμη στον σωλήνα
@@ -325,8 +323,7 @@ jb_mpush:
 ja_cleartask:
         ld      a,(jb_ag)
         ld      e,a
-        set     7,e
-        ld      d,AG_PG + 3
+        ld      d,AG_TASK >> 8
         ld      a,NO_TASK
         ld      (de),a
         ret
@@ -668,15 +665,14 @@ jas_lp:
         and     F_ALIVE + F_WORKING
         cp      F_ALIVE
         jr      nz,jas_next             ; νεκρός, ή δουλεύει ήδη
-        set     7,l
-        ld      h,AG_PG + 3             ; task
+        ld      h,AG_TASK >> 8
         ld      a,(hl)
         inc     a                       ; NO_TASK
         jr      nz,jas_next
         push    bc
         ld      a,c
         ld      (jb_i),a                ; για το jb_best και το jb_take
-        ld      h,AG_PG                 ; role, στο πάνω μισό
+        ld      h,AG_ROLE >> 8
         ld      a,(hl)
         and     7
         ld      b,a
@@ -692,8 +688,7 @@ jas_rb:
         ld      a,e
         ld      (jbb_rb + 1),a          ; ο ρόλος, στους δύο βρόχους του jb_best
         ld      (jbs_rb + 1),a
-        res     7,l
-        inc     h                       ; AG_PG + 1: node
+        ld      h,AG_PG + 1             ; node
         ld      a,(hl)
         call    jb_best                 ; A = ο κόμβος του
         cp      NO_JOB
@@ -931,7 +926,7 @@ jb_take:
         ld      de,G_job_tbl
         add     hl,de
         ; Η ερώτηση εδώ, η απάντηση στο τέλος (βήμα 88): το CY
-        ; επιζεί, γιατί inc hl, ld, set/res και dec d δεν το αγγίζουν.
+        ; επιζεί, γιατί inc hl και ld δεν το αγγίζουν.
         ld      a,(hl)
         cp      J_SUPPLY                ; CY: όχι Supply
         inc     hl
@@ -940,12 +935,10 @@ jb_take:
         ld      a,(jb_i)
         ld      (hl),a                  ; job.agent = i
         ld      e,a
-        set     7,e
-        ld      d,AG_PG + 3
+        ld      d,AG_TASK >> 8
         ld      a,c
         ld      (de),a                  ; agent.task = j
-        res     7,e
-        dec     d                       ; AG_PG + 2
+        ld      d,AG_PG + 2
         ld      a,b
         ld      (de),a                  ; agent.dest = κόμβος
         ret     c

@@ -7,8 +7,11 @@
         ld      l,id
         ld      a,(hl)
 
-Δύο πεδία των 128 μοιράζονται σελίδα 256 bytes: το δεύτερο στο id+128. Δεκαέξι
-πεδία = οκτώ σελίδες = 2.048 bytes.
+Ενα πεδίο σε κάθε σελίδα των 256 bytes, από το βήμα 172 (DESIGN §6.1: τα 160
+άποικοι): δεκαέξι πεδία = δεκαέξι σελίδες = 4.096 bytes, και οι ids 188-255
+κάθε σελίδας για άλλα. Το πρώτο πεδίο κάθε ζεύγους μένει στη σελίδα k, το
+δεύτερο πάει στην 8 + k (page_of). Ως το 171 δύο πεδία των 128 μοιράζονταν
+σελίδα, το δεύτερο στο id+128: οκτώ σελίδες, 2.048 bytes.
 
 Η ΚΙΝΗΣΗ έχει δύο καταστάσεις και τίποτε άλλο:
 
@@ -37,10 +40,28 @@ NO_TASK = 255
 # μη μοιάζουν στοιβαγμένοι
 FILL = [0, 4, 2, 6, 1, 5, 3, 7]
 
-# πεδία, με τη σειρά που κάθονται στη μνήμη· το i-οστό στη σελίδα i//2,
-# μετατόπιση (i%2)*128
+# πεδία, ανά ζεύγη· το i-οστό στη σελίδα page_of(i): i//2 για τα πρώτα, 8 + i//2
+# για τα δεύτερα (βήμα 172· ως τότε η σελίδα i//2 και μετατόπιση (i%2)*128)
 FIELDS = ["flags", "role", "node", "slot", "dest", "edge", "progress", "task",
           "o2", "water", "food", "sleep", "health", "morale", "suit", "spare"]
+AG_HI = 8                   # = AG_HI του src/const.asm
+NPAGE = 16                  # σελίδες των πεδίων
+
+
+def page_of(i):
+    """Η σελίδα του πεδίου i (FIELDS), από την αρχή του agent_fields."""
+    return i // 2 + AG_HI * (i % 2)
+
+
+def field_ofs(name):
+    """Από την αρχή του agent_fields ως το πεδίο `name` (του πράκτορα 0)."""
+    return page_of(FIELDS.index(name)) * 256
+
+
+def field_at(i):
+    """Ενα byte i του agent_fields -> (πεδίο, πράκτορας)."""
+    p = i // 256
+    return FIELDS[2 * (p % AG_HI) + p // AG_HI], i % 256
 
 F_ALIVE, F_INDOORS, F_ASLEEP, F_SICK, F_IDLE = 1, 2, 4, 8, 16
 F_WORKING = 32              # στέκεται στη θέση εργασίας και μετράει ως χειριστής
@@ -68,18 +89,21 @@ class Agents:
             self.task[i] = NO_TASK      # 0 θα σήμαινε «κρατάει την εργασία 0»
 
     def to_bytes(self):
-        """Η μνήμη όπως τη βλέπει ο Z80: 8 σελίδες, δύο πεδία η καθεμία."""
-        out = bytearray()
-        for p in range(len(FIELDS) // 2):
-            out += getattr(self, FIELDS[p * 2])
-            out += getattr(self, FIELDS[p * 2 + 1])
+        """Η μνήμη όπως τη βλέπει ο Z80: 16 σελίδες, ένα πεδίο η καθεμία. Οι
+        ουρές τους (ids 128-255) όπως ήρθαν από το from_bytes — εκεί είναι η
+        κρυφή μνήμη φιγούρων του renderer (src/object.asm, of_at) — ή μηδέν."""
+        out = bytearray(getattr(self, "tails", bytes(NPAGE * 256)))
+        for i, f in enumerate(FIELDS):
+            p = page_of(i) * 256
+            out[p:p + MAXAGENT] = getattr(self, f)
         return bytes(out)
 
     def from_bytes(self, blob):
-        for p in range(len(FIELDS) // 2):
-            base = p * 256
-            setattr(self, FIELDS[p * 2], bytearray(blob[base:base + 128]))
-            setattr(self, FIELDS[p * 2 + 1], bytearray(blob[base + 128:base + 256]))
+        for i, f in enumerate(FIELDS):
+            p = page_of(i) * 256
+            setattr(self, f, bytearray(blob[p:p + MAXAGENT]))
+        if len(blob) == NPAGE * 256:
+            self.tails = bytes(blob)
         return self
 
 

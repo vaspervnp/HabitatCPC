@@ -348,8 +348,8 @@ def main():
     bad = bytearray(ring)
     bad[pack.fig_off(jf):pack.fig_off(jf) + 32] = ring[pack.fig_off(jc):pack.fig_off(jc) + 32]
     check(not foe_ok(ring, bytes(bad)), "ΑΡΝΗΤΙΚΟ: ένας κίτρινος εισβολέας περνά τον έλεγχο")
-    check(by_name["agent_fields"].addr == 0x6C00,
-          f"το agent_fields στο #{by_name['agent_fields'].addr:04X}, όχι στο #6C00 του σωσίματος")
+    check(by_name["agent_fields"].addr == 0x7000,
+          f"το agent_fields στο #{by_name['agent_fields'].addr:04X}, όχι στο #7000 (set 3,h, και το σώσιμο ως το #8000)")
 
     # 7β. Η γραμματοσειρά Mode 1 του HUD (βήμα 83) δεν είναι sprite: τη γράφει
     #     το pack.py από το font_gfx. Εδώ ξαναβγαίνει από τα PIXEL, με τον

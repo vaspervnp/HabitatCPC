@@ -497,8 +497,9 @@ def expect(R, a, before, col, mask):
     free |= {(0, sym["D_ID"])}                  # η μνήμη του ob_corr (από το βήμα 82 εδώ)
     free |= {(2, at - 0x8000) for at in range(sym["OI_E"], sym["OI_E"] + 8)}
     if mask & FIG:
-        g = L["G_dome_fig"] - 0x4000
-        free |= {(6, off) for off in range(g, g + S.MAX_DOME * 8)}
+        # η κρυφή μνήμη φιγούρων: οκτώ στήλες στις ουρές των πεδίων (βήμα 172, of_at)
+        g = L["G_agent_fields"] - 0x4000 + 8 * 256 + 192
+        free |= {(6, g + s * 256 + d) for s in range(8) for d in range(S.MAX_DOME)}
     return b, free
 
 

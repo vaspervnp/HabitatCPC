@@ -102,8 +102,8 @@ ens_next:
 ; κάτω κοινά.
 ;
 ; Το L ΚΡΑΤΑΕΙ ΤΗΝ ΤΑΥΤΟΤΗΤΑ ΑΠΟ ΤΗΝ ΑΡΧΗ ΩΣ ΤΟ ΤΕΛΟΣ. Κάθε πεδίο είναι τότε
-; «ld h,σελίδα» και τίποτε άλλο — το bit 7 του L διαλέγει ποιο από τα δύο
-; πεδία της σελίδας. Η πρώτη γραφή ξαναδιάβαζε την ταυτότητα από τη μνήμη
+; «ld h,σελίδα» και τίποτε άλλο — το bit 3 του H διαλέγει ποιο από τα δύο
+; πεδία (ως το βήμα 171 το bit 7 του L, όταν ζούσαν στην ίδια σελίδα). Η πρώτη γραφή ξαναδιάβαζε την ταυτότητα από τη μνήμη
 ; δεκαπέντε φορές ανά άποικο, και αυτό ήταν ο μισός χρόνος του περάσματος.
 ;
 ; ΤΟ ΟΞΥΓΟΝΟ ΜΟΝΟ ΜΕΣΑ (βήμα 87). Εξω αναπνέει από τη στολή: το nd_out πηδά
@@ -149,7 +149,7 @@ nd_def:
         jr      z,nd_d2
         dec     (hl)
         ; --- 1. φθορά: ένα ανά επίσκεψη, με πάτωμα στο μηδέν ---
-nd_d2:  set     7,l
+nd_d2:  set     3,h                     ; AG_WATER
         ld      a,(hl)                  ; νερό
         or      a
         jr      z,nd_d3
@@ -159,7 +159,7 @@ nd_d3:  inc     h
         or      a
         jr      z,nd_d4
         dec     (hl)
-nd_d4:  res     7,l
+nd_d4:  res     3,h                     ; AG_FOOD
         ld      a,(hl)                  ; τροφή
         or      a
         jr      z,nd_d5
@@ -170,10 +170,9 @@ nd_d5:
         ; Μόνο μέσα: όποιος είναι έξω (και στέκεται ίσως σε εργοτάξιο θόλου)
         ; έρχεται από το su_tick κατευθείαν στο nd_load (βήμα 90).
 nd_sat:
-        ld      h,AG_PG + 2
-        set     7,l
+        ld      h,AG_EDGE >> 8
         ld      a,(hl)                  ; ακμή
-        res     7,l
+        res     3,h                     ; AG_PG + 2
         cp      NO_EDGE
         jr      nz,nd_load              ; ταξιδεύει
         dec     h
@@ -188,10 +187,10 @@ nd_sat:
 nd_load:
         ld      h,AG_PG + 4
         ld      b,(hl)
-        set     7,l
+        set     3,h                     ; AG_WATER
         ld      c,(hl)
         inc     h
-        res     7,l
+        res     3,h                     ; AG_FOOD
         ld      d,(hl)
 
         ; --- 4. υγεία ---
@@ -254,9 +253,9 @@ nd_death:
         or      a
         jp      z,nd_die
         dec     h
-        set     7,l
+        set     3,h                     ; AG_SLEEP
         ld      e,(hl)                  ; ο ύπνος
-        inc     h                       ; AG_PG + 6, bit 7: το ηθικό
+        inc     h                       ; AG_MORALE
 
         ; --- 6. ηθικό: το ελάχιστο των τεσσάρων ---
         ld      a,b
@@ -299,7 +298,7 @@ nd_gloom:
         jr      z,nd_seek0
         dec     (hl)
 nd_seek0:
-        res     7,l
+        res     3,h                     ; AG_HEALTH
 
         ; --- 7. πού πρέπει να πάει ---
         ; ΜΙΑ ΑΝΑΓΚΗ ΧΩΡΙΣ ΤΟ ΔΩΜΑΤΙΟ ΤΗΣ ΠΕΡΝΑ ΣΤΗΝ ΕΠΟΜΕΝΗ (βήμα 120). Ως
@@ -343,17 +342,14 @@ nd_drunk:
         ; εργασιών θα τον ξανάστελνε στη δουλειά του, η στολή πίσω στο airlock,
         ; και οι δύο με τη σειρά ως να αδειάσει — το λάθος του βήματος 28.
 nd_sated:
-        ld      h,AG_PG + 3
-        set     7,l
+        ld      h,AG_TASK >> 8
         ld      a,(hl)
         cp      T_NEED
         ret     nz
-        res     7,l
         ld      h,AG_PG
         bit     1,(hl)                  ; F_INDOORS
         ret     z                       ; έξω: πάει ακόμη μέσα
-        ld      h,AG_PG + 3
-        set     7,l
+        ld      h,AG_TASK >> 8
         ld      (hl),NO_TASK
         ret
 nd_want:
@@ -383,11 +379,9 @@ nd_search:
         jr      z,nd_far                ; υπάρχει, αλλά δεν φτάνει εκεί
         ld      a,(nd_i)                ; αφήνει τη δουλειά του (§6.7)
         ld      l,a
-        ld      h,AG_PG + 3
-        set     7,l
+        ld      h,AG_TASK >> 8
         ld      (hl),T_NEED             ; ΟΧΙ NO_TASK: βλ. παραπάνω
-        res     7,l
-        dec     h
+        ld      h,AG_PG + 2
         ld      (hl),c                  ; dest = ο θόλος
         ret
 nd_far:
@@ -437,8 +431,7 @@ nd_satisfy:
         jr      nds_spend
 
 nds_sleep:
-        ld      h,AG_PG + 5
-        set     7,l
+        ld      h,AG_SLEEP >> 8
         ld      (hl),255                ; ΓΕΜΑΤΟ, όχι +64: βλ. παραπάνω
         ret
 
@@ -451,8 +444,7 @@ nds_canteen:
         ld      c,255
         call    nds_spend
 nds_water:
-        ld      h,AG_PG + 4
-        set     7,l
+        ld      h,AG_WATER >> 8
         ld      a,(hl)                  ; νερό
         cp      NEED_LOW
         ret     nc
@@ -530,12 +522,11 @@ nd_bury:
         ld      l,a
         ld      h,AG_PG
         ld      (hl),0                  ; δεν ζει πια
-        ld      h,AG_PG + 2
-        set     7,l
+        ld      h,AG_EDGE >> 8
         ld      (hl),NO_EDGE
-        inc     h
+        inc     h                       ; AG_TASK
         ld      (hl),NO_TASK
-        res     7,l
+        res     3,h                     ; AG_PG + 3
         ld      (hl),0                  ; progress
         jp      fg_mark                 ; αν φαινόταν έξω, σβήνει (βήμα 89)
 

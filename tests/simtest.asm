@@ -12,10 +12,15 @@
         include "../src/const.asm"
         include "../build/layout.asm"
 
-STAGE_AG    equ #C000                   ; 2.048 bytes πεδία πρακτόρων
-STAGE_OCC   equ #C800                   ; 256 bytes μάσκες θέσεων
-STAGE_DOME  equ #C900                   ; 1.536 bytes πίνακας θόλων
-STAGE_STR   equ #CF00                   ; 384 bytes πίνακας δομών (βήμα 154: ως τότε 512,
+; (Βήμα 172: τα πεδία 4.096 bytes, ένα ανά σελίδα, και τα σημάδια των
+; φιγούρων σελίδα τους· ως τότε 2.048 bytes στο #C000 και τα σημάδια στο πάνω
+; μισό της κατοχής.)
+AG_BYTES    equ 16 * 256
+STAGE_AG    equ #C000                   ; 4.096 bytes πεδία πρακτόρων
+STAGE_OCC   equ #D000                   ; 256 bytes μάσκες θέσεων, χάρτης εισβολέων, EC_X
+STAGE_MK    equ #D100                   ; 256 bytes σημάδια φιγούρων
+STAGE_DOME  equ #D200                   ; 1.536 bytes πίνακας θόλων
+STAGE_STR   equ #D800                   ; 384 bytes πίνακας δομών (βήμα 154: ως τότε 512,
 STR_BYTES   equ 48 * STRUCT_REC         ; που έγραφαν πάνω στο node_occ από το #7C00)
 ; Το econ_state ζει στην τράπεζα 2, δηλαδή στη βασική μνήμη: ο host το γράφει
 ; και το διαβάζει κατευθείαν, χωρίς σκάλα.
@@ -44,10 +49,14 @@ load_state:
         out     (c),c
         ld      hl,STAGE_AG
         ld      de,G_agent_fields
-        ld      bc,2048
+        ld      bc,AG_BYTES
         ldir
         ld      hl,STAGE_OCC
         ld      de,G_node_occ
+        ld      bc,256
+        ldir
+        ld      hl,STAGE_MK
+        ld      de,G_agent_marks
         ld      bc,256
         ldir
         ld      hl,STAGE_DOME
@@ -123,10 +132,14 @@ save_state:
         out     (c),c
         ld      hl,G_agent_fields
         ld      de,STAGE_AG
-        ld      bc,2048
+        ld      bc,AG_BYTES
         ldir
         ld      hl,G_node_occ
         ld      de,STAGE_OCC
+        ld      bc,256
+        ldir
+        ld      hl,G_agent_marks
+        ld      de,STAGE_MK
         ld      bc,256
         ldir
         ld      hl,G_dome_tbl

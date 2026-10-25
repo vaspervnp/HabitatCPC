@@ -122,12 +122,12 @@ def main():
     # τίποτε άλλο εδώ δεν το έλεγε.
     from cpc import _lib
     b6 = bytes(_lib.cpcemu_ram_ptr(m._h, 6)[:0x4000])
-    ag = b6[layout_addr("G_agent_fields") - 0x4000:][:2048]
+    ag = b6[layout_addr("G_agent_fields") - 0x4000:][:4096]
     occ = b6[layout_addr("G_node_occ") - 0x4000:][:128]
     want = bytearray(128)
-    for i in range(128):                    # flags, node, slot, edge
-        if ag[i] & 1 and ag[640 + i] == 255 and ag[384 + i] != 255:
-            want[ag[256 + i]] |= 1 << ag[384 + i]
+    for i in range(128):                    # flags, node, slot (2304), edge (2560): βήμα 172
+        if ag[i] & 1 and ag[2560 + i] == 255 and ag[2304 + i] != 255:
+            want[ag[256 + i]] |= 1 << ag[2304 + i]
     check(bytes(want) == occ and any(occ),
           f"οι μάσκες κατοχής είναι οι θέσεις των αποίκων: "
           f"{[(n, bin(v)) for n, v in enumerate(occ) if v]} "
@@ -509,9 +509,12 @@ def live(sym, g):
                      for y in range(160) for x in range(80))
 
     from cpc import _lib
-    fig = layout_addr("G_dome_fig") - 0x4000            # τράπεζα 6
+    # η κρυφή μνήμη φιγούρων: στις ουρές των πεδίων από το βήμα 172, η θέση s του
+    # θόλου d στο 192 + d της σελίδας 8 + s (of_at)· εδώ με τη σειρά θόλος * 8 + θέση
+    fig = layout_addr("G_agent_fields") - 0x4000 + 8 * 256 + 192   # τράπεζα 6
     b6 = _lib.cpcemu_ram_ptr(m._h, 6)
-    figs0 = bytes(b6[fig:fig + 64 * 8])
+    dfig = lambda: bytes(b6[fig + s * 256 + d] for d in range(64) for s in range(8))
+    figs0 = dfig()
     before = play()
     # Ενα sol. Οι ανάγκες πέφτουν ~20 ανά 1.500 frames και το NEED_LOW είναι
     # 64, οπότε πριν από τα ~13.000 frames κανείς δεν σηκώνεται από τη θέση
@@ -549,7 +552,7 @@ def live(sym, g):
     # Και για να μη λέει τίποτα η ισότητα: θέσεις ΑΔΕΙΑΣΑΝ στο μεταξύ. Ενα
     # άθροισμα bytes μετράει πόσο έτρεξε ο κόσμος (βήμα 19)· το πλήθος των
     # θέσεων που άδειασαν λέει αν δοκιμάστηκε ο δρόμος που μετράει.
-    figs1 = bytes(b6[fig:fig + 64 * 8])
+    figs1 = dfig()
     left = sum(1 for a, b in zip(figs0, figs1) if a and not b)
     check(left > 0, f"θέσεις δακτυλίου άδειασαν στο μεταξύ: {left}")
     check(not bad, f"η λίστα κρατά την οθόνη ΙΔΙΑ με την πλήρη σχεδίαση: "

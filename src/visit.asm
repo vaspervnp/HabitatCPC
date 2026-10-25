@@ -86,12 +86,11 @@ vit_lp:
         jr      nc,vit_out
         inc     c
 vit_out:
-        ld      h,AG_PG + 3
-        set     7,l
+        ld      h,AG_TASK >> 8
         ld      (hl),T_VISIT            ; κι αν το έσβησε μια διαδρομή ή μια κατεδάφιση
-        dec     h                       ; AG_PG + 2
+        dec     h                       ; AG_EDGE
         ld      a,(hl)                  ; η ακμή
-        res     7,l
+        res     3,h                     ; AG_PG + 2
         inc     a
         jr      nz,vit_nx               ; περπατά
         ld      a,(hl)                  ; ο προορισμός

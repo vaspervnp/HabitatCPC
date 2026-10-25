@@ -502,8 +502,9 @@ zz_b1code_end:
         include "meteor.asm"            ; από την τράπεζα 2 (βήμα 110)
 zz_b6code_end:
         assert  zz_b6code_end <= G_b6code + B6C_MAX
-        assert  zz_b6code_end <= FO_MAP         ; ο χάρτης των εισβολέων (src/foe.asm)
-        assert  G_b6code + B6C_MAX == G_agent_fields   ; = η δέσμευση του pack.py
+        assert  G_b6code + B6C_MAX == G_worldinfo     ; = η δέσμευση του pack.py (βήμα 172:
+                                                      ; ως τότε οι πράκτορες, με τον χάρτη
+                                                      ; των εισβολέων στην κορυφή)
         save    "../build/b6code.bin", #8000 + G_b6code - #4000, zz_b6code_end - G_b6code
         org     #8000 + G_b6code + B6C_MAX - #4000
         incbin  "../build/bank6.bin", G_b6code + B6C_MAX - #4000

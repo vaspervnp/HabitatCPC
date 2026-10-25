@@ -171,9 +171,9 @@ mutate:
         xor     a
         ld      (AG_NODE + 2),a         ; -> θόλος 0
         ld      a,1
-        ld      (AG_NODE + 128 + 2),a   ; θέση 1
+        ld      (AG_SLOT + 2),a         ; θέση 1 (βήμα 172· ως τότε AG_NODE + 128)
         ld      a,4
-        ld      (AG_FLAGS + 128 + 2),a  ; φρουρός
+        ld      (AG_ROLE + 2),a         ; φρουρός (ως τότε AG_FLAGS + 128)
         ld      bc,GA_PORT + PAGE_B1
         out     (c),c
         ; Δωμάτιο, μηχανές και ένας πράκτορας: πόρτες και φιγούρες, όχι

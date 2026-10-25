@@ -89,14 +89,14 @@ class Game(TD.Game):
 
     def ag_set(self, i, **f):
         """Πεδία πράκτορα: flags, role, node, slot, dest, edge, task, spare."""
-        at = {"flags": 0, "role": 128, "node": 256, "slot": 384, "dest": 512, "edge": 640,
-              "task": 896, "spare": 1920}
+        at = {"flags": 0, "role": 2048, "node": 256, "slot": 2304, "dest": 512, "edge": 2560,
+              "task": 2816, "spare": 3840}             # ένα πεδίο ανά σελίδα (βήμα 172)
         for k, v in f.items():
             self.b6[self.ag + at[k] + i] = v
 
     def ag_get(self, i, k):
-        at = {"flags": 0, "role": 128, "node": 256, "dest": 512, "edge": 640, "task": 896,
-              "spare": 1920}
+        at = {"flags": 0, "role": 2048, "node": 256, "dest": 512, "edge": 2560, "task": 2816,
+              "spare": 3840}
         return self.b6[self.ag + at[k] + i]
 
 
@@ -386,8 +386,8 @@ def chain(sym, g, patch=(), patch6=(), quiet=False):
               and G.ag_get(i, "task") == 255 and G.ag_get(i, "edge") == 255), None)
     if w is None:
         return f"ΡΟΜΠΟΤ: κανένας εργάτης ελεύθερος σε {t} frames"
-    for f in range(16):
-        G.b6[G.ag + 128 * f + 80] = G.b6[G.ag + 128 * f + w]
+    for f in range(16):                     # οι 16 σελίδες των πεδίων (βήμα 172)
+        G.b6[G.ag + 256 * f + 80] = G.b6[G.ag + 256 * f + w]
     G.ag_set(80, role=RL_CARRY)
     G.ag_set(w, flags=0)
     for i in range(80):                      # οι άλλοι εργάτες απασχολημένοι

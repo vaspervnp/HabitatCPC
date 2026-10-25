@@ -143,7 +143,7 @@ AG = L["G_agent_fields"] - 0x4000
 
 
 def ag(G, a, field, hi=False):
-    return b6(G)[AG + 256 * field + (128 if hi else 0) + a]
+    return b6(G)[AG + 256 * (field + (8 if hi else 0)) + a]      # ένα πεδίο ανά σελίδα (βήμα 172)
 
 
 def standing(G, n):

@@ -268,14 +268,14 @@ def low(sym, patch=(), patch6=(), quiet=False):
         return "ΧΑΜΗΛΑ: ο Z80 διαφέρει από την αναφορά (tools/econ.py, flow_cycle)"
     # η άφιξη: ένας εργάτης στον κόμβο της χαμηλής Drill της 7, εκτός σωλήνα
     j = at[7]
-    w = next(i for i in range(80) if G.b6[G.ag + i] & 1 and G.b6[G.ag + 128 + i] == RL_WORKER)
+    w = next(i for i in range(80) if G.b6[G.ag + i] & 1 and G.b6[G.ag + 2048 + i] == RL_WORKER)
     for b in range(32):                                 # καμία άλλη εργασία του w
         if got[5 * b + 2] == w:
             G.m.poke(G.jt + 5 * b + 2, 255)
     G.m.poke(G.jt + 5 * j + 2, w)
     G.b6[G.ag + 256 + w] = 64 + 7                       # node
-    G.b6[G.ag + 640 + w] = 255                          # edge: έξω από τον σωλήνα
-    G.b6[G.ag + 896 + w] = j                            # task
+    G.b6[G.ag + 2560 + w] = 255                         # edge: έξω από τον σωλήνα (βήμα 172)
+    G.b6[G.ag + 2816 + w] = j                           # task
     G.b6[G.ag + w] &= ~32 & 255
     G.call("JB_ARRIVE")
     after = G.rec(7)[ST_OPS]
@@ -311,9 +311,9 @@ def roles(sym, patch=(), patch6=(), quiet=False):
     for name, mines, drills, dead, others, want in ROLE_CASES:
         TB.setup_rule(G, 1, [(1, 0, 0)], drills + others, 0)
         for i in drills + dead:
-            G.b6[G.ag + 128 + i] = RL_DRILL
+            G.b6[G.ag + 2048 + i] = RL_DRILL
         G.m.poke(G.g + EC_MINES_OFS, mines)
-        a = E.Agents().from_bytes(bytes(G.b6[G.ag:G.ag + 2048]))
+        a = E.Agents().from_bytes(bytes(G.b6[G.ag:G.ag + 4096]))
         e = EC.Econ()
         e.stock[EC.S_BOT] = 1
         e.mines = mines
@@ -325,7 +325,7 @@ def roles(sym, patch=(), patch6=(), quiet=False):
         if G.call("BOT_TICK") is None:
             return f"ΡΟΜΠΟΤ «{name}»: το bot_tick δεν τερμάτισε"
         i, role = want
-        got = (G.b6[G.ag + i] & 1, G.b6[G.ag + 128 + i])
+        got = (G.b6[G.ag + i] & 1, G.b6[G.ag + 2048 + i])
         if got != (1, role):
             return (f"ΡΟΜΠΟΤ «{name}»: το {i} ξύπνησε {bool(got[0])} με ρόλο {got[1]} — η "
                     f"πρόζα λέει ρόλο {role}")
@@ -394,7 +394,7 @@ def chain(sym, g, patch=(), patch6=(), quiet=False, stop=None):
 
     def drillers():
         return [i for i in range(128) if G.b6[G.ag + i] & 1 and G.b6[G.ag + 256 + i] == node
-                and G.b6[G.ag + i] & 32 and G.b6[G.ag + 640 + i] == 255]
+                and G.b6[G.ag + i] & 32 and G.b6[G.ag + 2560 + i] == 255]
 
     # --- κάποιος έρχεται ---
     t = 0
@@ -402,9 +402,9 @@ def chain(sym, g, patch=(), patch6=(), quiet=False, stop=None):
         m.run_frames(20)
         t += 20
     who = drillers()
-    if ops() != 1 or len(who) != 1 or G.b6[G.ag + 128 + who[0]] != RL_WORKER:
+    if ops() != 1 or len(who) != 1 or G.b6[G.ag + 2048 + who[0]] != RL_WORKER:
         return (f"ΑΦΙΞΗ: σε {t} frames ST_OPS {ops()}, στο ορυχείο με F_WORKING {who} "
-                f"(ρόλοι {[G.b6[G.ag + 128 + i] for i in who]}) — η πρόζα λέει ένας εργάτης")
+                f"(ρόλοι {[G.b6[G.ag + 2048 + i] for i in who]}) — η πρόζα λέει ένας εργάτης")
     w = who[0]
     say(f"ΑΦΙΞΗ: ο εργάτης {w} έφτασε με Drill σε {t} frames: ST_OPS 1, F_WORKING")
     if stop == "arrive":
@@ -492,7 +492,7 @@ def chain(sym, g, patch=(), patch6=(), quiet=False, stop=None):
         m.run_frames(20)
         t += 20
     who = [i for i in drillers() if i >= 80]
-    if not who or G.b6[G.ag + 128 + who[0]] != RL_DRILL:
+    if not who or G.b6[G.ag + 2048 + who[0]] != RL_DRILL:
         return f"ΓΕΩΤΡΥΠΑΝΟ: σε {t} frames στο ορυχείο {drillers()}"
     bot = who[0]
     m.run_frames(6000)
@@ -584,7 +584,7 @@ def cost13(sym, patch=()):
     for label, window in (("κανείς στο παράθυρο", 32), ("αδρανείς άλλου ρόλου", 0)):
         G = Game(sym, patch)
         for i in range(128):
-            if G.b6[G.ag + i] & 1 and G.b6[G.ag + 128 + i] in (RL_WORKER, RL_DRILL):
+            if G.b6[G.ag + i] & 1 and G.b6[G.ag + 2048 + i] in (RL_WORKER, RL_DRILL):
                 G.b6[G.ag + i] |= 32
         k = G.jobs()[::5].index(255)
         G.m.write_ram(G.jt + 5 * k, bytes([J_DRILL, 64 + 5, 255, 4, 0]))
@@ -728,8 +728,8 @@ def negatives(sym, g):
     # bt_make: jr c,bt_role -> nop nop
     at6("πάντα κατασκευής ή μεταφοράς", "BOT_TICK", 220, [0x3E, RL_DRILL, 0x38],
         [(2, 0), (3, 0)], "roles")
-    # dr_need: bit 0,(hl) · set 7,l · jr z,drn_bn -> nop nop
-    at6("τα νεκρά γεωτρύπανα μετρούν", "DR_NEED", 40, [0xCB, 0x46, 0xCB, 0xFD, 0x28],
+    # dr_need: bit 0,(hl) · set 3,h · jr z,drn_bn -> nop nop (set 7,l ως το βήμα 171)
+    at6("τα νεκρά γεωτρύπανα μετρούν", "DR_NEED", 40, [0xCB, 0x46, 0xCB, 0xDC, 0x28],
         [(4, 0), (5, 0)], "roles")
     # dr_need: add a,a · add a,c -> nop nop: μία θέση ανά ορυχείο
     at6("μία θέση ανά ορυχείο", "DR_NEED", 14, [0x87, 0x81], [(0, 0), (1, 0)], "roles")

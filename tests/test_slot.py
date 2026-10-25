@@ -35,7 +35,9 @@ import test_index as T                                             # noqa: E402
 
 SCR_W, PLAY = 80, 160
 PROBE = 0x3F10                      # η σκαλωσιά των δοκιμών (§4.2)
-AG = 0x6C00 - 0x4000                # G_agent_fields μέσα στην τράπεζα 6
+import agents as AGS                                               # noqa: E402
+AG = AGS.AG_BASE - 0x4000           # G_agent_fields μέσα στην τράπεζα 6 (#6C00 ως το βήμα 171)
+SLOT = AGS.field_addr(1, 1) - AGS.AG_BASE   # η θέση: 384 ως το βήμα 171, ένα πεδίο ανά σελίδα από το 172
 VAC_US = 18000                      # DHS_VAC_US (src/dirty.asm)
 VAC_MAX = 25.0                      # ms, το χειρότερο άδειασμα
 FAIL = []
@@ -86,9 +88,9 @@ class Run:
     def seated(self):
         """[(άποικος, θόλος, θέση)] — όσοι κάθονται σε θέση δακτυλίου."""
         b6 = self.b6
-        return [(i, b6[AG + 256 + i], b6[AG + 384 + i]) for i in range(128)
+        return [(i, b6[AG + 256 + i], b6[AG + SLOT + i]) for i in range(128)
                 if b6[AG + i] & 1 and b6[AG + 256 + i] < 64
-                and b6[AG + 384 + i] != 255]
+                and b6[AG + SLOT + i] != 255]
 
     def leave(self, i):
         """Ο άποικος φεύγει (πεθαίνει) και ο πίνακας φιγούρων ξαναχτίζεται."""

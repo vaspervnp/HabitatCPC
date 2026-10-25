@@ -22,7 +22,7 @@
 ; είναι στις τράπεζες 0 και 2 και, όπως κάθε πέρασμα του τροχού, αφήνουν την 6
 ; στο παράθυρο όταν γυρίζουν.
 
-B6C_MAX     equ 5815                    ; = B6C_MAX του tools/pack.py· 256 ως το βήμα 92, 1.280 ως το 93, 1.298 ως το 95, 1.554 ως το 109, 5.138 ως το 110, 5.063 ως το 113, 5.831 ως το 135, 5.767 ως το 151
+B6C_MAX     equ 5633                    ; = B6C_MAX του tools/pack.py· 5.815 ως το 171 με τον χάρτη των εισβολέων· 256 ως το βήμα 92, 1.280 ως το 93, 1.298 ως το 95, 1.554 ως το 109, 5.138 ως το 110, 5.063 ως το 113, 5.831 ως το 135, 5.767 ως το 151
 M_ROBOTS    equ 5                       ; η μηχανή robots: η σειρά του MACH στο pack.py
 
         assert  F_ALIVE == 1 && RL_CARRY == RL_CBOT + 1 && (AG_BOT0 & 1) == 0
@@ -95,7 +95,7 @@ bt_make:
 bt_role:
         ex      de,hl
         ld      (hl),F_ALIVE + F_INDOORS ; μέσα, στο εργοστάσιο
-        set     7,l
+        set     3,h                     ; AG_ROLE
         ld      (hl),a
         call    sb_rest                 ; τα υπόλοιπα, όπως ο άποικος (src/ship.asm)
         jp      fo_tick
@@ -114,15 +114,15 @@ dr_need:
         add     a,a
         add     a,c
         ld      c,a                     ; C = οι θέσεις
-        ld      hl,G_agent_fields + 128 + AG_BOT0   ; οι ρόλοι, στο πάνω μισό
+        ld      hl,AG_ROLE + AG_BOT0    ; οι ρόλοι
         ld      b,AG_NBOT
 drn_bt:
         ld      a,(hl)
         cp      RL_DRILL
         jr      nz,drn_bn
-        res     7,l
+        res     3,h                     ; AG_PG
         bit     0,(hl)                  ; F_ALIVE
-        set     7,l
+        set     3,h
         jr      z,drn_bn
         dec     c                       ; μια θέση έχει πια το γεωτρύπανό της
 drn_bn:

@@ -280,11 +280,14 @@ EC_MINES    equ G_econ_state + 106
 EC_LANDS    equ G_econ_state + 107
 
 ; --- ΣΤΑ ΑΔΕΙΑ ΤΟΥ node_occ (βήμα 121) ---------------------------------------
-; Η οικονομία δεν έχει άλλο byte. Το πάνω μισό της σελίδας node_occ είναι ένα
-; byte ανά πράκτορα (fg_mark), και πράκτορες 100-127 δεν υπάρχουν: 28 bytes
-; στην τράπεζα 6, μέσα στο μπλοκ που σώζεται (src/save.asm, #6C00-#7DFF), που
-; τα διαβάζει μόνο ο τροχός — έχει την 6 στο παράθυρο από την αρχή ως το τέλος.
-EC_X        equ G_node_occ + 128 + AG_FOE0 + AG_NFOE
+; Η οικονομία δεν έχει άλλο byte. Στην τράπεζα 6, μέσα στο μπλοκ που σώζεται
+; (src/save.asm), που τα διαβάζει μόνο ο τροχός — έχει την 6 στο παράθυρο από
+; την αρχή ως το τέλος. Ως το βήμα 171 ήταν τα σημάδια των πρακτόρων 100-111 και
+; 120-121 στο πάνω μισό του node_occ· από το 172 τα σημάδια έχουν σελίδα (MKPG),
+; το πάνω μισό είναι ο χάρτης των εισβολέων για τους κόμβους 0-111 (FO_MAP,
+; src/foe.asm), και τα 14 bytes εδώ ακολουθούν, στο 240-253 (το 255 το γράφει το
+; fo_after για όποιον περπατά).
+EC_X        equ G_node_occ + 240
 EC_LDIS     equ EC_X                    ; [sol, frame]: πότε άρχισε η τελευταία καταστροφή
 EC_LEV      equ EC_X + 3                ; [sol, frame]: πότε έγινε το τελευταίο γεγονός
 ; ΚΥΡΟΣ ΚΑΙ ΝΟΜΙΣΜΑΤΑ (βήμα 134), αμέσως μετά: πέντε bytes ακόμη. Οι πράκτορες
@@ -298,11 +301,12 @@ EC_VISACC   equ EC_X + 10               ; ο συσσωρευτής: πάνω α
 EC_MCOIN    equ EC_X + 11
 ; ΟΣΟΙ ΕΠΙΣΚΕΠΤΕΣ ΕΙΝΑΙ ΜΕΣΑ (βήμα 136): αναπνέουν, και το ef_o2 (src/flow.asm)
 ; τους προσθέτει στη ζήτηση οξυγόνου. Το μετρά το vi_tick (src/visit.asm), όσο
-; είναι εδώ το πλοίο τους. Μετά τους επισκέπτες, στο byte του πράκτορα 120.
-EC_VIN      equ G_node_occ + 128 + AG_VIS0 + AG_NVIS
+; είναι εδώ το πλοίο τους. Μετά το EC_MCOIN (ως το βήμα 171 στο byte του
+; πράκτορα 120).
+EC_VIN      equ EC_X + 12
 ; ΤΟ ΒΗΜΑ ΤΟΥ TUTORIAL (βήμα 149, src/tutor.asm): 0 κανένα, 1-14 τα βήματα, 15
-; το μήνυμα, 16 τέλος. Στο byte του πράκτορα 121, που δεν το αγγίζει κανείς
-; (fg_build: 0-99 και 112-119), μέσα στο μπλοκ που σώζεται.
+; το μήνυμα, 16 τέλος. Μέσα στο μπλοκ που σώζεται (ως το βήμα 171 στο byte
+; του πράκτορα 121, που δεν άγγιζε κανείς).
 EC_TU       equ EC_VIN + 1
 ; ΟΙ ΚΑΤΑΣΤΡΟΦΕΣ ΑΡΑΙΕΣ (βήμα 121, η απόφαση του χρήστη): θύελλα, έκλαμψη και
 ; βροχή μετεωριτών μόνο με DIS_POP ζωντανούς ή περισσότερους, και ποτέ μέσα σε
@@ -436,19 +440,35 @@ ROOM_MAX    equ 8
 ; --- ο γράφος κόμβων (§6.2). Εδώ επειδή τον γράφει και το build mode.
 MAX_DEGREE  equ 8
 
-; --- τα πεδία των πρακτόρων (§6.1), σε παράλληλες στήλες των 128.
+; --- τα πεδία των πρακτόρων (§6.1), ΕΝΑ ΣΕ ΚΑΘΕ ΣΕΛΙΔΑ από το βήμα 172.
 ; Εδώ και όχι στο entity.asm: τα διαβάζει και ο renderer, και ο assembler δεν
 ; συγχωρεί δύο ορισμούς — αυτό ήταν το πρώτο που έσπασε όταν τα δύο μισά του
 ; παιχνιδιού μπήκαν για πρώτη φορά στο ίδιο binary.
+; Ως το βήμα 171 δύο πεδία των 128 μοιράζονταν μια σελίδα, το δεύτερο στο +128
+; (set 7,l). Τώρα το πρώτο μένει στη σελίδα AG_PG + k και το δεύτερο είναι στην
+; AG_PG + 8 + k: από το ένα στο άλλο `set 3,h`, αφού το AG_PG είναι πολλαπλάσιο
+; του 16 (assert), και το `inc h` από πεδίο σε πεδίο του ίδιου μισού μένει.
 AG_PG       equ G_agent_fields >> 8
-AG_FLAGS    equ G_agent_fields               ; +0 flags   +128 role
-AG_NODE     equ G_agent_fields + 256         ; +0 node    +128 slot
-AG_DEST     equ G_agent_fields + 512         ; +0 dest    +128 edge
-AG_PROG     equ G_agent_fields + 768         ; +0 progress +128 task
-AG_O2       equ G_agent_fields + 1024        ; +0 o2      +128 water
-AG_FOOD     equ G_agent_fields + 1280        ; +0 food    +128 sleep
-AG_HEALTH   equ G_agent_fields + 1536        ; +0 health  +128 morale
-AG_SUIT     equ G_agent_fields + 1792        ; +0 suit    +128 spare (βήμα 90: ως τότε skill, που δεν το διάβασε ποτέ κανείς)
+AG_HI       equ 8                            ; οι σελίδες των δεύτερων πεδίων
+AG_FLAGS    equ G_agent_fields               ; flags     (role     στο + AG_HI σελίδες)
+AG_NODE     equ G_agent_fields + 256         ; node      (slot)
+AG_DEST     equ G_agent_fields + 512         ; dest      (edge)
+AG_PROG     equ G_agent_fields + 768         ; progress  (task)
+AG_O2       equ G_agent_fields + 1024        ; o2        (water)
+AG_FOOD     equ G_agent_fields + 1280        ; food      (sleep)
+AG_HEALTH   equ G_agent_fields + 1536        ; health    (morale)
+AG_SUIT     equ G_agent_fields + 1792        ; suit      (spare· βήμα 90: ως τότε skill, που δεν το διάβασε ποτέ κανείς)
+AG_ROLE     equ AG_FLAGS + AG_HI * 256
+AG_SLOT     equ AG_NODE + AG_HI * 256
+AG_EDGE     equ AG_DEST + AG_HI * 256
+AG_TASK     equ AG_PROG + AG_HI * 256
+AG_WATER    equ AG_O2 + AG_HI * 256
+AG_SLEEP    equ AG_FOOD + AG_HI * 256
+AG_MORALE   equ AG_HEALTH + AG_HI * 256
+AG_SPARE    equ AG_SUIT + AG_HI * 256
+; ΤΑ ΣΗΜΑΔΙΑ ΤΩΝ ΦΙΓΟΥΡΩΝ (fg_mark, src/entity.asm), ένα ανά πράκτορα, σε δική
+; τους σελίδα από το βήμα 172· ως τότε το πάνω μισό του node_occ.
+MKPG        equ G_agent_marks >> 8
 ; «Πάω για ανάγκη» στο πεδίο της εργασίας: όχι δείκτης εργασίας (src/needs.asm).
 T_NEED      equ 254
 OCCPG       equ G_node_occ >> 8
@@ -480,7 +500,10 @@ BOOT_ORG    equ PAGE2_CODE - BOOT_MAX
 ; Η κρυφή μνήμη φιγούρων ήταν εδώ και πήρε 512 bytes τράπεζας 2· από το βήμα 30
 ; ζει στην τράπεζα 6 (G_dome_fig), όπου το πέρασμα αντικειμένων την έχει ήδη
 ; σελιδοποιημένη. Τα 512 έγιναν κώδικας που έφυγε από την τράπεζα 0.
-DOME_FIG    equ G_dome_fig
+; ΑΠΟ ΤΟ ΒΗΜΑ 172 ΣΤΙΣ ΟΥΡΕΣ ΤΩΝ ΠΕΔΙΩΝ: η θέση s του θόλου d στο byte 192 + d
+; της σελίδας DF_PG + s, οι σελίδες των δεύτερων πεδίων (ids ως 187 στο 173).
+DF_PG       equ AG_PG + AG_HI
+DF_L        equ 192
 
 ; --- τα είδη της λίστας βρώμικων (§8.5). Εδώ επειδή τα σπρώχνει η
 ; προσομοίωση, που δεν συνδέει renderer στο tests/simtest.asm.

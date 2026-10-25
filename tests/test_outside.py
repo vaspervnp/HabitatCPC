@@ -90,7 +90,7 @@ class World:
     def ag(self, i):
         a = self.L["G_agent_fields"]
         f = lambda o: self.b6(a + o + i)[0]
-        return {"f": f(0), "node": f(256), "dest": f(512), "edge": f(640), "o2": f(1024)}
+        return {"f": f(0), "node": f(256), "dest": f(512), "edge": f(2560), "o2": f(1024)}   # AG_EDGE (βήμα 172)
 
     def nb(self, n):
         m, L = self.m, self.L

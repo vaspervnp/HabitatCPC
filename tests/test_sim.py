@@ -24,7 +24,9 @@ RASM = os.path.expanduser("~/rasm/rasm.exe")
 SNA = os.path.join(ROOT, "build", "simtest.sna")
 FRAME_US = 19968
 TICKS = 640                 # 40 πλήρεις περιστροφές
-STAGE_AG, STAGE_OCC, STAGE_DOME, STAGE_STR = 0xC000, 0xC800, 0xC900, 0xCF00
+# = tests/simtest.asm (βήμα 172: πεδία 4.096 bytes και τα σημάδια σελίδα τους)
+STAGE_AG, STAGE_OCC, STAGE_MK, STAGE_DOME, STAGE_STR = 0xC000, 0xD000, 0xD100, 0xD200, 0xD800
+AG_BYTES = E.NPAGE * 256            # τα 16 πεδία, ένα ανά σελίδα (2.048 ως το βήμα 171)
 STR_BYTES = 48 * 8                  # ο πίνακας δομών όλος (βήμα 154): οι 32-47 μηδέν
 
 
@@ -78,7 +80,7 @@ def run_z80(sym, g, sim, ticks, move_n=None, decay_n=None, off=(), pin=None,
 def z80_read(m, sym, frames):
     """Ο,τι επιστρέφει το run_z80, από έναν Z80 που έτρεξε."""
     enter(m, sym, "SAVE_STATE")
-    return (m.read_ram(STAGE_AG, 2048), m.read_ram(STAGE_OCC, 128), frames,
+    return (m.read_ram(STAGE_AG, AG_BYTES), m.read_ram(STAGE_OCC, 128), frames,
             m.read_ram(STAGE_DOME, 1536), m.read_ram(STAGE_STR, STR_BYTES),
             m.read_ram(sym["G_ECON_STATE"], EC.ECON_BYTES) +
             m.read_ram(STAGE_OCC + EC.X_OFF, EC.X_N) +  # EC_X (βήμα 121)
@@ -140,9 +142,11 @@ def z80_load(sym, g, sim, rt_n=None, patch=()):
     poison(m)
 
     m.write_ram(STAGE_AG, sim.a.to_bytes())
-    # Το πάνω μισό της σελίδας: τα σημάδια των φιγούρων μηδέν, και από το
-    # βήμα 121 η ησυχία των καταστροφών στα άδεια των πρακτόρων 100-127.
+    # Το πάνω μισό της σελίδας: ο χάρτης των εισβολέων μηδέν, και από το
+    # βήμα 121 η ησυχία των καταστροφών (EC_X). Τα σημάδια των φιγούρων μηδέν,
+    # σελίδα τους από το βήμα 172 (ως τότε εδώ, στο πάνω μισό).
     m.write_ram(STAGE_OCC, bytes(sim.occ[:128]) + EC.occ_hi(sim.e))
+    m.write_ram(STAGE_MK, bytes(256))
     m.write_ram(STAGE_DOME, bytes(sim.e.dome))
     m.write_ram(STAGE_STR, bytes(sim.e.struct).ljust(STR_BYTES, b"\0"))
     m.write_ram(sym["G_ECON_STATE"], EC.to_bytes(sim.e))   # τράπεζα 2, βασική
@@ -271,10 +275,10 @@ def main():
     want_a, want_occ = sim.a.to_bytes(), bytes(sim.occ)
 
     if got_a != want_a:
-        bad = [i for i in range(2048) if got_a[i] != want_a[i]]
-        print(f"ΑΠΟΤΥΧΙΑ πεδία: {len(bad)} από 2048 bytes διαφέρουν")
+        bad = [i for i in range(AG_BYTES) if got_a[i] != want_a[i]]
+        print(f"ΑΠΟΤΥΧΙΑ πεδία: {len(bad)} από {AG_BYTES} bytes διαφέρουν")
         for i in bad[:8]:
-            f, aid = E.FIELDS[(i // 256) * 2 + ((i % 256) >= 128)], i % 128
+            f, aid = E.field_at(i)
             print(f"    πράκτορας {aid:3d} πεδίο {f:9s}  Z80 {got_a[i]:3d} "
                   f"!= αναφορά {want_a[i]:3d}")
         return 1
@@ -282,7 +286,7 @@ def main():
         bad = [i for i in range(128) if got_occ[i] != want_occ[i]]
         print(f"ΑΠΟΤΥΧΙΑ μάσκες: κόμβοι {bad[:8]}")
         return 1
-    print(f"OK ταυτότητα: {TICKS} frames, 2048 bytes πεδίων + 128 μάσκες "
+    print(f"OK ταυτότητα: {TICKS} frames, {AG_BYTES} bytes πεδίων + 128 μάσκες "
           f"ταυτόσημα με την αναφορά")
 
     if src_check(sym, g, nexthop, dist, sim0):
@@ -771,6 +775,7 @@ def flow_branches(sym, g, nexthop, sim0, patch=(), quiet=False):
         assert m.quickload(SNA, start=False), "quickload απέτυχε"
         m.write_ram(STAGE_AG, sim.a.to_bytes())
         m.write_ram(STAGE_OCC, bytes(sim.occ) + bytes(128))
+        m.write_ram(STAGE_MK, bytes(256))
         m.write_ram(STAGE_DOME, bytes(e.dome))
         m.write_ram(STAGE_STR, bytes(e.struct).ljust(STR_BYTES, b"\0"))
         m.write_ram(sym["G_ECON_STATE"], EC.to_bytes(e))
@@ -2999,9 +3004,10 @@ def move_branches(sym, sim0, n=12, patch=(), quiet=False):
         bank6 = lambda: ctypes.string_at(cpc._lib.cpcemu_ram_ptr(m._h, 6), 0x4000)
         # ΚΑΤΑ ΔΙΕΥΘΥΝΣΗ (βήμα 154): από τότε το node_occ είναι μετά τις δομές, και
         # το «ό,τι μένει» ανάμεσα σε δύο διαστήματα έπιανε τους θόλους και τις δομές.
-        spans = sorted((sym[n] - 0x4000, k) for n, k in (("G_AGENT_FIELDS", 2048),
-                       ("G_NODE_OCC", 256), ("G_DOME_TBL", len(dome)), ("G_STRUCT_TBL", len(st))))
-        mk0 = sym["G_NODE_OCC"] - 0x4000 + 128          # τα σημάδια των φιγούρων
+        spans = sorted((sym[n] - 0x4000, k) for n, k in (("G_AGENT_FIELDS", AG_BYTES),
+                       ("G_NODE_OCC", 256), ("G_AGENT_MARKS", 256), ("G_DOME_TBL", len(dome)),
+                       ("G_STRUCT_TBL", len(st))))
+        mk0 = sym["G_AGENT_MARKS"] - 0x4000             # τα σημάδια των φιγούρων (βήμα 172)
         marks = bytearray(bank6()[mk0:mk0 + 128])
         rest = lambda b: b"".join(b[s + k:e] for (s, k), (e, _) in
                                   zip([(0, 0)] + spans, spans + [(0x4000, 0)]))
@@ -3020,7 +3026,7 @@ def move_branches(sym, sim0, n=12, patch=(), quiet=False):
             m.run_code(0x3000, code, frames=12)
             assert m.peek(flag) == 0x5A, f"το ent_move_slice δεν γύρισε: #{m.pc:04X}"
             b6 = bank6()
-            ag = b6[sym["G_AGENT_FIELDS"] - 0x4000:][:2048]
+            ag = b6[sym["G_AGENT_FIELDS"] - 0x4000:][:AG_BYTES]
             oc = b6[sym["G_NODE_OCC"] - 0x4000:][:G.MAXNODE]
             dm = b6[sym["G_DOME_TBL"] - 0x4000:][:len(dome)]
             sb = b6[sym["G_STRUCT_TBL"] - 0x4000:][:len(st)]
@@ -3034,9 +3040,9 @@ def move_branches(sym, sim0, n=12, patch=(), quiet=False):
                                ("η υπόλοιπη τράπεζα 6", rest(b6), rest0)):
                 if bytes(x) != bytes(y):
                     if what == "πεδία":
-                        i = next(j for j in range(2048) if x[j] != y[j])
-                        f = E.FIELDS[(i // 256) * 2 + ((i % 256) >= 128)]
-                        what += f" (πράκτορας {i % 128}, {f}: Z80 {x[i]}, αναφορά {y[i]})"
+                        i = next(j for j in range(AG_BYTES) if x[j] != y[j])
+                        f, aid = E.field_at(i)
+                        what += f" (πράκτορας {aid}, {f}: Z80 {x[i]}, αναφορά {y[i]})"
                     elif what == "wh_push":
                         what += f" (Z80 {len(x) // 3}, αναφορά {len(y) // 3})"
                     return f"κατάσταση {sc}, φέτα {first},{count}: {what}"

@@ -137,12 +137,12 @@ def check(ok, msg):
 
 
 def x_at(name, k):
-    """Ενα πεδίο του EC_X (src/const.asm): στην τράπεζα 6, μετά τα σημάδια των
-    πρακτόρων 0-99."""
+    """Ενα πεδίο του EC_X (src/const.asm): στην τράπεζα 6, στο node_occ μετά τον
+    χάρτη των εισβολέων (βήμα 172· ως τότε μετά τα σημάδια των πρακτόρων 0-99)."""
     const = open(os.path.join(ROOT, "src", "const.asm"), encoding="utf-8").read()
     mm = re.search(rf"^{name}\s+equ EC_X \+ (\d+)", const, re.M)
     assert mm and int(mm.group(1)) == k, f"{name}: το src/const.asm άλλαξε"
-    return TO.layout()["G_node_occ"] + 128 + EC.AG_FOE0 + EC.AG_NFOE + k
+    return TO.layout()["G_node_occ"] + EC.X_OFF + k
 
 
 X_COINS, X_MCOIN = x_at("EC_COINS", 6), x_at("EC_MCOIN", 11)

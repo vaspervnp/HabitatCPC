@@ -111,8 +111,8 @@ class Tut:
         self.sym, self.m = sym, self.G.m
         L = self.G.L
         self.b6, self.b7, self.b1 = self.G.bank(6), self.G.bank(7), self.G.bank(1)
-        self.tu = L["G_node_occ"] + 128 + 121 - 0x4000           # EC_TU
-        self.lev = L["G_node_occ"] + 128 + 100 - 0x4000          # EC_LDIS, EC_LEV
+        self.tu = L["G_node_occ"] + 253 - 0x4000                 # EC_TU (βήμα 172· ως τότε 128 + 121)
+        self.lev = L["G_node_occ"] + 240 - 0x4000                # EC_LDIS, EC_LEV (ως τότε 128 + 100)
         self.trace = []
         self.stop = None
         self.watch = False
@@ -422,7 +422,7 @@ def disc(sym, g):
     want = texts()
     m = CPC()
     L = __import__("play").layout()
-    tu = L["G_node_occ"] + 128 + 121 - 0x4000
+    tu = L["G_node_occ"] + 253 - 0x4000                       # EC_TU
     wi = L["G_worldinfo"] - 0x4000
 
     def boot(planet, first):

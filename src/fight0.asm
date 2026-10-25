@@ -28,8 +28,7 @@ fg_need:
         cp      T_NEED
         ret     nz
         ld      d,AG_PG
-        ld      e,l
-        res     7,e
+        ld      e,l                     ; (ως το βήμα 171 και res 7,e: L ήταν + 128)
         ld      a,(de)                  ; οι σημαίες του
         and     F_INDOORS
         ret     nz                      ; μέσα: η μάχη πρώτα

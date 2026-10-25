@@ -222,6 +222,9 @@ class G:
         return self.bank(6)[addr - 0x4000]
 
     def ag(self, i, off):
+        """Το πεδίο στο off του πράκτορα i: ένα πεδίο ανά σελίδα από το βήμα 172,
+        τα πρώτα κάθε ζεύγους στο σελίδα * 256 και τα δεύτερα 2.048 πιο πάνω
+        (ρόλος 2048, θέση 2304, ακμή 2560· ως τότε 128, 384, 640)."""
         return self.b6(self.L["G_agent_fields"] + off + i)
 
     # --- το μοντέλο, από την πρόζα ------------------------------------------
@@ -247,10 +250,10 @@ class G:
         f = self.ag(i, 0)
         if not f & 1:
             return None
-        fig = self.m.peek(self.sym["ROLE_FIG"] + (self.ag(i, 128) & 15))   # 8: ο εισβολέας
-        edge, node = self.ag(i, 640), self.ag(i, 256)
+        fig = self.m.peek(self.sym["ROLE_FIG"] + (self.ag(i, 2048) & 15))   # 8: ο εισβολέας
+        edge, node = self.ag(i, 2560), self.ag(i, 256)
         if edge == 255:
-            slot = self.ag(i, 384)
+            slot = self.ag(i, 2304)
             if slot > 7 or node < 64:
                 return None
             cx, fy, half = self.front(node)
@@ -444,13 +447,15 @@ class G:
         # ξαναπερνά τη λίστα ίδια ΚΑΙ ΜΕ ΤΗ ΣΕΙΡΑ ΤΗΣ (βήμα 134: από τη σειρά
         # εξαρτάται ποια φιγούρα είναι από πάνω σε κοινό κελί), και σβήνει τα
         # σημάδια — αλλιώς κανείς δεν θα ξανασπρωχνόταν ποτέ. Των πρακτόρων
-        # 0-99 μόνο: τα 100-127 είναι το EC_X (src/const.asm), που ως το βήμα
+        # 0-99 μόνο: τα 100-127 ήταν το EC_X (src/const.asm), που ως το βήμα
         # 133 μηδενιζόταν σε κάθε view_draw. Μετά, με τη λίστα άδεια: το
         # fg_build τη φτιάχνει από την αρχή.
         # ΚΑΙ ΟΙ ΕΠΙΣΚΕΠΤΕΣ (βήμα 136): τα σημάδια των 112-119 σβήνουν κι αυτά,
-        # και μένουν ίδια τα 100-111 (EC_X) και τα 120-127 (EC_VIN).
+        # και μένουν ίδια τα 100-111 και τα 120-127. Από το βήμα 172 τα σημάδια
+        # έχουν σελίδα (G_agent_marks) και το EC_X είναι αλλού· το fg_build
+        # περνά ακόμη μόνο τους πράκτορες που υπάρχουν.
         c = self.clone()
-        mk = self.L["G_node_occ"] + 128 - 0x4000
+        mk = self.L["G_agent_marks"] - 0x4000
         ag = [i for i in range(128) if i < 100 or 112 <= i < 120]
         for i in range(128):
             c.bank(6)[mk + i] = 1 if i in ag else 0x40 + i
@@ -460,7 +465,7 @@ class G:
             return (f"{tag}: η πλήρης σχεδίαση δεν κρατά τη λίστα: {kept}, όχι {figs}, "
                     f"σημάδια {[i for i in ag if c.bank(6)[mk + i]][:8]}"), set()
         if any(c.bank(6)[mk + i] != 0x40 + i for i in range(100, 128) if i not in ag):
-            return (f"{tag}: η πλήρης σχεδίαση σβήνει το EC_X: "
+            return (f"{tag}: η πλήρης σχεδίαση σβήνει σημάδια 100-127: "
                     f"{bytes(c.bank(6)[mk + 100:mk + 128]).hex()}"), set()
         c.m.poke(self.sym["FG_N"], 0)
         c.full()
@@ -472,7 +477,7 @@ class G:
             return (f"{tag}: η οθόνη δεν είναι η πλήρης σχεδίαση: {len(d)} bytes, "
                     f"πρώτο ({d[0] % 80}, {d[0] // 80})"), set()
         self.m.poke(self.sym["UI_SPD"], 1)
-        road = {(x, y) for a, x, y, f in figs if self.ag(a, 640) != 255}
+        road = {(x, y) for a, x, y, f in figs if self.ag(a, 2560) != 255}
         return None, road
 
 
@@ -494,10 +499,10 @@ def scenario(sym, g, patch=(), quiet=False):
     # --- ΑΡΧΗ
     figs = w.figs()
     want = {a: (x, y, f) for a, (x, y, f) in w.model().items()}
-    roles = [w.ag(i, 128) for i in range(6)]
+    roles = [w.ag(i, 2048) for i in range(6)]
     exp = {}
     for i in range(6):
-        slot = w.ag(i, 384)
+        slot = w.ag(i, 2304)
         exp[i] = (DX[slot >> 1], 2 if slot % 2 == 0 else -3,
                   w.m.peek(sym["ROLE_FIG"] + roles[i]))
     if {a: (x, y, f) for a, x, y, f in figs} != exp or want != exp:
@@ -541,7 +546,7 @@ def corner(w, patch=(), quiet=False):
     d0 = L["G_dome_tbl"] - 0x4000                        # ο θόλος 0: cx, cy, μέγεθος
     b6[d0], b6[d0 + 1], b6[d0 + 2] = (sx + 9) & 255, (sy + 13) & 255, 1
     f = L["G_agent_fields"] - 0x4000
-    b6[f + AG], b6[f + 128 + AG], b6[f + 640 + AG] = 1, 0, 7   # ζωντανός, έξω, ακμή 7
+    b6[f + AG], b6[f + 2048 + AG], b6[f + 2560 + AG] = 1, 0, 7  # ζωντανός, έξω, ρόλος 0, ακμή 7
     adj, own = L["G_node_adj"], lambda n: LK_OWN(L) + n
     built = (m.peek(own(64)), m.peek(own(65)))
     if (built[1] & 0x3F | 0x40) != 64:
@@ -639,7 +644,7 @@ def dome(sym, g, quiet=False):
         why, r = w.sample(f"ΘΟΛΟΣ, δείγμα {k}")
         if why:
             return why
-        at = [w.ag(i, 256) for i in range(4) if w.ag(i, 640) == 255]
+        at = [w.ag(i, 256) for i in range(4) if w.ag(i, 2560) == 255]
         ring += sum(1 for n in at if n < 64)
         if w.b6(w.L["G_dome_tbl"] + 4) == 2:          # DS_ACTIVE
             seen_out += 1
@@ -681,7 +686,7 @@ def meteor(sym, g, patch=(), quiet=False):
         w.m.run_frames(5)
         w.drain()
         hit = [(a, x, y) for a, x, y, f in w.figs()
-               if w.ag(a, 640) != 255 and free(w, x, y)]
+               if w.ag(a, 2560) != 255 and free(w, x, y)]
         if hit:
             break
         w.m.poke(sym["UI_SPD"], 1)
@@ -1045,7 +1050,7 @@ def cost(sym, g, patch=(), out=None):
             w.m.poke(sym["UI_SPD"], 1)
             continue
         for a, x, y, f in w.figs():
-            walks = w.ag(a, 640) != 255
+            walks = w.ag(a, 2560) != 255
             if walks and w.ag(a, 768) >= 150:
                 continue
             v = w.clone()                   # η κάμερα πάνω του
@@ -1067,7 +1072,7 @@ def cost(sym, g, patch=(), out=None):
                 if kind == "μόνο σβήνει" and walks:
                     b6[L["G_agent_fields"] + a - 0x4000] |= 2              # F_INDOORS
                 if kind == "μόνο σβήνει" and not walks:
-                    b6[L["G_agent_fields"] + 384 + a - 0x4000] |= 8        # NO_SLOT
+                    b6[L["G_agent_fields"] + 2304 + a - 0x4000] |= 8       # NO_SLOT
                 if kind == "μόνο ζωγραφίζει":                # «δεν ήταν»: έξω από τη λίστα
                     n = c.m.peek(sym["FG_N"]) - 1
                     for col in range(0, 256, 64):
@@ -1087,7 +1092,12 @@ def cost(sym, g, patch=(), out=None):
                 if kind == "μόνο σβήνει":
                     under[ground(w, x, y)].append((us, charged))
         w.m.poke(sym["UI_SPD"], 1)
-        if all(len(v) >= 12 for v in meas.values()) and all(len(under[k]) >= 6 for k in (0, 1)):
+        # ΚΑΙ ΤΟ «ΠΑΝΩ ΣΕ ΚΤΙΣΜΑ» (βήμα 172): η ακριβότερη περίπτωση. Ως το βήμα
+        # 171 βρισκόταν μόνο επειδή ο βρόχος άργησε· στο 172 οι περιπατητές
+        # ήταν αλλού τη στιγμή των δειγμάτων, ο βρόχος σταμάτησε στον 17ο γύρο
+        # αντί για τον 28ο, και η περίπτωση χάθηκε σιωπηλά με «0 μετρήσεις, OK».
+        if all(len(v) >= 12 for v in meas.values()) and all(len(under[k]) >= 6 for k in (0, 1)) \
+                and len(under[2]) >= 4:
             break
     for kind, v in meas.items():
         worst = max(v, key=lambda x: x[0] - x[1]) if v else (None, None)
@@ -1101,7 +1111,7 @@ def cost(sym, g, patch=(), out=None):
           f"μετρήσεις μέσα στα παραπάνω, ως {worst[0]} us για χρέωση {worst[1]}")
     for k, name in ((0, "σε ελεύθερο έδαφος"), (1, "δίπλα σε κτίσμα"), (2, "πάνω σε κτίσμα")):
         v = under[k]
-        check_((len(v) >= 6 or k == 2) and all(x[0] <= x[1] for x in v),
+        check_(len(v) >= (4 if k == 2 else 6) and all(x[0] <= x[1] for x in v),
               f"ΚΟΣΤΟΣ, σβήσιμο {name}: {len(v)} μετρήσεις, ως "
               f"{max((x[0] for x in v), default='-')} us για χρέωση "
               f"{sorted(set(x[1] for x in v))}")

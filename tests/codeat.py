@@ -14,7 +14,6 @@ import ctypes, os
 import cpc
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-B6_END = 0x6C00                         # G_agent_fields: εκεί τελειώνει το b6code
 
 
 def _layout(name):
@@ -26,6 +25,7 @@ def _layout(name):
 
 
 B6_START = _layout("G_b6code")
+B6_END = _layout("G_worldinfo")         # εκεί τελειώνει το b6code (βήμα 172· ως τότε το G_agent_fields, #6C00)
 
 
 def in_b6(addr):

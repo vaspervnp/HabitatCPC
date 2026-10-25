@@ -218,7 +218,7 @@ class Game:
     def agents(self):
         import entity as E
         b6, a0 = self.bank(6), self.L["G_agent_fields"] - 0x4000
-        a = E.Agents().from_bytes(bytes(b6[a0:a0 + 2048]))
+        a = E.Agents().from_bytes(bytes(b6[a0:a0 + 4096]))
         return {i: {f: getattr(a, f)[i] for f in E.FIELDS} for i in range(128)
                 if a.flags[i] & 1}
 
@@ -290,7 +290,7 @@ class Game:
         jobs = self.jobs()
         # ΟΙ ΕΠΙΣΚΕΠΤΕΣ ΚΑΙ ΤΑ ΝΟΜΙΣΜΑΤΑ (βήμα 137): το EC_X, στο πάνω μισό του
         # node_occ (τράπεζα 6) — νομίσματα, κύρος, εύνοια, συσσωρευτής.
-        b6, x = self.bank(6), self.L["G_node_occ"] - 0x4000 + 128 + 100
+        b6, x = self.bank(6), self.L["G_node_occ"] - 0x4000 + 240     # EC_X (βήμα 172· ως τότε 128 + 100)
         ds = self.domes()
         self.rows.append(dict(
             vis=sum(1 for i in ag if 112 <= i < 120),
@@ -962,7 +962,7 @@ def trade_plan(G):
     δέκα (βήμα 98): τα νομίσματα όχι."""
     import econ as EC
     p, b6 = G.m.peek, G.bank(6)
-    x = G.L["G_node_occ"] - 0x4000 + 128 + 100           # EC_X
+    x = G.L["G_node_occ"] - 0x4000 + 240                 # EC_X (βήμα 172· ως τότε 128 + 100)
     mk = p(G.X["EC_MARKUP"])
     c0 = G.X["EC_MARKUP"] + 1                            # EC_CARGO
     cargo = {p(c0 + 2 * k): p(c0 + 2 * k + 1) for k in range(EC.MER_SLOTS) if p(c0 + 2 * k)}

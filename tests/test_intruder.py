@@ -104,7 +104,7 @@ class Game(R.Game):
         return self.bank(6)
 
     def a(self):
-        return E.Agents().from_bytes(bytes(self.b6()[self.ag:self.ag + 2048]))
+        return E.Agents().from_bytes(bytes(self.b6()[self.ag:self.ag + 4096]))
 
     def alive(self, lo, hi):
         b = self.b6()
@@ -213,7 +213,7 @@ def ship(sym, g, patch=(), patch6=(), quiet=False):
     r = G.L["G_dome_tbl"] - 0x4000 + 24 * d
     G.cam = (F.sb(b6[r]) // 2 - 10, F.sb(b6[r + 1]) // 2 - 5)      # ο θόλος στη μέση: 20 x 10 tiles
     G.camera(*G.cam)
-    dfig = G.b6()[G.L["G_dome_fig"] - 0x4000 + 8 * d + sl]
+    dfig = G.b6()[G.L["G_agent_fields"] - 0x4000 + (8 + sl) * 256 + 192 + d]   # of_at (βήμα 172)
     rd = G.red_in(d)
     if dfig != FC_INTRUDER or rd < 6:
         return f"ΜΠΑΙΝΟΥΝ: ο {i} στον θόλο {d}, θέση {sl}: DOME_FIG {dfig}, {rd} κόκκινα pixels στον θόλο"
@@ -238,7 +238,7 @@ def guards(sym, g, patch=(), patch6=(), quiet=False):
     G = Game(sym, g, patch, patch6)
     b6 = G.b6()
     for c in (2, 3):
-        b6[G.ag + 128 + c] = EC.RL_GUARD
+        b6[G.ag + 2048 + c] = EC.RL_GUARD
     gun = g + 2 * EC.S_GUN
     G.m.poke(gun, 2)
     G.m.poke(gun + 1, 0)
@@ -268,19 +268,19 @@ def thirst(sym, g, patch=(), patch6=(), quiet=False):
     say = (lambda s: None) if quiet else (lambda s: print("    " + s))
     G = Game(sym, g, patch, patch6)
     b6, c = G.b6(), 2
-    b6[G.ag + 128 + c] = EC.RL_GUARD
+    b6[G.ag + 2048 + c] = EC.RL_GUARD
     water = g + 2 * EC.S_WATER
     G.m.poke(water, 0)
     G.m.poke(water + 1, 0)
-    b6[G.ag + 1024 + 128 + c] = 40                  # AG_O2 + 128: το νερό του
+    b6[G.ag + 1024 + 2048 + c] = 40                 # AG_WATER: το νερό του
     if not b6[G.ag + c] & E.F_INDOORS:
         return "ΔΙΨΑ: ο φρουρός δεν είναι μέσα"
-    if not G.until(lambda: G.b6()[G.ag + 768 + 128 + c] == E.T_NEED, 200, 1):
-        return f"ΔΙΨΑ: δεν πήγε για νερό (εργασία {G.b6()[G.ag + 768 + 128 + c]})"
+    if not G.until(lambda: G.b6()[G.ag + 768 + 2048 + c] == E.T_NEED, 200, 1):
+        return f"ΔΙΨΑ: δεν πήγε για νερό (εργασία {G.b6()[G.ag + 768 + 2048 + c]})"
     G.land()
     if not G.until(lambda: G.alive(96, 100), 64):
         return "ΔΙΨΑ: δεν κατέβηκαν"
-    pos = lambda b: (b[G.ag + 256 + c], b[G.ag + 512 + 128 + c], b[G.ag + 768 + c])
+    pos = lambda b: (b[G.ag + 256 + c], b[G.ag + 512 + 2048 + c], b[G.ag + 768 + c])
     fought, back, frames, tried = None, None, 0, 0
     was = pos(G.b6())
     while G.alive(96, 100) and frames < 3000:
@@ -289,7 +289,7 @@ def thirst(sym, g, patch=(), patch6=(), quiet=False):
         b = G.b6()
         if not b[G.ag + c] & E.F_ALIVE:
             break
-        t, w, now = b[G.ag + 768 + 128 + c], b[G.ag + 1024 + 128 + c], pos(b)
+        t, w, now = b[G.ag + 768 + 2048 + c], b[G.ag + 1024 + 2048 + c], pos(b)
         if fought is None and t == EC.T_FIGHT and w < 64:
             fought = (frames, w)
         elif fought is not None and t == E.T_NEED and G.alive(96, 100):
@@ -329,7 +329,7 @@ def alert(sym, g, patch=(), patch6=(), quiet=False):
     # Στην πίστα με T_FIGHT, που ο πίνακας εργασιών δεν το πιάνει (κανένας
     # εισβολέας ακόμη: fo_n 0, και κανένα fo_over δεν το σβήνει).
     b6[G.ag + 512 + c] = PAD                        # προορισμός
-    b6[G.ag + 768 + 128 + c] = EC.T_FIGHT           # εργασία
+    b6[G.ag + 768 + 2048 + c] = EC.T_FIGHT           # εργασία
 
     def at_pad():
         a = G.a()
@@ -337,7 +337,7 @@ def alert(sym, g, patch=(), patch6=(), quiet=False):
     if not G.until(at_pad, 3000):
         a = G.a()
         return f"ΣΥΝΑΓΕΡΜΟΣ: ο 1 δεν έφτασε στην πίστα ({a.node[c]}, {a.flags[c]:#x})"
-    G.b6()[G.ag + 768 + 128 + c] = E.NO_TASK
+    G.b6()[G.ag + 768 + 2048 + c] = E.NO_TASK
     hp = G.a().health[c]
     G.land()
     if not G.until(lambda: G.alive(EC.AG_FOE0, EC.AG_FOE0 + EC.AG_NFOE), 64, 1):

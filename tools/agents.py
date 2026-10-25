@@ -20,23 +20,30 @@ BUF = 0x3EC0                            # 72 bytes: 9 πεδία x 8 άποικ�
 CODE = 0x3F10                           # η σκαλωσιά, πάνω από το TEST_FLOOR
 NAG = 8                                 # πόσοι άποικοι ανά δείγμα
 
-AG_BASE = 0x6C00                        # G_agent_fields, τράπεζα 6
-def _dome_base():
-    """Το G_dome_tbl από το build/layout.asm (#7500 ως το βήμα 153, #7480 από το 154)."""
+def _layout(name):
+    """Ενα G_* από το build/layout.asm."""
     import os
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     for line in open(os.path.join(root, "build", "layout.asm"), encoding="utf-8"):
         p = line.split()
-        if len(p) >= 3 and p[0] == "G_dome_tbl" and p[1] == "equ":
+        if len(p) >= 3 and p[0] == name and p[1] == "equ":
             return int(p[2].lstrip("#"), 16)
-    raise SystemExit("δεν βρέθηκε το G_dome_tbl")
+    raise SystemExit(f"δεν βρέθηκε το {name}")
 
 
-DOME_BASE = _dome_base()                # G_dome_tbl, τράπεζα 6
+AG_BASE = _layout("G_agent_fields")     # τράπεζα 6: #7000 από το βήμα 172, #6C00 ως τότε
+AG_HI = 8                               # = AG_HI του src/const.asm: το δεύτερο πεδίο κάθε ζεύγους
+DOME_BASE = _layout("G_dome_tbl")       # τράπεζα 6 (#7500 ως το βήμα 153, #7480 ως το 171, #6680 από το 172)
+
+
+def field_addr(page, half):
+    """Η αρχή του πεδίου (σελίδα, μισό) του §6.1: ένα πεδίο ανά σελίδα από το
+    βήμα 172, το δεύτερο μισό AG_HI σελίδες πιο πάνω (ως τότε στο +128)."""
+    return AG_BASE + (page + AG_HI * half) * 256
 DOME_REC = 24
 DOME_HEAD = ("cx", "cy", "size", "room", "state", "integ", "power", "ops")
 NDOME = 8                               # 8 x 8 bytes = ακριβώς το BUF
-# (όνομα, σελίδα, δεύτερο μισό;) — §6.1, δύο πεδία ανά σελίδα
+# (όνομα, σελίδα, δεύτερο μισό;) — §6.1, τα ζεύγη πεδίων (field_addr)
 FIELDS = (("flags", 0, 0), ("node", 1, 0), ("dest", 2, 0), ("edge", 2, 1),
           ("task", 3, 1), ("oxygen", 4, 0), ("water", 4, 1), ("food", 5, 0),
           ("health", 6, 0))
@@ -50,7 +57,7 @@ def _code():
            0x01, 0xC6, 0x7F, 0xED, 0x49,            # ld bc,#7FC6 / out (c),c
            0x11, BUF & 255, BUF >> 8]               # ld de,BUF
     for _, page, half in FIELDS:
-        src = AG_BASE + page * 256 + (128 if half else 0)
+        src = field_addr(page, half)
         out += [0x21, src & 255, src >> 8,          # ld hl,src
                 0x01, NAG, 0x00,                    # ld bc,NAG
                 0xED, 0xB0]                         # ldir
@@ -101,7 +108,7 @@ def what(a):
 
 
 def _plant_code(page, half, n):
-    src = AG_BASE + page * 256 + (128 if half else 0)
+    src = field_addr(page, half)
     return bytes([0xF3,                                 # di
                   0x01, 0xC6, 0x7F, 0xED, 0x49,         # τράπεζα 6
                   0x21, BUF & 255, BUF >> 8,            # ld hl,BUF

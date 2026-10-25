@@ -30,6 +30,10 @@ F_IDLE      equ 16
 NO_EDGE     equ 255
 NO_SLOT     equ 255
 N_AGENT     equ 128
+        ; κανένα id στην κρυφή μνήμη φιγούρων (βήμα 172): το 192-255 των οκτώ
+        ; σελίδων των δεύτερων πεδίων είναι δική της (src/object.asm, of_at), και
+        ; τα 128-191 όλων των σελίδων για τους πράκτορες του βήματος 173 (ως το 187)
+        assert  N_AGENT <= DF_L
 
 ; --- ΦΤΑΝΕΙ. B = edge + 1, H = AG_PG + 3, L = id. ---
 ; Πριν από το ent_move_slice, για να το φτάνει το jr του em_trans.
@@ -60,12 +64,12 @@ em_arrive:
         ld      l,c
         ld      h,AG_PG + 1
         ld      (hl),b                  ; node = στόχος
-        set     7,l
+        set     3,h                     ; AG_PG + 1 + AG_HI
         ld      (hl),a                  ; slot
         inc     h
         ld      (hl),NO_EDGE
         inc     h
-        res     7,l
+        res     3,h                     ; AG_PG + 3
         ld      (hl),0                  ; progress = 0
         ; Οποιος ταξίδευε μέσα φτάνει μέσα: η αναχώρηση ρώτησε ήδη το en_in
         ; του στόχου. Μόνο όποιος ερχόταν απ' έξω ρωτά — μπαίνει σε airlock;
@@ -88,10 +92,10 @@ ea_out:
         set     1,(hl)                  ; μπήκε
         jr      ems_mark
 
-; --- ΤΑΞΙΔΕΥΕΙ. A = edge + 1, H = AG_PG + 2, L = id + 128. ---
+; --- ΤΑΞΙΔΕΥΕΙ. A = edge + 1, L = id. ---
 em_trans:
         ld      b,a                     ; B = edge + 1
-        ld      h,AG_PG
+        ld      h,AG_ROLE >> 8
         ld      a,(hl)                  ; role
         and     7
         add     a,role_speed & 255      ; ο πίνακας σε μία σελίδα (assert):
@@ -99,7 +103,6 @@ em_trans:
         ld      d,role_speed >> 8
         ld      a,(de)                  ; ταχύτητα
         ld      h,AG_PG + 3
-        res     7,l
         add     a,(hl)                  ; + progress
         jr      c,em_arrive
         ld      (hl),a                  ; ακόμη στον δρόμο
@@ -121,7 +124,7 @@ ems_mark:
 ;
 ; Το id έρχεται στο L και μένει σε καταχωρητή (L, ή D και C όπου το HL
 ; χρειάζεται αλλού): τα πεδία είναι σε σελίδες, οπότε ένα πεδίο είναι ένα
-; `ld h` και ένα `set`/`res 7,l` μακριά. Ως το βήμα 59 κάθε πεδίο ξαναδιάβαζε
+; `ld h` μακριά (ως το βήμα 171 και ένα `set`/`res 7,l`). Ως το βήμα 59 κάθε πεδίο ξαναδιάβαζε
 ; το em_id· τώρα γράφεται μόνο όταν κάποιος φεύγει από κόμβο, όπου το θέλει το
 ; ent_release.
 ; ---------------------------------------------------------------------------
@@ -144,14 +147,13 @@ ems_lp:
         ld      h,AG_PG
         bit     0,(hl)                  ; F_ALIVE
         jr      z,ems_nx
-        ld      h,AG_PG + 2
-        set     7,l
+        ld      h,AG_EDGE >> 8
         ld      a,(hl)                  ; edge
         inc     a
         jr      nz,em_trans             ; != 255 -> ταξιδεύει
 
 ; --- ΣΤΑΘΕΡΟΣ: χρειάζεται να ξεκινήσει; ---
-        res     7,l
+        res     3,h                     ; AG_PG + 2
         ld      e,(hl)                  ; dest
         dec     h                       ; AG_PG + 1
         ld      a,(hl)                  ; node
@@ -191,8 +193,7 @@ ems_lp:
         ld      a,(hl)                  ; node
         inc     h
         ld      (hl),a                  ; dest = node
-        inc     h                       ; +128 = task
-        set     7,l
+        ld      h,AG_TASK >> 8
         ld      (hl),NO_TASK
 ems_nx:
         exx
@@ -248,15 +249,13 @@ emf_rel:
         ld      l,a
         ld      h,AG_PG + 3
         ld      (hl),0                  ; progress = 0
-        dec     h
-        set     7,l
+        ld      h,AG_EDGE >> 8
         ld      (hl),c                  ; edge = k
         ; --- ΜΕΣΑ Ή ΕΞΩ (βήμα 87). Οποιος ξεκινά έξω μένει έξω. Οποιος
         ; ξεκινά μέσα μένει μέσα μόνο σε διάδρομο προς έτοιμο μέρος με αέρα,
         ; και όχι από δομή σε δομή: δύο airlock τα ενώνει μόνο το έδαφος. Το
         ; «ξεκινά μέσα» είναι η σημαία, όχι ξανά το en_in του κόμβου. ---
         ; Και η φιγούρα (βήμα 89): φαίνεται όποιος φεύγει έξω ή από δομή.
-        res     7,l
         ld      h,AG_PG
         bit     1,(hl)                  ; F_INDOORS
         jp      z,ems_mark
@@ -283,18 +282,17 @@ emd_put:
         ld      (hl),SUIT_TRIP          ; με γεμάτη στολή, πάντα (βήμα 90)
         jp      ems_mark
 
-; fg_mark — L = πράκτορας (το bit 7 δεν μετρά): η φιγούρα του έξω ίσως άλλαξε
-; (src/figure.asm). Ενα byte ανά πράκτορα, στο πάνω μισό της σελίδας node_occ,
-; λέει «είναι ήδη στη λίστα αλλαγών»: μία εγγραφή DK_AGENT το πολύ, όσο γρήγορα
-; κι αν κινείται. Το σβήνει το dh_agent. Χαλάει A, B, D, HL.
+; fg_mark — L = πράκτορας: η φιγούρα του έξω ίσως άλλαξε (src/figure.asm).
+; Ενα byte ανά πράκτορα, στη σελίδα MKPG (ως το βήμα 171 στο πάνω μισό του
+; node_occ, όπου το bit 7 του L δεν μετρούσε), λέει «είναι ήδη στη λίστα
+; αλλαγών»: μία εγγραφή DK_AGENT το πολύ, όσο γρήγορα κι αν κινείται. Το σβήνει
+; το dh_agent. Χαλάει A, B, D, HL.
 fg_mark:
-        ld      h,OCCPG
-        set     7,l
+        ld      h,MKPG
         ld      a,(hl)
         or      a
         ret     nz
         inc     (hl)
-        res     7,l
         ld      b,l
         ld      a,DK_AGENT
         jp      wh_push
@@ -354,8 +352,7 @@ ent_release:
         push    bc
         ld      a,(em_id)
         ld      l,a
-        ld      h,AG_PG + 1
-        set     7,l
+        ld      h,AG_SLOT >> 8
         ld      a,(hl)                  ; slot
         cp      NO_SLOT
         jr      z,er_out
@@ -397,6 +394,7 @@ em_node:    db 0
 em_nh:      db 0                ; ο επόμενος κόμβος, για το μέσα-έξω (βήμα 87)
 
         assert  F_ALIVE == 1 && N_AGENT == 128 && DK_SLOT == 0
+        assert  (AG_PG & 15) == 0 && AG_HI == 8      ; set 3,h: το δεύτερο πεδίο
         assert  NO_EDGE == 255 && (PAGE_B5 >> 8) == (PAGE_B6 >> 8)
         assert  (G_node_adj & 7) == 0 && ((G_node_adj >> 3) & 255) + 128 <= 256
         assert  (G_corr_fill & 255) <= 256 - 8

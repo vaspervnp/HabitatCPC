@@ -159,7 +159,6 @@ hla_drop:
 hla_sp:
         ld      hl,jb_ag
         ld      l,(hl)
-        set     7,l
-        ld      h,AG_PG + 7
+        ld      h,AG_SPARE >> 8
         ld      (hl),a
         ret

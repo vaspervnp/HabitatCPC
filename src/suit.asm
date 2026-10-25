@@ -56,18 +56,17 @@ su_tick:
         jr      nz,su_full
         set     6,(hl)                  ; η μισή επίσκεψη: 9 us ως το su_nz
 su_nz:
-        ld      h,AG_PG + 4
-        set     7,l
+        ld      h,AG_WATER >> 8
         ld      a,(hl)                  ; νερό
         or      a
         jr      z,su_d3
         dec     (hl)
-su_d3:  inc     h
+su_d3:  inc     h                       ; AG_SLEEP
         ld      a,(hl)                  ; ύπνος
         or      a
         jr      z,su_d4
         dec     (hl)
-su_d4:  res     7,l
+su_d4:  res     3,h                     ; AG_FOOD
         ld      a,(hl)                  ; τροφή
         or      a
         jp      z,nd_load
@@ -76,9 +75,8 @@ su_d4:  res     7,l
 
 su_full:
         res     6,(hl)
-        set     7,l
+        set     3,h                     ; AG_ROLE
         ld      a,(hl)                  ; ρόλος
-        res     7,l
         cp      SU_BOT
         jr      nc,su_nz                ; ρομπότ: δεν αναπνέει
         ld      h,AG_PG + 7
@@ -92,10 +90,8 @@ su_full:
         ; Πάει ήδη μέσα; Εξω, το T_NEED οδηγεί πάντα μέσα: σε airlock για τη
         ; στολή, ή σε θόλο για μια ανάγκη — και τον θόλο από έξω τον φτάνει
         ; κανείς μόνο από airlock. Το needs.asm δεν το ξανασβήνει έξω (nd_sated).
-        ld      h,AG_PG + 3
-        set     7,l
+        ld      h,AG_TASK >> 8
         ld      a,(hl)                  ; εργασία
-        res     7,l
         cp      T_NEED
         jr      z,su_nz
         push    hl
@@ -108,10 +104,8 @@ su_full:
         dec     a
         ld      h,AG_PG + 2
         ld      (hl),a                  ; προορισμός
-        inc     h
-        set     7,l
+        ld      h,AG_TASK >> 8
         ld      (hl),T_NEED             ; αφήνει τη δουλειά του (§6.7)
-        res     7,l
         jr      su_nz
 
 ; ---------------------------------------------------------------------------

@@ -45,12 +45,16 @@ GUN_HIT     equ 64                      ; ...και με όπλο: τρεις β
 ; ΕΝΑΣ ΧΑΡΤΗΣ ΚΟΜΒΩΝ ΤΟΥ ΑΠΟΜΕΝΕΙ ΜΗΔΕΝ. Η πρώτη γραφή ρωτούσε για κάθε άποικο
 ; τέσσερα cp και για κάθε φρουρό τέσσερις γειτονιές με cpir: 9,4 ms η θέση 15,
 ; πάνω από τη θέση 14 (4,7). Τώρα ο εισβολέας k γράφει το bit του, μία φορά ανά
-; περιστροφή, στο FO_MAP[κόμβος όπου στέκεται] και στο FO_MAP + 128 [κόμβος όπου
-; είναι, και κάθε γειτονικός]· ο άποικος ρωτά ένα byte, ο φρουρός δύο. Στο τέλος
-; τα ίδια bytes ξαναγίνονται μηδέν. Η σελίδα κάτω από τους πράκτορες, στην κορυφή
-; της δέσμευσης b6code (το src/main.asm ελέγχει ότι ο κώδικας δεν φτάνει ως
-; εκεί)· στο tests/simtest.asm είναι η ίδια διεύθυνση της τράπεζας 6.
-FO_MAP      equ G_agent_fields - 256
+; περιστροφή, στο FO_MAP[κόμβος όπου στέκεται] (bits 0-3) και στη ζώνη του,
+; FO_MAP[κόμβος όπου είναι, και κάθε γειτονικός] (bits 4-7)· ο άποικος ρωτά ένα
+; byte, ο φρουρός με όπλο το ίδιο γυρισμένο. Στο τέλος τα ίδια bytes ξαναγίνονται
+; μηδέν. ΕΝΑ BYTE ΑΝΑ ΚΟΜΒΟ ΑΠΟ ΤΟ ΒΗΜΑ 172, στο πάνω μισό του node_occ
+; (κόμβοι 0-111 στο 128-239, και το 255 για όποιον περπατά, fo_after): ως τότε
+; δύο, σε μία σελίδα κάτω από τους πράκτορες, στην κορυφή του b6code, που
+; πήγε στα 17 σελίδες των 160 αποίκων (DESIGN §6.1).
+FO_MAP      equ G_node_occ + 128
+        assert  FO_MAP + MAX_NODE <= EC_X && (FO_MAP & 255) == 128
+        assert  EC_TU < G_node_occ + 255        ; το 255 είναι του fo_after
 
 ; ---------------------------------------------------------------------------
 ; fo_tick — μία περιστροφή. Το bot_tick πηδά εδώ, και αυτό στο ship_tick.
@@ -102,17 +106,17 @@ foi_lp:
         push    bc
         push    de
         push    hl
-        call    fo_zone                 ; FO_MAP + 128: εκεί και δίπλα
+        call    fo_zone                 ; η ζώνη: εκεί και δίπλα
         pop     hl
         pop     de
         pop     bc
         ld      a,(ix+4)
-        inc     h                       ; AG_PG + 2
-        set     7,l
+        ld      h,AG_EDGE >> 8
         ld      l,(hl)                  ; η ακμή
         inc     l
         jr      nz,foi_n                ; περπατά
         ld      (ix+0),a                ; fn
+        or      FO_MAP & 255
         ld      l,a
         ld      h,FO_MAP >> 8
         ld      a,(hl)
@@ -169,6 +173,7 @@ fov_lp:
         ld      a,(hl)                  ; σημαίες
         rra                             ; F_ALIVE
         jr      nc,fov_nx
+        set     7,e                     ; FO_MAP & 255 (βήμα 172)
         ld      a,(de)
         and     c
         jr      nz,fov_v                ; κάποιος εκεί μπορεί να τον χτυπήσει
@@ -179,10 +184,8 @@ fov_nx:
 ; --- στον κόμβο του στέκονται εισβολείς που δεν χτύπησαν: αν στέκεται κι
 ; αυτός, ο πρώτος τον χτυπά ---
 fov_v:
-        ld      h,AG_PG + 2
-        set     7,l
+        ld      h,AG_EDGE >> 8
         ld      a,(hl)                  ; η ακμή
-        res     7,l
         ld      h,AG_PG
         inc     a
         jr      nz,fov_nx               ; περπατά: κανείς δεν τον χτυπά
@@ -229,7 +232,7 @@ fov_end:
 
         ; --- ΜΕΤΑ ΑΠΑΝΤΟΥΝ ΟΙ ΦΡΟΥΡΟΙ, με τη σειρά τους: cpir στη στήλη των
         ; ρόλων 0-79 ---
-        ld      hl,AG_PG * 256 + 128
+        ld      hl,AG_ROLE
         ld      bc,AG_BOT0
 fog_lp:
         ld      a,RL_GUARD
@@ -259,17 +262,16 @@ foa_lp:
         call    fo_unzone
         pop     bc
         ld      a,(ix+0)                ; fn
+        or      FO_MAP & 255
         ld      l,a
         ld      h,FO_MAP >> 8
-        ld      (hl),0                  ; (ένα 255 πέφτει στο FO_MAP + 255, που μηδενίζεται κι αυτό)
+        ld      (hl),0                  ; (ένα 255 πέφτει στο node_occ + 255, που μηδενίζεται κι αυτό)
         ld      a,(fo_live)
         and     b
         jr      z,foa_n                 ; έπεσε
         ld      l,c
-        ld      h,AG_PG + 3
-        set     7,l
+        ld      h,AG_TASK >> 8
         ld      (hl),T_FIGHT
-        res     7,l
         ld      a,(ix+0)
         inc     a
         jr      z,foa_n                 ; περπατά
@@ -302,13 +304,11 @@ fos_e:
         ld      h,AG_PG
         bit     0,(hl)                  ; F_ALIVE
         jr      z,fos_nx
-        ld      h,AG_PG + 2
-        set     7,l
+        ld      h,AG_EDGE >> 8
         ld      a,(hl)                  ; η ακμή
-        res     7,l
         inc     a
         jr      nz,fos_nx               ; περπατά
-        dec     h                       ; AG_PG + 1
+        ld      h,AG_PG + 1
         ld      a,(hl)
         cp      d
         jr      nz,fos_go               ; στέκεται αλλού: εκεί πάει
@@ -341,7 +341,7 @@ foa_n:
 fo_over:
         xor     a
         ld      (fo_n),a
-        ld      hl,(AG_PG + 3) * 256 + 128      ; οι εργασίες, 0-79
+        ld      hl,AG_TASK              ; οι εργασίες, 0-79
         ld      b,AG_BOT0
 foo_lp:
         ld      a,(hl)
@@ -367,13 +367,20 @@ fot_lp:
         or      a
         ret
 
-; fo_zone — A = κόμβος, B = το bit ενός εισβολέα: FO_MAP + 128 στον κόμβο και
-; σε κάθε γειτονικό (node_adj, όσοι λέει το deg). fo_unzone — το ίδιο, μηδέν.
-; Χαλάει A, C, DE, HL.
+; fo_zone — A = κόμβος, B = το bit ενός εισβολέα: το ίδιο bit, τέσσερα πάνω (η
+; ζώνη), στο FO_MAP του κόμβου και κάθε γειτονικού (node_adj, όσοι λέει το deg).
+; fo_unzone — τα bytes τους μηδέν, όλα (στο fo_after μηδενίζονται όλα ούτως ή
+; άλλως). Χαλάει A, B (fo_zone), C, DE, HL.
 fo_zone:
         ld      e,a
+        ld      a,b
+        rlca
+        rlca
+        rlca
+        rlca
+        ld      b,a                     ; η ζώνη: bits 4-7
         ld      d,FO_MAP >> 8
-        set     7,e
+        set     7,e                     ; FO_MAP & 255
         ld      a,(de)
         or      b
         ld      (de),a
@@ -404,7 +411,7 @@ foz_n:
 fo_unzone:
         ld      e,a
         ld      d,FO_MAP >> 8
-        set     7,e
+        set     7,e                     ; FO_MAP & 255
         xor     a
         ld      (de),a
         res     7,e
@@ -432,21 +439,18 @@ fou_n:
         ret
 
 ; ---------------------------------------------------------------------------
-; fo_guard — L = ο φρουρός (το bit 7 δεν μετρά). Αν ζει, και δεν είναι έξω στον
-; δρόμο για μέσα (T_NEED: η στολή· βήμα 150, ως τότε κάθε T_NEED).
-; Χαλάει όλους.
+; fo_guard — L = ο φρουρός (ως το βήμα 171 το bit 7 του L δεν μετρούσε). Αν
+; ζει, και δεν είναι έξω στον δρόμο για μέσα (T_NEED: η στολή· βήμα 150, ως
+; τότε κάθε T_NEED). Χαλάει όλους.
 ; ---------------------------------------------------------------------------
 fo_guard:
-        res     7,l
         ld      h,AG_PG
         bit     0,(hl)                  ; F_ALIVE
         ret     z
-        ld      h,AG_PG + 3
-        set     7,l
+        ld      h,AG_TASK >> 8
         ld      a,(hl)                  ; η εργασία του
         call    fg_need                 ; για ανάγκη ΕΞΩ: εκείνη πρώτα (src/fight0.asm)
         ld      (hl),T_FIGHT
-        res     7,l
         ; --- ένα όπλο, αν δεν έχει και υπάρχει, για πάντα ---
         ld      h,AG_PG
         bit     7,(hl)                  ; F_GUN
@@ -471,23 +475,24 @@ fog_tgt:
         ld      a,(de)
         ld      (fo_tt),a               ; ο κόμβος του
         ; --- στέκεται; τότε χτυπά όποιον φτάνει ---
-        ld      h,AG_PG + 2
-        set     7,l
+        ld      h,AG_EDGE >> 8
         ld      a,(hl)                  ; η ακμή
-        res     7,l
         inc     a
         jr      nz,fog_go               ; περπατά: προς τον στόχο
-        dec     h                       ; AG_PG + 1
+        ld      h,AG_PG + 1
         ld      e,(hl)                  ; ο κόμβος του
+        set     7,e                     ; FO_MAP & 255
         ld      d,FO_MAP >> 8
-        ld      a,(de)                  ; όσοι στέκονται εδώ: με τα χέρια
-        ld      c,a
+        ld      a,(de)                  ; όσοι στέκονται εδώ: με τα χέρια (το
+        ld      c,a                     ; fo_live κρατά μόνο τα bits 0-3)
         ld      h,AG_PG
         bit     7,(hl)                  ; F_GUN
         ld      b,HAND_HIT
         jr      z,fog_r
-        set     7,e
-        ld      a,(de)                  ; ...και με όπλο, εδώ και δίπλα
+        rrca
+        rrca
+        rrca
+        rrca                            ; ...και με όπλο, εδώ και δίπλα: η ζώνη
         or      c
         ld      c,a
         ld      b,GUN_HIT
@@ -593,15 +598,14 @@ foal_lp:
         and     F_ALIVE + F_INDOORS
         dec     a
         jr      nz,foal_nx              ; νεκρός, ή μέσα: 47 T ως τον επόμενο
-        set     7,l
+        set     3,h                     ; AG_ROLE
         ld      a,(hl)                  ; ρόλος
         cp      RL_GUARD
-        jr      z,foal_nx7              ; ο φρουρός πάει στη μάχη
-        ld      h,AG_PG + 3
+        jr      z,foal_nx0              ; ο φρουρός πάει στη μάχη
+        ld      h,AG_TASK >> 8
         ld      a,(hl)                  ; εργασία
         cp      T_NEED
-        jr      z,foal_nx7              ; πάει ήδη μέσα
-        res     7,l
+        jr      z,foal_nx0              ; πάει ήδη μέσα
         ld      h,AG_PG + 1
         ld      d,(hl)                  ; ο κόμβος του
         ld      a,(fo_ln)
@@ -622,11 +626,8 @@ foal_c:
         dec     a
         inc     h                       ; AG_PG + 2
         ld      (hl),a                  ; προορισμός
-        inc     h
-        set     7,l
+        ld      h,AG_TASK >> 8
         ld      (hl),T_FIGHT
-foal_nx7:
-        res     7,l
 foal_nx0:
         ld      h,AG_PG
 foal_nx:
@@ -654,4 +655,4 @@ fo_ln:      db 0                        ; fo_alert: ο κόμβος του τε�
 fo_la:      db 0                        ; ...και το airlock του
         assert  fo_an == fo_fn + 4 && fo_tgb == fo_an + 4 && fo_tgn == fo_tgb + 4
         assert  fo_ts == fo_tgn + 4 && (fo_fn >> 8) == ((fo_ts + 3) >> 8)
-        assert  (FO_MAP & 255) == 0 && AG_NFOE == 4
+        assert  AG_NFOE == 4

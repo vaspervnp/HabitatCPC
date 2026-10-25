@@ -578,9 +578,9 @@ def game_wait(sym, g, patch=(), quiet=False, frames=60_000_000):
     b6, ag = G.bank(6), TO.layout()["G_agent_fields"] - 0x4000
     was = {}
     for i in range(128):
-        if b6[ag + i] & 1 and b6[ag + 128 + i] & 7 in (ENGINEER, CBOT):
-            was[i] = b6[ag + 128 + i]
-            b6[ag + 128 + i] &= ~7 & 255
+        if b6[ag + i] & 1 and b6[ag + 2048 + i] & 7 in (ENGINEER, CBOT):
+            was[i] = b6[ag + 2048 + i]
+            b6[ag + 2048 + i] &= ~7 & 255
     if not was:
         return "ΣΤΗΣΙΜΟ: η αποικία δεν έχει μηχανικό να γίνει εργάτης"
     if not F.enter(at):
@@ -597,7 +597,7 @@ def game_wait(sym, g, patch=(), quiet=False, frames=60_000_000):
     if got != same("NO ENGINEER METAL") or F.rec(node)[16] & 0x80:
         return f"ΣΤΗΣΙΜΟ: χωρίς μηχανικό, υγεία {F.rec(node)[16]}: «{got}» — «NO ENGINEER METAL»"
     for i, r in was.items():
-        b6[ag + 128 + i] = r
+        b6[ag + 2048 + i] = r
     G.run(frames, until=lambda: F.rec(node)[16] == HP)
     G.run(400_000)
     got = gline(G, sym, X)

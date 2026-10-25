@@ -54,8 +54,9 @@ class W(TO.World):
 
     def agent(self, i):
         a, f = self.L["G_agent_fields"], lambda o: self.b6(self.L["G_agent_fields"] + o + i)[0]
-        return {"f": f(0), "role": f(128), "node": f(256), "dest": f(512),
-                "edge": f(640), "task": f(896), "spare": f(1920)}
+        # ένα πεδίο ανά σελίδα (βήμα 172): τα δεύτερα κάθε ζεύγους 2.048 πιο πάνω
+        return {"f": f(0), "role": f(2048), "node": f(256), "dest": f(512),
+                "edge": f(2560), "task": f(2816), "spare": f(3840)}
 
     def struct(self, k):
         return list(self.b6(self.L["G_struct_tbl"] + 8 * k, 8))
@@ -163,7 +164,7 @@ def no_engineer(sym, g, patch=(), quiet=False):
     """ΧΩΡΙΣ μηχανικό. Η πρώτη διαφορά από την πρόζα, ή None."""
     w = W(sym, g, patch)
     m = w.m
-    role = w.L["G_agent_fields"] + 128 + ENGINEER
+    role = w.L["G_agent_fields"] + 2048 + ENGINEER       # AG_ROLE (βήμα 172)
     w.put6(role, [0])                                    # εργάτης
     B.build(m, sym, 4, g + 6, at=SOLAR_AT, fit=False)
     said = []

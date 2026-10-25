@@ -226,8 +226,7 @@ dmj_free:
         ld      a,e
         inc     a
         jr      z,dmj_nx                ; αδιάθετη
-        set     7,e
-        ld      d,AG_PG + 3             ; το task, στο πάνω μισό
+        ld      d,AG_TASK >> 8
         ld      a,(de)
         cp      c
         jr      nz,dmj_nx
@@ -668,11 +667,9 @@ dm_out:
         ld      l,a
         ld      h,AG_PG
         res     5,(hl)                  ; F_WORKING: αλλιώς η επόμενη αναχώρησή
-        ld      h,AG_PG + 3             ; του θα μείωνε τους χειριστές άλλου
-        set     7,l
+        ld      h,AG_TASK >> 8          ; του θα μείωνε τους χειριστές άλλου
         ld      (hl),NO_TASK
         ld      h,AG_PG + 7
-        res     7,l
         ld      (hl),SUIT_TRIP
         ld      a,l
         call    lko_one                 ; src/door.asm: έξω, στο (lk_t)

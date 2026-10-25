@@ -73,9 +73,9 @@ cwc_lp:
         ld      c,e
         jr      cwc_n
 cwc_a:
-        set     7,e
+        set     3,d                     ; AG_ROLE (ως το βήμα 171 set 7,e)
         ld      a,(de)                  ; ρόλος 0-7
-        res     7,e
+        res     3,d
         add     a,a
         add     a,a
         add     a,CW_REC & 255

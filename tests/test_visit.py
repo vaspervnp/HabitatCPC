@@ -32,9 +32,10 @@ colony.sna, που τρέχει:
               ξαναγράφει, ίδια κι ας είναι: το hud_inval κάνει το hud_cw -1.
   ΑΛΜΑ        τα νομίσματα, το κύρος, η εύνοια, ο συσσωρευτής, τα νομίσματα του
               εμπόρου και οι ώρες ηρεμίας του βήματος 121 (τα 12 bytes του
-              EC_X), και τα 120-127 μετά τους επισκέπτες (EC_VIN), μένουν ίδια
-              σε ένα view_draw — άλμα κάμερας, βοήθεια, φόρτωμα. Ως το βήμα 133
-              το fg_build τα μηδένιζε (σημάδια των πρακτόρων 100-127).
+              EC_X), το EC_VIN και το EC_TU, μένουν ίδια σε ένα view_draw —
+              άλμα κάμερας, βοήθεια, φόρτωμα. Ως το βήμα 133 το fg_build τα
+              μηδένιζε (σημάδια των πρακτόρων 100-127· από το 172 στο node_occ,
+              μετά τον χάρτη των εισβολέων, και τα σημάδια σελίδα τους).
   ΚΟΣΤΟΣ      η προσγείωση πέντε επισκεπτών, η περιστροφή όπου αποφασίζουν και
               οι πέντε, η περιστροφή όπου ξεκινούν, το πλοίο που φεύγει με
               πέντε ακόμη έξω, το τέλος του sol με το κύρος και το πλοίο του, και
@@ -42,7 +43,8 @@ colony.sna, που τρέχει:
 
 Αρνητικά: η πληρωμή που δεν γράφεται, το HUD που διαβάζει μηδέν, ο
 συσσωρευτής που δεν φέρνει πλοίο, το HUD που δεν βλέπει το σβήσιμο, το
-fg_build σε όλους τους 128 πράκτορες (το ΑΛΜΑ) — και του βήματος 136: το
+καθάρισμα της κρυφής μνήμης φιγούρων στη σελίδα του node_occ (το ΑΛΜΑ· ως το
+βήμα 171 το fg_build σε όλους τους 128 πράκτορες) — και του βήματος 136: το
 fg_build χωρίς τους επισκέπτες (η ΠΛΗΡΗΣ), ο επισκέπτης με τη φιγούρα του
 αποίκου, επισκέπτες που δεν μετριούνται μέσα, οξυγόνο χωρίς αυτούς, που δεν
 κάθονται, που δεν ανεβαίνουν.
@@ -96,12 +98,12 @@ def addrs():
               "EC_O2USE"):
         mm = re.search(rf"^{n}\s+equ G_econ_state(?: \+ (\d+))?", const, re.M)
         out[n] = g + int(mm.group(1) or 0)
-    x = occ + 128 + EC.AG_FOE0 + EC.AG_NFOE                  # EC_X
+    x = occ + EC.X_OFF                                       # EC_X (βήμα 172: μετά τον χάρτη των εισβολέων)
     for n, k in (("EC_COINS", 6), ("EC_PREST", 8), ("EC_GOOD", 9), ("EC_VISACC", 10)):
         mm = re.search(rf"^{n}\s+equ EC_X \+ (\d+)", const, re.M)
         assert mm and int(mm.group(1)) == k, f"{n}: το src/const.asm άλλαξε"
         out[n] = x + k
-    assert re.search(r"^EC_VIN\s+equ G_node_occ \+ 128 \+ AG_VIS0 \+ AG_NVIS", const, re.M)
+    assert re.search(r"^EC_VIN\s+equ EC_X \+ 12", const, re.M)
     out["EC_VIN"] = occ + EC.VIN_OFF
     return out
 
@@ -210,7 +212,8 @@ def walk(sym, g, patch=(), patch6=(), lounge=False, quiet=False):
         inside = [i for i in G.vis() if a.flags[i] & E.F_INDOORS]
         for i in inside:
             if a.edge[i] == E.NO_EDGE and a.slot[i] != E.NO_SLOT and a.node[i] < EC.MAX_DOME:
-                if b6[G.L["G_dome_fig"] - 0x4000 + 8 * a.node[i] + a.slot[i]] == FC_VISITOR:
+                # η κρυφή μνήμη φιγούρων στις ουρές των πεδίων (βήμα 172, of_at)
+                if b6[G.L["G_agent_fields"] - 0x4000 + (8 + a.slot[i]) * 256 + 192 + a.node[i]] == FC_VISITOR:
                     seen_ring.add(i)
         if inside and all(a.edge[i] == E.NO_EDGE for i in G.vis()):
             breath.append((len(inside), G.x6(A["EC_VIN"])))
@@ -373,13 +376,13 @@ def cold(sym, patch0=()):
 
 
 def jump(sym, patch0=()):
-    """ΑΛΜΑ: το EC_X και τα 120-127 μένουν σε ένα view_draw. Η πρώτη διαφορά, ή None."""
+    """ΑΛΜΑ: το EC_X, το EC_VIN και το EC_TU μένουν σε ένα view_draw. Η πρώτη διαφορά, ή None."""
     G = Game(sym)
     m = G.m
     for at, v in patch0:
         m.poke(at, v)
     x = A["EC_COINS"] - 6                                      # EC_X
-    keep = list(range(12)) + list(range(20, 28))               # 100-111 και 120-127
+    keep = list(range(14))      # EC_X, EC_VIN, EC_TU (ως το βήμα 171 τα σημάδια 100-111 και 120-127)
     want = {k: (0x37 * k + 0x11) & 255 for k in keep}
     for k, v in want.items():
         G.b6s(x + k, v)
@@ -472,11 +475,18 @@ def main():
     cw = sym["HUD_CW"]
     neg("το HUD δεν βλέπει το σβήσιμο", find0("HUD_INVAL", 6, [0x21, 0xFF, 0xFF, 0x22] + w(cw)),
         lambda a: [(a + k, 0) for k in (3, 4, 5)], lambda p: cold(sym, p))
-    # το fg_build: ld bc,(AG_FOE0 + AG_NFOE) * 256 + 255 -> B = 128 (στους 128),
-    # και ld bc,AG_NVIS * 256 + AG_VIS0 - 1 -> το ίδιο με το δεύτερο (χωρίς τους
+    # ΤΟ ΑΛΜΑ: ως το βήμα 171 το αρνητικό ήταν το fg_build σε όλους τους 128
+    # πράκτορες, που έσβηνε τα σημάδια τους — και τα σημάδια των 100-127 ήταν
+    # το EC_X. Από το 172 τα σημάδια έχουν σελίδα, και εκείνο δεν σβήνει τίποτα
+    # (δοκιμάστηκε: ΔΕΝ ΠΙΑΣΤΗΚΕ). Το EC_X είναι στο 240 του node_occ, και ό,τι
+    # γράφει εκεί είναι το λάθος: το καθάρισμα της κρυφής μνήμης φιγούρων του
+    # ob_fig_scan, μέσα στο view_draw, σε λάθος σελίδα — ld hl,DF_PG*256 +
+    # DF_L με H = node_occ: το 192-255 του node_occ μηδέν.
+    occ_pg, df_pg = TO.layout()["G_node_occ"] >> 8, (TO.layout()["G_agent_fields"] >> 8) + 8
+    neg("το καθάρισμα των φιγούρων στο node_occ", find0("OB_FIG_SCAN", 4, [0x21, 192, df_pg]),
+        lambda a: [(a + 2, occ_pg)], lambda p: jump(sym, p))
+    # ld bc,AG_NVIS * 256 + AG_VIS0 - 1 -> το ίδιο με το δεύτερο (χωρίς τους
     # επισκέπτες: το δεύτερο κομμάτι βλέπει C = 255 και τελειώνει)
-    neg("το fg_build σε όλους τους 128 πράκτορες", find0("FGB_ALL", 80, [0x01, 0xFF, 100]),
-        lambda a: [(a + 2, 128)], lambda p: jump(sym, p))
     neg("το fg_build χωρίς τους επισκέπτες",
         find0("FGB_ALL", 4, [0x01, EC.AG_VIS0 - 1, EC.AG_NVIS]),
         lambda a: [(a + 1, 0xFF), (a + 2, 100)], lambda p: full(sym, g, patch=p, quiet=True))
