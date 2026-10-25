@@ -288,13 +288,18 @@ def main():
 
     # 7α. ΟΙ ΘΕΣΕΙΣ ΤΟΥ ΔΑΚΤΥΛΙΟΥ (βήμα 89): η κενή, και από πάνω η φιγούρα με
     #     μάσκα, είναι η ψημένη παραλλαγή των assets — και για τις 24 x 8, από
-    #     τα bytes της ΕΙΚΟΝΑΣ της τράπεζας 6, όχι από ό,τι νομίζει το pack.py.
+    #     τα bytes της ΕΙΚΟΝΑΣ της τράπεζάς τους (η κενή και ο δακτύλιος στην 7
+    #     από το βήμα 171, οι φιγούρες έξω στην 6), όχι από ό,τι νομίζει το pack.py.
     #     Και η φιγούρα έξω είναι η ίδια σιλουέτα: όπου η μάσκα του δακτυλίου
     #     λέει «φιγούρα», η έξω λέει το ίδιο pixel (η σκιά είναι μόνο παραπάνω).
     #     Η λίστα, οι φιγούρες και ο δακτύλιος σε σελίδα (ld h,σελίδα).
-    img6 = images["bank6"]
-    at6 = lambda n: img6[by_name[n].addr - pack.WINDOW_BASE:][:by_name[n].size]
+    def at6(n):
+        img, base = image_of(by_name[n])
+        return img[by_name[n].addr - base:][:by_name[n].size]
     empty, ring, out = at6("slot_empty"), at6("fig_ring"), at6("fig_gfx")
+    check(by_name["slot_empty"] in bank7 and by_name["fig_ring"] in bank7
+          and by_name["fig_gfx"] in bank6,
+          "η κενή θέση και ο δακτύλιος στην τράπεζα 7, οι φιγούρες έξω στην 6 (βήμα 171)")
     bad = []
     for i, (z, t) in enumerate((z, t) for z in "sml" for t in range(8)):
         for f, nm in enumerate(pack.FIG_NAMES):

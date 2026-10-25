@@ -595,6 +595,13 @@ obfs_lp:
         ret
 obf_ring:
         ld      ixl,a
+        ; Η ΚΕΝΗ ΚΑΙ Η ΦΙΓΟΥΡΑ ΣΤΗΝ 7 ΑΠΟ ΤΟ ΒΗΜΑ 171 (tools/pack.py), ΜΟΝΟ ΕΔΩ: μετά
+        ; το clip, ώστε όσες κόβονται έξω να μην πληρώνουν· οι φιγούρες έξω
+        ; (fig_gfx) μένουν στην 6. Στο τέλος πίσω η 6.
+        push    bc
+        ld      bc,GA_PORT + PAGE_B7
+        out     (c),c
+        pop     bc
 obfr_lp:
         push    de
         ld      a,(bc)
@@ -617,17 +624,22 @@ obfr_lp:
         call    scr_nextline
         dec     ixl
         jr      nz,obfr_lp
-        ret
-; obf_slow — μισή φιγούρα, στην άκρη του κάδρου: το γενικό ob_put.
+        jp      ob_b6
+; obf_slow — μισή φιγούρα, στην άκρη του κάδρου: το γενικό ob_put. Του
+; δακτυλίου με την 7 μέσα (βήμα 171), και πίσω η 6.
 obf_slow:
         ld      hl,(obf_e)
         ld      a,h
         or      a
         jr      z,obfs_f
         ld      (ob_src),hl
+        ld      bc,GA_PORT + PAGE_B7
+        out     (c),c
         ld      hl,SLOT_H * 256 + SLOT_W
         ld      a,4                     ; αδιαφανές
         call    ob_put
+        call    obfs_f
+        jp      ob_b6
 obfs_f:
         ld      hl,(obf_f)
         ld      (ob_src),hl

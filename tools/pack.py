@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from sprites import load_map, load_bin, ROOT
 import buttons
 
-TEXT_MAX = 2485                 # = TEXT_MAX του src/uitext.asm (assert εκεί): κείμενα + src/st7.asm
+TEXT_MAX = 2578                 # = TEXT_MAX του src/uitext.asm (assert εκεί): κείμενα + src/st7.asm
 B6C_MAX = 5815                  # = B6C_MAX του src/bots.asm (assert στο main.asm)· 256 ως το 92, 1.280 ως το 93, 1.298 ως το 95, 1.554 ως το 109 (τα κελύφη, βήμα 110), 5.138 ως το 110 (οι εννιά φιγούρες, βήμα 111), 5.063 ως το 113 (το αδιαφανές τέλος των κελυφών, βήμα 114), 5.831 ως το 135 (ο επισκέπτης, βήμα 136), 5.767 ως το 151 (το struct_ptr, βήμα 152)
 B1C_MAX = 488                   # = B1C_MAX του src/commit.asm (assert στο main.asm), βήμα 94· 152: και το bar_want
 MAX_CORR = 128                  # = MAX_CORR του src/const.asm (assert στο main.asm), βήμα 159· 96 ως το 158
@@ -470,7 +470,7 @@ def corners():
     """ΟΙ ΓΩΝΙΕΣ ΤΩΝ ΔΙΑΔΡΟΜΩΝ (βήμα 129), από το tools/corner.py: οι θέσεις και
     οι διαστάσεις στο build/corner_tab.asm (src/corner.asm, b6code), οι ετικέτες
     των σχεδίων στο build/corner_spr.asm. Τα ίδια τα σχέδια -> bytes, για την
-    τράπεζα 6 (βήμα 159· ως τότε η δέσμευση b5code της τράπεζας 5)."""
+    τράπεζα 7 (βήμα 171· η 6 από το 159, και ως τότε η δέσμευση b5code της 5)."""
     import corner
     corner.check_bands()
     lines = corner.asm_lines()
@@ -809,21 +809,17 @@ def build_runs(smap, blob):
 
     bank6.append(Run("fig_list", 256, None, align=256,
                      note="ΔΕΣΜΕΥΣΗ — 64 φιγούρες έξω: ux, uy, φιγούρα, πράκτορας"))
-    bank6.append(Run("slot_empty", len(empty), empty,
-                     note="οι 24 κενές θέσεις δακτυλίου, αδιαφανείς"))
-    # ΑΠΟ ΤΟ ΒΗΜΑ 136 οι δύο ομάδες αρχίζουν στο 160 (δέκα φιγούρες, 321 bytes η
-    # καθεμία): ανάμεσα στις αρχές τους 512, άρα 191 bytes πινάκων ανάμεσα, και
-    # 32 πριν από την πρώτη. Τα 64 του struct_ptr πήγαν στο τέλος, κάτω από το
-    # b6code, που μίκρυνε κατά τα 64 των δύο νέων φιγούρων. Κενά 8 + 1. (Από το
-    # βήμα 152 το struct_ptr είναι 16, και το b6code ξαναπήρε τα 48.)
-    bank6 += [spr("corr_dr"), spr("corr_dl"), ob6("icon_m_ptr")]
+    # ΑΠΟ ΤΟ ΒΗΜΑ 171 η κενή θέση, οι φιγούρες του δακτυλίου, οι διάδρομοι και
+    # οι γωνίες είναι στην ΤΡΑΠΕΖΑ 7 (πιο κάτω), για τα πεδία των 160 αποίκων
+    # (DESIGN §6.1). Οι φιγούρες έξω (fig_gfx) μένουν, στο 160 μιας σελίδας: οι
+    # πέντε πίνακες πριν από αυτές είναι 160 bytes ακριβώς μετά το fig_list, και
+    # κανένα κενό. (Ως το 170: η κενή θέση, δύο διάδρομοι και ένας πίνακας πριν,
+    # 191 bytes ανάμεσα στις δύο ομάδες, κενά 8 + 1.)
+    bank6 += [ob6("corr_slots"), ob6("conn_points"), ob6("icon_m_ptr"),
+              ob6("icon_s_ptr"), ob6("struct_ptr")]
     bank6.append(Run("fig_gfx", FIG_RUN, out_figs(smap, blob), phase=FIG_PHASE,
                      note="παράγεται από τα slot_*: οι 10 φιγούρες με μάσκα και σκιά (fig_code)"))
-    bank6 += [spr("corr_h"), ob6("corr_slots"), ob6("conn_points"),
-              ob6("icon_s_ptr"), ob6("interior_ofs")]
-    bank6.append(Run("fig_ring", FIG_RUN, ring, phase=FIG_PHASE,
-                     note="παράγεται από τα slot_*: οι 10 φιγούρες με μάσκα (fig_code)"))
-    bank6 += [spr("corr_v"), ob6("icon_l_ptr"), ob6("struct_ptr")]
+    bank6 += [ob6("icon_l_ptr"), ob6("interior_ofs")]
     # ΟΙ ΠΟΡΤΕΣ (conn_{dir}, 8 x 32) ΕΦΥΓΑΝ ΣΤΟ ΒΗΜΑ 96: ο διάδρομος σταματά στο
     # εξωτερικό χείλος του δακτυλίου (ο παίκτης), και ό,τι ανοίγει τον
     # δακτύλιο δεν ζωγραφίζεται πια. Τα 256 bytes τους πήγαν στο b6code.
@@ -878,17 +874,30 @@ def build_runs(smap, blob):
     # είναι κώδικας που φεύγει από την τράπεζα 0, η μόνη σπάνια (§4.2).
     bank6.append(Run("dome_fig", 64 * 8, None,
                      note="ΔΕΣΜΕΥΣΗ — ποια φιγούρα σε κάθε θέση κάθε θόλου"))
-    # ΤΑ ΣΧΕΔΙΑ ΤΩΝ ΓΩΝΙΩΝ (βήμα 129, tools/corner.py), εδώ από το βήμα 159: ως
-    # τότε στη δέσμευση b5code της τράπεζας 5, που την πήραν οι 128 διάδρομοι.
-    # Τα ζωγραφίζει το ob_put_in από το src/corner.asm, που τρέχει στο b6code·
-    # οι ετικέτες τους στο build/corner_spr.asm.
-    bank6.append(Run("corner_spr", len(cdata), cdata,
-                     note="παράγεται από το tools/corner.py: τα σχέδια των γωνιών (βήμα 159)"))
     # Ο πάγκος διαδρομών ΕΦΥΓΕ από εδώ: η BFS σελιδοποιεί το &4000 όσο τρέχει,
     # οπότε δεν μπορεί να κρατά τα δεδομένα της σε σελιδοποιημένη τράπεζα.
     # Ζει τώρα στην τράπεζα 2 (rt_nodes, rt_row, node_adj).
 
     # --- τράπεζα 7 ----------------------------------------------------------
+    # ΑΠΟ ΤΗΝ ΤΡΑΠΕΖΑ 6 ΣΤΟ ΒΗΜΑ 171 (DESIGN §6.1, §8.4), 1.509 bytes εκεί:
+    # - Η κενή θέση και οι φιγούρες του δακτυλίου, μαζί: το ob_fig τις διαβάζει
+    #   σε ένα πέρασμα (src/figure.asm), και ανοίγει την 7 για αυτό. Οι φιγούρες
+    #   στο 160 μιας σελίδας (fig_code): η κενή και ο οριζόντιος διάδρομος πριν
+    #   από αυτές, 416 bytes ακριβώς από το #4100.
+    # - Οι διάδρομοι ΧΩΡΙΣ ΜΑΣΚΑ, όπως οι δομές (struct_data: κάθε κελί τους έχει
+    #   τη μάσκα των pixel του με pen 0), 320 bytes αντί για 640. Τους ζωγραφίζει
+    #   το src/st7.asm (s7_clip), από το oc_run και το cn_post.
+    # - Οι γωνίες, με τη μάσκα τους, από το ob_put_in του src/corner.asm.
+    moved = [Run("slot_empty", len(empty), empty,
+                     note="οι 24 κενές θέσεις δακτυλίου, αδιαφανείς (βήμα 171: από την 6)"),
+             struct_data("corr_h", smap, blob, 171),
+             Run("fig_ring", FIG_RUN, ring, phase=FIG_PHASE,
+                 note="παράγεται από τα slot_*: οι 10 φιγούρες με μάσκα (fig_code· βήμα 171: από την 6)")]
+    moved += [struct_data(n, smap, blob, 171) for n in ("corr_dr", "corr_dl", "corr_v")]
+    moved.append(Run("corner_spr", len(cdata), cdata,
+                     note="παράγεται από το tools/corner.py: τα σχέδια των γωνιών (βήμα 159· στην 7 από το 171)"))
+    assert bank7[0].name == "st_mask"
+    bank7[1:1] = moved                  # αμέσως μετά το st_mask, στο #4100
     for n in STRUCTS:
         bank7.append(spr(n) if n == "pad" else struct_data(n, smap, blob))
     for p in PLANTS:
@@ -1054,8 +1063,9 @@ def mask_of(d):
     return (0xAA if d & 0xAA == 0 else 0) | (0x55 if d & 0x55 == 0 else 0)
 
 
-def struct_data(name, smap, blob):
-    """Το sprite name χωρίς μάσκα: Run με το χρώμα κάθε κελιού."""
+def struct_data(name, smap, blob, step=170):
+    """Το sprite name χωρίς μάσκα: Run με το χρώμα κάθε κελιού. Και οι διάδρομοι
+    από το βήμα 171."""
     s = smap[name]
     assert s.masked and s.w <= 16, s
     data = bytearray()
@@ -1065,9 +1075,9 @@ def struct_data(name, smap, blob):
             m, d = blob[row + 2 * x], blob[row + 2 * x + 1]
             if m != mask_of(d):
                 raise Fail(f"{name}: το κελί ({x},{y}) έχει μάσκα #{m:02X}, όχι "
-                           f"#{mask_of(d):02X} του χρώματός του (βήμα 170)")
+                           f"#{mask_of(d):02X} του χρώματός του (βήμα {step})")
             data.append(d)
-    r = Run(name, len(data), bytes(data), note=f"χωρίς μάσκα ({s.h * s.stride} με μάσκα, βήμα 170)")
+    r = Run(name, len(data), bytes(data), note=f"χωρίς μάσκα ({s.h * s.stride} με μάσκα, βήμα {step})")
     r.rows = (s.w, s.h)         # για το tests/test_pack.py
     return r
 

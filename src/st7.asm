@@ -21,6 +21,8 @@
 ; μικρότερο.
 ;
 ; Ο ΒΡΟΧΟΣ ΕΙΝΑΙ ΤΟΥ ob_line, με σταθερό βήμα w και το clip μία μετατόπιση.
+; ΑΠΟ ΤΟ ΒΗΜΑ 171 ζωγραφίζει και τους διαδρόμους (s7_clip, από το oc_run και το
+; cn_post) και τις γωνίες τους, καθρεφτισμένες κάθετα βόρεια (s7_clipv).
 ; Ο πυρήνας είναι ΞΕΤΥΛΙΓΜΕΝΟΣ: δεκαέξι κελιά των 48 T (το blt_mask_line θέλει
 ; 59 με το djnz του), και μπαίνει κανείς n κελιά πριν από το τέλος του (s7_k).
 ; Το τύλιγμα των 2 KB το βλέπει ο έλεγχος του (H & 7) = 7 μία φορά ανά γραμμή,
@@ -66,10 +68,11 @@ s7_clip:
         ld      (s7_k + 2),a
         ; --- η πηγή: ob_src + st * w + skip ---
         ld      a,(ob_w)
-        ld      (s7_w + 1),a
+        ld      (s7_w + 1),a            ; + w: το πάνω byte του βήματος είναι 0
         ld      c,a
         ld      a,(ob_st)
-        call    ob_mul                  ; HL = st * w
+s7_row0:                                ; A = η πρώτη γραμμή της πηγής, C = w
+        call    ob_mul                  ; HL = γραμμή * w
         ld      de,(ob_src)
         add     hl,de
         ld      a,(cl_skip)
@@ -94,12 +97,8 @@ s7_row:
 s7_k:   call    0                       ; n κελιά πριν από το s7_cend
 s7_ret:
         pop     hl
-        ld      a,l
-s7_w:   add     a,0                     ; + w
-        ld      l,a
-        adc     a,h
-        sub     l
-        ld      h,a
+s7_w:   ld      de,0                    ; ± w (βήμα 171: 16 bit, 6 T λιγότερα από το add a,w)
+        add     hl,de
         pop     de
         ld      a,d
         add     a,8
@@ -160,6 +159,55 @@ s7_cend:
 
         assert  s7_cend - s7_cells == 16 * 8
         assert  (G_st_mask & 255) == 0
+
+; ---------------------------------------------------------------------------
+; s7_clipv — το ίδιο, ΚΑΘΡΕΦΤΙΣΜΕΝΟ ΚΑΘΕΤΑ, όπως το bit 1 του ob_fl στο ob_blit:
+; η πρώτη γραμμή της πηγής είναι η h - 1 - st και το βήμα -w. Οι γωνίες των
+; διαδρόμων βόρεια (src/corner.asm, βήμα 171). Τα δύο clip και ο πυρήνας όπως
+; στο s7_clip (αντίγραφο: το s7_clip δεν πληρώνει τίποτα γι' αυτό), και στο
+; τέλος πίσω το πάνω byte του βήματος, το 0 των άλλων.
+; ---------------------------------------------------------------------------
+s7_clipv:
+        ld      hl,(ob_y)
+        ld      a,(ob_h)
+        ld      de,(clip_y0)
+        call    ob_clip
+        ret     z
+        ld      hl,(cl_skip)
+        ld      (ob_st),hl
+        ld      a,(cl_start)
+        ld      (ob_y0),a
+        ld      hl,(ob_x)
+        ld      a,(ob_w)
+        ld      de,(clip_x0)
+        call    ob_clip
+        ret     z
+        ld      (s7_cn),a
+        add     a,a
+        add     a,a
+        add     a,a
+        ld      c,a
+        ld      a,s7_cend & 255
+        sub     c
+        ld      (s7_k + 1),a
+        ld      a,s7_cend >> 8
+        sbc     a,0
+        ld      (s7_k + 2),a
+        ld      a,(ob_w)
+        ld      c,a
+        neg
+        ld      (s7_w + 1),a
+        ld      a,#FF
+        ld      (s7_w + 2),a            ; -w
+        ld      a,(ob_st)
+        ld      b,a
+        ld      a,(ob_h)
+        dec     a
+        sub     b                       ; h - 1 - st
+        call    s7_row0
+        xor     a
+        ld      (s7_w + 2),a
+        ret
 
 s7_cn:      db 0
 s7_k2:      db 0

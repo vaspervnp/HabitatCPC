@@ -43,7 +43,7 @@ start:
 
         call    draw_terrain            ; σελίδα 2
 
-        ; --- τράπεζα 6: η φιγούρα ---
+        ; --- τράπεζα 6 οι θέσεις, τράπεζα 7 η φιγούρα (βήμα 171) ---
         ; Ο ΔΑΚΤΥΛΙΟΣ ΚΑΙ Ο ΘΟΛΟΣ ΕΦΥΓΑΝ ΣΤΟ ΒΗΜΑ 110: από τότε είναι στην
         ; τράπεζα 6 μόνο τα διαστήματά τους (tools/pack.py, shell), και το
         ; blit_quads ζωγραφίζει ολόκληρα nw. Τα ελέγχουν το tests/test_pack.py
@@ -64,7 +64,10 @@ start:
         push    af
         call    scr_addr
         ; Από το βήμα 89 η κενή θέση και από πάνω η φιγούρα με μάσκα: η
-        ; αναφορά του test_pack_z80 μένει η ψημένη slot_s_0_colonist.
+        ; αναφορά του test_pack_z80 μένει η ψημένη slot_s_0_colonist. ΚΑΙ ΟΙ ΔΥΟ
+        ; ΣΤΗΝ ΤΡΑΠΕΖΑ 7 από το βήμα 171· οι θέσεις (corr_slots) στην 6.
+        ld      bc,GA_PORT + PAGE_B7
+        out     (c),c
         ld      hl,G_slot_empty                    ; s, θέση 0
         ld      b,SLOT_W
         ld      c,SLOT_H

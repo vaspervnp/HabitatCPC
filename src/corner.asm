@@ -23,10 +23,12 @@
 ;                    που αντικαθιστά (tests/test_corner.py).
 ;
 ; Τα σχέδια (build/corner_spr.asm) ήταν στη δέσμευση b5code της τράπεζας 5,
-; που άδειασε όταν το src/bend.asm ήρθε στο b6code· από το βήμα 159 είναι στο
-; τέλος της τράπεζας 6 (G_corner_spr), και τη θέση τους στην 5 την πήραν οι 128
-; διάδρομοι: νοτιοανατολικά και νοτιοδυτικά, και βόρεια με το κάθετο
-; καθρέφτισμα του ob_blit. Οχι με τον οριζόντιο: ως το 158 το flip_mode0 της 6
+; που άδειασε όταν το src/bend.asm ήρθε στο b6code· από το βήμα 159 ήταν στο
+; τέλος της τράπεζας 6, και τη θέση τους στην 5 την πήραν οι 128 διάδρομοι.
+; Από το βήμα 171 είναι στην τράπεζα 7 (G_corner_spr), για τα πεδία των 160
+; αποίκων, χωρίς μάσκα, όπως οι διάδρομοι, και τα ζωγραφίζει το src/st7.asm:
+; νοτιοανατολικά και νοτιοδυτικά, και βόρεια με το κάθετο καθρέφτισμα του
+; s7_clipv (ως το 170 του ob_blit). Οχι με τον οριζόντιο: ως το 158 το flip_mode0 της 6
 ; δεν φαινόταν όσο η 5 ήταν μέσα, και στο 5 x 8 της κάθετης κόστιζε ~250 µs·
 ; έμεινε έτσι, το ίδιο κόστος και τα ίδια pixels. Η θέση τους από το cn_pos. Το
 ; tools/scene.py ζωγραφίζει το ίδιο, και το tests/test_corner.py ελέγχει ότι
@@ -98,7 +100,7 @@ cn_post:
         jr      cnp_w
 cnp_n:
         ex      de,hl
-        ld      bc,(16 - CN_HROWS) * 16 ; 16 bytes η γραμμή (8 x 2, με μάσκα)
+        ld      bc,(16 - CN_HROWS) * CORR_D_W   ; 8 bytes η γραμμή, χωρίς μάσκα (βήμα 171)
         add     hl,bc
         ex      de,hl
 cnp_w:
@@ -112,8 +114,8 @@ cnp_w:
         ld      (ob_x),hl
 cnp_draw:
         ld      hl,CN_HROWS * 256 + CORR_D_W
-        xor     a                       ; με μάσκα, χωρίς καθρέφτισμα
-        call    ob_put
+        ld      (ob_w),hl               ; ob_w, ob_h
+        call    ob_put7                 ; στην 7, χωρίς μάσκα (βήμα 171)
         ld      hl,(cn_lx)              ; πίσω στο πρώτο αξονικό
         ld      (ob_x),hl
         ld      hl,(cn_ly)
@@ -165,11 +167,11 @@ cnp_e:
         and     2
         ld      hl,cn_hpat
         ld      de,CN_HH * 256 + CN_HW
-        ld      b,CN_HW * CN_HH * 2
+        ld      b,CN_HW * CN_HH         ; χωρίς μάσκα (βήμα 171)
         jr      nz,cnp_k
         ld      hl,cn_vpat
         ld      de,CN_VH * 256 + CN_VW
-        ld      b,CN_VW * CN_VH * 2
+        ld      b,CN_VW * CN_VH
 cnp_k:
         bit     0,c
         jr      z,cnp_pat
@@ -178,10 +180,12 @@ cnp_k:
 cnp_pat:
         ld      (ob_src),hl
         ex      de,hl
-        ld      a,c
-        and     2                       ; μόνο το κάθετο καθρέφτισμα, βόρεια
-        ld      c,PAGE_B6               ; τα σχέδια στην 6 (βήμα 159· στην 5 ως τότε)
-        jp      ob_put_in
+        ld      (ob_w),hl               ; ob_w, ob_h
+        ; ΣΤΗΝ 7, ΧΩΡΙΣ ΜΑΣΚΑ (βήμα 171· στην 6 από το 159, στην 5 ως τότε): το
+        ; src/st7.asm, και μόνο το κάθετο καθρέφτισμα, βόρεια (s7_clipv)
+        bit     1,c
+        jp      z,ob_put7
+        jp      ob_put7v
 
 cn_step:    dw 0                        ; dx, dy της διαγωνίου
 cn_src:     dw 0                        ; το sprite της

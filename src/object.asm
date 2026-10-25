@@ -706,6 +706,21 @@ ob_b6:
         ld      bc,GA_PORT + PAGE_B6
         out     (c),c
         ret
+; ob_put7 — ένα sprite της τράπεζας 7 χωρίς μάσκα (src/st7.asm, s7_clip), με
+; τα ob_src, ob_x, ob_y, ob_w, ob_h γραμμένα, και μετά πίσω η 6. Για τον κώδικα
+; της 6, που δεν ανοίγει την 7 μόνος του (cn_post, βήμα 171). Εδώ, μετά το
+; ret: το ob_icon πέφτει στο ob_put_in.
+ob_put7:
+        ld      bc,GA_PORT + PAGE_B7
+        out     (c),c
+        call    s7_clip
+        jr      ob_b6
+; ob_put7v — το ίδιο, καθρεφτισμένο κάθετα (s7_clipv): οι γωνίες βόρεια.
+ob_put7v:
+        ld      bc,GA_PORT + PAGE_B7
+        out     (c),c
+        call    s7_clipv
+        jr      ob_b6
 
 ; --- μηχανές ή φυτά στις υποδοχές ------------------------------------------
 ; Το θερμοκήπιο γεμίζει τις ΙΔΙΕΣ υποδοχές με φυτά, και τα φυτά ζουν στην
@@ -1113,16 +1128,19 @@ oc_run:
         call    ob_ovl
         or      a
         ret     z
-        xor     a
-        ld      (ob_fl),a               ; το ob_blit δεν το πειράζει
+        ; ΣΤΗΝ ΤΡΑΠΕΖΑ 7, ΧΩΡΙΣ ΜΑΣΚΑ, ΑΠΟ ΤΟ ΒΗΜΑ 171 (tools/pack.py): το s7_clip
+        ; των δομών (src/st7.asm), με τον πυρήνα των 48 T. Μία φορά η 7 για όλα
+        ; τα πλακίδια, και πίσω η 6.
+        ld      bc,GA_PORT + PAGE_B7
+        out     (c),c
 occ_lp:
-        call    ob_blit
+        call    s7_clip
         ld      hl,oc_dx
         call    ob_move
         ld      hl,oc_n
         dec     (hl)
         jr      nz,occ_lp
-        ret
+        jp      ob_b6
 
 ; ---------------------------------------------------------------------------
 ; ob_box — το εύρος μιας διαδρομής σε έναν άξονα.

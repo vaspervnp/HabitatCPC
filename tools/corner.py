@@ -276,9 +276,12 @@ def asm_lines():
 def spr_data():
     """Τα σχέδια των γωνιών, ανά είδος ανατολικό και δυτικό, ήδη καθρεφτισμένο —
     ο οριζόντιος καθρεφτισμός του ob_blit θέλει το flip_mode0, και στο 5 x 8 της
-    κάθετης κόστιζε ~250 µs· το κάθετο καθρέφτισμα (βόρεια) το κάνει το ob_blit.
-    -> (bytes, [(ετικέτα, μετατόπιση)], [(είδος, w * h * 2)])."""
+    κάθετης κόστιζε ~250 µs· το κάθετο καθρέφτισμα (βόρεια) το κάνει το
+    s7_clipv. ΧΩΡΙΣ ΜΑΣΚΑ από το βήμα 171, όπως οι διάδρομοι (src/st7.asm): κάθε
+    κελί έχει τη μάσκα των pixel του με pen 0 (pack.mask_of), και μένει μόνο
+    το χρώμα. -> (bytes, [(ετικέτα, μετατόπιση)], [(είδος, w * h)])."""
     from refrender import flip_byte
+    from pack import mask_of
     data, labels, sizes = bytearray(), [], []
     for kind in ("h", "v"):
         rows = patch(kind)[4]
@@ -288,23 +291,24 @@ def spr_data():
             labels.append((name, len(data)))
             for row in rr:
                 for m, d in row:
-                    data += bytes([m, d])
+                    assert m == mask_of(d), (name, m, d)
+                    data.append(d)
         x0, y0, w, h, _ = patch(kind)
-        sizes.append((kind, w * h * 2))
+        sizes.append((kind, w * h))
     return bytes(data), labels, sizes
 
 
 def spr_lines():
-    """Οι ετικέτες των σχεδίων (build/corner_spr.asm): ΣΤΗΝ ΤΡΑΠΕΖΑ 6 από το
-    βήμα 159, στο τέλος της (G_corner_spr, tools/pack.py), όπου τα γράφει το
-    pack.py ως δεδομένα· ως τότε στη δέσμευση b5code της τράπεζας 5, που την
-    πήραν οι 128 διάδρομοι. Τα ζωγραφίζει το ob_put_in με την 6 μέσα
-    (src/corner.asm)."""
+    """Οι ετικέτες των σχεδίων (build/corner_spr.asm): ΣΤΗΝ ΤΡΑΠΕΖΑ 7 από το
+    βήμα 171 (G_corner_spr, tools/pack.py), όπου τα γράφει το pack.py ως
+    δεδομένα· στο τέλος της 6 από το βήμα 159, και ως τότε στη δέσμευση b5code
+    της τράπεζας 5, που την πήραν οι 128 διάδρομοι. Τα ζωγραφίζει το src/st7.asm
+    μέσα από το ob_put7 και το ob_put7v (src/corner.asm)."""
     _, labels, sizes = spr_data()
     out = ["; ΠΑΡΑΓΕΤΑΙ από tools/pack.py (tools/corner.py) — μην το επεξεργάζεσαι.",
-           "; Τα σχέδια των γωνιών (βήμα 129), με μάσκα: νοτιοανατολικά και",
-           "; νοτιοδυτικά· βόρεια με το κάθετο καθρέφτισμα του ob_blit. Τα bytes",
-           "; είναι στην τράπεζα 6, στο G_corner_spr (βήμα 159· στην 5 ως το 158)."]
+           "; Τα σχέδια των γωνιών (βήμα 129), χωρίς μάσκα από το 171: νοτιοανατολικά",
+           "; και νοτιοδυτικά· βόρεια με το κάθετο καθρέφτισμα του s7_clipv. Τα bytes",
+           "; είναι στην τράπεζα 7, στο G_corner_spr (βήμα 171· στην 6 από το 159, στην 5 ως το 158)."]
     for name, off in labels:
         out.append(f"{name:<11} equ G_corner_spr + {off}")
     for kind, n in sizes:

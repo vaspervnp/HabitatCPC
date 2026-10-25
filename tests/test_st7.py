@@ -47,6 +47,17 @@ ob_struct μίκρυνε, ο δρόμος της είναι ο ίδιος), κα
 έψαχνε μέσα σε κάθε γραμμή, και δεν κρατήθηκε. Τα ταβάνια εδώ είναι τα
 σημερινά με 1 %, και κάθε μέτρηση κάτω από τα νούμερα του 169.
 
+ΟΙ ΔΙΑΔΡΟΜΟΙ ΚΑΙ ΟΙ ΓΩΝΙΕΣ (βήμα 171). Τα τέσσερα σχέδια των διαδρόμων και τα
+τέσσερα των γωνιών είναι στην 7 χωρίς μάσκα από το βήμα 171, και τα ζωγραφίζει
+ο ίδιος κώδικας: το ob_put7 (s7_clip), και καθρεφτισμένα κάθετα το ob_put7v
+(s7_clipv), όπως τα βόρεια σχέδια των γωνιών. Καθένα και με τα δύο, ολόκληρο,
+κομμένο σε κάθε πλευρά κατά 1 ως όλο εκτός από 1 (και 1-7 γραμμές από πάνω),
+με το τύλιγμα μέσα, σε κάθε στήλη και κελί πάνω του, και δώδεκα τυχαία:
+απέναντι στο blit της αναφοράς με τις γραμμές ανάποδα για το καθρέφτισμα. Το
+κόστος του ολόκληρου κάτω από ταβάνι. Αρνητικά: το s7_clipv χωρίς το neg (το
+βήμα +w), χωρίς το dec (η γραμμή h - st), και χωρίς να ξαναβάλει το 0 στο πάνω
+byte του βήματος (οι επόμενοι χωρίς καθρέφτισμα).
+
 Αρνητικά, με τον κώδικα της τράπεζας 7 πειραγμένο: χωρίς το σπάσιμο του
 τυλίγματος, το H πίσω κατά 0 αντί για 8, χωρίς το clip από αριστερά (ob_addu),
 η πρώτη γραμμή χωρίς το ob_st, το βήμα της γραμμής 0, ο πίνακας της μάσκας μία
@@ -69,13 +80,14 @@ PLAY, SCR_W = S.PLAY_LINES, 80
 CAM = S.Camera(-18, -3)                 # το τύλιγμα μέσα στην εικόνα (test_object)
 PROBE = 0x3E80
 KINDS = ["solar", "turbine", "collector", "extractor", "mine", "airlock", "pad", "ship"]
-# (ολόκληρη, στήλη, κελί): τα χειρότερα του βήματος 169, και τα ταβάνια από το 170
+# (ολόκληρη, στήλη, κελί): τα χειρότερα του βήματος 169, και τα ταβάνια από το 171
+# (στο 170 ο ηλιακός 11.276, 5.912, 1.469· το βήμα 16 bit του 171 είναι 6 T η γραμμή)
 OLD = {0: (14209, 7311, 1722), 1: (14209, 7311, 1722), 2: (14209, 7311, 1722),
        3: (14209, 7311, 1722), 4: (23247, 9435, 1724), 5: (7475, 5183, 1724),
        6: (11149, 6553, 1556), 7: (7475, 5183, 1724)}
-NOW = {0: (11276, 5914, 1469), 1: (11276, 5914, 1469), 2: (11276, 5914, 1469),
-       3: (11276, 5914, 1469), 4: (18346, 7606, 1473), 5: (5998, 4218, 1469),
-       6: (11144, 6548, 1551), 7: (5998, 4218, 1469)}
+NOW = {0: (11228, 5864, 1461), 1: (11228, 5864, 1461), 2: (11228, 5864, 1461),
+       3: (11228, 5864, 1461), 4: (18282, 7542, 1463), 5: (5966, 4186, 1461),
+       6: (11144, 6548, 1549), 7: (5966, 4186, 1461)}       # βήμα 171
 CEIL = {k: tuple(v + v // 100 for v in t) for k, t in NOW.items()}
 
 FAIL = []
@@ -212,6 +224,123 @@ class Rig:
         return t - ph, sum(1 for p, q in zip(got, want) if p != q)
 
 
+# --- ΟΙ ΔΙΑΔΡΟΜΟΙ ΚΑΙ ΟΙ ΓΩΝΙΕΣ (βήμα 171) ---------------------------------
+# Το ολόκληρο, (ob_put7, ob_put7v), µs: μετρημένα στο βήμα 171, ταβάνι +1 %.
+D_NOW = {"corr_dr": (3051, 3087), "corr_dl": (3051, 3087), "corr_h": (1316, 1350),
+         "corr_v": (1707, 1743), "cn_hpat": (538, 566), "cn_hpatw": (538, 566),
+         "cn_vpat": (1428, 1462), "cn_vpatw": (1428, 1462)}
+
+
+def drawings(a):
+    """(όνομα, διεύθυνση στην 7, w, h, γραμμές με μάσκα όπως τα sprites)."""
+    import corner
+    from refrender import flip_byte
+    out = []
+    for n in ("corr_dr", "corr_dl", "corr_h", "corr_v"):
+        s = a.smap[n]
+        out.append((n, TO.layout_addr(f"G_{n}"), s.w, s.h, a.rows(n)))
+    base = TO.layout_addr("G_corner_spr")
+    for name, off in corner.spr_data()[1]:
+        x0, y0, w, h, rows = corner.patch(name[3])
+        if name.endswith("w"):
+            rows = [[(flip_byte(m), flip_byte(d)) for m, d in reversed(r)] for r in rows]
+        out.append((name, base + off, w, h, [bytes(b for c in r for b in c) for r in rows]))
+    return out
+
+
+def put7(X, a, d, fx, fy, cl, flip, rnd):
+    """(µs, λάθος bytes) ενός ob_put7 / ob_put7v."""
+    m, sym = X.m, X.sym
+    name, at, w, h, rows = d
+    base = bytes(rnd.getrandbits(8) for _ in range(0x4000))
+    m.write_ram(0xC000, base)
+    m.write_ram(sym["OB_SRC"], bytes([at & 255, at >> 8]))
+    m.write_ram(sym["OB_X"], (fx & 0xFFFF).to_bytes(2, "little"))
+    m.write_ram(sym["OB_Y"], (fy & 0xFFFF).to_bytes(2, "little"))
+    m.write_ram(sym["OB_W"], bytes([w, h]))
+    m.write_ram(sym["CLIP_X0"], bytes(cl))
+    ent = sym["OB_PUT7V" if flip else "OB_PUT7"]
+    code = [0xF3, 0x31, 0x00, 0x01, 0x01, 0xC6, 0x7F, 0xED, 0x49,
+            0xCD, ent & 255, ent >> 8, 0x18, 0xFE]
+    ph = codeat.phase(m)
+    m.write_ram(PROBE, bytes(code))
+    m.set_pc(PROBE)
+    end, t = PROBE + len(code) - 2, 0
+    while not (end <= m.pc <= end + 2):
+        m.run_us(1)
+        t += 1
+        if t > 200_000:
+            return None, 0x4000
+    got = bytes(m.read_ram(0xC000, 0x4000))
+    cv = Canvas()
+    for y in range(PLAY):
+        for x in range(SCR_W):
+            cv.buf[y * SCR_W + x] = base[addr(x, y)]
+    S.blit(cv, rows[::-1] if flip else rows, fx, fy, True, S.Clip(cl[0], cl[2], cl[1], cl[3]))
+    want = bytearray(base)
+    for y in range(PLAY):
+        for x in range(SCR_W):
+            want[addr(x, y)] = cv.buf[y * SCR_W + x]
+    return t - ph, sum(1 for p, q in zip(got, want) if p != q)
+
+
+def dcases(d, rnd):
+    """(όνομα, fx, fy, clip) για ένα σχέδιο."""
+    name, at, w, h, rows = d
+    full = (0, SCR_W, 0, PLAY)
+    r, xw = wraps()[0]
+    c = [("ολόκληρο", 30, 40, full)]
+    for k in sorted({1, w // 2, w - 1} - {0}):
+        c += [(f"αριστερά -{k}", -k, 40, full), (f"δεξιά +{k}", SCR_W - w + k, 40, full)]
+    for k in sorted({1, 5, h // 2, h - 1} - {0}):
+        c += [(f"πάνω -{k}", 30, -k, full), (f"κάτω +{k}", 30, PLAY - h + k, full)]
+    for dx in sorted({0, w // 2, w - 1}):
+        c.append((f"τύλιγμα {dx}", xw - dx, 8 * r - h // 2 + 4, full))
+    c += [(f"στήλη {x0}", 30, 40, (x0, x0 + 4, 0, PLAY)) for x0 in range(28, 30 + w, 4)]
+    c += [(f"κελί {x0},{y0}", 30, 40, (x0, x0 + 2, y0, y0 + 8))
+          for x0 in range(28, 30 + w, 2) for y0 in range(32, 40 + h, 8)]
+    for i in range(12):
+        x0, y0 = rnd.randrange(0, SCR_W - 1), rnd.randrange(0, PLAY - 1)
+        c.append((f"τυχαίο {i}", rnd.randrange(-w, SCR_W), rnd.randrange(-h, PLAY),
+                  (x0, rnd.randrange(x0 + 1, SCR_W + 1), y0, rnd.randrange(y0 + 1, PLAY + 1))))
+    return c
+
+
+def corridors(X, a, rnd):
+    ds = drawings(a)
+    allc = [(d, flip) + cc for d in ds for flip in (False, True) for cc in dcases(d, rnd)]
+    bad, whole = [], {}
+    for d, flip, label, fx, fy, cl in allc:
+        us, n = put7(X, a, d, fx, fy, cl, flip, rnd)
+        if n:
+            bad.append((d[0], flip, label, n))
+        if label == "ολόκληρο":
+            whole[(d[0], flip)] = us
+    check(not bad, f"διάδρομοι και γωνίες: {len(allc)} περιπτώσεις, ob_put7 και ob_put7v, "
+                   f"κάθε byte ίδιο με την αναφορά" + (f" — λάθος {bad[:6]}" if bad else ""))
+    for n, (c0, c1) in D_NOW.items():
+        got = (whole[(n, False)], whole[(n, True)])
+        ceil = (c0 + c0 // 100, c1 + c1 // 100)
+        check(got[0] <= ceil[0] and got[1] <= ceil[1],
+              f"{n:<9} ολόκληρο {got[0]:>5} µs, καθρεφτισμένο {got[1]:>5} (ταβάνια {ceil})")
+    # --- αρνητικά στο s7_clipv ---
+    sub = allc[::4]                     # και τα δύο, ανακατεμένα
+    neg = [("το s7_clipv χωρίς το neg (το βήμα +w)",
+            [(X.find7("S7_CLIPV", [0xED, 0x44]) + k, 0) for k in range(2)]),
+           ("το s7_clipv χωρίς το dec (η γραμμή h - st)",
+            [(X.find7("S7_CLIPV", [0x3D, 0x90]), 0)]),
+           ("το s7_clipv χωρίς το 0 πίσω στο πάνω byte του βήματος",
+            [(X.find7("S7_CLIPV", [0xAF, 0x32, (X.sym["S7_W"] + 2) & 255]), 0)])]
+    for label, patch in neg:
+        keep = [(at, X.b7_read(at, 1)[0]) for at, _ in patch]
+        for at, v in patch:
+            X.b7_poke(at, v)
+        n = sum(1 for d, flip, _, fx, fy, cl in sub if put7(X, a, d, fx, fy, cl, flip, rnd)[1])
+        for at, v in keep:
+            X.b7_poke(at, v)
+        check(n > 0, f"ΑΡΝΗΤΙΚΟ: με {label} λάθος σε {n} από τις {len(sub)} περιπτώσεις")
+
+
 def main():
     sym = TO.build()
     a = S.Assets()
@@ -261,6 +390,7 @@ def main():
         for at, v in keep:
             X.b7_poke(at, v)
         check(n > 0, f"ΑΡΝΗΤΙΚΟ: με {label} λάθος σε {n} από τις {len(sub)} περιπτώσεις")
+    corridors(X, a, rnd)
     return 1 if FAIL else 0
 
 
