@@ -82,8 +82,10 @@ def reference():
     sx, sy = slots[0], slots[1]
     c.opaque(rows("slot_s_0_colonist"), DOME_X + sx, DOME_Y + sy)
 
-    # 4. εξωτερική δομή από την τράπεζα 7 (με μάσκα)
-    c.masked(rows("solar_l"), STRUCT_X, STRUCT_Y)        # το m ως το βήμα 150
+    # 4. εξωτερική δομή από την τράπεζα 7: το airlock με τη μάσκα του
+    #    sprites.bin. Ο Z80 τη βρίσκει από το χρώμα και το st_mask (βήμα 170·
+    #    ως το 169 ο ηλιακός, ως το 150 το m)
+    c.masked(rows("airlock"), STRUCT_X, STRUCT_Y)
 
     # 5. εικονίδιο greenhouse μέσω icon_m_ptr[5]
     c.opaque(rows("icon_m_greenhouse"), ICON_X, ICON_Y)
@@ -114,7 +116,7 @@ def main():
     if not bad:
         print("OK — σελίδα 2 + τράπεζα 6 + τράπεζα 7, 16000 bytes ταυτόσημα")
         print("     (έδαφος μέσω tile_ptr, εικονίδιο μέσω icon_m_ptr, "
-              "φιγούρα, δομή με μάσκα)")
+              "φιγούρα, δομή με το st_mask)")
         return 0
 
     print(f"ΑΠΟΤΥΧΙΑ — {len(bad)} bytes διαφέρουν")

@@ -80,6 +80,21 @@ def main():
         if r is None or r.data is None or getattr(r, "groups", None) is not None:
             continue
         img, base = image_of(r)
+        if getattr(r, "rows", None):
+            # ΒΗΜΑ 170: οι δομές της τράπεζας 7 χωρίς μάσκα. Το χρώμα της εικόνας,
+            # με τη μάσκα του st_mask όπως τη διαβάζει το src/st7.asm, είναι ΚΑΘΕ
+            # κελί του sprites.bin: η μάσκα και το χρώμα του.
+            w, h = r.rows
+            mk = by_name["st_mask"]
+            mtab = img[mk.addr - base:mk.addr - base + 256]
+            got = img[r.addr - base:r.addr - base + r.size]
+            check(r.size == w * h and
+                  [(mtab[d], d) for d in got] ==
+                  [(blob[s.off + y * s.stride + 2 * x], blob[s.off + y * s.stride + 2 * x + 1])
+                   for y in range(h) for x in range(w)],
+                  f"το {name} στο #{r.addr:04X}: τα bytes του με το st_mask δεν δίνουν τα κελιά του sprites.bin")
+            checked += 1
+            continue
         got = img[r.addr - base:r.addr - base + s.size]
         want = bytearray(blob[s.off:s.off + s.size])
         if name == "struct_dims":       # βήμα 151: τα s και m των ενεργειακών μηδέν

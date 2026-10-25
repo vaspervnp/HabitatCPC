@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from sprites import load_map, load_bin, ROOT
 import buttons
 
-TEXT_MAX = 2148                 # = TEXT_MAX του src/uitext.asm (assert εκεί)
+TEXT_MAX = 2485                 # = TEXT_MAX του src/uitext.asm (assert εκεί): κείμενα + src/st7.asm
 B6C_MAX = 5815                  # = B6C_MAX του src/bots.asm (assert στο main.asm)· 256 ως το 92, 1.280 ως το 93, 1.298 ως το 95, 1.554 ως το 109 (τα κελύφη, βήμα 110), 5.138 ως το 110 (οι εννιά φιγούρες, βήμα 111), 5.063 ως το 113 (το αδιαφανές τέλος των κελυφών, βήμα 114), 5.831 ως το 135 (ο επισκέπτης, βήμα 136), 5.767 ως το 151 (το struct_ptr, βήμα 152)
 B1C_MAX = 488                   # = B1C_MAX του src/commit.asm (assert στο main.asm), βήμα 94· 152: και το bar_want
 MAX_CORR = 128                  # = MAX_CORR του src/const.asm (assert στο main.asm), βήμα 159· 96 ως το 158
@@ -572,6 +572,10 @@ def build_runs(smap, blob):
     # airlock είναι δομή από το βήμα 86, κανένας θόλος δεν έχει πια το δωμάτιο
     # 7 (rm_list, src/rooms.asm), και ο δείκτης του δείχνει το εικονίδιο του
     # άδειου, ώστε οι δείκτες των άλλων να μένουν όπου ήταν.
+    # Ο ΠΙΝΑΚΑΣ ΤΗΣ ΜΑΣΚΑΣ ΤΩΝ ΔΟΜΩΝ (βήμα 170, struct_data), ΠΡΩΤΟΣ: σε σελίδα
+    # χωρίς κενό, στο #4000. Τον διαβάζει μόνο το src/st7.asm, με την 7 μέσα.
+    bank7.append(Run("st_mask", 256, bytes(mask_of(d) for d in range(256)), align=256,
+                     note="παράγεται: η μάσκα κάθε byte, τα pixel με pen 0 (βήμα 170)"))
     for size in ("s", "m", "l"):
         names = [f"icon_{size}_{r}" for r in ROOMS if r != "airlock"]
         dest = bank7 if size == "s" else bank1
@@ -886,7 +890,7 @@ def build_runs(smap, blob):
 
     # --- τράπεζα 7 ----------------------------------------------------------
     for n in STRUCTS:
-        bank7.append(spr(n))
+        bank7.append(spr(n) if n == "pad" else struct_data(n, smap, blob))
     for p in PLANTS:
         bank7.append(spr(f"plant_{p}"))
     ptr["plant_ptr"] = [f"plant_{p}" for p in PLANTS]
@@ -904,7 +908,7 @@ def build_runs(smap, blob):
     # τράπεζα δεν θα χωρούσε· έτσι γεμίζει ακριβώς ως το #8000.
     gfx = buttons.gfx()
     bank7.append(Run("btn_gfx", len(gfx), gfx, note="παράγεται από το tools/buttons.py"))
-    bank7.append(Run("text", TEXT_MAX, None, note="ΔΕΣΜΕΥΣΗ — τα κείμενα (src/uitext.asm)"))
+    bank7.append(Run("text", TEXT_MAX, None, note="ΔΕΣΜΕΥΣΗ — τα κείμενα (src/uitext.asm) και ο κώδικας src/st7.asm"))
     # Η ΓΡΑΜΜΑΤΟΣΕΙΡΑ, ΕΚΕΙ ΟΠΟΥ ΗΤΑΝ Η ΔΕΣΜΕΥΣΗ «audio» (βήμα 33). Τα 2.048
     # bytes κρατιούνταν από το §4.2 για μουσική μέσα στο παιχνίδι, και το §9.5
     # αποφάσισε ρητά ΟΧΙ μουσική· δεν τα διάβασε ποτέ τίποτα. Η γραματοσειρά
@@ -1028,6 +1032,43 @@ def shell(name, smap, blob):
     r = Run(name, SHELL_HDR + len(data), hdr + bytes(data), page=SHELL_HDR,
             note=f"διαστήματα ({s.h * s.stride} ολόκληρο)")
     r.groups = groups
+    return r
+
+
+# ---------------------------------------------------------------------------
+# ΟΙ ΔΟΜΕΣ ΧΩΡΙΣ ΜΑΣΚΑ (βήμα 170, src/st7.asm). Τα sprites των δομών κρατούσαν
+# μάσκα δίπλα σε κάθε byte. Η μάσκα κάθε κελιού τους είναι ΑΚΡΙΒΩΣ τα pixel
+# του με pen 0 (mask_of): διάφανο, άκρη και αδιαφανές — κανένα αδιαφανές κελί
+# δεν έχει pen 0. Μένει λοιπόν μόνο το χρώμα, ένα byte ανά κελί και w ανά
+# γραμμή, και η μάσκα βγαίνει από έναν πίνακα 256 bytes (st_mask) την ώρα της
+# σχεδίασης. Η γραμμή έχει σταθερό βήμα, όπως πριν: το clip είναι μία
+# μετατόπιση, όχι αναζήτηση μέσα στη γραμμή. Αν ένα νέο sprite δεν είναι έτσι,
+# το pack αποτυγχάνει εδώ, και η δομή του δεν μπορεί να μπει σε αυτή τη μορφή.
+# Η πλατφόρμα είναι ήδη αδιαφανής (χωρίς μάσκα) και μένει όπως είναι.
+# ---------------------------------------------------------------------------
+
+
+def mask_of(d):
+    """Η μάσκα ενός byte Mode 0: 1 στα bits κάθε pixel με pen 0 (7,5,3,1 και
+    6,4,2,0)."""
+    return (0xAA if d & 0xAA == 0 else 0) | (0x55 if d & 0x55 == 0 else 0)
+
+
+def struct_data(name, smap, blob):
+    """Το sprite name χωρίς μάσκα: Run με το χρώμα κάθε κελιού."""
+    s = smap[name]
+    assert s.masked and s.w <= 16, s
+    data = bytearray()
+    for y in range(s.h):
+        row = s.off + y * s.stride
+        for x in range(s.w):
+            m, d = blob[row + 2 * x], blob[row + 2 * x + 1]
+            if m != mask_of(d):
+                raise Fail(f"{name}: το κελί ({x},{y}) έχει μάσκα #{m:02X}, όχι "
+                           f"#{mask_of(d):02X} του χρώματός του (βήμα 170)")
+            data.append(d)
+    r = Run(name, len(data), bytes(data), note=f"χωρίς μάσκα ({s.h * s.stride} με μάσκα, βήμα 170)")
+    r.rows = (s.w, s.h)         # για το tests/test_pack.py
     return r
 
 

@@ -1250,7 +1250,7 @@ ob_struct:
         call    ob_subu
         ld      (ob_y),hl
         ld      a,b
-        ; πηγή από το struct_ptr, και η πλατφόρμα είναι η μόνη ΑΔΙΑΦΑΝΗ
+        ; πηγή από το struct_ptr
         add     a,G_struct_ptr & 255
         ld      l,a
         adc     a,G_struct_ptr >> 8
@@ -1263,21 +1263,17 @@ ob_struct:
         or      h
         ret     z
         ld      (ob_src),hl
-        ld      a,(s_rec+ST_KIND)
-        cp      K_PAD
-        ld      a,4
-        jr      z,os_opaque
-        xor     a
-os_opaque:
-        ld      (ob_fl),a
-        ld      e,a
         ld      a,(ob_meas)
         or      a
         jp      nz,os_meas              ; src/objindex.asm
-        ld      hl,(ob_w)
-        ld      a,e                     ; (ob_fl)
-        ld      c,PAGE_B7
-        call    ob_put_in
+        ; ΣΤΗΝ ΤΡΑΠΕΖΑ 7 ΑΠΟ ΤΟ ΒΗΜΑ 170 (src/st7.asm): οι δομές είναι εκεί χωρίς
+        ; μάσκα (το χρώμα, και η μάσκα από τον πίνακα st_mask), και ο κώδικας
+        ; που τις ζωγραφίζει μαζί τους. Η πλατφόρμα, η μόνη αδιαφανής, πάει από
+        ; εκεί στο ob_put.
+        ld      bc,GA_PORT + PAGE_B7
+        out     (c),c
+        call    st7_put
+        call    ob_b6
         jp      st_mark                 ; src/figure.asm: το εργοτάξιο (βήμα 109)
 
 ; ---------------------------------------------------------------------------
@@ -1808,9 +1804,19 @@ obx_sgn:    db 0
 ;   dome_conn[64]     ποιοι αρμοί κάθε θόλου (ως το 95 οι πόρτες): τα bits τα
 ;                     ανάβει η μέτρηση των διαδρόμων (jt_mark, src/joint.asm)
 ;   DOME_FIG[64][8]   ποια φιγούρα σε κάθε θέση      (αλλιώς 64 x 128)
+; ΤΟ st_ord ΔΕΝ ΠΕΡΝΑ ΣΕΛΙΔΑ (το dec l / inc l του osa_in, βήμα 154), και το
+; dome_conn μπαίνει οπουδήποτε (add hl,bc: jt_mark, jt_dome). Οποια σειρά χωράει
+; (βήμα 170): οι δοκιμές έχουν τον κώδικα αλλού, και 12 bytes λιγότερα έριξαν
+; το st_ord σε όριο. Αν δεν χωρά εδώ, το $ & 255 είναι πάνω από 208, και μετά
+; από τα 64 του dome_conn είναι 17-63: η δεύτερη σειρά χωρά πάντα.
+        if      ($ & 255) + MAX_STRUCT <= 256
 st_ord:     defs MAX_STRUCT
-        assert  (st_ord & 255) + MAX_STRUCT <= 256   ; το dec l / inc l του osa_in (βήμα 154)
 dome_conn:  defs MAX_DOME
+        else
+dome_conn:  defs MAX_DOME
+st_ord:     defs MAX_STRUCT
+        endif
+        assert  (st_ord & 255) + MAX_STRUCT <= 256
 
         assert  ob_w == ob_src + 2 && ob_h == ob_w + 1 && oc_diag == ob_src + 8
         assert  ob_nl == ob_st + 1 && cl_n == cl_skip + 1 && cl_hi == cl_lo + 1

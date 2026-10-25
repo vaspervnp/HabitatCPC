@@ -77,16 +77,40 @@ start:
         ld      c,SLOT_H
         call    blit_mask
 
-        ; --- τράπεζα 7: εξωτερική δομή ---
+        ; --- τράπεζα 7: εξωτερική δομή, ΧΩΡΙΣ ΜΑΣΚΑ από το βήμα 170: το χρώμα
+        ; κάθε κελιού, και η μάσκα του από τον πίνακα st_mask, όπως στο
+        ; src/st7.asm. Το airlock, που έχει και διάφανα και άκρες (ως το βήμα
+        ; 169 ο ηλιακός με το blit_mask, ως το 150 το m) ---
         ld      bc,GA_PORT + PAGE_B7
         out     (c),c
         ld      c,STRUCT_X
         ld      a,STRUCT_Y
         call    scr_addr
-        ld      hl,G_solar_l            ; το m έφυγε από την τράπεζα 7 (βήμα 151)
-        ld      b,12                    ; solar_l: 24x48 px -> 12 bytes δεδομένων
-        ld      c,48
-        call    blit_mask
+        ld      hl,G_airlock            ; 8 bytes x 32 γραμμές
+        ld      a,32
+pt_row:
+        push    af
+        push    de
+        ld      b,8
+pt_cell:
+        push    bc
+        ld      c,(hl)                  ; το χρώμα
+        ld      b,G_st_mask >> 8
+        ld      a,(bc)                  ; η μάσκα του: τα pixel με pen 0
+        ex      de,hl
+        and     (hl)
+        or      c
+        ld      (hl),a
+        ex      de,hl
+        inc     hl
+        inc     de
+        pop     bc
+        djnz    pt_cell
+        pop     de
+        call    scr_nextline
+        pop     af
+        dec     a
+        jr      nz,pt_row
 
         ; --- πίσω στη βασική, και ένα εικονίδιο της τράπεζας 1. Ο δείκτης του
         ; είναι στην 6 από το βήμα 90 (tools/pack.py, OB6): διαβάζεται ΠΡΙΝ
