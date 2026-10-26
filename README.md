@@ -12,7 +12,7 @@ fit in a Z80 and 128 KB.
 
 ![A colony after thirty sols](docs/img/colony.png)
 
-**Manuals:** [English](docs/manual-en.md) · [Ελληνικά](docs/manual-el.md)
+**Manuals:** [English](docs/manual-en.md) ([PDF](docs/manual-en.pdf)) · [Ελληνικά](docs/manual-el.md) ([PDF](docs/manual-el.pdf))
 
 ---
 
@@ -102,6 +102,9 @@ python3 tools/mkdsk.py          # assembles everything, writes build/habitat.dsk
 `./tools/build.sh` without `--gen` also runs the test suite. Everything it makes goes
 to `build/`, which is not in the repository.
 
+The manuals' PDFs are made from their Markdown with `python3 tools/mkpdf.py`, which
+needs `reportlab` and the Noto Sans fonts.
+
 ## Testing
 
 The emulator is headless and scriptable, so the game is tested as it runs:
@@ -122,7 +125,7 @@ The emulator is headless and scriptable, so the game is tested as it runs:
 ```
 DESIGN.md        the design document, kept up to date milestone by milestone
 README.md        this file
-docs/            the player's manuals (English, Greek) and their screenshots
+docs/            the player's manuals (English, Greek), as Markdown and PDF, and their screenshots
 src/             the game, in Z80 assembly (rasm)
 tools/           build tools, reference models, the scripted player
 tests/           the test suite and its golden images
