@@ -590,7 +590,7 @@ def main():
     sys.path.insert(0, HERE)
     import hudread
     row2 = hudread.text(m, sym, 2)
-    check(row2.startswith("POP  6/"), f"το HUD σχεδιάστηκε: |{row2}|")
+    check(row2.startswith("6/6 SOL"), f"το HUD σχεδιάστηκε: |{row2}|")     # χωρίς «POP » (βήμα 173)
 
     # --- 3β. ο κώδικας του τροχού στην τράπεζα 6 (βήμα 92) ----------------
     # Το BANK6.BIN του pack.py έχει τη δέσμευση b6code ΑΔΕΙΑ· τον κώδικα (τα

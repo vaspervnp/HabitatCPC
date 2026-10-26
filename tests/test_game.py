@@ -105,6 +105,10 @@ def main():
     def hud(row):
         return hudread.text(m, sym, row)
 
+    def alert():
+        # το μήνυμα μετά το DAY/NGT (βήμα 173· ως τότε από τη στήλη 20)
+        return hudread.alert(hud(2), strict=False)
+
     # --- 1. η κατάσταση εκκίνησης ----------------------------------------
     stock = [w16(g + i * 2) for i in range(7)]
     # Το νερό έχει ήδη πέσει λίγο: ο βρόχος τρέχει από το πρώτο frame.
@@ -115,7 +119,8 @@ def main():
           f"45 βιοπλαστικό / 4 ανταλλακτικά, 4 άποικοι — {stock} "
           f"{m.peek(g + 58)}")
     row2 = hud(2)
-    check(row2.startswith("POP  4/"), f"το HUD ξέρει τον πληθυσμό: |{row2}|")
+    # χωρίς «POP » από το βήμα 173: ο πληθυσμός όσο φαρδύς είναι
+    check(row2.startswith("4/"), f"το HUD ξέρει τον πληθυσμό: |{row2}|")
     # Οι μάσκες κατοχής λένε ό,τι λένε οι άποικοι: η θέση όποιου στέκεται, και
     # καμία άλλη. Το ng_people δίνει τον κόμβο στο ent_claim από καταχωρητή·
     # με τον λάθος (βήμα 59, σκόπιμα) οι θέσεις έπεφταν σε άλλους κόμβους και
@@ -125,7 +130,7 @@ def main():
     ag = b6[layout_addr("G_agent_fields") - 0x4000:][:4096]
     occ = b6[layout_addr("G_node_occ") - 0x4000:][:128]
     want = bytearray(128)
-    for i in range(128):                    # flags, node, slot (2304), edge (2560): βήμα 172
+    for i in range(188):                    # flags, node, slot (2304), edge (2560): βήμα 172· οι 188 από το 173
         if ag[i] & 1 and ag[2560 + i] == 255 and ag[2304 + i] != 255:
             want[ag[256 + i]] |= 1 << ag[2304 + i]
     check(bytes(want) == occ and any(occ),
@@ -201,7 +206,7 @@ def main():
 
     # Από εδώ και κάτω ο παίκτης ΔΕΝ αγγίζει τίποτα: ό,τι αλλάξει στην οθόνη
     # το έφερε η προσομοίωση.
-    alert0 = hud(2)[20:]
+    alert0 = alert()
     got = 0
     for _ in range(40):                  # ως 40 x 50 frames = ~40 δευτερόλεπτα
         m.run_frames(50)
@@ -213,9 +218,9 @@ def main():
     # ξαναδημοσιευτεί (64 περιστροφές, βλ. FLOW_DIV στο src/econ.asm).
     for _ in range(40):
         m.run_frames(50)
-        if hud(2)[20:].strip() == "ALL SYSTEMS OK":
+        if alert().strip() == "ALL SYSTEMS OK":
             break
-    alert1 = hud(2)[20:]
+    alert1 = alert()
     check(alert0.strip() != alert1.strip()
           and alert1.strip() == "ALL SYSTEMS OK",
           f"το HUD το ΔΕΙΧΝΕΙ χωρίς πάτημα: |{alert0.strip()}| -> "
@@ -230,18 +235,18 @@ def main():
     m.poke(g + 3, 0)
     for _ in range(20):
         m.run_frames(20)
-        if "FOOD" in hud(2)[20:]:
+        if "FOOD" in alert():
             break
-    check("LOW ON FOOD" in hud(2)[20:],
-          f"λίγη τροφή, και το λέει: |{hud(2)[20:].strip()}|")
+    check("LOW ON FOOD" in alert(),
+          f"λίγη τροφή, και το λέει: |{alert().strip()}|")
     m.poke(g + 2, food0 & 255)
     m.poke(g + 3, food0 >> 8)
     for _ in range(20):
         m.run_frames(20)
-        if "FOOD" not in hud(2)[20:]:
+        if "FOOD" not in alert():
             break
-    check("FOOD" not in hud(2)[20:],
-          f"και το παίρνει πίσω όταν γεμίσει: |{hud(2)[20:].strip()}|")
+    check("FOOD" not in alert(),
+          f"και το παίρνει πίσω όταν γεμίσει: |{alert().strip()}|")
     # --- 5. ένας θόλος που ο παίκτης του δίνει δουλειά (§6.1) -------------
     # ΚΑΝΕΝΑΣ ΘΟΛΟΣ ΤΟΥ ΠΑΙΚΤΗ ΔΕΝ ΤΕΛΕΙΩΝΕ ΠΟΤΕ ως το βήμα 26: το bd_link
     # έψαχνε τον κοντινότερο ζωντανό θόλο για να δώσει ακμή στο εργοτάξιο, και

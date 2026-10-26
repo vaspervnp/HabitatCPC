@@ -166,9 +166,9 @@ def z80_load(sym, g, sim, rt_n=None, patch=()):
 
 def describe(blob, sim):
     a = E.Agents().from_bytes(blob)
-    moved = sum(1 for i in range(128) if a.node[i] != sim.a.node[i])
-    intransit = sum(1 for i in range(128) if a.edge[i] != E.NO_EDGE)
-    arrived = sum(1 for i in range(128)
+    moved = sum(1 for i in range(E.MAXAGENT) if a.node[i] != sim.a.node[i])
+    intransit = sum(1 for i in range(E.MAXAGENT) if a.edge[i] != E.NO_EDGE)
+    arrived = sum(1 for i in range(E.MAXAGENT)
                   if a.flags[i] & E.F_ALIVE and a.dest[i] == a.node[i]
                   and a.edge[i] == E.NO_EDGE)
     return moved, intransit, arrived
@@ -180,7 +180,7 @@ def check_occ(blob, occ, g):
     αν λάθος ίδιο βγάζουν και οι δύο πλευρές — εδώ ο έλεγχος είναι ανεξάρτητος."""
     a = E.Agents().from_bytes(blob)
     want = bytearray(G.MAXNODE)
-    for i in range(128):
+    for i in range(E.MAXAGENT):
         if not a.flags[i] & E.F_ALIVE:
             continue
         if a.edge[i] != E.NO_EDGE or a.slot[i] == E.NO_SLOT:
@@ -270,8 +270,10 @@ def main():
                 rt_n=EC.MAX_DOME + EC.MAX_STRUCT)
 
     sim = fresh(g, nexthop, sim0)
+    peak = 0                    # οι περισσότεροι σε ακμή μαζί, στην αναφορά (βήμα 173)
     for _ in range(TICKS):
         sim.tick()
+        peak = max(peak, sum(1 for i in range(E.MAXAGENT) if sim.a.edge[i] != E.NO_EDGE))
     want_a, want_occ = sim.a.to_bytes(), bytes(sim.occ)
 
     if got_a != want_a:
@@ -292,13 +294,17 @@ def main():
     if src_check(sym, g, nexthop, dist, sim0):
         return 1
 
+    # ΣΕ ΑΚΜΗ ΚΑΠΟΤΕ, ΟΧΙ ΣΤΟ ΤΕΛΟΣ (βήμα 173): η αποικία της δοκιμής ησυχάζει
+    # στα 640 frames — στο 172 ένας ήταν ακόμη στον δρόμο, στο 173 κανείς. Ο
+    # Z80 τελειώνει ίδιος με την αναφορά, άρα πέρασε από τα ίδια· το πόσοι
+    # ήταν σε ακμή μαζί το λέει η αναφορά.
     moved, intransit, arrived = describe(got_a, type("S", (), {"a": before})())
-    if moved == 0 or intransit == 0:
+    if moved == 0 or peak == 0:
         print(f"ΑΠΟΤΥΧΙΑ: κανείς δεν κουνήθηκε ({moved} άλλαξαν κόμβο, "
-              f"{intransit} σε ακμή) — η δοκιμή δεν δοκίμασε τίποτα")
+              f"ως {peak} σε ακμή) — η δοκιμή δεν δοκίμασε τίποτα")
         return 1
-    print(f"OK κίνηση:    {moved} πράκτορες άλλαξαν κόμβο, {intransit} είναι "
-          f"σε ακμή τώρα, {arrived} έφτασαν στον προορισμό τους")
+    print(f"OK κίνηση:    {moved} πράκτορες άλλαξαν κόμβο, ως {peak} σε ακμή μαζί "
+          f"({intransit} τώρα), {arrived} έφτασαν στον προορισμό τους")
 
     why = check_occ(got_a, got_occ, g)
     if why:
@@ -388,7 +394,7 @@ def main():
         return bytes(e.dome) != before
     hz_seed = next(x for x in range(1, 65536) if first_fault(x))
     watch.e.rnd = hz_seed
-    head_before = sum(1 for i in range(128) if watch.a.flags[i] & E.F_ALIVE)
+    head_before = sum(1 for i in range(E.MAXAGENT) if watch.a.flags[i] & E.F_ALIVE)
     prev = bytes(watch.e.dome)
     for _ in range(HAZ):
         watch.tick()
@@ -404,7 +410,7 @@ def main():
             storm_revs += 1
         # Η άφιξη πιάνεται ΤΗ ΣΤΙΓΜΗ που γίνεται. «Ηταν νεκρός, τώρα ζει» δεν
         # δουλεύει: οι καινούργιοι παίρνουν τις ταυτότητες όσων πέθαναν.
-        head = sum(1 for i in range(128) if watch.a.flags[i] & E.F_ALIVE)
+        head = sum(1 for i in range(E.MAXAGENT) if watch.a.flags[i] & E.F_ALIVE)
         if watch.e.ship_state == EC.SHIP_LANDED and not was_landed:
             if watch.e.ship_kind == EC.SK_COLONIST:
                 crew_landed += head - head_before
@@ -500,10 +506,10 @@ def main():
     # --- οι ανάγκες όντως δάγκωσαν; ---
     ag0 = E.Agents().from_bytes(sim0.a.to_bytes())
     agz = E.Agents().from_bytes(got_a)
-    # Οι ζωντανοί της θέσης 12 είναι οι 80 των αποίκων (βήμα 92, en_count).
+    # Οι ζωντανοί της θέσης 12 είναι οι 160 των αποίκων (βήμα 173· 80 από το 92, en_count).
     alive0 = sum(1 for i in range(EC.AG_BOT0) if ag0.flags[i] & E.F_ALIVE)
     alive1 = sum(1 for i in range(EC.AG_BOT0) if agz.flags[i] & E.F_ALIVE)
-    # ΚΑΙ ΟΙ ΘΕΣΕΙΣ 80-95 ΔΕΝ ΕΧΟΥΝ ΑΝΑΓΚΕΣ (βήμα 92). Ο πληθυσμός της δοκιμής
+    # ΚΑΙ ΟΙ ΘΕΣΕΙΣ 160-175 ΔΕΝ ΕΧΟΥΝ ΑΝΑΓΚΕΣ (βήμα 92· 80-95 ως το 172). Ο πληθυσμός της δοκιμής
     # τις γεμίζει με κάθε ρόλο, κι όμως σε 640 frames κανενός δεν άλλαξε ούτε
     # οξυγόνο ούτε νερό ούτε τροφή ούτε ύπνος — ενώ κάτω από το 80 τρώνε και
     # κοιμούνται (πιο κάτω). Ως το 91 τους επισκεπτόταν το πέρασμα των αναγκών.
@@ -514,11 +520,12 @@ def main():
     if moved or nbots < 8:
         print(f"ΑΠΟΤΥΧΙΑ: οι θέσεις των ρομπότ ({nbots} ζωντανοί) άλλαξαν ανάγκες: {moved[:8]}")
         return 1
-    print(f"OK ρομπότ:   {nbots} ζωντανοί στις θέσεις 80-95, καμία ανάγκη τους δεν άλλαξε")
-    fed = sum(1 for i in range(128) if agz.food[i] > ag0.food[i])
-    slept = sum(1 for i in range(128) if agz.sleep[i] > ag0.sleep[i])
-    healed = sum(1 for i in range(128) if agz.health[i] > ag0.health[i])
-    seeking = sum(1 for i in range(128)
+    print(f"OK ρομπότ:   {nbots} ζωντανοί στις θέσεις {EC.AG_BOT0}-{EC.AG_BOT0 + EC.AG_NBOT - 1}, "
+          "καμία ανάγκη τους δεν άλλαξε")
+    fed = sum(1 for i in range(E.MAXAGENT) if agz.food[i] > ag0.food[i])
+    slept = sum(1 for i in range(E.MAXAGENT) if agz.sleep[i] > ag0.sleep[i])
+    healed = sum(1 for i in range(E.MAXAGENT) if agz.health[i] > ag0.health[i])
+    seeking = sum(1 for i in range(E.MAXAGENT)
                   if agz.flags[i] & E.F_ALIVE and agz.dest[i] != agz.node[i])
     gloom = got_econ[60]
     for what, n in (("θάνατοι", alive0 - alive1), ("φαγητό", fed),
@@ -547,8 +554,8 @@ def main():
                     if got_job[j * 5] != EC.NO_JOB)
     claimed = sum(1 for j in range(EC.MAX_JOB)
                   if got_job[j * 5] != EC.NO_JOB and got_job[j * 5 + 2] != 255)
-    working = sum(1 for i in range(128) if ag.flags[i] & E.F_WORKING)
-    tasked = sum(1 for i in range(128) if ag.task[i] != EC.NO_TASK)
+    working = sum(1 for i in range(E.MAXAGENT) if ag.flags[i] & E.F_WORKING)
+    tasked = sum(1 for i in range(E.MAXAGENT) if ag.task[i] != EC.NO_TASK)
     ops_now = sum(got_dome[d * EC.DOME_REC + EC.D_OPS] for d in range(64))
     ops_before = sum(sim0.e.dome[d * EC.DOME_REC + EC.D_OPS] for d in range(64))
     if working == 0 or open_jobs == 0:
@@ -653,9 +660,9 @@ def main():
         return fr * FRAME_US / PIN_TICKS
 
     rows = [("κίνηση", pinned(0), 1800, f"{E.WH_MOVE_N} πράκτορες"),
-            ("ανάγκες", pinned(8), 433, f"{E.WH_NEED_N} άποικοι"),
+            ("ανάγκες", pinned(E.WH_NMOVE), 433, f"{E.WH_NEED_N} άποικοι"),
             ("παραγωγή", pinned(11), 4000, f"{EC.PROD_DOMES} θόλοι"),
-            ("ισοζύγιο", pinned(12), 2000, "64 δομές + 128 πράκτορες"),
+            ("ισοζύγιο", pinned(12), 2000, "64 δομές + 160 άποικοι"),
             ("εργασίες", pinned(13), 3000,
              f"{EC.JOB_SCAN} θόλοι, {EC.JOB_LOOK} πράκτορες"),
             ("δωμάτια", pinned(14), 0, "64 θόλοι — η θέση 14 δεν είχε προϋπολογισμό"),
@@ -797,9 +804,7 @@ def flow_branches(sym, g, nexthop, sim0, patch=(), quiet=False):
             m.run_frames(1)
         got = m.read_ram(sym["G_ECON_STATE"], EC.ECON_BYTES)
 
-        alive = sum(1 for i in range(EC.AG_BOT0) if sim.a.flags[i] & E.F_ALIVE)
-        inside = sum(1 for i in range(EC.AG_BOT0)
-                     if sim.a.flags[i] & E.F_ALIVE and sim.a.flags[i] & E.F_INDOORS)
+        alive, inside = E.en_count(sim.a, e.alive)          # βήμα 173: ως το EC_ALIVE
         EC.flow_balance(e, alive, inside)
         want = EC.to_bytes(e)
         if got != want:
@@ -1123,7 +1128,11 @@ def calm_branches(sym, g, nexthop, sim0):
 # Βήμα 157: το όριο σάρωσης (src/top.asm) — το ef_lp σταματά στην ψηλότερη θέση
 # σε χρήση, 17 us η θέση που δεν δουλεύει: 9.060 -> 8.710, 9.440 -> 9.090, κάτω
 # από το 155. Τα ταβάνια του 155 ξανά: ένα πέρασμα και των 48 τα περνά.
-STORE_FLOW_US, STORE_FLOW8_US = 8790, 9170
+# Βήμα 173: οι 160 θέσεις αποίκων, και η αποικία της δοκιμής έχει αποίκους ως το
+# 159 (E.pop_id): το en_count δεν σταματά νωρίς, και περνά 80 θέσεις ακόμη και 20
+# συγκρίσεις: 8.710 -> 9.390, 9.090 -> 9.770 (+680). Σε αποικία χωρίς κενά σταματά
+# στον τελευταίο ζωντανό (tests/test_drill.py: 1.217 -> 682). Ως το 172 8.790 και 9.170.
+STORE_FLOW_US, STORE_FLOW8_US = 9470, 9850
 # Οι βαριές επισκέψεις της θέσης 11 με το απόθεμα μετάλλου ενεργό (βήμα 127):
 # το erm_ink περνά 5 us σε κάθε μηχανή που δεν τρώει μέταλλο, και οι τέσσερις
 # που το τρώνε σταματούν. Εδώ 7.090 και 12.160 us, χωρίς το απόθεμα 8.390 και
@@ -1347,7 +1356,9 @@ def store_branches(sym, g, nexthop, sim0):
 # επισκέψεις της θέσης 11 ίδιες: δεν περνούν από τις δομές.
 # Βήμα 157: το όριο σάρωσης, όπως στο STORE_FLOW_US: 9.110 -> 8.760, 9.490 ->
 # 9.140, και τα ταβάνια του 155 ξανά.
-MEAL_FLOW_US, MEAL_FLOW8_US, MEAL_SWEEP_US = 8840, 9210, 12080
+# Βήμα 173: όπως ο κύκλος ροής πιο πάνω, +680: 8.760 -> 9.440, 9.140 -> 9.820. Ως
+# το 172 8.840 και 9.210.
+MEAL_FLOW_US, MEAL_FLOW8_US, MEAL_SWEEP_US = 9520, 9900, 12080
 
 
 def meal_branches(sym, g, nexthop, sim0):
@@ -1769,9 +1780,7 @@ def keep_branches(sym, g, nexthop, sim0):
 
 def slot12(sim):
     """Η θέση 12 της αναφοράς, όπως τη τρέχει το Sim.tick (tools/entity.py)."""
-    alive = sum(1 for i in range(EC.AG_BOT0) if sim.a.flags[i] & E.F_ALIVE)
-    inside = sum(1 for i in range(EC.AG_BOT0)
-                 if sim.a.flags[i] & E.F_ALIVE and sim.a.flags[i] & E.F_INDOORS)
+    alive, inside = E.en_count(sim.a, sim.e.alive)
     EC.flow_balance(sim.e, alive, inside)
 
 
@@ -1810,7 +1819,7 @@ def need_branches(sym, g, nexthop, sim0):
     συγκρίσεων ως bits). Με το οξυγόνο να ζυγίζει 2 αντί για 4 το κοινό
     τρέξιμο έμενε πράσινο."""
     base = fresh(g, nexthop, sim0)
-    alive = [i for i in range(128) if base.a.flags[i] & E.F_ALIVE]
+    alive = [i for i in range(E.MAXAGENT) if base.a.flags[i] & E.F_ALIVE]
     for k, i in enumerate(alive):
         _, o2, wa, fo, sl, he, mo = NEED_CASES[k % len(NEED_CASES)]
         a = base.a
@@ -1972,12 +1981,12 @@ def suit_branches(sym):
     if end is None:
         return 1
     a0, a1 = st.a, end.a
-    out = [i for i in range(96) if a0.flags[i] & 3 == E.F_ALIVE and a0.node[i] in SUIT_OUT]
+    out = [i for i in range(E.MAXAGENT) if a0.flags[i] & 3 == E.F_ALIVE and a0.node[i] in SUIT_OUT]
     died = [i for i in out if not a1.flags[i] & E.F_ALIVE]
     bots = [i for i in out if a0.role[i] >= E.BOT_CONSTR]
     went = [i for i in out if a1.flags[i] & E.F_ALIVE and a1.node[i] in SUIT_LOCKS
             and a1.flags[i] & E.F_INDOORS]
-    left = [i for i in range(96) if a0.flags[i] & 3 == 3 and a0.node[i] in SUIT_LOCKS
+    left = [i for i in range(E.MAXAGENT) if a0.flags[i] & 3 == 3 and a0.node[i] in SUIT_LOCKS
             and a0.dest[i] in SUIT_OUT]
     why = []
     if any(a0.suit[i] > 2 or a0.role[i] >= E.BOT_CONSTR for i in died):
@@ -2032,8 +2041,13 @@ ALERT_SKIP = 48
 # airlock που διαλέγεται, και μετά από τη λίστα — 5.700 με όλους μέσα, 6.940 οι
 # επτά (τρία airlock, τρεις θόλοι), 19.850 οι 48: κάτω από ένα frame. Ψαγμένος
 # για κάθε νέο κόμβο, οι 48 έφταναν τα 25.540.
-ALERT_US = 7100
-ALERT_HEAVY_US = 20000                  # ένα frame
+# ΒΗΜΑ 173: οι 160 θέσεις αποίκων, και η σκηνή έχει αποίκους ως το 159 (E.pop_id).
+# Το fo_alert περπατά 80 θέσεις ακόμη: 5.650 -> 6.690 με όλους μέσα, 6.850 ->
+# 7.900 οι επτά, 19.490 -> 20.530 οι 48. Ανά δύο (src/foe.asm, foal_lp): 6.210,
+# 7.470 και 20.580 — όποιος είναι έξω πληρώνει το ζεύγος του. Οι 48 είναι ΠΙΑ
+# ΠΑΝΩ ΑΠΟ ΕΝΑ FRAME, κατά 3% (DESIGN §15): ως το 172 7.100 και 20.000.
+ALERT_US = 7550
+ALERT_HEAVY_US = 20700                  # ένα frame και 3,5% (20.000 ως το βήμα 172)
 
 
 def alert_scene(lock69=EC.DS_ACTIVE, heavy=False):
@@ -2380,7 +2394,7 @@ def _foe_due(alive, lands, roll=0):
 
 def _foe_land(alive, taken=0):
     """Το πλοίο των εισβολέων προσγειώνεται με alive ζωντανούς· οι πρώτες taken
-    από τις θέσεις 96-99 έχουν ήδη εισβολέα (μιας προηγούμενης φοράς)."""
+    από τις θέσεις 176-179 (96-99 ως το βήμα 172) έχουν ήδη εισβολέα (μιας προηγούμενης φοράς)."""
     def f(e, a):
         e.ship_state, e.ship_kind, e.ship_eta = EC.SHIP_INCOMING, EC.SK_FOE, 0
         e.alive, e.lands = alive, 9
@@ -2428,7 +2442,7 @@ SHIP_CASES = (
      lambda e, a: (setattr(e, "ship_state", EC.SHIP_INCOMING),
                    setattr(e, "ship_kind", EC.SK_VISITOR), setattr(e, "ship_eta", 0),
                    e.stock.__setitem__(EC.S_FOOD, 5),
-                   [a.morale.__setitem__(i, (i * 37) & 0xFF) for i in range(128)])),
+                   [a.morale.__setitem__(i, (i * 37) & 0xFF) for i in range(E.MAXAGENT)])),
     # Ο ΕΜΠΟΡΟΣ (βήμα 93): από τη ζαριά, με πίστα και χωρίς άλλο πλοίο· το
     # φορτίο στις άκρες του — τρία και τέσσερα αγαθά, κέρδος 31 -> 0 (35%),
     # πρώτο αγαθό 13-15 -> mod 13, βήμα 12-15 -> mod 12 — και μισό sol.
@@ -2514,12 +2528,12 @@ def _visitors(prestige=0, canteen=1, food=50, water=50, amenity=1, coins=0, good
 
 
 def _lost(e, a):
-    """Το πλοίο εδώ, και δύο επισκέπτες στο κυλικείο 11 για το σαλόνι: ο 112
+    """Το πλοίο εδώ, και δύο επισκέπτες στο κυλικείο 11 για το σαλόνι: ο 180
     έχασε την εργασία του (NO_TASK, όπως μετά από κατεδάφιση) και την ξαναπαίρνει,
-    ο 113 κάθεται ακόμη τρεις περιστροφές."""
+    ο 181 κάθεται ακόμη τρεις περιστροφές."""
     e.ship_state, e.ship_kind, e.ship_eta = EC.SHIP_LANDED, EC.SK_VISITOR, 300
     e.sollen = 12000
-    for i, task, stay in ((112, E.NO_TASK, 0), (113, EC.T_VISIT, 3)):
+    for i, task, stay in ((EC.AG_VIS0, E.NO_TASK, 0), (EC.AG_VIS0 + 1, EC.T_VISIT, 3)):
         a.flags[i], a.role[i] = E.F_ALIVE | E.F_INDOORS, EC.RL_VIS
         a.node[i] = a.dest[i] = 11
         a.edge[i], a.slot[i] = E.NO_EDGE, E.NO_SLOT
@@ -2680,14 +2694,16 @@ FOE_TICKS = 16 * 40         # frames του ολόκληρου τροχού
 
 
 def foe_state(g, nexthop, sim0):
-    """Ο συναγερμός στημένος σε κάθε κλάδο του fo_tick: ο 96 στέκεται στον
-    κόμβο του φρουρού 4 και ενός ακόμη, ο 97 στον κόμβο του φρουρού 44, ο 98 σε
-    γειτονικό κόμβο του φρουρού 12 που έχει ήδη όπλο, ο 99 περπατά προς κόμβο
-    με κόσμο. Δύο Gun στο απόθεμα για τους υπόλοιπους εννέα φρουρούς, ο 36 πάει
-    για ανάγκη έξω (T_NEED: μένει, η στολή), ο 60 μέσα (στη μάχη από το βήμα
-    150, και ο ύπνος του, 30, περιμένει), ο 28 περπατά."""
+    """Ο συναγερμός στημένος σε κάθε κλάδο του fo_tick: ο 176 στέκεται στον
+    κόμβο του φρουρού 4 και ενός ακόμη, ο 177 στον κόμβο του φρουρού 124, ο 178
+    σε γειτονικό κόμβο του φρουρού 12 που έχει ήδη όπλο, ο 179 περπατά προς
+    κόμβο με κόσμο. Δύο Gun στο απόθεμα για τους υπόλοιπους εννέα φρουρούς, ο
+    36 πάει για ανάγκη έξω (T_NEED: μένει, η στολή), ο 140 μέσα (στη μάχη από
+    το βήμα 150, και ο ύπνος του, 30, περιμένει), ο 28 περπατά. (Ως το βήμα
+    172 οι 96-99, και οι 44 και 60: οι ίδιοι της σκηνής, E.pop_id.)"""
     st = fresh(g, nexthop, sim0)
     a, e = st.a, st.e
+    P44, P60 = E.pop_id(44), E.pop_id(60)
 
     def put(i, node, edge=E.NO_EDGE, prog=0):
         a.flags[i] = E.F_ALIVE | (E.F_INDOORS if EC.indoor_node(e, node) else 0)
@@ -2697,14 +2713,14 @@ def foe_state(g, nexthop, sim0):
     near = next(n for n in (g.adj[47 * G.MAXDEG + q] for q in range(g.deg[47]))
                 if not any(a.flags[c] & E.F_ALIVE and a.role[c] == EC.RL_GUARD
                            and a.node[c] == n for c in range(EC.AG_BOT0)))
-    put(96, a.node[4])
-    put(97, a.node[44])
-    put(98, near)
-    put(99, 6, edge=0, prog=200)
+    put(EC.AG_FOE0, a.node[4])
+    put(EC.AG_FOE0 + 1, a.node[P44])
+    put(EC.AG_FOE0 + 2, near)
+    put(EC.AG_FOE0 + 3, 6, edge=0, prog=200)
     a.flags[12] |= EC.F_GUN
     a.task[36] = E.T_NEED
-    a.task[60] = E.T_NEED
-    assert not a.flags[36] & E.F_INDOORS and a.flags[60] & E.F_INDOORS and a.sleep[60] < 64
+    a.task[P60] = E.T_NEED
+    assert not a.flags[36] & E.F_INDOORS and a.flags[P60] & E.F_INDOORS and a.sleep[P60] < 64
     E.release(st.occ, a.node[28], a.slot[28])
     a.slot[28], a.edge[28], a.progress[28] = E.NO_SLOT, 0, 50
     e.stock[EC.S_GUN] = 2
@@ -2737,9 +2753,9 @@ def foe_battle(sym, g, nexthop, sim0):
     need = ("χτυπήματα εισβολέων", "άποικοι έπεσαν", "εισβολείς έπεσαν", "όπλα",
             "με όπλο, από γειτονικό", "με όπλο, στον κόμβο", "με τα χέρια")
     if any(not n.get(k) for k in need) or want.e.stock[EC.S_GUN] != 0 \
-            or want.a.task[36] != E.T_NEED or want.a.task[60] != EC.T_FIGHT:
+            or want.a.task[36] != E.T_NEED or want.a.task[E.pop_id(60)] != EC.T_FIGHT:
         print(f"ΑΠΟΤΥΧΙΑ μάχη: η σκηνή δεν περνά από όλους τους κλάδους: {n}, "
-              f"ο 36 {want.a.task[36]}, ο 60 {want.a.task[60]}")
+              f"ο 36 {want.a.task[36]}, ο {E.pop_id(60)} {want.a.task[E.pop_id(60)]}")
         return 1
     def find(label, pat, span=80):
         code = run_peek(sym, sym[label], span)
@@ -2808,25 +2824,26 @@ def foe_battle(sym, g, nexthop, sim0):
     sim = fresh(g, nexthop, st)
     tried = moved = 0
     drafted = False
-    pos = lambda z: (z.a.node[60], z.a.edge[60], z.a.progress[60])
+    P60 = E.pop_id(60)
+    pos = lambda z: (z.a.node[P60], z.a.edge[P60], z.a.progress[P60])
     for _ in range(FOE_TICKS):
         was = pos(sim)
         sim.tick()
-        if not any(sim.a.flags[i] & E.F_ALIVE for i in range(96, 100)):
+        if not any(sim.a.flags[i] & E.F_ALIVE for i in range(EC.AG_FOE0, EC.AG_FOE0 + EC.AG_NFOE)):
             break
-        drafted = drafted or sim.a.task[60] == EC.T_FIGHT
-        if drafted and sim.a.task[60] == E.T_NEED:
+        drafted = drafted or sim.a.task[P60] == EC.T_FIGHT
+        if drafted and sim.a.task[P60] == E.T_NEED:
             tried += 1
             moved += pos(sim) != was
     if not tried or moved:
-        print(f"ΑΠΟΤΥΧΙΑ μάχη: ο 60 με T_NEED στη μάχη {tried} ticks, βήματα με αυτό {moved}")
+        print(f"ΑΠΟΤΥΧΙΑ μάχη: ο {P60} με T_NEED στη μάχη {tried} ticks, βήματα με αυτό {moved}")
         return 1
     print(f"OK μάχη: {FOE_PIN} περιστροφές της θέσης 15 — "
           + ", ".join(f"{k} {v}" for k, v in sorted(n.items()))
           + f" — και {FOE_TICKS // 16} ολόκληρες· ίδια bytes στον Z80 και στην "
           f"αναφορά. ΑΡΝΗΤΙΚΑ: όπλο = χέρια, χωρίς γειτονικούς, χτυπά όλους, "
           f"η ανάγκη μέσα χωρίς μάχη, και η έξω στη μάχη, ο στόχος από την αρχή, "
-          f"ακίνητοι — διαφέρουν. Ο 60 με T_NEED από τις ανάγκες {tried} ticks "
+          f"ακίνητοι — διαφέρουν. Ο {P60} με T_NEED από τις ανάγκες {tried} ticks "
           f"στη μάχη, και κανένα βήμα με αυτό")
     print(f"              η θέση 15 με τέσσερις εισβολείς, 80 αποίκους και 10 "
           f"φρουρούς: ως {pin_us} us (μέση {sum(per) // len(per)}, ταβάνι "
@@ -2842,7 +2859,11 @@ def foe_battle(sym, g, nexthop, sim0):
 # ΤΑΒΑΝΙΑ, μετρημένα στο βήμα 111. Με εισβολείς η θέση 15 είναι η ακριβότερη
 # του τροχού όσο ζουν (η 14 είναι 4,7 ms): ο συναγερμός κρατά δευτερόλεπτα.
 # Χωρίς, ό,τι ήταν στο 110 και ένα byte (fo_n) με ένα άλμα.
-FOE_PIN_US = 6200
+# ΒΗΜΑ 173: 6.200 ως τότε (6.090 μετρημένα). Οι βρόχοι της μάχης περπατούν τους
+# 160 αποίκους, και η σκηνή τους έχει ως το 159 (E.pop_id): 7.760 με τους
+# βρόχους του 172· ο χάρτης πρώτα και ανά δύο στο fov_lp (src/foe.asm) 7.060.
+# Ο,τι μένει είναι το cpir των φρουρών στους 160 και ο fov_lp στους 80 ακόμη.
+FOE_PIN_US = 7150
 FOE_CALM_US = 480
 
 
@@ -2862,8 +2883,11 @@ def move_graph():
 # Μετά τη δρομολόγηση: ο θόλος 7 χωρίς ακμές, ο 3 με έναν γείτονα που το
 # NEXTHOP δεν ξέρει. Και τα δύο «δεν συμβαίνουν» — και τα δύο έχουν κλάδο.
 MOVE_STALE = ((G.ADJ_SIZE + 7, 0), (3 * G.MAXDEG, 92))     # (θέση στο adj+deg, τιμή)
-MOVE_SLICES = ((0, 128), (0, 128), (120, 16), (5, 0), (64, 64), (0, 128), (127, 1),
-               (0, 128), (33, 40))
+# Από το βήμα 173 ως το 187, χωρίς τύλιγμα: όλοι (0, 188), οι 176 του τροχού, η
+# φέτα που περνά το 128, η τελευταία του τροχού (150, 26) και οι εισβολείς με
+# τους επισκέπτες (176, 12). Ως το 172 ως το 127, και η 120,16 τύλιγε στο 0.
+MOVE_SLICES = ((0, 188), (0, 176), (120, 16), (5, 0), (64, 64), (0, 188), (127, 1),
+               (150, 26), (176, 12), (0, 188), (33, 40))
 MOVE_REC = 0x3100                       # ο καταγραφέας του wh_push, πάνω από τον κώδικα
 
 
@@ -2873,7 +2897,7 @@ def move_state(rnd, g):
     και χωρίς θέση· μάσκες κατοχής άδειες, γεμάτες, μισές."""
     nodes = [n for n in range(g.hw) if g.deg[n]] + [92, 7]  # ο 7: deg 0 μετά το MOVE_STALE
     a = E.Agents()
-    for i in range(128):
+    for i in range(E.MAXAGENT):
         alive = rnd.random() < 0.85
         a.flags[i] = (rnd.randrange(256) | E.F_ALIVE) if alive else \
             (rnd.randrange(256) & ~E.F_ALIVE & 0xFF)
@@ -2909,7 +2933,7 @@ def move_state(rnd, g):
 DK_AGENT = 8                            # src/const.asm (βήμα 89)
 
 
-def move_ref(a, occ, dome, g, nexthop, first, count, marks, st):
+def move_ref(a, occ, dome, g, nexthop, first, count, marks, st, wrap=None):
     """Η αναφορά, πράκτορα προς πράκτορα — και οι wh_push που πρέπει να βγουν:
     όποιος άφησε θέση θόλου, όποιος πήρε θέση θόλου.
 
@@ -2920,7 +2944,7 @@ def move_ref(a, occ, dome, g, nexthop, first, count, marks, st):
     μέρος με αέρα: εκεί δεν φαινόταν ούτε πριν ούτε μετά."""
     e, out = types.SimpleNamespace(dome=dome, struct=st), []
     for k in range(count):
-        i = (first + k) % 128
+        i = first + k if wrap is None else (first + k) % wrap     # ως το 172: % 128
         node, slot, edge, f0 = a.node[i], a.slot[i], a.edge[i], a.flags[i]
         E.move_one(a, i, g, nexthop, occ, e)
         fig = False
@@ -2954,7 +2978,7 @@ def pushes(rec):
 STRUCTS = None                          # ο πίνακας δομών της κίνησης (move_branches)
 
 
-def move_branches(sym, sim0, n=12, patch=(), quiet=False):
+def move_branches(sym, sim0, n=12, patch=(), quiet=False, wrap=None):
     """Το ent_move_slice απευθείας, σε φτιαγμένες καταστάσεις, απέναντι στο
     tools/entity.py: πεδία, κατοχή, πίνακας θόλων και οι wh_push μετά από ΚΑΘΕ
     φέτα. Γυρίζει την πρώτη διαφορά ή None."""
@@ -3008,12 +3032,12 @@ def move_branches(sym, sim0, n=12, patch=(), quiet=False):
                        ("G_NODE_OCC", 256), ("G_AGENT_MARKS", 256), ("G_DOME_TBL", len(dome)),
                        ("G_STRUCT_TBL", len(st))))
         mk0 = sym["G_AGENT_MARKS"] - 0x4000             # τα σημάδια των φιγούρων (βήμα 172)
-        marks = bytearray(bank6()[mk0:mk0 + 128])
+        marks = bytearray(bank6()[mk0:mk0 + 256])
         rest = lambda b: b"".join(b[s + k:e] for (s, k), (e, _) in
                                   zip([(0, 0)] + spans, spans + [(0x4000, 0)]))
         rest0 = rest(bank6())
         for first, count in MOVE_SLICES:
-            want = move_ref(a, occ, dome, g, nexthop, first, count, marks, st)
+            want = move_ref(a, occ, dome, g, nexthop, first, count, marks, st, wrap)
             m.write_ram(rec, bytes([(rec + 2) & 255, (rec + 2) >> 8]))
             # di · ld sp · ld bc,#7FC6: out (c),c (τράπεζα 6) · ld bc · call ·
             # ld a,#5A: ld (σημαία),a · jr $
@@ -3032,7 +3056,7 @@ def move_branches(sym, sim0, n=12, patch=(), quiet=False):
             sb = b6[sym["G_STRUCT_TBL"] - 0x4000:][:len(st)]
             p = m.peek(rec) | (m.peek(rec + 1) << 8)
             got = pushes(m.read_ram(rec + 2, p - rec - 2))
-            mk = b6[mk0:mk0 + 128]
+            mk = b6[mk0:mk0 + 256]
             for what, x, y in (("πεδία", ag, a.to_bytes()), ("κατοχή", oc, bytes(occ)),
                                ("θόλοι", dm, bytes(dome)), ("δομές", sb, bytes(st)),
                                ("wh_push", got, want),
@@ -3049,27 +3073,29 @@ def move_branches(sym, sim0, n=12, patch=(), quiet=False):
     return None
 
 def move_check(sym, sim0):
-    """Η κίνηση στα όρια, και το αρνητικό της: χωρίς το τύλιγμα της φέτας στο
-    128 (res 7,c -> nop nop) η φέτα 120,16 διαβάζει «πράκτορες» 128-135."""
+    """Η κίνηση στα όρια, και το αρνητικό της. ΑΠΟ ΤΟ ΒΗΜΑ 173 ΧΩΡΙΣ ΤΥΛΙΓΜΑ: οι
+    φέτες φτάνουν ως το 187, και η 120,16 κινεί τους 128-135· η αναφορά με το
+    τύλιγμα του 172 (mod 128, που γύριζε στους 0-7) πρέπει να διαφωνήσει. Ως
+    τότε το αρνητικό ήταν ο Z80 χωρίς το res 7,c, που έφυγε."""
     why = move_branches(sym, sim0)
     if why:
         print(f"ΑΠΟΤΥΧΙΑ κίνηση στα όρια: {why}")
         return 1
     at = sym["ENT_MOVE_SLICE"]
     code = run_peek(sym, at, 16)
-    k = next((k for k in range(15) if code[k:k + 2] == [0xCB, 0xB9]), None)
-    if k is None:
-        print("ΑΠΟΤΥΧΙΑ κίνηση στα όρια: το ent_move_slice δεν τυλίγει με res 7,c")
+    if any(code[k:k + 2] == [0xCB, 0xB9] for k in range(15)):
+        print("ΑΠΟΤΥΧΙΑ κίνηση στα όρια: το ent_move_slice τυλίγει ακόμη με res 7,c")
         return 1
-    if move_branches(sym, sim0, n=1, patch=[(at + k, 0), (at + k + 1, 0)]) is None:
-        print("ΑΠΟΤΥΧΙΑ κίνηση στα όρια: ΑΡΝΗΤΙΚΟ — χωρίς το τύλιγμα στο 128 ο "
-              "Z80 βγαίνει ίδιος με την αναφορά")
+    if move_branches(sym, sim0, n=1, wrap=128) is None:
+        print("ΑΠΟΤΥΧΙΑ κίνηση στα όρια: ΑΡΝΗΤΙΚΟ — με το τύλιγμα στο 128 η αναφορά "
+              "βγαίνει ίδια με τον Z80")
         return 1
     print(f"OK κίνηση στα όρια: {12 * len(MOVE_SLICES)} φέτες σε 12 καταστάσεις — "
           f"άφιξη σε γεμάτο δαχτυλίδι και σε δομή, απρόσιτος, κόμβος χωρίς ακμές, "
-          f"μπαγιάτικο NEXTHOP, εργαζόμενος που φεύγει από θόλο και από δομή, φέτα "
-          f"που τυλίγει — πεδία, μάσκες, θόλοι και wh_push ίδια με την αναφορά, η "
-          f"υπόλοιπη τράπεζα 6 ανέγγιχτη. ΑΡΝΗΤΙΚΟ: χωρίς το τύλιγμα στο 128 διαφέρουν")
+          f"μπαγιάτικο NEXTHOP, εργαζόμενος που φεύγει από θόλο και από δομή, φέτες "
+          f"ως το 187 και πάνω από το 128 — πεδία, μάσκες, θόλοι και wh_push ίδια με την "
+          f"αναφορά, η υπόλοιπη τράπεζα 6 ανέγγιχτη. ΑΡΝΗΤΙΚΟ: η αναφορά με το "
+          f"τύλιγμα στο 128 του βήματος 172 διαφέρει")
     return 0
 
 

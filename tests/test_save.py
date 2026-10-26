@@ -172,6 +172,15 @@ FORMAT = {
          {"G_agent_fields": 0x7000, "G_agent_marks": 0x6F00, "G_node_occ": 0x6E00,
           "G_dome_tbl": 0x6680, "G_struct_tbl": 0x6C80, "G_corr_tbl": 0x7800,
           "G_worldinfo": 0x6600}),
+    # βήμα 173: ίδια διάταξη, άλλα νοήματα — άποικοι 0-159, ρομπότ 160-175,
+    # εισβολείς 176-179, επισκέπτες 180-187: τα ρομπότ ενός σωσίματος της 12
+    # (80-95) θα ήταν άποικοι, χωρίς ανάγκες
+    13: ({"G_mach_op": 91, "G_econ_state": 103, "G_job_tbl": 211, "G_room_n": 371,
+          "G_room_list": 383, "G_crew": 479, "G_rt_nodes": 512, "G_rt_row": 768,
+          "G_node_adj": 1024},
+         {"G_agent_fields": 0x7000, "G_agent_marks": 0x6F00, "G_node_occ": 0x6E00,
+          "G_dome_tbl": 0x6680, "G_struct_tbl": 0x6C80, "G_corr_tbl": 0x7800,
+          "G_worldinfo": 0x6600}),
 }
 
 

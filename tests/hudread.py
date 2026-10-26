@@ -65,6 +65,26 @@ def text(m, sym, row, ram=None, unknown="#"):
     return "".join(g.get(cell(ram, cp, row, c), unknown) for c in range(40))
 
 
+def alert(row, strict=True):
+    """Το μήνυμα της σειράς 2, μετά από «DAY » ή «NGT ». Από το βήμα 173 η σειρά
+    αρχίζει από τον πληθυσμό χωρίς «POP », με όσα ψηφία έχει («14/54»,
+    «140/160»), οπότε το μήνυμα δεν έχει πια στήλη· ως τότε από την 21. Μια
+    σειρά χωρίς DAY/NGT (το HUD δεν γράφτηκε ακόμη): λάθος, ή «» με strict=False."""
+    for w in (" DAY ", " NGT "):
+        k = row.find(w)
+        if k >= 0:
+            return row[k + len(w):]
+    if not strict:
+        return ""
+    raise ValueError(f"η σειρά 2 χωρίς DAY/NGT: |{row}|")
+
+
+def pop(row):
+    """Ο πληθυσμός και το ταβάνι της σειράς 2: (ζωντανοί, ταβάνι), από το «a/b»."""
+    a, b = row.split(" SOL")[0].split("/")
+    return int(a.replace("O", "0")), int(b.replace("O", "0"))
+
+
 def raw(m, sym, row, ram=None):
     """Τα 40 κελιά της σειράς ως 320 bytes, κελί-κελί (8 γραμμές το καθένα)."""
     ram = screen(m) if ram is None else ram

@@ -29,10 +29,9 @@ F_IDLE      equ 16
 
 NO_EDGE     equ 255
 NO_SLOT     equ 255
-N_AGENT     equ 128
+        ; Το N_AGENT (188· 128 ως το βήμα 172) είναι στο src/const.asm.
         ; κανένα id στην κρυφή μνήμη φιγούρων (βήμα 172): το 192-255 των οκτώ
-        ; σελίδων των δεύτερων πεδίων είναι δική της (src/object.asm, of_at), και
-        ; τα 128-191 όλων των σελίδων για τους πράκτορες του βήματος 173 (ως το 187)
+        ; σελίδων των δεύτερων πεδίων είναι δική της (src/object.asm, of_at)
         assert  N_AGENT <= DF_L
 
 ; --- ΦΤΑΝΕΙ. B = edge + 1, H = AG_PG + 3, L = id. ---
@@ -135,18 +134,22 @@ ent_move_slice:
         ; Ο ΜΕΤΡΗΤΗΣ ΚΑΙ ΤΟ ID ΣΤΟ ΣΚΙΩΔΕΣ BC (βήμα 87). Το push/pop γύρω από
         ; κάθε πράκτορα ήταν 7 us· δύο exx είναι 2. Το βήμα του πράκτορα και
         ; ό,τι καλεί δεν αγγίζουν σκιώδεις, και το ISR ούτε (src/isr.asm).
+        ; ΚΑΙ ΟΙ ΣΗΜΑΙΕΣ ΣΤΟ ΣΚΙΩΔΕΣ HL (βήμα 173): H' = AG_PG, L' = id. Ο
+        ; νεκρός, ή η άδεια θέση, δεν βγαίνει ποτέ από τα σκιώδη — 41 T, 64 ως
+        ; το 172 — και ο ζωντανός κερδίζει το ld h,AG_PG, 7 T. Με 160 θέσεις
+        ; αποίκων μια αποικία των 80 έχει 80 άδειες σε κάθε περιστροφή.
         push    bc
         exx
         pop     bc
+        ld      l,c                     ; L' = ο πρώτος (ως το βήμα 172 το C', με res 7,c)
+        ld      h,AG_PG
 ems_lp:
-        ld      a,c
-        inc     c
-        res     7,c                     ; mod N_AGENT
+        bit     0,(hl)                  ; F_ALIVE
+        jr      z,ems_dead
+        ld      a,l
+        inc     l
         exx
         ld      l,a
-        ld      h,AG_PG
-        bit     0,(hl)                  ; F_ALIVE
-        jr      z,ems_nx
         ld      h,AG_EDGE >> 8
         ld      a,(hl)                  ; edge
         inc     a
@@ -197,6 +200,11 @@ ems_lp:
         ld      (hl),NO_TASK
 ems_nx:
         exx
+        djnz    ems_lp
+        exx
+        ret
+ems_dead:
+        inc     l
         djnz    ems_lp
         exx
         ret
@@ -393,7 +401,7 @@ em_id:      db 0
 em_node:    db 0
 em_nh:      db 0                ; ο επόμενος κόμβος, για το μέσα-έξω (βήμα 87)
 
-        assert  F_ALIVE == 1 && N_AGENT == 128 && DK_SLOT == 0
+        assert  F_ALIVE == 1 && N_AGENT <= 256 && DK_SLOT == 0
         assert  (AG_PG & 15) == 0 && AG_HI == 8      ; set 3,h: το δεύτερο πεδίο
         assert  NO_EDGE == 255 && (PAGE_B5 >> 8) == (PAGE_B6 >> 8)
         assert  (G_node_adj & 7) == 0 && ((G_node_adj >> 3) & 255) + 128 <= 256

@@ -5,7 +5,7 @@
 
   ΠΛΟΙΟ      το πλοίο τους (SK_FOE) προσγειώνεται στην πίστα όπως κάθε πλοίο, και
              κατεβαίνουν δύο (η αποικία έχει λιγότερους από 40) στις θέσεις
-             96-99: ρόλος 8, εργασία T_FIGHT, υγεία 160, έξω, στην πίστα. Το
+             176-179 (96-99 ως το βήμα 172): ρόλος 8, εργασία T_FIGHT, υγεία 160, έξω, στην πίστα. Το
              μέτρημα των προσγειώσεων (EC_LANDS) γίνεται 0, και στην επόμενη
              περιστροφή το fo_n λέει 2 και το HUD «INTRUDERS». Ποιο απρόσκλητο
              πλοίο είναι δικό τους, με πόσους αποίκους και προσγειώσεις, και πόσοι
@@ -57,6 +57,7 @@ import test_outside as TO                                # noqa: E402
 import hudread                                           # noqa: E402
 import codeat                                            # noqa: E402
 import econ as EC                                        # noqa: E402
+F0 = EC.AG_FOE0                 # 176 από το βήμα 173 (96 ως τότε)
 import entity as E                                       # noqa: E402
 import pack                                              # noqa: E402
 
@@ -164,20 +165,20 @@ def ship(sym, g, patch=(), patch6=(), quiet=False):
     red0, hud0 = G.red(), G.hud()
     G.land()
     if not G.until(lambda: G.alive(EC.AG_FOE0, EC.AG_FOE0 + EC.AG_NFOE), 64):
-        return "ΠΛΟΙΟ: κανείς στις θέσεις 96-99 μετά από 64 frames"
+        return f"ΠΛΟΙΟ: κανείς στις θέσεις {F0}-{F0 + 3} μετά από 64 frames"
     a = G.a()
     foes = G.alive(EC.AG_FOE0, EC.AG_FOE0 + EC.AG_NFOE)
     bad = [i for i in foes if (a.role[i], a.node[i], a.task[i], a.health[i],
                                a.flags[i] & E.F_INDOORS) != (EC.RL_FOE, PAD, EC.T_FIGHT,
                                                               EC.FOE_HP, 0)]
-    if foes != [96, 97] or bad or G.m.peek(G.EC["EC_LANDS"]) != 0:
-        return (f"ΠΛΟΙΟ: στις 96-99 {foes}, λάθος {[(i, a.role[i], a.node[i], a.task[i], a.health[i], a.flags[i]) for i in bad]}, "
+    if foes != [F0, F0 + 1] or bad or G.m.peek(G.EC["EC_LANDS"]) != 0:
+        return (f"ΠΛΟΙΟ: στις {F0}-{F0 + 3} {foes}, λάθος {[(i, a.role[i], a.node[i], a.task[i], a.health[i], a.flags[i]) for i in bad]}, "
                 f"προσγειώσεις {G.m.peek(G.EC['EC_LANDS'])}")
     G.m.run_frames(40)
     n, hud = G.m.peek(sym["FO_N"]), G.hud()
     if n != 2 or "INTRUDERS" not in hud or "INTRUDERS" in hud0:
         return f"ΠΛΟΙΟ: fo_n {n}, το HUD «{hud.strip()}» (πριν «{hud0.strip()}»)"
-    say(f"ΠΛΟΙΟ: οι 96 και 97 στην πίστα, ρόλος 8, T_FIGHT, υγεία 160· fo_n 2, «{hud.strip()}»")
+    say(f"ΠΛΟΙΟ: οι {F0} και {F0 + 1} στην πίστα, ρόλος 8, T_FIGHT, υγεία 160· fo_n 2, «{hud.strip()}»")
     # --- ΚΟΚΚΙΝΟΙ, έξω ---
     seen, reds = set(), 0
     for _ in range(40):
@@ -243,12 +244,12 @@ def guards(sym, g, patch=(), patch6=(), quiet=False):
     G.m.poke(gun, 2)
     G.m.poke(gun + 1, 0)
     G.land()
-    if not G.until(lambda: G.alive(96, 100), 64):
+    if not G.until(lambda: G.alive(F0, F0 + 4), 64):
         return "ΦΡΟΥΡΟΙ: δεν κατέβηκαν"
-    if not G.until(lambda: not G.alive(96, 100), 8000, 32):
+    if not G.until(lambda: not G.alive(F0, F0 + 4), 8000, 32):
         a = G.a()
-        return (f"ΦΡΟΥΡΟΙ: σε 8000 frames ζουν ακόμη {G.alive(96, 100)}, υγεία "
-                f"{[a.health[i] for i in G.alive(96, 100)]}, όπλα {[a.flags[c] >> 7 for c in (2, 3)]}")
+        return (f"ΦΡΟΥΡΟΙ: σε 8000 frames ζουν ακόμη {G.alive(F0, F0 + 4)}, υγεία "
+                f"{[a.health[i] for i in G.alive(F0, F0 + 4)]}, όπλα {[a.flags[c] >> 7 for c in (2, 3)]}")
     G.m.run_frames(40)
     a = G.a()
     armed = [c for c in (2, 3) if a.flags[c] & EC.F_GUN or not a.flags[c] & E.F_ALIVE]
@@ -278,12 +279,12 @@ def thirst(sym, g, patch=(), patch6=(), quiet=False):
     if not G.until(lambda: G.b6()[G.ag + 768 + 2048 + c] == E.T_NEED, 200, 1):
         return f"ΔΙΨΑ: δεν πήγε για νερό (εργασία {G.b6()[G.ag + 768 + 2048 + c]})"
     G.land()
-    if not G.until(lambda: G.alive(96, 100), 64):
+    if not G.until(lambda: G.alive(F0, F0 + 4), 64):
         return "ΔΙΨΑ: δεν κατέβηκαν"
     pos = lambda b: (b[G.ag + 256 + c], b[G.ag + 512 + 2048 + c], b[G.ag + 768 + c])
     fought, back, frames, tried = None, None, 0, 0
     was = pos(G.b6())
-    while G.alive(96, 100) and frames < 3000:
+    while G.alive(F0, F0 + 4) and frames < 3000:
         G.m.run_frames(1)
         frames += 1
         b = G.b6()
@@ -292,7 +293,7 @@ def thirst(sym, g, patch=(), patch6=(), quiet=False):
         t, w, now = b[G.ag + 768 + 2048 + c], b[G.ag + 1024 + 2048 + c], pos(b)
         if fought is None and t == EC.T_FIGHT and w < 64:
             fought = (frames, w)
-        elif fought is not None and t == E.T_NEED and G.alive(96, 100):
+        elif fought is not None and t == E.T_NEED and G.alive(F0, F0 + 4):
             tried += 1
             if now != was and back is None:
                 back = (frames, w, was, now)
@@ -304,7 +305,7 @@ def thirst(sym, g, patch=(), patch6=(), quiet=False):
                 f"{back[2]} -> {back[3]}), με εισβολείς ζωντανούς")
     say(f"ΔΙΨΑ: ο φρουρός με νερό {fought[1]} στη μάχη από το frame {fought[0]} ως το "
         f"τέλος της, {frames} frames· T_NEED από τις ανάγκες σε {tried} frames, κανένα "
-        f"βήμα με αυτό· ζουν εισβολείς {len(G.alive(96, 100))}")
+        f"βήμα με αυτό· ζουν εισβολείς {len(G.alive(F0, F0 + 4))}")
     return None
 
 

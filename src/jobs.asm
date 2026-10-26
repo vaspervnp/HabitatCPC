@@ -21,7 +21,12 @@
 NO_TASK     equ 255
 JOB_SCAN    equ 4
 JOB_ASSIGN  equ 4
-JOB_LOOK    equ 32                  ; πράκτορες που εξετάζονται ανά επίσκεψη
+JOB_LOOK    equ 44                  ; πράκτορες που εξετάζονται ανά επίσκεψη (32 ως το βήμα 172)
+JOB_NAG     equ AG_BOT0 + AG_NBOT   ; ...από τους 176 αποίκους και ρομπότ, κυκλικά
+        ; Ο ΚΑΘΕΝΑΣ ΚΑΘΕ ΤΕΣΣΕΡΙΣ ΠΕΡΙΣΤΡΟΦΕΣ, όπως ως το βήμα 172 με 32 από τους
+        ; 128. Το EC_JAGENT είναι πάντα πολλαπλάσιο του 44, άρα μια επίσκεψη δεν
+        ; περνά ποτέ το 175: κανένα mod μέσα στον βρόχο.
+        assert  JOB_NAG == 4 * JOB_LOOK
 F_WORKING   equ 32
         assert  F_WORKING == 1 << 5     ; entity.asm: bit/res 5
 
@@ -711,8 +716,7 @@ jas_rb:
 jas_nx:
         pop     bc
 jas_next:
-        inc     c
-        res     7,c
+        inc     c                       ; ως το βήμα 172 και res 7,c
         djnz    jas_lp
         jr      jas_done
 jas_stop:
@@ -720,7 +724,10 @@ jas_stop:
 jas_done:
         ld      a,(EC_JAGENT)
         add     a,JOB_LOOK
-        and     127
+        cp      JOB_NAG
+        jr      c,jas_st
+        xor     a                       ; ξανά από τον πρώτο (ως το βήμα 172 and 127)
+jas_st:
         ld      (EC_JAGENT),a
         ret
 

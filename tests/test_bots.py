@@ -3,8 +3,8 @@
 
 Η πρόζα — οι αποφάσεις του παίκτη, και ό,τι ακολουθεί από αυτές:
 
-  ΘΕΣΕΙΣ     οι πράκτορες 0-79 είναι άποικοι και οι 80-95 ρομπότ, τα 80 + 16
-             του §6.1.
+  ΘΕΣΕΙΣ     οι πράκτορες 0-159 είναι άποικοι και οι 160-175 ρομπότ, τα 160 + 16
+             του §6.1 (βήμα 173· ως τότε 0-79 και 80-95).
   ΞΥΠΝΗΜΑ    σε κάθε περιστροφή (θέση 15, πριν από το πλοίο): με ένα Bot στο
              απόθεμα και μια ελεύθερη θέση ρομπότ, ένα ρομπότ ξυπνά στην ΠΡΩΤΗ
              ελεύθερη θέση, στον πρώτο θόλο Factory του ευρετηρίου που έχει
@@ -22,9 +22,9 @@
              οι μπάρες τους δεν κινούνται, δεν πάνε ποτέ για ανάγκη (T_NEED),
              και η ζήτηση οξυγόνου είναι 2 ανά άποικο μέσα, χωρίς αυτά.
   ΤΑΒΑΝΙ     τα ρομπότ δεν μετρούν: το EC_ALIVE και το POP του HUD είναι οι
-             άποικοι. Το ταβάνι του Control σταματά στο 80 (ως το 91 στο 128,
-             και πάνω από τον 95ο κανείς δεν κινούνταν), και το πλοίο δεν γεννά
-             ποτέ σε θέση ρομπότ.
+             άποικοι. Το ταβάνι του Control σταματά στο 160 (80 από το 92 ως το
+             172, και ως το 91 στο 128, όπου πάνω από τον 95ο κανείς δεν
+             κινούνταν), και το πλοίο δεν γεννά ποτέ σε θέση ρομπότ.
   ΔΟΥΛΕΙΑ    σε νέο παιχνίδι χωρίς μηχανικό, ένα ηλιακό το τροφοδοτεί το
              ρομπότ μεταφοράς και το χτίζει το ρομπότ κατασκευής. Μένουν έξω
              χωρίς στολή και ζουν.
@@ -39,8 +39,8 @@
 Αρνητικά, με τον κώδικα πειραγμένο στη μνήμη: χωρίς τον έλεγχο του
 αποθέματος, χωρίς τη μείωσή του, πάντα κατασκευής, δεκαπέντε θέσεις, μόνο το
 πρώτο εργοστάσιο, γεννημένο έξω (ΚΑΝΟΝΑΣ)· οι ανάγκες και στα ρομπότ (ΑΝΑΓΚΕΣ)·
-ο μετρητής ζωντανών στις 128 θέσεις (ΑΝΑΓΚΕΣ)· το ταβάνι στο 128 και το
-πλοίο που γεννά στις θέσεις ρομπότ όπως ως το 91 (ΤΑΒΑΝΙ)· το Automation με
+ο μετρητής ζωντανών και στα ρομπότ (ΑΝΑΓΚΕΣ)· το ταβάνι στο 80 όπως ως το
+172 και το πλοίο που γεννά στις θέσεις ρομπότ όπως ως το 91 (ΤΑΒΑΝΙ)· το Automation με
 F_WORKING όπως ως το 91 (AUTOMATION).
 """
 import os, re, sys
@@ -163,12 +163,14 @@ RULE_CASES = (
     ("απόθεμα, κανένα εργοστάσιο", 3, [], [], 0, None),
     ("εργοστάσιο χωρίς μηχανή robots", 3, [(1, 0, None)], [], 0, None),
     ("η μηχανή στο δεύτερο εργοστάσιο, υποδοχή 7", 3, [(1, 0, None), (2, 2, 7)], [], 0,
-     (80, CBOT, 2)),
-    ("80-84 ζωντανά: το 85 μεταφοράς", 2, [(1, 0, 0)], range(80, 85), 0, (85, CARRY, 1)),
-    ("μόνο το 95 ελεύθερο", 1, [(1, 0, 0)], range(80, 95), 0, (95, CARRY, 1)),
+     (BOT0, CBOT, 2)),
+    (f"{BOT0}-{BOT0 + 4} ζωντανά: το {BOT0 + 5} μεταφοράς", 2, [(1, 0, 0)], range(BOT0, BOT0 + 5),
+     0, (BOT0 + 5, CARRY, 1)),
+    (f"μόνο το {BOT0 + 15} ελεύθερο", 1, [(1, 0, 0)], range(BOT0, BOT0 + 15), 0,
+     (BOT0 + 15, CARRY, 1)),
     ("δεκαέξι ρομπότ", 9, [(1, 0, 0)], ALL, 0, None),
-    ("απόθεμα 256", 256, [(1, 0, 0)], [], 0, (80, CBOT, 1)),
-    ("γεμάτο δακτυλίδι", 1, [(2, 0, 0)], [81, 83], 0xFF, (80, CBOT, 2)),
+    ("απόθεμα 256", 256, [(1, 0, 0)], [], 0, (BOT0, CBOT, 1)),
+    ("γεμάτο δακτυλίδι", 1, [(2, 0, 0)], [BOT0 + 1, BOT0 + 3], 0xFF, (BOT0, CBOT, 2)),
 )
 
 
@@ -253,12 +255,12 @@ def chain(sym, patch=(), patch6=(), quiet=False):
         return "ΑΛΥΣΙΔΑ: κανένα ρομπότ σε 4.000 frames"
     used = [100 - G.w16(st + 2 * k) for k in (EC.S_METAL, EC.S_PROC, EC.S_BIOPL)]
     made = len(G.alive(BOT0, BOT0 + NBOT)) + G.bots()
-    a = G.agent(80)
+    a = G.agent(BOT0)
     if used != [2 * made, made, made] or a["role"] != CBOT or a["node"] != FAC or a["flags"] != 3:
         return (f"ΑΛΥΣΙΔΑ: ξόδεψε {used} (μέταλλο, επεξεργαστές, βιοπλαστικό) για {made} Bots, "
-                f"το 80 είναι {a}")
+                f"το {BOT0} είναι {a}")
     say(f"ΑΛΥΣΙΔΑ: η μηχανή robots έφτιαξε {made} Bot με {used[0]} μέταλλο, {used[1]} "
-        f"επεξεργαστή, {used[2]} βιοπλαστικό· το 80 ξύπνησε στο εργοστάσιο, κατασκευής, μέσα, "
+        f"επεξεργαστή, {used[2]} βιοπλαστικό· το {BOT0} ξύπνησε στο εργοστάσιο, κατασκευής, μέσα, "
         f"σε {t + 16} frames")
     # --- ένα ανά περιστροφή ---
     G.set_bots(5)
@@ -266,14 +268,14 @@ def chain(sym, patch=(), patch6=(), quiet=False):
     while len(seen) < 5 and t < 400:
         m.run_frames(1)
         t += 1
-        for i in G.alive(81, BOT0 + NBOT):
+        for i in G.alive(BOT0 + 1, BOT0 + NBOT):
             seen.setdefault(i, t)
     order = sorted(seen, key=seen.get)
     gaps = [seen[b] - seen[a] for a, b in zip(order, order[1:])]
     roles = [G.agent(i)["role"] for i in order]
-    if order != [81, 82, 83, 84, 85] or gaps != [16] * 4 or roles != [CARRY, CBOT] * 2 + [CARRY]:
+    if order != list(range(BOT0 + 1, BOT0 + 6)) or gaps != [16] * 4 or roles != [CARRY, CBOT] * 2 + [CARRY]:
         return f"ΡΥΘΜΟΣ: ξύπνησαν {order} με ρόλους {roles}, ανάμεσα {gaps} frames"
-    say(f"ΡΥΘΜΟΣ: με απόθεμα 5, τα 81-85 ένα ανά 16 frames, μεταφοράς και κατασκευής εναλλάξ")
+    say(f"ΡΥΘΜΟΣ: με απόθεμα 5, τα {BOT0 + 1}-{BOT0 + 5} ένα ανά 16 frames, μεταφοράς και κατασκευής εναλλάξ")
     return needs(G, say)
 
 
@@ -297,50 +299,59 @@ def needs(G, say):
     # (econ_flow) καλείται μία φορά με τις σημαίες που φαίνονται τώρα.
     m.poke(G.sym["UI_SPD"], 0)
     m.run_frames(20)
-    pop = TA.TI.same(G.hud(2))[:7]
+    row2 = G.hud(2)
     alive = G.alive(0, BOT0)
     inside = [i for i in alive if G.b6[G.ag + i] & 2]
     if G.call("ECON_FLOW") is None:
         return "ΤΑΒΑΝΙ: το econ_flow δεν τερμάτισε"
     if (m.peek(G.EC["EC_ALIVE"]) != len(alive) or G.w16(G.EC["EC_O2USE"]) != 2 * len(inside)
-            or pop != TA.TI.same(f"POP {len(alive):2d}/")):
+            or not row2.startswith(f"{len(alive)}/")):
         return (f"ΤΑΒΑΝΙ: EC_ALIVE {m.peek(G.EC['EC_ALIVE'])}, ζήτηση οξυγόνου "
-                f"{G.w16(G.EC['EC_O2USE'])}, «{pop}» — άποικοι {len(alive)}, μέσα {len(inside)}, "
-                f"ρομπότ {len(G.alive(BOT0, BOT0 + NBOT))}")
+                f"{G.w16(G.EC['EC_O2USE'])} — άποικοι {len(alive)}, μέσα {len(inside)}, "
+                f"ρομπότ {len(G.alive(BOT0, BOT0 + NBOT))}, η σειρά 2 «{row2}»")
     say(f"ΑΝΑΓΚΕΣ: {len(bots)} ρομπότ, {t} frames — καμία μπάρα τους δεν κινήθηκε, κανένα δεν "
         f"πήγε για ανάγκη, ενώ οι {len(hungry)} άποικοι πείνασαν· EC_ALIVE {len(alive)}, "
-        f"ζήτηση οξυγόνου {2 * len(inside)}, «{G.hud(2)[:8]}»")
+        f"ζήτηση οξυγόνου {2 * len(inside)}, «{row2[:8]}»")
     return None
 
 
 # --------------------------------------------------------------------------
-# ΤΑΒΑΝΙ — τρεις αίθουσες ελέγχου, και ένα πλοίο με τις 80 θέσεις γεμάτες
+# ΤΑΒΑΝΙ — τρεις αίθουσες ελέγχου και μία τέταρτη, και ένα πλοίο με τις 160
+# θέσεις γεμάτες
 # --------------------------------------------------------------------------
 def cap(sym, patch=(), patch6=(), quiet=False):
     say = (lambda s: None) if quiet else (lambda s: print("    " + s))
     G = Game(sym, patch, patch6)
     m = G.m
-    for d in range(3):
-        G.b6[G.dome + 24 * d + 3] = R_CONTROL
-    m.poke(G.sym["UI_SPD"], 1)
-    m.run_frames(40)
-    m.poke(G.sym["UI_SPD"], 0)
-    m.run_frames(4)
-    if m.peek(G.EC["EC_POPCAP"]) != 80:
-        return f"ΤΑΒΑΝΙ: με τρεις αίθουσες ελέγχου το ταβάνι είναι {m.peek(G.EC['EC_POPCAP'])}, όχι 80"
-    # Οι 80 θέσεις αποίκων ζωντανές, οι θέσεις ρομπότ άδειες, και ένα ταβάνι
+    caps = []
+    # Τρεις αίθουσες ελέγχου: 6 + 3 x 48 = 150. Και μια τέταρτη, ο θόλος 3 του
+    # πίνακα, έτοιμος, που δεν τον έχει η αποικία: 198, άρα το ταβάνι 160
+    # (βήμα 173· ως τότε 80, και ως το 91 128).
+    for n in (3, 4):
+        for d in range(n):
+            G.b6[G.dome + 24 * d + 3] = R_CONTROL
+        G.b6[G.dome + 24 * 3 + 4] = 2 if n == 4 else G.b6[G.dome + 24 * 3 + 4]
+        m.poke(G.sym["UI_SPD"], 1)
+        m.run_frames(40)
+        m.poke(G.sym["UI_SPD"], 0)
+        m.run_frames(4)
+        caps.append(m.peek(G.EC["EC_POPCAP"]))
+    if caps != [150, BOT0]:
+        return f"ΤΑΒΑΝΙ: με τρεις και τέσσερις αίθουσες ελέγχου το ταβάνι είναι {caps}, όχι [150, {BOT0}]"
+    # Οι 160 θέσεις αποίκων ζωντανές, οι θέσεις ρομπότ άδειες, και ένα ταβάνι
     # που (με το χέρι) θα χωρούσε τέσσερις ακόμη: κανείς δεν γεννιέται.
-    for i in range(128):
+    for i in range(E.MAXAGENT):
         G.b6[G.ag + i] = 3 if i < BOT0 else 0
     m.poke(G.EC["EC_ALIVE"], BOT0)
     m.poke(G.EC["EC_POPCAP"], BOT0 + 4)
     if G.call("SHIP_CREW") is None:
         return "ΤΑΒΑΝΙ: το ship_crew δεν τερμάτισε"
-    born = G.alive(BOT0, 128)
+    born = G.alive(BOT0, E.MAXAGENT)
     if born:
-        return f"ΤΑΒΑΝΙ: με τις 80 θέσεις γεμάτες το πλοίο γέννησε στις {born}"
-    say("ΤΑΒΑΝΙ: τρεις αίθουσες ελέγχου, ταβάνι 80 (ως το 91: 128)· με τις 80 θέσεις αποίκων "
-        "γεμάτες και ταβάνι 84 με το χέρι, το πλοίο δεν γεννά στις θέσεις ρομπότ")
+        return f"ΤΑΒΑΝΙ: με τις {BOT0} θέσεις γεμάτες το πλοίο γέννησε στις {born}"
+    say(f"ΤΑΒΑΝΙ: τρεις αίθουσες ελέγχου, ταβάνι 150, τέσσερις, {BOT0} (ως το 172: 80, ως το "
+        f"91: 128)· με τις {BOT0} θέσεις αποίκων γεμάτες και ταβάνι {BOT0 + 4} με το χέρι, "
+        "το πλοίο δεν γεννά στις θέσεις ρομπότ")
     return None
 
 
@@ -355,7 +366,7 @@ def work(sym, g, patch=(), quiet=False):
     w.put6(AGF + 2048 + TS.ENGINEER, [0])           # ο μηχανικός γίνεται εργάτης (AG_ROLE)
     # Τα δύο ρομπότ με τα bytes που γράφει το bot_tick, στο σκάφος (κόμβος 64),
     # έξω: η γέννηση ελέγχεται στον ΚΑΝΟΝΑ, εδώ η δουλειά.
-    for i, role in ((80, CBOT), (81, CARRY)):
+    for i, role in ((BOT0, CBOT), (BOT0 + 1, CARRY)):
         for k, f in enumerate(E.FIELDS):
             v = {"flags": 1, "role": role, "node": TS.SHIP, "slot": 255, "dest": TS.SHIP,
                  "edge": 255, "progress": 0, "task": 255, "morale": 160,
@@ -367,17 +378,17 @@ def work(sym, g, patch=(), quiet=False):
         m.run_frames(5)
         t += 5
         takers |= {(j[0], j[2]) for j in w.jobs() if j[2] != 255}
-    alive = [w.agent(i)["f"] & 1 for i in (80, 81)]
+    alive = [w.agent(i)["f"] & 1 for i in (BOT0, BOT0 + 1)]
     supply = {a for k, a in takers if k == TS.J_SUPPLY}
     build = {a for k, a in takers if k == TS.J_BUILD}
-    if w.struct(1)[4] != TS.DS_ACTIVE or 81 not in supply or build != {80} or alive != [1, 1]:
+    if w.struct(1)[4] != TS.DS_ACTIVE or BOT0 + 1 not in supply or build != {BOT0} or alive != [1, 1]:
         return (f"ΔΟΥΛΕΙΑ: σε {t} frames το ηλιακό {w.struct(1)}, Supply από {sorted(supply)}, "
                 f"Build από {sorted(build)}, ζωντανά {alive}")
     m.run_frames(3000)
-    if [w.agent(i)["f"] & 1 for i in (80, 81)] != [1, 1]:
+    if [w.agent(i)["f"] & 1 for i in (BOT0, BOT0 + 1)] != [1, 1]:
         return "ΔΟΥΛΕΙΑ: τα ρομπότ πέθαναν έξω"
-    say(f"ΔΟΥΛΕΙΑ: χωρίς μηχανικό, το ηλιακό το τροφοδότησε το 81 (μεταφοράς) και το "
-        f"έχτισε το 80 (κατασκευής) σε {t} frames· 3.000 frames αργότερα έξω, και τα δύο ζουν")
+    say(f"ΔΟΥΛΕΙΑ: χωρίς μηχανικό, το ηλιακό το τροφοδότησε το {BOT0 + 1} (μεταφοράς) και το "
+        f"έχτισε το {BOT0} (κατασκευής) σε {t} frames· 3.000 frames αργότερα έξω, και τα δύο ζουν")
     return None
 
 
@@ -482,16 +493,22 @@ def negatives(sym):
     at = find(b6, sym["BOT_TICK"], [0x1C, 0x10])      # inc e / djnz bt_flp
     out.append(("μόνο το πρώτο εργοστάσιο",
                 [(at[0] + 1, 0), (at[0] + 2, 0)] if len(at) == 1 else None, True, "rules"))
-    # οι ανάγκες στο b6code από το βήμα 110 (src/main.asm)
-    bank6("οι ανάγκες και στα ρομπότ", "ENT_NEEDS_SLICE", 8, [0xFE, BOT0, 0xD0],
-          [(1, 0xFF)], "chain")
-    zero("ο μετρητής ζωντανών στις 128", "EN_COUNT", 12, [0x01, 0x00, BOT0 // 8],
-         [(2, 16)], "chain")
-    # cp 81 / jr c,+2 / ld a,80 στο rooms_rebuild· ως το 91 cp 129 και 128
-    bank6("ταβάνι 128", "ROOMS_REBUILD", 160, [0xFE, BOT0 + 1, 0x38, 0x02, 0x3E, BOT0],
-          [(1, 129), (5, 128)], "cap")
+    # οι ανάγκες: η βάση του τροχού ως το 176 και όχι ως το 160 (wh_decay, βήμα 173:
+    # ως τότε ένα cp 80 στο ent_needs_slice), οπότε η φέτα 160-199 είναι ρομπότ
+    zero("οι ανάγκες και στα ρομπότ", "WH_DECAY", 24, [0xFE, BOT0, 0x38],
+         [(1, BOT0 + NBOT)], "chain")
+    # ld a,(EC_ALIVE) · ld d,a · ld hl · ld bc,20*256 (βήμα 173): και η έξοδος στο
+    # EC_ALIVE σβηστή (ld a,255), αλλιώς ο μετρητής σταματά πριν από τα ρομπότ
+    al = G.EC["EC_ALIVE"]
+    zero("ο μετρητής ζωντανών και στα ρομπότ", "EN_COUNT", 12,
+         [0x3A, al & 255, al >> 8, 0x57, 0x21],
+         [(0, 0x3E), (1, 0xFF), (2, 0x00), (9, (BOT0 + NBOT) // 8)], "chain")
+    # cp 161 / jr c,+2 / ld a,160 στο rooms_rebuild· ως το 172 cp 81 και 80
+    bank6("ταβάνι 80", "ROOMS_REBUILD", 160, [0xFE, BOT0 + 1, 0x38, 0x02, 0x3E, BOT0],
+          [(1, 81), (5, 80)], "cap")
+    # sub 160 / ret nc στο ship_crew: sub 176 και ο πρώτος νεκρός είναι ρομπότ
     bank6("το πλοίο γεννά στις θέσεις ρομπότ", "SHIP_CREW", 12, [0xD6, BOT0, 0xD0],
-          [(1, 128), (2, 0xC8)], "cap")
+          [(1, BOT0 + NBOT)], "cap")
     bank6("Automation με F_WORKING", "SOL_ROLLOVER", 200, [0xE6, 0x01, 0x81], [(1, 0x20)],
           "auto")
     return out
@@ -507,7 +524,7 @@ def main():
     check(why is None, why or "αλυσίδα, ρυθμός, ανάγκες και POP: από τη μηχανή ως το ρομπότ")
 
     why = cap(sym)
-    check(why is None, why or "ταβάνι: 80, και το πλοίο έξω από τις θέσεις ρομπότ")
+    check(why is None, why or f"ταβάνι: {BOT0}, και το πλοίο έξω από τις θέσεις ρομπότ")
 
     why = work(sym, g)
     check(why is None, why or "δουλειά: Supply από το ρομπότ μεταφοράς, Build από το ρομπότ κατασκευής")

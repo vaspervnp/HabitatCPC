@@ -14,14 +14,17 @@
 ; πλακιδίων — τρέχει σε ΚΑΘΕ frame, με ταβάνι, όσο ο γράφος είναι βρώμικος.
 
 WH_SLOTS    equ 16
-WH_MOVE_DEF   equ 12                  ; πράκτορες ανά θέση κίνησης (§7.3)
-WH_NEED_DEF   equ 8                   ; άποικοι ανά θέση αναγκών (§7.3)
-WH_NEED_SPAN  equ 24                  ; 3 θέσεις x 8
-MAX_COLONIST  equ 96
-        ; 80 άποικοι + 16 ρομπότ (βήμα 92, src/const.asm): οι φέτες αναγκών των
-        ; οκτώ πέφτουν ολόκληρες στη μία ή στην άλλη πλευρά του 80.
-        assert  AG_BOT0 + AG_NBOT == MAX_COLONIST && (AG_BOT0 & 7) == 0
-        assert  WH_NEED_DEF == 8 && (WH_NEED_SPAN & 7) == 0
+WH_NMOVE    equ 7                   ; θέσεις κίνησης, 0-6 (βήμα 173· ως τότε 8)
+WH_NNEED    equ 4                   ; θέσεις αναγκών, 7-10 (βήμα 173· ως τότε 3)
+WH_MOVE_DEF   equ 25                  ; πράκτορες ανά θέση κίνησης (§7.3· 12 ως το βήμα 172)
+WH_NEED_DEF   equ 10                  ; άποικοι ανά θέση αναγκών (§7.3· 8 ως το βήμα 172)
+WH_NEED_SPAN  equ WH_NNEED * WH_NEED_DEF  ; 40 ανά περιστροφή
+MAX_COLONIST  equ AG_BOT0             ; 160: οι ανάγκες είναι μόνο των αποίκων
+        ; 160 άποικοι + 16 ρομπότ (βήμα 173, src/const.asm): επτά θέσεις των 25,
+        ; και η τελευταία έναν παραπάνω (wm_last), 150-175. Οι ανάγκες: 4 x 10
+        ; ανά περιστροφή, ο καθένας κάθε τέσσερις, όπως με τους 3 x 8 των 96.
+        assert  WH_NMOVE * WH_MOVE_DEF + 1 == AG_BOT0 + AG_NBOT
+        assert  AG_BOT0 == WH_NNEED * WH_NEED_SPAN && WH_NMOVE + WH_NNEED == 11
 WH_RT_B     equ 15                  ; επεκτάσεις κόμβων ανά frame. 12 ως το
                                     ; βήμα 62· στα 15 από το 63, όταν οι 15
                                     ; κόστισαν όσο οι 12 και το άνοιγμα μιας
@@ -142,16 +145,21 @@ wf_slot:
         ld      l,a
         jp      (hl)
 
-; --- θέσεις 0-7: κίνηση, (wh_move_n) πράκτορες η καθεμία ---
+; --- θέσεις 0-6: κίνηση, (wh_move_n) πράκτορες η καθεμία, και η 6 έναν ακόμη ---
 ;
 ; Ο πρώτος πράκτορας της φέτας είναι θέση * πλήθος. Ο πολλαπλασιασμός είναι
 ; βρόχος πρόσθεσης και όχι ολίσθηση επίτηδες: το §7.3 μεγαλώνει τις φέτες όσο
 ; μεγαλώνει η αποικία, και μια ολίσθηση θα δούλευε μόνο για δυνάμεις του δύο.
-; Τρέχει μία φορά ανά frame — το κόστος του δεν μετριέται.
+; Τρέχει μία φορά ανά frame — το κόστος του δεν μετριέται. ΟΙ 176 ΔΕΝ ΜΟΙΡΑΖΟΝΤΑΙ
+; ΣΤΑ ΕΠΤΑ (βήμα 173): η τελευταία φέτα πάει από το wm_last, με B + 1.
 wh_move:
         ld      hl,ent_move_slice
+        ld      a,e
+        cp      WH_NMOVE - 1
         ld      a,(wh_move_n)
         ld      c,0
+        jr      nz,wh_go
+        ld      hl,wm_last
 ; wh_go — B = A, C += E * A, και στο HL: η φέτα (C = πρώτος, B = πλήθος).
 wh_go:
         push    hl
@@ -163,17 +171,21 @@ wg_lp:
         add     a,b
         ld      c,a
         jr      wg_lp
+wm_last:
+        inc     b
+        jp      ent_move_slice
 
-; --- θέσεις 8-10: ανάγκες — φθορά, ικανοποίηση, υγεία, θάνατος, απόφαση ---
+; --- θέσεις 7-10: ανάγκες — φθορά, ικανοποίηση, υγεία, θάνατος, απόφαση ---
 ;
-; Οι τρεις θέσεις μοιράζονται 24 αποίκους από το wh_need_base, και η 10
+; Οι τέσσερις θέσεις μοιράζονται 40 αποίκους από το wh_need_base, και η 10
 ; προχωρά τη βάση ΑΦΟΥ πάρει τη δική της φέτα από την παλιά.
 wh_decay:
-        res     3,e                     ; 8-10 -> 0-2
+        ld      a,e
+        sub     WH_NMOVE                ; 7-10 -> 0-3
+        ld      e,a
         ld      hl,wh_need_base
         ld      c,(hl)
-        ld      a,e
-        cp      2
+        cp      WH_NNEED - 1
         jr      nz,wd_go
         ld      a,c
         add     a,WH_NEED_SPAN
@@ -189,8 +201,8 @@ wd_go:
 
 wh_table:
         dw wh_move, wh_move, wh_move, wh_move
-        dw wh_move, wh_move, wh_move, wh_move
-        dw wh_decay, wh_decay, wh_decay
+        dw wh_move, wh_move, wh_move
+        dw wh_decay, wh_decay, wh_decay, wh_decay
         dw econ_prod_slice              ; 11 παραγωγή
         dw econ_flow                    ; 12 ισοζύγιο ροών
         dw jobs_tick                    ; 13 πίνακας εργασιών

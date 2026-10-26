@@ -143,8 +143,9 @@ fg_paint (το νέο κελί άδειο), χωρίς το fg_build στο view
 πάνω από το P χωρίς το cpl, πρώτα κατά y ως τη στήλη του κέντρου του Q, το
 σκέλος στη στήλη της θέσης 0, και η σειρά μέσα στο Q που κινεί μόνο το y.
 Από το βήμα 134: χωρίς το fg_ord (η ΣΕΙΡΑ), το fg_build με τη σειρά των
-πρακτόρων (το ΞΑΝΑΧΤΙΣΜΑ), και σε όλους τους 128 πράκτορες (ο ΔΡΟΜΟΣ: το EC_X
-σβήνει).
+πρακτόρων (το ΞΑΝΑΧΤΙΣΜΑ), και σε όλους τους 256 (ο ΔΡΟΜΟΣ: τα σημάδια των
+188-255, που δεν υπάρχουν, σβήνουν· ως το βήμα 172 σε όλους τους 128, και το
+EC_X έσβηνε ως το 171).
 """
 import ctypes, os, sys
 
@@ -157,6 +158,7 @@ import test_game as TG                                   # noqa: E402
 import test_outside as TO                                # noqa: E402
 import balance as B                                      # noqa: E402
 import cpc                                               # noqa: E402
+N_AGENT = 188                       # οι ids σε χρήση, src/const.asm (128 ως το βήμα 172)
 
 SHIP = 64
 SOLAR_FAR = (1, 15)      # επτάμισι tiles νότια: ο δρόμος περνά από ελεύθερο έδαφος
@@ -330,7 +332,7 @@ class G:
         return ((lerp(ax, bx, q), ay) if q < 256 else (bx, lerp(ay, by, q - 256))) + (False,)
 
     def model(self):
-        return {i: w for i in range(128) if (w := self.want(i)) is not None}
+        return {i: w for i in range(N_AGENT) if (w := self.want(i)) is not None}
 
     def figs(self):
         """Η λίστα, με τη σειρά της: [(πράκτορας, x, y, φιγούρα)]."""
@@ -454,19 +456,21 @@ class G:
         # και μένουν ίδια τα 100-111 και τα 120-127. Από το βήμα 172 τα σημάδια
         # έχουν σελίδα (G_agent_marks) και το EC_X είναι αλλού· το fg_build
         # περνά ακόμη μόνο τους πράκτορες που υπάρχουν.
+        # ΑΠΟ ΤΟ ΒΗΜΑ 173 ΟΛΟΙ ΟΙ 0-187 ΥΠΑΡΧΟΥΝ (άποικοι, ρομπότ, εισβολείς,
+        # επισκέπτες), και ό,τι δεν πρέπει να αγγίξει είναι τα 188-255 της σελίδας.
         c = self.clone()
         mk = self.L["G_agent_marks"] - 0x4000
-        ag = [i for i in range(128) if i < 100 or 112 <= i < 120]
-        for i in range(128):
-            c.bank(6)[mk + i] = 1 if i in ag else 0x40 + i
+        ag = list(range(N_AGENT))
+        for i in range(256):
+            c.bank(6)[mk + i] = 1 if i in ag else 0x40 + (i & 0x3F)
         other = c.full()
         kept = c.figs()
         if kept != figs or any(c.bank(6)[mk + i] for i in ag):
             return (f"{tag}: η πλήρης σχεδίαση δεν κρατά τη λίστα: {kept}, όχι {figs}, "
                     f"σημάδια {[i for i in ag if c.bank(6)[mk + i]][:8]}"), set()
-        if any(c.bank(6)[mk + i] != 0x40 + i for i in range(100, 128) if i not in ag):
-            return (f"{tag}: η πλήρης σχεδίαση σβήνει σημάδια 100-127: "
-                    f"{bytes(c.bank(6)[mk + 100:mk + 128]).hex()}"), set()
+        if any(c.bank(6)[mk + i] != 0x40 + (i & 0x3F) for i in range(N_AGENT, 256)):
+            return (f"{tag}: η πλήρης σχεδίαση σβήνει σημάδια {N_AGENT}-255: "
+                    f"{bytes(c.bank(6)[mk + N_AGENT:mk + 256]).hex()}"), set()
         c.m.poke(self.sym["FG_N"], 0)
         c.full()
         cl = {a: (x, y, f) for a, x, y, f in c.figs()}
@@ -1182,11 +1186,11 @@ def main():
     fo = find(sym["DHA_MV"], [0xCD] + w(sym["FG_ORD"]), 40)
     fz = find(sym["FG_BUILD"], [0xB7, 0x28], 20)                   # or a / jr z,fgb_all
     # ld bc,(AG_FOE0 + AG_NFOE) * 256 + 255: το δεύτερο κομμάτι (βήμα 136)
-    fn = find(sym["FGB_ALL"], [0x01, 0xFF, 100], 80)
+    fn = find(sym["FGB_ALL"], [0x01, 0xFF, N_AGENT - 8], 80)      # 180 (100 ως το βήμα 172)
     for label, patch, fn_ in (
             ("χωρίς το fg_ord", fo and [(fo + k, 0) for k in range(3)], order),
             ("το fg_build με τη σειρά των πρακτόρων", fz and [(fz + 1, 0x18)], rebuild),
-            ("το fg_build σε όλους τους 128 πράκτορες", fn and [(fn + 2, 128)], scenario)):
+            ("το fg_build σε όλους τους 256", fn and [(fn + 2, 0)], scenario)):
         if not patch:
             check(False, f"δεν βρέθηκε πού να πειραχτεί για «{label}»")
             continue

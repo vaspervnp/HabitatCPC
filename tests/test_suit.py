@@ -28,11 +28,12 @@
              θόλο, και ο 1 δεν αλλάζει. Ως το βήμα 103 ο 0 έφτανε στο
              εργοτάξιο με το F_INDOORS, και ανέπνεε τον αέρα της αποικίας.
   ΤΥΧΑΙΑ     (βήμα 104) 400 κλήσεις του lk_air_out σε τυχαίες καταστάσεις —
-             σημαίες, κόμβοι, ακμές, στολές των 128, και ένας τυχαίος γράφος
+             σημαίες, κόμβοι, ακμές, στολές των 188 (128 ως το βήμα 172), και ένας τυχαίος γράφος
              με μισές και διπλές ακμές — = η αναφορά (tools/entity.py,
              air_out): όσοι στέκονται στο airlock, και όσοι ταξιδεύουν μέσα
              και η ακμή τους καταλήγει σε αυτό· οι σημαίες, οι στολές και τα
-             σημάδια (fg_mark) των 128, και τίποτε άλλο στα πεδία τους.
+             σημάδια (fg_mark) των 188, και τίποτε άλλο στα πεδία τους. Από το
+             βήμα 173 το lk_air_out κοιτάζει τις ακμές ανά δύο (and).
   ΚΟΣΤΟΣ     (βήμα 104) μια κρούση σε έτοιμο airlock, με τρεις μέσα του, το
              mt_tick ολόκληρο: κάτω από 7.100 µs. 6.025 ως το βήμα 103· το
              tests/test_impact.py δεν χτυπά ποτέ έτοιμο airlock, και το ταβάνι
@@ -71,6 +72,7 @@ import hudread                                           # noqa: E402
 import cpc                                               # noqa: E402
 import econ as EC                                        # noqa: E402
 import entity as E                                       # noqa: E402
+N = E.MAXAGENT                  # οι ids σε χρήση: 188 από το βήμα 173 (128 ως τότε)
 import test_impact as TI                                 # noqa: E402
 import codeat                                            # noqa: E402
 
@@ -248,7 +250,7 @@ def trip(sym, g, patch=(), quiet=False):
 
     def back():
         x = w.a(i)
-        hud.add(w.hud()[20:40].strip())
+        hud.add(hudread.alert(w.hud(), strict=False).strip())     # μετά το DAY/NGT (βήμα 173)
         k = (x["node"], x["edge"] == 255, bool(x["f"] & F_INDOORS), x["task"], x["dest"])
         if not trail or trail[-1] != k:
             trail.append(k)
@@ -391,7 +393,10 @@ def tube(sym, g, patch=(), quiet=False):
     return None
 
 
-HIT_US = 7100              # βήμα 104: μετρημένο 6.952 (6.025 ως το 103)
+HIT_US = 7400              # βήμα 104: μετρημένο 6.952 (6.025 ως το 103)
+# ΒΗΜΑ 173: 7.100 ως τότε (6.987 στο 172). Το lk_air_out περνά τους 188 ids: το
+# lk_each με cpir, και οι ακμές ανά δύο (src/door.asm). Μετρημένα 7.289, +302 us,
+# όσο και η κρούση του tests/test_impact.py.
 
 
 def hit_cost(sym, g, patch=(), quiet=False):
@@ -426,27 +431,27 @@ def hit_cost(sym, g, patch=(), quiet=False):
 
 
 def rand_state(rnd, w):
-    """Μια τυχαία κατάσταση για το lk_air_out: τα πεδία των 128 και ο γράφος
+    """Μια τυχαία κατάσταση για το lk_air_out: τα πεδία των 188 και ο γράφος
     στη μνήμη. -> (airlock, πράκτορες, γράφος) της αναφοράς."""
     L, m = w.L, w.m
     n = rnd.choice([64, 65, 95, rnd.randrange(64, 96)])
     near = [n] + [rnd.randrange(96) for _ in range(3)] + [0, 63]
-    a = types.SimpleNamespace(flags=bytearray(128), node=bytearray(128),
-                              edge=bytearray(128), suit=bytearray(128))
-    for k in range(128):
+    a = types.SimpleNamespace(flags=bytearray(N), node=bytearray(N),
+                              edge=bytearray(N), suit=bytearray(N))
+    for k in range(N):
         a.flags[k] = rnd.choice([0, 1, 3, 3, 2, 65, 67, rnd.randrange(256)])
         a.node[k] = rnd.choice(near) if rnd.random() < 0.8 else rnd.randrange(96)
         a.edge[k] = 255 if rnd.random() < 0.5 else rnd.choice([0, 1, 7, rnd.randrange(8)])
         a.suit[k] = rnd.randrange(256)
     if rnd.random() < 0.2:                 # οι άδειες θέσεις του game_new
-        for k in range(rnd.randrange(128), 128):
+        for k in range(rnd.randrange(N), N):
             a.flags[k], a.node[k], a.edge[k] = 0, 0, 255
     gr = types.SimpleNamespace(adj=bytearray(rnd.choice(near) if rnd.random() < 0.6
                                              else rnd.randrange(96) for _ in range(768)))
     deg = bytes(rnd.randrange(9) for _ in range(96))
     for col, data in ((0, a.flags), (256, a.node), (2560, a.edge), (1792, a.suit)):
         w.put6(L["G_agent_fields"] + col, data)
-    w.put6(L["G_agent_marks"], bytes(128))
+    w.put6(L["G_agent_marks"], bytes(N))
     m.write_ram(L["G_rt_nodes"], deg)
     m.write_ram(L["G_node_adj"], bytes(gr.adj))
     m.poke(w.sym["DIRTY_NUM"], 0)
@@ -469,19 +474,19 @@ def random_calls(sym, g, patch=(), quiet=False, n=400):
         if not w.probe([0x3E, node] + call(sym, "LK_AIR_OUT")):
             return f"ΤΥΧΑΙΑ {case}: το lk_air_out δεν γύρισε"
         E.air_out(a, node, gr)
-        got = {c: w.b6(L["G_agent_fields"] + off, 128)
+        got = {c: w.b6(L["G_agent_fields"] + off, N)
                for c, off in (("flags", 0), ("node", 256), ("edge", 2560), ("suit", 1792))}
-        marks = w.b6(L["G_agent_marks"], 128)
-        out = {k for k in range(128) if a.flags[k] != before.flags[k] or a.suit[k] != before.suit[k]}
+        marks = w.b6(L["G_agent_marks"], N)
+        out = {k for k in range(N) if a.flags[k] != before.flags[k] or a.suit[k] != before.suit[k]}
         for c in ("flags", "node", "edge", "suit"):
             want = bytes(getattr(a, c))
             if got[c] != want:
-                k = next(k for k in range(128) if got[c][k] != want[k])
+                k = next(k for k in range(N) if got[c][k] != want[k])
                 return (f"ΤΥΧΑΙΑ {case} (airlock {node}): {c} του {k} = {got[c][k]}, η αναφορά "
                         f"λέει {want[k]} (πριν: σημαίες {before.flags[k]}, κόμβος "
                         f"{before.node[k]}, ακμή {before.edge[k]})")
-        marked = {k for k in range(128) if marks[k]}
-        want_marked = {k for k in range(128) if a.flags[k] & 1 and (
+        marked = {k for k in range(N) if marks[k]}
+        want_marked = {k for k in range(N) if a.flags[k] & 1 and (
             (before.edge[k] == 255 and before.node[k] == node) or k in out)}
         if marked != want_marked:
             return (f"ΤΥΧΑΙΑ {case}: σημάδια {sorted(marked)[:6]}, η αναφορά λέει "
@@ -588,9 +593,12 @@ def main():
     ld = find(sym["SU_TICK"], [0xC3] + w(sym["ND_LOAD"]), 200)
     # βήμα 104: μετά το πρώτο lk_each του lk_air_out, pop bc / ret (ως το 103)
     ao = find(sym["LK_AIR_OUT"], [0xCD] + w(sym["LK_EACH"]), 16)
-    ai = find(sym["LKT_TR"], [0xE6, 3, 0xFE, 3], 40)          # and/cp ALIVE+INDOORS
-    ak = find(sym["LKT_TR"], [0xCD] + w(sym["LK_ADJ"]) + [0x7D, 0x81], 40)   # add a,c
-    ae = find(sym["LK_EACH"], [0x01, 128, 0], 8)              # ld bc,N_AGENT
+    ai = find(sym["LKT_ONE"], [0xE6, 3, 0xFE, 3], 40)         # and/cp ALIVE+INDOORS
+    ak = find(sym["LKT_ONE"], [0xCD] + w(sym["LK_ADJ"]) + [0x7D, 0x81], 40)  # add a,c
+    ae = find(sym["LK_EACH"], [0x01, N, 0], 8)                # ld bc,N_AGENT
+    # βήμα 173: ld a,(hl) · inc l · and (hl) · inc a — χωρίς το and, ο δεύτερος
+    # του ζεύγους δεν κοιτάζεται ποτέ
+    ap = find(sym["LKT_LP"], [0x7E, 0x2C, 0xA6, 0x3C], 8)
     while ld is not None and find(ld + 1, [0xC3] + w(sym["ND_LOAD"]), 8) is not None:
         ld = find(ld + 1, [0xC3] + w(sym["ND_LOAD"]), 8)      # το τελευταίο jp
     for label, fn, patch in (
@@ -608,7 +616,8 @@ def main():
             ("ο σωλήνας και για όσους ταξιδεύουν έξω", random_calls,
              ai and [(ai + 1, 1), (ai + 3, 1)]),
             ("πάντα η πρώτη ακμή του κόμβου", random_calls, ak and [(ak + 4, 0)]),
-            ("το lk_each χωρίς τον τελευταίο πράκτορα", random_calls, ae and [(ae + 1, 127)])):
+            ("το lk_each χωρίς τον τελευταίο πράκτορα", random_calls, ae and [(ae + 1, N - 1)]),
+            ("το lk_air_out χωρίς τον δεύτερο του ζεύγους", random_calls, ap and [(ap + 2, 0)])):
         if not patch:
             check(False, f"δεν βρέθηκε πού να πειραχτεί για «{label}»")
             continue

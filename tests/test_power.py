@@ -168,8 +168,8 @@ def colony():
     import hudread
 
     def alert():
-        # Η γραμμή συναγερμού: το δεξί μισό της σειράς 2 του HUD.
-        return hudread.text(m, sym, 2)[20:40].strip()
+        # Η γραμμή συναγερμού: μετά το DAY/NGT της σειράς 2 του HUD (βήμα 173).
+        return hudread.alert(hudread.text(m, sym, 2)).strip()
 
     shed = dark = said = 0
     o2_zero, minox, water = 0, 255, []

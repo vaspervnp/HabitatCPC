@@ -207,7 +207,7 @@ class Game(TH.Game):
 
     # --- ο μηχανικός ---------------------------------------------------------
     def engineers(self, on):
-        for i in range(128):
+        for i in range(EC.N_AGENT):
             if self.ag_get(i, "flags") & 1:
                 r = self.ag_get(i, "role")
                 if on and i in self.was:
@@ -239,7 +239,7 @@ class Game(TH.Game):
         was = self.beyond()
         us = self.call("HUD_DRAW", timed, 0xC0)
         spill = "" if self.beyond() == was else " |ΞΕΧΕΙΛΙΣΕ πέρα από τη στήλη 39"
-        return us if timed else same(self.hud(2)[21:].rstrip()) + spill
+        return us if timed else same(hudread.alert(self.hud(2)).rstrip()) + spill
 
 
 # --------------------------------------------------------------------------
@@ -492,7 +492,7 @@ def gline(G, sym, X):
     for a, v in calm:
         m.poke(a, v)
     G.probe(["HUD_DRAW"])
-    got = same(hudread.text(m, sym, 2)[21:].rstrip())
+    got = same(hudread.alert(hudread.text(m, sym, 2)).rstrip())
     for a, v in keep:
         m.poke(a, v)
     return got
@@ -577,7 +577,7 @@ def game_wait(sym, g, patch=(), quiet=False, frames=60_000_000):
         return f"ΣΤΗΣΙΜΟ: το εργοστάσιο {node} δεν τελείωσε"
     b6, ag = G.bank(6), TO.layout()["G_agent_fields"] - 0x4000
     was = {}
-    for i in range(128):
+    for i in range(EC.N_AGENT):
         if b6[ag + i] & 1 and b6[ag + 2048 + i] & 7 in (ENGINEER, CBOT):
             was[i] = b6[ag + 2048 + i]
             b6[ag + 2048 + i] &= ~7 & 255

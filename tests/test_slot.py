@@ -88,7 +88,7 @@ class Run:
     def seated(self):
         """[(άποικος, θόλος, θέση)] — όσοι κάθονται σε θέση δακτυλίου."""
         b6 = self.b6
-        return [(i, b6[AG + 256 + i], b6[AG + SLOT + i]) for i in range(128)
+        return [(i, b6[AG + 256 + i], b6[AG + SLOT + i]) for i in range(188)   # N_AGENT (βήμα 173)
                 if b6[AG + i] & 1 and b6[AG + 256 + i] < 64
                 and b6[AG + SLOT + i] != 255]
 

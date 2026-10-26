@@ -239,8 +239,8 @@ def scenario(sym, g, patch=(), quiet=False):
         if w.wait(lambda: (w.ag(back)["node"], w.ag(back)["edge"]) == (SHIP, 255), 6000, 5) is None:
             return f"ο άποικος {back} δεν γύρισε στο σκάφος: {w.ag(back)}"
     m.run_frames(40)
-    inside = sum(1 for i in range(128) if w.ag(i)["f"] & 3 == 3)
-    alive = sum(1 for i in range(128) if w.ag(i)["f"] & 1)
+    inside = sum(1 for i in range(188) if w.ag(i)["f"] & 3 == 3)      # N_AGENT (βήμα 173)
+    alive = sum(1 for i in range(188) if w.ag(i)["f"] & 1)
     if w.w16(40) != 2 * inside or inside == alive:
         return f"η ζήτηση οξυγόνου {w.w16(40)}: {inside} μέσα από {alive} ζωντανούς"
     # Σε έλλειμμα (καμία γεννήτρια ακόμη) όσοι είναι έξω μένουν γεμάτοι: όσο
@@ -249,7 +249,7 @@ def scenario(sym, g, patch=(), quiet=False):
     # Οσοι είναι έξω ΔΕΝ ΞΟΔΕΥΟΥΝ: ίδιο οξυγόνο πριν και μετά από 600 frames
     # ελλείμματος. Οχι «255»: από το βήμα 88 αυτός που γύρισε είχε ήδη ξοδέψει
     # μέσα στο airlock.
-    outs = [i for i in range(128) if w.ag(i)["f"] & 3 == F_ALIVE]
+    outs = [i for i in range(188) if w.ag(i)["f"] & 3 == F_ALIVE]
     o2a = [w.ag(i)["o2"] for i in outs]
     m.run_frames(600)
     o2b = [w.ag(i)["o2"] for i in outs]

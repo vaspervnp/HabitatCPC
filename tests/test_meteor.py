@@ -39,6 +39,7 @@ import world as W                                                  # noqa: E402
 import reach                                                       # noqa: E402
 import route                                                       # noqa: E402
 from test_route import hud_row                                     # noqa: E402
+import hudread                                                     # noqa: E402
 
 def _lay(name):
     """Μια διεύθυνση του build/layout.asm (βήμα 154: οι πίνακες της 6 κουνήθηκαν)."""
@@ -207,7 +208,11 @@ def shower(sym, g, cut_push=False, no_half=False, cut_mark=False):
         hp_min = min(hp_min, G.bank(6)[DOME_TBL + EC.D_HEALTH])
         if (k % 4 == 0 and m.peek(g + EC_METEOR) and m.peek(g + EC_POK) == 1
                 and m.peek(g + EC_O2OK)):
-            t = hud_row(m, sym, 2)[20:].strip()
+            t = hud_row(m, sym, 2)
+            try:                         # το μήνυμα μετά το DAY/NGT (βήμα 173)
+                t = hudread.alert(t).strip() if "#" not in t else t
+            except ValueError:           # η σειρά στη μέση της γραφής της
+                t = "#"
             if "#" not in t:             # το HUD πριν ξαναγραφτεί
                 texts.add(t)
         if m.peek(g + EC_METEOR) == 0 and k > 30:

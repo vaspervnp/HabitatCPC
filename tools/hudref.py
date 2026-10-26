@@ -122,17 +122,20 @@ class Hud:
         self.put("$")
         self.num(e.get("coins", 0), 3)
 
+        # Χωρίς «POP » από το βήμα 173 (η απόφαση του παίκτη): τα δύο νούμερα
+        # όσο φαρδιά είναι (hud_numv), «14/54», «140/160», και η σειρά γεμίζει
+        # με κενά ως το τέλος (hd_pad).
         self.row, self.col = 2, 0
-        self.text("POP ")
-        self.num(e["alive"], 2)
+        self.text(str(e["alive"]))
         self.put("/")
-        self.num(e["popcap"], 2)
+        self.text(str(e["popcap"]))
         self.text(" SOL")
         self.num(e["sol"], 3)
         self.put(" ")
         self.text("DAY" if e["day"] else "NGT")
         self.put(" ")
         self.text(self.alert(e))
+        self.text(" " * (COLS - self.col))
 
         for r in (3, 4):
             self.row, self.col = r, 0

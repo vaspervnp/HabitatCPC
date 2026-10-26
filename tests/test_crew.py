@@ -32,7 +32,7 @@
              ζωντανούς κάτω από τα ταβάνια COST: 3.198, 4.386 και 5.148 us. Στο
              βήμα 90 με 4 και 48 ήταν 1.692 και 2.220· η πρώτη γραφή του 91
              ήθελε 6.655 και 8.151. Ως το 92 μετριόταν και με 124, που δεν
-             χωρούν πια (οι άποικοι είναι ως 80).
+             χωρούν πια (οι άποικοι είναι ως 160· ως 80 ως το βήμα 172).
 
 Αρνητικά, με τον κώδικα πειραγμένο στη μνήμη. Γραμμή: ΠΑΝΩ χωρίς δότη, χωρίς
 ταβάνι στο 100%, χωρίς πάτωμα στο 0%, ο παραλήπτης του ΚΑΤΩ η μεγαλύτερη, η
@@ -54,6 +54,7 @@ import test_act as TA                                    # noqa: E402
 import test_info as TI                                   # noqa: E402
 import test_outside as TO                                # noqa: E402
 import econ as EC                                        # noqa: E402
+N = EC.N_AGENT                  # οι ids σε χρήση: 188 από το βήμα 173 (128 ως τότε)
 import cpc                                               # noqa: E402
 
 FAIL = []
@@ -98,8 +99,8 @@ class Game(TA.Game):
         return TI.same(self.hud(3)[:35]), TI.same(self.hud(4))
 
     def agents(self):
-        return ([self.b6[self.ag + i] for i in range(128)],
-                [self.b6[self.ag + 2048 + i] for i in range(128)])
+        return ([self.b6[self.ag + i] for i in range(N)],
+                [self.b6[self.ag + 2048 + i] for i in range(N)])
 
     def probe(self, body):
         m = self.m
@@ -250,7 +251,7 @@ def calls(G, md, say):
 def population(alive, dead):
     """Οι ζωντανοί ανά ρόλο στις πρώτες ταυτότητες, οι νεκροί στις επόμενες,
     και οι καινούργιοι στις πρώτες νεκρές."""
-    flags, roles = [0] * 128, [7] * 128
+    flags, roles = [0] * N, [7] * N
     i = 0
     for alive_, counts in ((3, alive), (0, dead)):
         for r, n in enumerate(counts):
@@ -262,12 +263,13 @@ def population(alive, dead):
 
 def scattered():
     """Ζωντανοί στις ζυγές 0-38 (10 εργάτες, 5 μηχανικοί, 5 βιολόγοι), νεκροί
-    στις μονές, και ένα ρομπότ στην 127: οι καινούργιοι στις 1, 3, 5, 7, και
-    το cw_count μετρά ως την 127."""
-    flags, roles = [0] * 128, [7] * 128
+    στις μονές, και ένα ρομπότ στην 175, το τελευταίο: οι καινούργιοι στις 1,
+    3, 5, 7, και το cw_count μετρά ως την 159 (βήμα 173· ως τότε ρομπότ στην
+    127, και μετρούσε ως εκεί)."""
+    flags, roles = [0] * N, [7] * N
     for k, r in enumerate([0] * 10 + [1] * 5 + [2] * 5):
         flags[2 * k], roles[2 * k] = 3, r
-    flags[127], roles[127] = 3, 6
+    flags[175], roles[175] = 3, 6
     return flags, roles
 
 
@@ -278,18 +280,19 @@ RULE_CASES = (
      population([10, 10, 10, 4, 10, 6, 6, 6], []), 0, [3, 3, 0, 3]),
     ("ένας από τον καθένα: ισοπαλίες", [2] * 5, population([1, 1, 1, 1, 1], []), 0, [0, 1, 2, 3]),
     ("30 νεκροί εργάτες δεν μετράνε", [5, 5, 0, 0, 0], population([4, 4], [30]), 0, [0, 1, 0, 1]),
-    # 76: τέσσερις ακόμη χωρούν στις 80 θέσεις αποίκων (βήμα 92· ως τότε 120)
-    ("76 ζωντανοί, 0% εργάτες", [0, 2, 2, 3, 3], population([36, 20, 10, 5, 5], []), 0,
+    # 156: τέσσερις ακόμη χωρούν στις 160 θέσεις αποίκων (βήμα 173· 76 στις 80 από
+    # το 92, ως τότε 120)
+    ("156 ζωντανοί, 0% εργάτες", [0, 2, 2, 3, 3], population([76, 40, 20, 10, 10], []), 0,
      [3, 4, 3, 4]),
     ("100% εργάτες", [10, 0, 0, 0, 0], population([0, 0, 0, 0, 5], []), 0, [0, 0, 0, 0]),
-    ("κενά ανάμεσα, ένα ρομπότ στην 127", [2] * 5, scattered(), 0, [3, 4, 3, 4]),
+    ("κενά ανάμεσα, ένα ρομπότ στην 175", [2] * 5, scattered(), 0, [3, 4, 3, 4]),
     ("EC_ALIVE 7 πάνω: θάνατοι πριν από τη μέτρηση", [3, 2, 2, 2, 1],
      population([10, 10, 10, 4, 10, 6, 6, 6], [7]), 7, [3, 3, 0, 3]),
 )
 
 
 def reference(land, flags, roles):
-    count = [sum(1 for i in range(128) if flags[i] & 1 and roles[i] == r) for r in range(5)]
+    count = [sum(1 for i in range(EC.AG_BOT0) if flags[i] & 1 and roles[i] == r) for r in range(5)]
     e = types.SimpleNamespace(land=land)
     return [EC.pick_role(e, count) for _ in range(4)]
 
@@ -300,7 +303,7 @@ def rules(sym, patch6=()):
     G = Game(sym, patch6=patch6)
     out = []
     for name, land, (flags, roles), stale, _ in RULE_CASES:
-        for i in range(128):
+        for i in range(N):
             G.b6[G.ag + i], G.b6[G.ag + 2048 + i] = flags[i], roles[i]
         n = sum(1 for f in flags if f & 1)
         for r in range(5):
@@ -311,7 +314,7 @@ def rules(sym, patch6=()):
         if not G.probe([0xCD, sym["SHIP_CREW"] & 255, sym["SHIP_CREW"] >> 8]):
             return None
         f2, r2 = G.agents()
-        born = [i for i in range(128) if f2[i] & 1 and not flags[i] & 1]
+        born = [i for i in range(N) if f2[i] & 1 and not flags[i] & 1]
         out.append((name, [r2[i] for i in born], born))
     return out
 
@@ -322,7 +325,7 @@ def rule_check(sym):
         return "ΚΑΝΟΝΑΣ: το ship_crew δεν τερμάτισε"
     for (name, land, (flags, roles), stale, want), (_, z80, born) in zip(RULE_CASES, got):
         ref = reference(land, flags, roles)
-        first = [i for i in range(128) if not flags[i] & 1][:4]
+        first = [i for i in range(N) if not flags[i] & 1][:4]
         if ref != want:
             return f"ΚΑΝΟΝΑΣ «{name}»: η αναφορά λέει {ref}, η πρόζα {want}"
         if z80 != want or born != first:
@@ -373,18 +376,18 @@ def voyage(sym, quiet=False):
         prev = G.agents()
     else:
         return "ΠΛΟΙΟ: δεν προσγειώθηκε σε 6.000 frames"
-    # Το frame μπορεί να κλείσει στη μέση του ship_crew (128 πράκτορες): η
+    # Το frame μπορεί να κλείσει στη μέση του ship_crew (160 θέσεις): η
     # κατάσταση είναι 2 πριν φανούν οι γεννήσεις. Η αποικία του κανόνα είναι
     # το τελευταίο δείγμα πριν από την προσγείωση.
     m.run_frames(4)
     now = G.agents()
-    born = [i for i in range(128) if now[0][i] & 1 and not prev[0][i] & 1]
+    born = [i for i in range(N) if now[0][i] & 1 and not prev[0][i] & 1]
     got = [now[1][i] for i in born]
     want = reference(md.t, *prev)
     if got != want or len(got) != 4:
         return f"ΠΛΟΙΟ: ήρθαν {got}, ο κανόνας λέει {want}"
     say(f"ΠΛΟΙΟ: ποσοστά {[10 * x for x in md.t]} από τα πλήκτρα, προσγείωση μετά από "
-        f"{t} frames· η αποικία {[sum(1 for i in range(128) if prev[0][i] & 1 and prev[1][i] == r) for r in range(5)]}, "
+        f"{t} frames· η αποικία {[sum(1 for i in range(EC.AG_BOT0) if prev[0][i] & 1 and prev[1][i] == r) for r in range(5)]}, "
         f"ήρθαν {' '.join(NAMES[r] for r in got)} (ταυτότητες {born}) — όπως ο κανόνας")
     return None
 
@@ -392,9 +395,11 @@ def voyage(sym, quiet=False):
 # --------------------------------------------------------------------------
 # ΚΟΣΤΟΣ — μετρημένο στο βήμα 91: 3.198, 4.386, 6.438 us
 # --------------------------------------------------------------------------
-# 76, όχι 124 (βήμα 92): οι άποικοι είναι ως 80, και με 124 στις πρώτες θέσεις το
-# ship_crew δεν βρίσκει πια θέση και δεν μετρά τίποτα.
-COST = ((4, 3400), (48, 4600), (76, 5400))        # (ζωντανοί, ταβάνι σε us)
+# 76, όχι 124 (βήμα 92): οι άποικοι ήταν ως 80, και με 124 στις πρώτες θέσεις το
+# ship_crew δεν έβρισκε πια θέση και δεν μετρούσε τίποτα. ΚΑΙ 156 ΑΠΟ ΤΟ ΒΗΜΑ 173,
+# με τις 160 θέσεις. Το cw_count ρωτά το όριο (E < 160) σε κάθε θέση, 13 T
+# περισσότερα από το jp p του 128: 3148 -> 3157, 4327 -> 4468, 5083 -> 5308.
+COST = ((4, 3400), (48, 4600), (76, 5400), (156, 7800))   # (ζωντανοί, ταβάνι σε us· 156: 7708)
 
 
 def cost(sym, patch6=()):
@@ -403,7 +408,7 @@ def cost(sym, patch6=()):
     for n, _ in COST:
         G = Game(sym, patch6=patch6)
         m = G.m
-        for i in range(128):
+        for i in range(N):
             G.b6[G.ag + i], G.b6[G.ag + 2048 + i] = (3 if i < n else 0), i % 5
         m.poke(G.EC["EC_ALIVE"], n)
         m.poke(G.EC["EC_POPCAP"], n + 4)
@@ -478,7 +483,8 @@ def main():
     ccount = find6(G6, sym["SHIP_CREW"], sym["SHIP_CREW"] + 4, [0xCD, cn & 255, cn >> 8])
     tie = find6(G6, pk, pk + 40, [0x79, 0x93, 0x78, 0x9A, 0x30])     # BC - DE: CY αν d >
     dead = find6(G6, cn, cn + 48, [0x1F, 0x38])                       # rra · jr c,ζωντανός
-    first = find6(G6, cn, cn + 48, [0xCB, 0x79, 0x28])                # bit 7,c · jr z
+    first = find6(G6, cn, cn + 48, [0x79, 0x3C, 0x20])                # ld a,c · inc a · jr nz (βήμα 173· bit 7,c · jr z ως τότε)
+    bound = find6(G6, cn, cn + 64, [0x7B, 0xFE, EC.AG_BOT0, 0x38])     # ld a,e · cp 160 · jr c (βήμα 173)
     rule_negs = (
         ("ταυτότητα & 7, όπως ως το 90", cpick and [(cpick[0], 0x7D), (cpick[0] + 1, 0xE6),
                                                     (cpick[0] + 2, 0x07)]),
@@ -488,6 +494,7 @@ def main():
                                               enumerate([0x7B, 0x91, 0x7A, 0x98, 0x38])]),
         ("μετρούν και οι νεκροί", dead and [(dead[0] + 1, 0x18)]),
         ("ο πρώτος νεκρός είναι ο τελευταίος", first and [(first[0] + 2, 0), (first[0] + 3, 0)]),
+        ("το όριο στο 128, όπως ως το 172", bound and [(bound[0] + 2, 128)]),
     )
     # Χωρίς την πρόωρη έξοδο: το jr z μετά το dec b γίνεται δύο nop.
     early = find6(G6, cn, cn + 64, [0x05, 0x28])

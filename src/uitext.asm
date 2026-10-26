@@ -29,7 +29,6 @@ x_txt_o2:     db "O2 ",0
 x_txt_pwr:    db "PWR",0
 x_txt_h2o:    db "H2O",0
 x_txt_fod:    db "FOD",0
-x_txt_pop:    db "POP ",0
 x_txt_sol:    db " SOL",0
 x_txt_day:    db "DAY",0
 x_txt_night:  db "NGT",0
@@ -196,7 +195,6 @@ txt_o2    equ x_txt_o2 - TEXT_IMG + G_text
 txt_pwr   equ x_txt_pwr - TEXT_IMG + G_text
 txt_h2o   equ x_txt_h2o - TEXT_IMG + G_text
 txt_fod   equ x_txt_fod - TEXT_IMG + G_text
-txt_pop   equ x_txt_pop - TEXT_IMG + G_text
 txt_sol   equ x_txt_sol - TEXT_IMG + G_text
 txt_day   equ x_txt_day - TEXT_IMG + G_text
 txt_night equ x_txt_night - TEXT_IMG + G_text

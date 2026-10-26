@@ -8,7 +8,7 @@ sol_rollover) και ο Z80 στις άκρες τους είναι στο tests
 των νομισμάτων, η εύνοια, ο συσσωρευτής, το μισό sol. Εδώ το παιχνίδι, στο
 colony.sna, που τρέχει:
 
-  ΠΕΡΠΑΤΟΥΝ   ένα πλοίο επισκεπτών: δύο επισκέπτες στην πίστα (οι 112 και 113,
+  ΠΕΡΠΑΤΟΥΝ   ένα πλοίο επισκεπτών: δύο επισκέπτες στην πίστα (οι 180 και 181,
               ρόλος 9, T_VISIT, φάση VP_EAT), χωρίς νομίσματα ακόμη. Εξω στη
               λίστα των φιγούρων με το FC_VISITOR, ολόκληροι στην οθόνη·
               στο κυλικείο μέσα, στον δακτύλιό του (DOME_FIG = FC_VISITOR).
@@ -26,7 +26,8 @@ colony.sna, που τρέχει:
               συσσωρευτή στο 250 έρχεται πλοίο επισκεπτών — που προσγειώνεται,
               και οι επισκέπτες του πληρώνουν στο κυλικείο.
   ΠΛΗΡΗΣ      με επισκέπτες έξω, μια πλήρης σχεδίαση (view_draw) από άδεια λίστα
-              τους ξαναβάζει: το fg_build φτάνει στους 112-119 (βήμα 136).
+              τους ξαναβάζει: το fg_build φτάνει στους 180-187 (βήμα 136· 112-119
+              ως το 172).
   ΣΒΗΣΙΜΟ     το HUD γράφει τα νομίσματα μόνο όταν άλλαξαν (hud_cw)· όταν οι
               λωρίδες σβήνουν (hud_inval: άλμα κάμερας, βοήθεια, δίσκος) τα
               ξαναγράφει, ίδια κι ας είναι: το hud_inval κάνει το hud_cw -1.
@@ -72,6 +73,7 @@ PAD, CANTEEN, LOUNGE = TI.PAD, TI.CANTEEN, 1             # src/colony.asm
 FC_VISITOR = pack.fig_code(pack.FIG_ALL.index(pack.VIS_FIG))
 FC_COLONIST = pack.fig_code(pack.FIG_ALL.index("colonist"))
 VIS = range(EC.AG_VIS0, EC.AG_VIS0 + EC.AG_NVIS)
+V0 = EC.AG_VIS0                 # 180 από το βήμα 173 (112 ως τότε)
 # Μετρημένα στο βήμα 136, και λίγο πάνω. Στο βήμα 134 η προσγείωση πέντε
 # επισκεπτών, που έτρωγαν και πλήρωναν εκεί, ήταν 1.689 us, το τέλος του sol
 # 472 και το HUD 8.810 (DESIGN §6.11).
@@ -163,15 +165,15 @@ def walk(sym, g, patch=(), patch6=(), lounge=False, quiet=False):
     good0, sollen = G.x6(A["EC_GOOD"]), G.w16(A["EC_SOLLEN"])
     G.visitors(lounge)
     if not G.until(lambda: G.vis(), 64, 1):
-        return f"{tag}: κανείς στις θέσεις 112-119 μετά από 64 frames"
+        return f"{tag}: κανείς στις θέσεις {V0}-{V0 + 7} μετά από 64 frames"
     a, vis = G.a(), G.vis()
     bad = [i for i in vis if (a.role[i], a.node[i], a.task[i], a.health[i],
                               a.flags[i] & E.F_INDOORS) != (EC.RL_VIS, PAD, EC.T_VISIT,
                                                              EC.VP_EAT, 0)]
     coins = G.x6(A["EC_COINS"], 2)
     eta = G.w16(A["EC_SHETA"])
-    if vis != [112, 113] or bad or coins:
-        return (f"{tag}: στις 112-119 {vis}, λάθος "
+    if vis != [V0, V0 + 1] or bad or coins:
+        return (f"{tag}: στις {V0}-{V0 + 7} {vis}, λάθος "
                 f"{[(i, a.role[i], a.node[i], a.task[i], a.health[i], a.flags[i]) for i in bad]}, "
                 f"νομίσματα {coins}")
     if eta != sollen >> 5:
@@ -227,7 +229,7 @@ def walk(sym, g, patch=(), patch6=(), lounge=False, quiet=False):
         return f"{tag}: η εύνοια {good0} -> {G.x6(A['EC_GOOD'])}, όχι +6"
     if hud[36:40].replace("O", "0") != "$ 10":        # το 0 του font διαβάζεται O (hudread)
         return f"{tag}: η σειρά 1 του HUD λέει |{hud}|, όχι «$ 10» στο τέλος"
-    if seen_out != {112, 113} or seen_ring != {112, 113}:
+    if seen_out != {V0, V0 + 1} or seen_ring != {V0, V0 + 1}:
         return f"{tag}: φάνηκαν έξω {sorted(seen_out)}, στον δακτύλιο {sorted(seen_ring)}"
     want_rooms = {CANTEEN, LOUNGE} if lounge else {CANTEEN}
     if not want_rooms <= rooms:
@@ -239,14 +241,14 @@ def walk(sym, g, patch=(), patch6=(), lounge=False, quiet=False):
     if len(breath) < 8 or wrong:
         return f"{tag}: (μέσα, EC_VIN) σε {len(breath)} δείγματα: {wrong[:3]}"
     # ΚΑΘΟΝΤΑΙ: στο κυλικείο τουλάχιστον VIS_STAY περιστροφές (μείον ένα δείγμα)
-    sat = min(stay[(i, CANTEEN)][1] - stay[(i, CANTEEN)][0] for i in (112, 113))
+    sat = min(stay[(i, CANTEEN)][1] - stay[(i, CANTEEN)][0] for i in (V0, V0 + 1))
     if sat < 16 * EC.VIS_STAY - 16:
         return f"{tag}: στο κυλικείο κάθισαν {sat} frames, όχι {16 * EC.VIS_STAY}"
     # ΑΝΕΒΑΙΝΟΥΝ: όλοι, το EC_VIN 0, και το πλοίο πριν από το μισό sol
     if G.vis() or G.x6(A["EC_VIN"]) or gone >= 16 * (sollen >> 5):
         return (f"{tag}: ζουν {G.vis()}, EC_VIN {G.x6(A['EC_VIN'])}, το πλοίο έφυγε "
                 f"στο frame {gone} (το μισό sol: {16 * (sollen >> 5)})")
-    say(f"{tag}: οι 112 και 113 στην πίστα, ρόλος 9, T_VISIT, χωρίς νομίσματα· έξω με το "
+    say(f"{tag}: οι {V0} και {V0 + 1} στην πίστα, ρόλος 9, T_VISIT, χωρίς νομίσματα· έξω με το "
         f"FC_VISITOR ({FC_VISITOR}) ολόκληροι, μέσα στον δακτύλιο· στάθηκαν στους θόλους "
         f"{sorted(rooms)}, νομίσματα {got}, εύνοια +6, «$ 10»· EC_VIN = όσοι μέσα σε "
         f"{len(breath)} δείγματα, κάθισαν {sat} frames στο κυλικείο, ανέβηκαν, και το "
@@ -345,7 +347,7 @@ def full(sym, g, patch=(), patch6=(), quiet=False):
     if not G.until(lambda: [i for i in G.vis() if G.a().edge[i] != E.NO_EDGE], 200, 2):
         return "ΠΛΗΡΗΣ: κανείς επισκέπτης στον δρόμο"
     # ΜΕ ΤΗ ΛΙΣΤΑ ΑΔΕΙΑ: όσοι ήταν ήδη μέσα τους ξαναβάζει το πρώτο πέρασμα
-    # του fg_build, ό,τι κι αν κάνει το δεύτερο — αυτό ψάχνει τους 112-119
+    # του fg_build, ό,τι κι αν κάνει το δεύτερο — αυτό ψάχνει τους 180-187
     w, before = G.figs()
     G.m.poke(sym["FG_N"], 0)
     G.full()
@@ -489,7 +491,8 @@ def main():
     # επισκέπτες: το δεύτερο κομμάτι βλέπει C = 255 και τελειώνει)
     neg("το fg_build χωρίς τους επισκέπτες",
         find0("FGB_ALL", 4, [0x01, EC.AG_VIS0 - 1, EC.AG_NVIS]),
-        lambda a: [(a + 1, 0xFF), (a + 2, 100)], lambda p: full(sym, g, patch=p, quiet=True))
+        lambda a: [(a + 1, 0xFF), (a + 2, EC.AG_FOE0 + EC.AG_NFOE)],
+        lambda p: full(sym, g, patch=p, quiet=True))
     # ο επισκέπτης με τη φιγούρα του αποίκου: role_fig[9]
     neg("ο επισκέπτης με τη φιγούρα του αποίκου",
         [sym["ROLE_FIG"] + EC.RL_VIS] if m.peek(sym["ROLE_FIG"] + EC.RL_VIS) == FC_VISITOR else [],

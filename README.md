@@ -27,7 +27,7 @@ fit in a Z80 and 128 KB.
     allows;
   - corridors laid automatically to the domes in reach;
   - airlocks as the only doors, and paths on the ground to the structures outside.
-- **Autonomous colonists**, up to 80, and 16 bots:
+- **Autonomous colonists**, up to 160, and 16 bots:
   - five specialties — worker, engineer, biologist, medic, guard;
   - six needs — oxygen, water, food, sleep, health, morale;
   - suits that run out of air outside.
@@ -52,7 +52,7 @@ and the chosen world is built in about five.
 | | |
 |---|---|
 | World | 128 × 128 tiles, generated from its seed. The same seed always builds the same world. |
-| Colony | up to 80 colonists and 16 bots, all autonomous |
+| Colony | up to 160 colonists and 16 bots, all autonomous |
 | View | 20 × 10 tiles at a time, hardware-scrolled, with a two-mode raster split for the HUD |
 | Memory | all eight 16 KB banks: world, routing tables, sprites, simulation, two screen pages |
 
@@ -61,9 +61,10 @@ and the chosen world is built in about five.
 It is a complete game. The ten delivery milestones of
 [`DESIGN.md` §14](DESIGN.md#14-delivery-plan) are built, and what remains is tuning.
 
-- **In progress: 160 colonists.** The plan is
-  [`DESIGN.md` §6.1](DESIGN.md#more-than-80-colonists-the-plan-at-milestone-169), and
-  its first three steps are done.
+- **In progress: the balance at 160 colonists.** The game holds 160 since
+  milestone 173 ([`DESIGN.md` §6.1](DESIGN.md#the-ids-at-milestone-173)); the
+  scripted player and the balance at 160 are the last step of
+  [the plan](DESIGN.md#more-than-80-colonists-the-plan-at-milestone-169).
 - **Still owed: a check on a real CPC 6128.** The raster splits, the disc's timing and
   the mid-frame CRTC writes have been tested only on the emulator
   ([`DESIGN.md` §15](DESIGN.md#15-open-risks)).

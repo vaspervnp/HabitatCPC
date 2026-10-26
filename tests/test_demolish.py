@@ -148,7 +148,7 @@ def ag(G, a, field, hi=False):
 
 def standing(G, n):
     """Οι ζωντανοί που στέκονται στον κόμβο n (όχι στον δρόμο)."""
-    return [a for a in range(128) if ag(G, a, 0) & F_ALIVE and ag(G, a, 1) == n
+    return [a for a in range(EC.N_AGENT) if ag(G, a, 0) & F_ALIVE and ag(G, a, 1) == n
             and ag(G, a, 2, True) == 255]
 
 

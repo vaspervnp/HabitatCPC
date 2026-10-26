@@ -91,6 +91,7 @@ import test_act as TA                                    # noqa: E402
 import test_info as TI                                   # noqa: E402
 import test_outside as TO                                # noqa: E402
 import barread as B                                      # noqa: E402
+import hudread                                           # noqa: E402
 import econ as EC                                        # noqa: E402
 import cpc                                               # noqa: E402
 
@@ -593,7 +594,8 @@ def leave(sym, patch=(), quiet=False):
     m.poke(G.EC["EC_SHSTATE"], 0)
     G.call("HUD_DRAW", bank=0xC0)
     no = TI.same(G.hud(2))
-    if no[21:].rstrip() != TI.same("ALL SYSTEMS OK") or yes[21:].rstrip() != TI.same("MERCHANT LANDED"):
+    if (hudread.alert(no).rstrip() != TI.same("ALL SYSTEMS OK")
+            or hudread.alert(yes).rstrip() != TI.same("MERCHANT LANDED")):
         return f"ΜΗΝΥΜΑ: «{yes}» με έμπορο, «{no}» χωρίς"
     say("ΦΕΥΓΕΙ: η γραμμή κλείνει μόνη της· χωρίς έμπορο το κουμπί κόκκινο και το M "
         "δεν ανοίγει τίποτα, και η γραμμή του πλοίου δείχνει τη ΜΕΤΑΦΟΡΑ με το πλοίο "

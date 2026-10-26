@@ -480,24 +480,37 @@ sp_noeng:
         ret     z                       ; NC: καμία Build
         ld      bc,GA_PORT + PAGE_B6
         out     (c),c
-        ld      hl,G_agent_fields       ; οι σημαίες· ο ρόλος στο AG_ROLE
-        ; ΟΧΙ ΟΙ 128 (βήμα 136): ο επισκέπτης έχει ρόλο 9, και 9 & 7 είναι ο
-        ; μηχανικός. Αποικοι και ρομπότ είναι οι 0-95.
-        ld      b,AG_FOE0
-spn_ag:
+        ; ΜΕ cpir ΣΤΗ ΣΤΗΛΗ ΤΩΝ ΡΟΛΩΝ (βήμα 173), όπως οι φρουροί του fo_tick: ο
+        ; μηχανικός στους 160 αποίκους, και το ρομπότ κατασκευής στα 16 ρομπότ —
+        ; 21 T η θέση, και οι σημαίες μόνο για όποιον έχει τον ρόλο. Ως το 172
+        ; σημαίες, ρόλος και and 7 για τον καθένα από τους 96 (όχι οι 128 από το
+        ; βήμα 136: ο επισκέπτης έχει ρόλο 9, και 9 & 7 είναι ο μηχανικός)· με
+        ; τους 176 θα ήταν ~1,8 ms σε κάθε τικ του HUD χωρίς μηχανικό.
+        ld      hl,AG_ROLE
+        ld      bc,AG_BOT0
+        ld      e,RL_ENGINEER
+spn_lp:
+        ld      a,e
+        cpir
+        jr      nz,spn_nx               ; κανείς άλλος με αυτόν τον ρόλο
+        dec     l
+        res     3,h                     ; AG_PG: οι σημαίες
         bit     0,(hl)                  ; F_ALIVE
-        jr      z,spn_an
-        set     3,h                     ; AG_ROLE
-        ld      a,(hl)
-        res     3,h
-        and     7
-        cp      RL_ENGINEER
-        jr      z,spn_yes               ; NC
-        cp      RL_CBOT
-        jr      z,spn_yes
-spn_an:
+        jr      nz,spn_yes              ; NC (το or a, πιο πάνω· το cpir δεν το αγγίζει)
+        set     3,h
         inc     l
-        djnz    spn_ag
+        ld      a,b
+        or      c
+        jr      nz,spn_lp
+spn_nx:
+        ld      a,e
+        xor     RL_CBOT                 ; NC για το δεύτερο cpir (ένα cp θα έβαζε CY)
+        jr      z,spn_no                ; και τα ρομπότ: κανείς
+        ld      e,RL_CBOT
+        ld      hl,AG_ROLE + AG_BOT0
+        ld      bc,AG_NBOT
+        jr      spn_lp
+spn_no:
         scf                             ; κανείς
 spn_yes:
         ld      bc,GA_PORT + PAGE_B1
@@ -509,4 +522,4 @@ jb_lost:    db 0                    ; ≠ 0: μια εργασία εργοτα�
 sp_m:       db 0                    ; φορτία μετάλλου, και δίπλα του
 sp_b:       db 0                    ; βιοπλαστικού (bd_commit, sp_jobs)
         assert  sp_b == sp_m + 1
-        assert  (G_agent_fields & 255) == 0
+        assert  (G_agent_fields & 255) == 0 && RL_ENGINEER != RL_CBOT

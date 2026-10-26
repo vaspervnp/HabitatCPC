@@ -173,7 +173,7 @@ def no_engineer(sym, g, patch=(), quiet=False):
     # τελείωσε, και αν το τελευταίο φορτίο φτάσει μέσα στα ίδια 25 frames, το
     # NO ENGINEER είναι ήδη σωστό. Ως το βήμα 88 ο χρόνος έπεφτε αλλιώς.
     def hud():
-        said.append((w.struct(1)[7], hudread.text(m, sym, 2)[20:40].strip()))
+        said.append((w.struct(1)[7], hudread.alert(hudread.text(m, sym, 2), strict=False).strip()))
     if w.wait(lambda: w.struct(1)[7] == 0, 20000, 25, hud) is None:
         return f"το ηλιακό δεν τροφοδοτήθηκε: εγγραφή {w.struct(1)}, εργασίες {w.jobs()}"
     if any(owed and "NO ENGINEER" in t for owed, t in said):
@@ -182,7 +182,7 @@ def no_engineer(sym, g, patch=(), quiet=False):
     jobs, row = w.jobs(), hudread.text(m, sym, 2)
     if jobs != [[J_BUILD, SOLAR, 255, 5, SOLAR]] or w.struct(1)[4] != DS_BUILDING:
         return f"χωρίς μηχανικό: εργασίες {jobs}, εγγραφή {w.struct(1)} — η Build περιμένει αδιάθετη"
-    if row[21:].rstrip().replace("O", "0") != "N0 ENGINEER S0LAR":
+    if hudread.alert(row).rstrip().replace("O", "0") != "N0 ENGINEER S0LAR":
         return f"χωρίς μηχανικό η σειρά 2 λέει |{row}| — «NO ENGINEER SOLAR»"
     w.put6(role, [1])                                    # ξανά μηχανικός
     if w.wait(lambda: w.struct(1)[4] == DS_ACTIVE, 20000) is None:
@@ -191,7 +191,7 @@ def no_engineer(sym, g, patch=(), quiet=False):
     if "NO ENGINEER" in hudread.text(m, sym, 2):
         return f"το NO ENGINEER έμεινε: |{hudread.text(m, sym, 2)}|"
     if not quiet:
-        print(f"    χωρίς μηχανικό: |{row[20:].rstrip()}|, η Build αδιάθετη 2.000 frames· "
+        print(f"    χωρίς μηχανικό: |{hudread.alert(row).rstrip()}|, η Build αδιάθετη 2.000 frames· "
               f"με μηχανικό χτίστηκε και το μήνυμα έφυγε")
     return None
 
@@ -218,8 +218,8 @@ def main():
                                        if list(m.read_ram(at + k, len(pat))) == pat), None)
     jobs_at = find(sym["BDK_POST"], [0xCD, sym["SP_JOBS"] & 255, sym["SP_JOBS"] >> 8], 8)
     pb = sym["JB_POST_BUILD"]
-    scf = find(sym["SPN_AG"], [0x37], 40)                # scf: κανείς
-    lko = find(sym["LK_OUT"], [0x01, 0x80, 0], 16)       # ld bc,N_AGENT (lk_each, cpir από το 104)
+    scf = find(sym["SPN_NO"], [0x37], 4)                 # scf: κανείς (spn_ag ως το βήμα 172)
+    lko = find(sym["LK_OUT"], [0x01, 188, 0], 16)        # ld bc,N_AGENT (lk_each, cpir από το 104· 128 ως το 172)
     for label, fn, patch in (
             ("Build στο FIRE (ως το 87)", solar,
              jobs_at and [(jobs_at + 1, pb & 255), (jobs_at + 2, pb >> 8)]),

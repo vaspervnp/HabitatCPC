@@ -29,6 +29,7 @@ sys.path.insert(0, "/home/vasilhs/cpcemu")
 
 import balance as B                                      # noqa: E402
 import reach                                             # noqa: E402
+import econ as EC                                        # noqa: E402
 
 RASM = os.path.expanduser("~/rasm/rasm.exe")
 PER_SOL = 3000                     # πραγματικά frames ανά sol στο x4: 4 ανά frame
@@ -219,7 +220,7 @@ class Game:
         import entity as E
         b6, a0 = self.bank(6), self.L["G_agent_fields"] - 0x4000
         a = E.Agents().from_bytes(bytes(b6[a0:a0 + 4096]))
-        return {i: {f: getattr(a, f)[i] for f in E.FIELDS} for i in range(128)
+        return {i: {f: getattr(a, f)[i] for f in E.FIELDS} for i in range(E.MAXAGENT)
                 if a.flags[i] & 1}
 
     def capacity(self):
@@ -276,11 +277,12 @@ class Game:
     def sample(self):
         X, w, p = self.X, self.w16, self.m.peek
         ag = self.agents()
-        if any(96 <= j < 100 for j in ag) or self.m.peek(self.X["EC_SHKIND"]) == 4:
+        if any(EC.AG_FOE0 <= j < EC.AG_FOE0 + EC.AG_NFOE for j in ag) \
+                or self.m.peek(self.X["EC_SHKIND"]) == 4:
             self.foe_seen = self.sol()          # εισβολείς ζωντανοί, ή το πλοίο τους
         for i, a in self.alive_prev.items():
-            if i not in ag and i < 80:
-                # Με εισβολείς ζωντανούς (96-99) ο θάνατος είναι δικός τους (βήμα
+            if i not in ag and i < EC.AG_BOT0:
+                # Με εισβολείς ζωντανούς (176-179) ο θάνατος είναι δικός τους (βήμα
                 # 138): το cause() διάβαζε τις ανάγκες και έγραφε «δίψα» με νερό 200.
                 foe = self.sol() - getattr(self, "foe_seen", -9) < 0.5
                 why = "ΕΙΣΒΟΛΕΙΣ" if foe and min(a["o2"], a["water"], a["food"]) > 24 else cause(a)
@@ -293,14 +295,14 @@ class Game:
         b6, x = self.bank(6), self.L["G_node_occ"] - 0x4000 + 240     # EC_X (βήμα 172· ως τότε 128 + 100)
         ds = self.domes()
         self.rows.append(dict(
-            vis=sum(1 for i in ag if 112 <= i < 120),
+            vis=sum(1 for i in ag if EC.AG_VIS0 <= i < EC.AG_VIS0 + EC.AG_NVIS),
             coins=b6[x + 6] | b6[x + 7] << 8, prest=b6[x + 8], good=b6[x + 9],
             # οι μηχανές METAL (βήμα 137): ανά θόλο εργοστασίου, πόσες και πόσοι χειριστές
             mm=[(sum(1 for j in range(8) if d[8 + j] == METAL), d[7]) for d in ds
                 if d[4] == DS_ACTIVE and d[3] != R_GREEN and METAL in d[8:16]],
-            sol=self.sol(), alive=sum(1 for i in ag if i < 80),
-            bots=sum(1 for i in ag if 80 <= i < 96),
-            out=sum(1 for i, a in ag.items() if i < 80 and not a["flags"] & 2),
+            sol=self.sol(), alive=sum(1 for i in ag if i < EC.AG_BOT0),
+            bots=sum(1 for i in ag if EC.AG_BOT0 <= i < EC.AG_BOT0 + EC.AG_NBOT),
+            out=sum(1 for i, a in ag.items() if i < EC.AG_BOT0 and not a["flags"] & 2),
             popcap=p(X["EC_POPCAP"]), ship=p(X["EC_SHSTATE"]),
             stock=[self.stock(k) for k in range(14)],
             pp=w(X["EC_PPROD"]), pu=w(X["EC_PUSE"]), bat=w(X["EC_PSTORE"]),
@@ -323,7 +325,7 @@ class Game:
             # βήμα 161: πόσα tiles βράχου έχουν διάδρομο από πάνω (#12)
             rk=bytes(self.world()).translate(ROCK_CORR).count(1),
             need={i: (a["o2"], a["water"], a["food"], a["sleep"], a["health"], a["suit"],
-                      a["flags"]) for i, a in ag.items() if i < 80}))
+                      a["flags"]) for i, a in ag.items() if i < EC.AG_BOT0}))
 
     def corr_used(self):
         """Πόσες από τις 128 εγγραφές διαδρόμων (τράπεζα 5) δεν είναι άδειες."""

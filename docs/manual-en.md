@@ -100,7 +100,7 @@ about ten minutes of air, so the first domes are urgent.
 
 ```
 O2 ██████ PWR ██████ H2O ████·· FOD ██····  FE189 BI137 PR  0 SP 12 ME  0 BO  0 $  0
-POP  6/ 6 SOL  0 DAY ALL SYSTEMS OK
+6/6 SOL  0 DAY ALL SYSTEMS OK
 ```
 
 - **Four bars:** oxygen (`O2`), power (`PWR`), water (`H2O`) and food (`FOD`). A bar
@@ -113,7 +113,8 @@ POP  6/ 6 SOL  0 DAY ALL SYSTEMS OK
   - `ME` Medicine;
   - `BO` Bots waiting to wake.
 - **`$` coins**, which visitors pay.
-- **`POP` alive / cap**, the **sol** (day number), `DAY` or `NGT` (night).
+- **Colonists alive / cap** (`6/6`, `140/160`), the **sol** (day number), `DAY` or
+  `NGT` (night).
 - **The alert line**: the most urgent thing going on ([section 14](#14-the-alert-line)).
 
 **The play area** shows 20 × 10 tiles of the world. The camera follows the cursor
@@ -341,8 +342,9 @@ and wakes at a factory with a `ROBOTS` machine, up to sixteen. A bot becomes a
 constructor, a carrier or a driller, as the colony needs. Bots do not breathe, eat
 or sleep. You can also buy them from a merchant.
 
-The colony holds up to **80 colonists** and **16 bots**. Its size starts at 6 and
-grows by 48 with each Control room.
+The colony holds up to **160 colonists** and **16 bots**. Its size starts at 6 and
+grows by 48 with each Control room: 54 with one, 102 with two, 150 with three, and
+the full 160 with four.
 
 ## 11. Power, air, water, food, storage
 
@@ -519,4 +521,4 @@ with no power is still alive, and saving it is the point.
 - Two domes almost diagonal to each other cannot be joined (`NO CORRIDOR FITS`). Move
   one by a tile or two.
 - Colonists walking outside are drawn on top of whatever they pass.
-- The colony holds 80 colonists and 16 bots.
+- The colony holds 160 colonists and 16 bots.

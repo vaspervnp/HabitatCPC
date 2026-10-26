@@ -124,7 +124,7 @@ class Ticks:
         occ = ly["G_node_occ"]
         a = E.Agents().from_bytes(w(ly["G_agent_fields"], E.NPAGE * 256))
         b2 = bytes(self.m.read_ram(ly["G_econ_state"], ly["G_job_tbl"] - ly["G_econ_state"] + 160))
-        return {"ag": {f: list(getattr(a, f))[:128] for f in E.FIELDS},
+        return {"ag": {f: list(getattr(a, f))[:E.MAXAGENT] for f in E.FIELDS},
                 "dome": w(ly["G_dome_tbl"], 64 * 24).hex(), "str": w(ly["G_struct_tbl"], 48 * 8).hex(),
                 "occ": w(occ, 128).hex(),
                 "foe": [(b & 15, b >> 4) for b in w(occ + 128, 112)],     # FO_MAP (src/foe.asm)
