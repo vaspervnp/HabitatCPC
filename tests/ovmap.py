@@ -57,7 +57,7 @@ def pieces(sym):
     hand = sym["TU_TXT"] - sym["DH_RSIZE"]
     return {
         "dm": (5, spread(OV_R3, len(dm)), GH, dm),
-        "save": (1, spread(OV_R2, len(sv)), GH + 512, sv),
+        "save": (1, spread(OV_R2, len(sv)), GH, sv),     # στο GH_BUF + 512 ως το βήμα 174
         "help": (1, spread(OV_R2 + rows2 * 128, len(hp)), GH, hp),
         "tutor": (1, list(range(sym["ZZ_TUT_END"], sym["ZZ_TUT_END"] + len(tu))), GH, tu),
         "tutext": (1, list(range(sym["TU_TXT"], sym["TU_TXT"] + TU_LINES)), sym["TU_TXT"], None),

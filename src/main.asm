@@ -282,8 +282,8 @@ zz_bank0_end:
 ;   OV_R1, συνεχές: οι χειριστές της κατεδάφισης (τρέχουν στη θέση τους), οι
 ;     δεκαέξι γραμμές του tutorial, ο κώδικάς του (για το GH_BUF);
 ;   OV_R2, κομμάτια των 16 στις 64 γραμμές θόλων του DIST: το σώσιμο με τον
-;     οδηγό του δίσκου (για το SV_ORG = GH_BUF + 512, μετά τα 512 της
-;     κεφαλίδας, SV_HDR), η βοήθεια (για το GH_BUF);
+;     οδηγό του δίσκου (για το SV_ORG = GH_BUF, με τα 512 της κεφαλίδας,
+;     SV_HDR, στο τέλος του GH_BUF), η βοήθεια (για το GH_BUF);
 ;   OV_R3, κομμάτια των 16 στις 112 γραμμές του NEXTHOP, τράπεζα 5: η
 ;     κατεδάφιση (για το GH_BUF).
 ; Κάθε κομμάτι στα 16 του (ή στο byte του, στο OV_R1). Το OV_LOAD κρατά 3 KB
@@ -329,14 +329,22 @@ R1_LEN      equ TU_AT + TU_LEN - OV_R1
         save    "../build/ovr1.bin", OVI_R1, R1_LEN     ; όλο το OV_R1, για τις δοκιμές
 ; --- OV_R2 ---
 OVI_R2      equ OVI_R1 + R1_LEN
-SV_ORG      equ GH_BUF + 512
+; ΣΤΗΝ ΑΡΧΗ ΤΟΥ GH_BUF, ΚΑΙ Η ΚΕΦΑΛΙΔΑ ΣΤΟ ΤΕΛΟΣ (μετά το βήμα 174). Το sv_ovl
+; φέρνει ΟΛΟΚΛΗΡΕΣ γραμμές των 16. Από το βήμα 155 ως τότε ο κώδικας ήταν 647
+; bytes μετά τα 512 της κεφαλίδας, και η 41η γραμμή του έγραφε 8 bytes πέρα από
+; το GH_BUF, πάνω στο bd_select: μετά από κάθε S και L κάθε επιλογή κτιρίου
+; διάβαζε σκουπίδια (tests/test_save.py). Το assert ήταν για τον κώδικα, όχι για
+; τις γραμμές του. Τώρα το τέλος της τελευταίας γραμμής πέφτει στην κεφαλίδα,
+; που γράφεται αργότερα.
+SV_ORG      equ GH_BUF
         org     SV_ORG, OVI_R2
 zz_ov2:
         include "save.asm"
         include "fdc.asm"
 zz_ov2_end:
-        assert  zz_ov2_end <= GH_BUF + GH_LOG
+        assert  zz_ov2_end <= SV_HDR
 OV2_ROWS    equ (zz_ov2_end - SV_ORG + 15) >> 4
+        assert  SV_ORG + OV2_ROWS * OV_UNIT <= GH_BUF + GH_LOG
         save    "../build/ovl2.bin", OVI_R2, zz_ov2_end - SV_ORG
         org     GH_BUF, OVI_R2 + OV2_ROWS * OV_UNIT
 zz_ov3:
@@ -344,6 +352,7 @@ zz_ov3:
 zz_ov3_end:
         assert  zz_ov3_end <= GH_BUF + GH_LOG
 OV3_ROWS    equ (zz_ov3_end - GH_BUF + 15) >> 4
+        assert  GH_BUF + OV3_ROWS * OV_UNIT <= GH_BUF + GH_LOG  ; οι γραμμές, όχι μόνο ο κώδικας
         save    "../build/ovl3.bin", OVI_R2 + OV2_ROWS * OV_UNIT, zz_ov3_end - GH_BUF
 R2_UNITS    equ OV2_ROWS + OV3_ROWS
         assert  R2_UNITS <= MAX_DOME
@@ -357,6 +366,7 @@ zz_ovl:
 zz_ovl_end:
         assert  zz_ovl_end <= GH_BUF + GH_LOG
 R3_UNITS    equ (zz_ovl_end - GH_BUF + 15) >> 4
+        assert  GH_BUF + R3_UNITS * OV_UNIT <= GH_BUF + GH_LOG  ; οι γραμμές, όχι μόνο ο κώδικας
         assert  R3_UNITS <= NODE_CAP
         save    "../build/ovl.bin", OVI_R3, zz_ovl_end - GH_BUF
 OV_ROWS     equ R3_UNITS

@@ -17883,7 +17883,9 @@ more. They are 646 bytes (630 until milestone 113) of the routing matrix's holes
 ([§4.2](#memory-again-at-milestone-103)), and run in the ghost's log, as the demolition
 does: the log already lent its first 512 bytes to the header (`SV_HDR`), and the code
 runs right after them, at `SV_ORG = GH_BUF + 512`. `S` and `L` hide the ghost before
-they start (`ui_dosave`, `ui_doload`), so the log is empty.
+they start (`ui_dosave`, `ui_doload`), so the log is empty. Since the fix after milestone
+174 the code runs at the start of the log and the header is at its end
+([below](#the-save-wrote-past-the-ghosts-log-found-after-milestone-174)).
 
 `sv_save` and `sv_load` keep their names and their place in bank 2 (`src/demolish.asm`):
 each copies the 21 rows (20 until milestone 113) to `SV_ORG` and calls in (`svo_save`, `svo_load`). The copy is
@@ -17924,6 +17926,35 @@ until milestone 112 fails the CPC's case, and one that accepts ND fails the ND c
 The timings cannot be tested here; they are listed in [§15](#15-open-risks).
 
 ---
+
+#### The save wrote past the ghost's log, found after milestone 174
+
+**From milestone 155 until this fix, every `S` and every `L` wrote 8 bytes of zeros over
+the start of `bd_select`**, the first routine of bank 2's code. From then until the next
+start, choosing anything to build copied the wrong catalogue entry: the footprint was
+garbage, and the first step of the cursor in `PLACE` scrolled the camera 20–25 tiles
+and drew the wrong ghost. It was found while the tutorial's pages were being built:
+they bring the same overlay in, and the camera jumped after the first page.
+
+- **Why.** `sv_ovl` copies the save's code from the holes in whole rows of 16 bytes
+  (`OV2_ROWS`). The code was 647 bytes at `SV_ORG = GH_BUF + 512`, so its 41 rows, 656
+  bytes, ended 8 bytes past `GH_BUF + GH_LOG`, the end of the ghost's log and the start
+  of `PAGE2_CODE`. Milestone 155 made the code 9 bytes longer and checked that the
+  *code* still ended inside the log, 1 byte under it. Nothing checked its *rows*, and
+  the 9 bytes after the code in the last row are zeros.
+- **Why no test saw it.** `tests/test_save.py` saves and loads, and compares the
+  economy, the world and the picture. Nothing after a save chose a building.
+- **The fix costs no bytes.** The code runs at the start of the log now, `SV_ORG =
+  GH_BUF`, and the header's 512 bytes are at its end, `SV_HDR = GH_BUF + GH_LOG - 512`.
+  The last row's padding falls on the header, which is written after the copy. Two
+  `assert`s check the rows: the save's must end inside the log, and its code before the
+  header. The help's rows and the demolition's are checked the same way; they were
+  inside it already.
+- **The tests.** `tests/test_save.py` checks the first 16 bytes of bank 2's code after an
+  `S` and after an `L`. The negative copies the code to where it was, `GH_BUF + 512`, from
+  a probe, and finds the 8 zeros. `tests/ovmap.py` knows the new place. The check that a
+  save works with garbage in its code area before the copy now writes the garbage after
+  the cursor's log (`gh_ptr`), since `S` hides the cursor with what that log says.
 
 ## 12. Asset gaps
 
@@ -18583,6 +18614,7 @@ gap.
 
 | Risk | Severity | Mitigation |
 |---|---|---|
+| ~~Every save and every load broke the choice of a building, from milestone 155~~ | ~~High~~ | **Found and resolved after milestone 174** ([§11](#the-save-wrote-past-the-ghosts-log-found-after-milestone-174)). The save's overlay was copied in whole rows of 16, and the last one wrote 8 zeros over `bd_select`. The code now runs at the start of the ghost's log with its header at the end, and `assert`s check the rows, not only the code. `tests/test_save.py` checks bank 2's first bytes after `S` and `L`. |
 | ~~CRTC offset scrolling with a two-page raster split~~ | ~~High~~ | **Resolved at milestone 5, and split in two.** Offset scrolling works to the pixel ([§8.2](#82-camera)). The mid-frame page change does **not** — the CRTC latches the start address once per frame — so the HUD moved into the play page and bank 2 went flat ([§8.1](#81-screen-layout), [§4.3](#43-bank-2-flat-again)). |
 | ~~HUD re-render on every scroll step, ≈ 0.4 frames, estimated not measured~~ | ~~Medium~~ | **Measured at 2.55 frames**, six times the estimate, and then cut ([§8.1](#81-screen-layout)). The cell cache of [§9.2](#92-hud) took an ordinary tick to 1.15, and milestone 52's smaller HUD to **0.65**; a camera step, which moves every cell, still pays **1.75** (2.30 before milestone 52, 2.20 before the font moved to bank 7 at milestone 33). The escape hatch for that one — *move* the HUD block inside the ring instead of re-rendering it — **was taken at milestone 83**: 0.89–0.94 frames per step, cheaper than what it replaced, and the HUD is never rubble after a scroll, paused or not ([§8.1](#81-screen-layout)). |
 | Mid-frame writes land where aimed, but only on the emulator's CRTC | Low | The border control in `tests/test_camera.py` hits line 160 exactly. Real hardware still wants a check, but nothing now depends on a mid-frame *address* write. |

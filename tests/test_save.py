@@ -413,11 +413,25 @@ def main():
     a_econ, a_plane, a_play = snap()
     a_img = image("a")
     # Ο ΚΩΔΙΚΑΣ ΤΟΥ ΣΩΣΙΜΑΤΟΣ ΕΡΧΕΤΑΙ ΑΠΟ ΤΙΣ ΤΡΥΠΕΣ σε κάθε S (βήμα 103): ό,τι
-    # κι αν έχει μείνει στο SV_ORG — εδώ rst 0 ως το τέλος του GH_BUF — το
-    # σώσιμο πετυχαίνει.
+    # κι αν έχει μείνει στο SV_ORG — εδώ rst 0 ως το τέλος του κώδικα — το
+    # σώσιμο πετυχαίνει. Από το τέλος του αρχείου του κέρσορα (gh_ptr): από
+    # μετά το βήμα 174 το SV_ORG είναι η αρχή του GH_BUF, και το S σβήνει πρώτα
+    # τον κέρσορα με ό,τι λέει το αρχείο του.
     sv_org = sym["ZZ_OV2"]
-    m.write_ram(sv_org, b"\xC7" * (sym["ZZ_OV2_END"] - sv_org))
+    gh_end = w16(sym["GH_PTR"])
+    m.write_ram(gh_end, b"\xC7" * (sym["ZZ_OV2_END"] - gh_end))
     nsave = disc_op("S")
+    # ΤΙΠΟΤΑ ΕΞΩ ΑΠΟ ΤΟ GH_BUF (μετά το βήμα 174). Το sv_ovl φέρνει τον κώδικα
+    # σε γραμμές των 16 (OV2_ROWS): από το βήμα 155 ως τότε ο κώδικας ήταν 647
+    # bytes, μετά τα 512 της κεφαλίδας, και οι 41 γραμμές του έγραφαν 8 bytes
+    # πέρα από το GH_BUF, πάνω στο bd_select. Μετά από κάθε S και L κάθε
+    # επιλογή κτιρίου διάβαζε σκουπίδια ως την επόμενη εκκίνηση.
+    P2 = sym["ZZ_PAGE2_CODE"]
+    g2 = open(os.path.join(ROOT, "build", "game2.bin"), "rb").read()
+    p2img = g2[P2 - sym["ZZ_BOOT"]:][:16]
+    check(bytes(m.read_ram(P2, 16)) == p2img,
+          f"μετά το S ο κώδικας της σελίδας 2 στο #{P2:04X} (bd_select) είναι ακέραιος: "
+          f"{bytes(m.read_ram(P2, 8)).hex()} / {p2img[:8].hex()}")
     check(m.peek(sym["SV_SLOT"]) == 0 and m.peek(sym["FD_TRK"]) >= 24,
           f"το σώσιμο έτρεξε (slot {m.peek(sym['SV_SLOT'])}, "
           f"track #{m.peek(sym['FD_TRK'])}), με σκουπίδια στο SV_ORG πριν")
@@ -451,6 +465,8 @@ def main():
     # --- 3. φόρτωμα --------------------------------------------------------
     nload = disc_op("L")
     m.run_frames(120)
+    check(bytes(m.read_ram(P2, 16)) == p2img,
+          f"και μετά το L: {bytes(m.read_ram(P2, 8)).hex()} / {p2img[:8].hex()}")
     c_econ, c_plane, c_play = snap()
     check(c_plane == a_plane, "το επίπεδο κόσμου γύρισε ακριβώς")
     check(land() == LAND_A, f"τα ποσοστά των πλοίων γύρισαν: {land()}, σωσμένα {LAND_A}")
@@ -620,6 +636,25 @@ def main():
           "κατεδάφιση από τις τρύπες")
     ov_write(sa + k + 1, b"\x6F")
 
+    # ΑΡΝΗΤΙΚΟ (μετά το βήμα 174): το sv_ovl με τον κώδικα εκεί που ήταν, μετά
+    # τα 512 της κεφαλίδας (ld de,GH_BUF + 512): οι γραμμές του γράφουν πάνω
+    # στο bd_select. Μόνο η αντιγραφή, από ένα probe: ένα S θα έτρεχε τον
+    # οδηγό του δίσκου μισοσβησμένο.
+    so = sym["SV_OVL"]
+    k = next(k for k in range(16)
+             if list(m.read_ram(so + k, 3)) == [0x11, sv_org & 255, sv_org >> 8])
+    old = sym["ZZ_OV3"] + 512                   # ZZ_OV3: η βοήθεια, στο GH_BUF
+    m.write_ram(so + k + 1, bytes([old & 255, old >> 8]))
+    m.run_code(0x3EC0, bytes([0xF3, 0xCD, so & 255, so >> 8, 0x18, 0xFE]), frames=2)
+    bad = bytes(m.read_ram(P2, 16))
+    m.write_ram(P2, p2img)
+    m.write_ram(so + k + 1, bytes([sv_org & 255, sv_org >> 8]))
+    m.set_pc(sym["MAIN_LOOP"])
+    m.run_frames(4)
+    check(bad != p2img,
+          f"ΑΡΝΗΤΙΚΟ: με τον κώδικα μετά την κεφαλίδα το sv_ovl γράφει πάνω στο bd_select: "
+          f"{bad[:8].hex()} / {p2img[:8].hex()}")
+
     # ΑΡΝΗΤΙΚΟ (βήμα 103): χωρίς το ov_copy του sv_ovl (call -> nop) και με
     # σκουπίδια στο SV_ORG, το S δεν σώζει. Τελευταίο: ό,τι τρέξει από εκεί δεν
     # γυρίζει.
@@ -629,7 +664,8 @@ def main():
              if list(m.read_ram(so + k, 3)) == [0xCD, oc & 255, oc >> 8])
     m.screenshot(os.path.join(ROOT, "build", "save.png"), aspect=True)
     m.write_ram(so + k, b"\0\0\0")
-    m.write_ram(sv_org, b"\xC7" * (sym["ZZ_OV2_END"] - sv_org))
+    gh_end = w16(sym["GH_PTR"])
+    m.write_ram(gh_end, b"\xC7" * (sym["ZZ_OV2_END"] - gh_end))
     disc_op("S", 0)
     check("SAVED" not in LAST_MSG,
           f"ΑΡΝΗΤΙΚΟ: χωρίς τον κώδικα από τις τρύπες το S δεν σώζει: |{LAST_MSG}|")
