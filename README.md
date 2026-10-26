@@ -1,118 +1,145 @@
 # Habitat
 
-A colony-survival game for the **Amstrad CPC 6128** — 128 KB, Mode 0, disc.
+A colony-survival game for the **Amstrad CPC 6128**: 128 KB, Mode 0, disc.
 
-You drop a construction pod on an unnamed world and place what the colony needs.
-You never give an order. Colonists walk out, take jobs from whatever you built, and
-either keep the oxygen running or do not.
+A ship drops six colonists and a hold of materials on an empty world, and you place
+what the colony needs. You never give an order. The colonists walk out, take the work
+your buildings offer, eat, sleep and breathe on their own, and either keep the oxygen
+running or do not.
 
-Systems are modelled on *Planetbase* (Madruga Works, 2015), cut down until they fit
-in a Z80 and 128 KB.
+The systems are modelled on *Planetbase* (Madruga Works, 2015), cut down until they
+fit in a Z80 and 128 KB.
 
-> **Status: it runs.** `RUN"HABITAT` on a 6128 generates a world, builds the starting
-> colony and hands it over — with a title screen, a dot per file and a progress bar
-> through the five seconds of world generation; the player builds, the colonists
-> work, `S` / `L` save and load the game, and it makes noises at you.
-> Three save slots, all reachable, and a tune through the five seconds of world
-> generation. **The numbers are measured now**: `tools/balance.py` runs the real
-> binary at ×4 for eight sols and prints the colony's curve, and what it found was
-> not mis-tuned rates but an economy with no clock, power that counted consumption
-> instead of demand, and a starting colony whose Quarters were a second oxygen
-> generator. Do nothing and everyone is dead on sol 2, of asphyxiation; build the
-> panel, the collector and the pump and they live until the Food runs out. **And now
-> a dome can be given a room**: the build menu's second axis picks Oxygen, Canteen,
-> Greenhouse, Factory, Lab, Medbay and the rest, and the dome fills its own slots
-> with the machines — or the plants — that belong there. **And it can grow**: the
-> opening now carries 60 Ore and enough Metal to buy a Factory beside the panel and
-> the pump, the Factory turns that ore into 30 Metal by sol 4 — which is a mine, and
-> the loop closes — and `C` calls a colonist ship down to the pad, four at a time,
-> once a Control room has raised the population ceiling. **And it feeds itself**:
-> a greenhouse, a lab and a canteen now carry four colonists through eight sols with
-> nobody dead, which they did not before — the colonists were starving *on the way to
-> the canteen*, sent back to work by the job board every time they set off. **And
-> twelve of them, too**: one biologist now tends a whole greenhouse instead of one pot,
-> the job board staffs the canteen before the fourth tomato plant, and the HUD says
-> `LOW ON FOOD` while there is still time to do something about it.
-> Build it with `tools/build.sh` — that also runs every test — and read
-> [`DESIGN.md`](DESIGN.md) first.
+![A colony after thirty sols](docs/img/colony.png)
+
+**Manuals:** [English](docs/manual-en.md) · [Ελληνικά](docs/manual-el.md)
 
 ---
 
-## The shape of it
+## What is in the game
+
+- **A world built for each game**: 128 × 128 tiles from a 16-bit seed, on four
+  planets (desert, ice, storm, barren moon), chosen from a menu drawn over a piece of
+  a real world. There is also a **tutorial**: fourteen guided steps on a barren moon,
+  then a normal game.
+- **Domes and corridors:**
+  - three dome sizes and ten rooms, fitted slot by slot with the machines the room
+    allows;
+  - corridors laid automatically to the domes in reach;
+  - airlocks as the only doors, and paths on the ground to the structures outside.
+- **Autonomous colonists**, up to 80, and 16 bots:
+  - five specialties — worker, engineer, biologist, medic, guard;
+  - six needs — oxygen, water, food, sleep, health, morale;
+  - suits that run out of air outside.
+- **An economy of two flows and fourteen goods.** The flows are power and oxygen. The
+  goods are water, food, ore, metal, bioplastic, processors, spares, medicine, guns,
+  bots, starch, vegetables, medicinal plants and meat. It runs through mines,
+  factories, labs, greenhouses and canteens.
+- **Ships:**
+  - colonist ships that you call, with the specialties' shares chosen in steps of 10%;
+  - visitors who pay coins, coming more often with the colony's prestige;
+  - merchants, who trade once a visit;
+  - intruders, whom the guards fight.
+- **Hazards:** night, malfunctions, sandstorms, solar flares, meteor showers and
+  intruders.
+- **Demolition**, an info key, four speeds, and **save and load** in three slots on the
+  game's own disc.
+- **Sound:** effects on the AY, and a tune during world generation.
+
+The game loads from its own disc. `RUN"HABITAT` shows the menu after a few seconds,
+and the chosen world is built in about five.
 
 | | |
 |---|---|
-| World | 128 × 128 tiles, procedurally generated, origin `(0,0)` at the centre |
-| Seed | 16-bit, four hex digits — the same seed always builds the same world |
+| World | 128 × 128 tiles, generated from its seed. The same seed always builds the same world. |
 | Colony | up to 80 colonists and 16 bots, all autonomous |
-| View | 20 × 10 tiles of the world at a time, hardware-scrolled |
-| Memory | all eight 16 KB banks used: world, routing tables, sprites, two screen pages |
+| View | 20 × 10 tiles at a time, hardware-scrolled, with a two-mode raster split for the HUD |
+| Memory | all eight 16 KB banks: world, routing tables, sprites, simulation, two screen pages |
 
-Two decisions shape everything else:
+## Status
 
-- **The world is a pure function of its seed.** Terrain is generated once, into a
-  dedicated 16 KB bank, by a program that is loaded, run and then overwritten by the
-  game itself. Saves keep the whole 16 KB rather than the seed: regenerating costs
-  five seconds and reading it back about one.
-- **Nothing runs all at once.** Agents, production, routing, rendering and even world
-  generation are sliced across a 16-frame wheel with a fixed per-frame budget. The
-  simulation is allowed to think more slowly as the colony grows; the frame rate is
-  not allowed to drop.
+It is a complete game. The ten delivery milestones of
+[`DESIGN.md` §14](DESIGN.md#14-delivery-plan) are built, and what remains is tuning.
 
----
+- **In progress: 160 colonists.** The plan is
+  [`DESIGN.md` §6.1](DESIGN.md#more-than-80-colonists-the-plan-at-milestone-169), and
+  its first three steps are done.
+- **Still owed: a check on a real CPC 6128.** The raster splits, the disc's timing and
+  the mid-frame CRTC writes have been tested only on the emulator
+  ([`DESIGN.md` §15](DESIGN.md#15-open-risks)).
 
-## Repository
+## Playing
+
+Build the disc (below), then on a 6128 or a 6128 emulator:
 
 ```
-DESIGN.md           the design document — start here
-README.md           this file
-sync-assets.sh      pulls the graphics from the CPCArt repo
-assets/             Mode 0 graphics, generated — do not edit by hand
-  SPRITES.md        every sprite, its pointer, and how a dome is composed
-  sprites.asm       RASM source to include
-  sprites.bin       the same bytes as raw binary
-  sprites_map.txt   offset and size of every sprite
-  aseprite/         the source spritemaps and their exports
-  preview/          sheet.png and assembled dome composites
+RUN"HABITAT
 ```
 
-Nothing in `assets/` is edited here. It is generated in the [`CPCArt`](../CPCArt)
-repo and copied in:
+The [player's manual](docs/manual-en.md) covers the controls, the buildings, the
+colonists, the ships and the hazards. It also has a step-by-step first colony. The
+game saves onto its own disc, so use a copy that is not write-protected.
 
-```bash
-./sync-assets.sh --regen
-```
-
----
-
-## Building (once there is something to build)
+## Building
 
 | Tool | Path | Role |
 |---|---|---|
 | `rasm` | `~/rasm/rasm.exe` | assembler |
-| `iDSK` | `~/idsk/iDSK` | builds the `.dsk` image |
+| `iDSK` | `~/idsk/iDSK` | disc image tool |
 | `cpcemu` | `~/cpcemu/cpc.py` | headless CPC 6128 emulator, renders to PNG |
+| Python 3 | with Pillow | the tools and the tests |
 
-The emulator is headless and scriptable, which is what makes the test plan in
-[`DESIGN.md` §13](DESIGN.md#13-build-and-test) real — including generating a seed
-twice from cold boot and asserting the two 16 KB worlds are byte-identical, and
-sweeping thousands of seeds to prove every one of them is playable.
+From a fresh clone:
 
----
+```bash
+./tools/build.sh --gen          # tables and bank images from the assets
+python3 tools/mkgentables.py    # the world generator's tables
+python3 tools/mkdsk.py          # assembles everything, writes build/habitat.dsk
+```
 
-## Before writing code
+`./tools/build.sh` without `--gen` also runs the test suite. Everything it makes goes
+to `build/`, which is not in the repository.
 
-Three things in [`DESIGN.md`](DESIGN.md) will save the most time:
+## Testing
 
-1. **[§2.2 The frame budget](DESIGN.md#22-the-frame-budget)** — drawing one large dome
-   costs almost six frames. Every other decision in the design follows from that.
-2. **[§4 The memory map](DESIGN.md#4-memory-map--all-128-kb)** — all eight banks are
-   spoken for, with under 1.5 KB of slack.
-3. **[§15 Open risks](DESIGN.md#15-open-risks)** — the CRTC offset scroll with a
-   two-page raster split is the least certain claim in the document. Prove it at
-   milestone 5, before anything is built on top of it.
+The emulator is headless and scriptable, so the game is tested as it runs:
 
-There are also eight outstanding art requests in
-[§12 Asset gaps](DESIGN.md#12-asset-gaps). The first four are blocking — most
-importantly, **there are no terrain tiles yet**, and the sprite build must be pinned to
-`--quads nw` or it will not fit in memory.
+- **89 tests in `tests/`.** They cover the blit kernels and every drawing, byte for
+  byte against reference renderers. They check the simulation against Python
+  reference models (`tools/entity.py`, `tools/econ.py`, `tools/graph.py`), the UI
+  through its keys, and the disc loader and the save from a cold boot. They hold cost
+  ceilings in µs, with negative controls that must fail.
+- **`tools/play.py`** is a scripted player that plays whole games of 120 sols on the
+  real binary. It is how the balance is measured.
+- **`tools/tickplay.py`** runs the same player with the wheel's ticks for its clock, so
+  that a change that should not alter the game can be shown to give the same games,
+  event for event.
+
+## Repository
+
+```
+DESIGN.md        the design document, kept up to date milestone by milestone
+README.md        this file
+docs/            the player's manuals (English, Greek) and their screenshots
+src/             the game, in Z80 assembly (rasm)
+tools/           build tools, reference models, the scripted player
+tests/           the test suite and its golden images
+assets/          Mode 0 graphics, generated in the CPCArt repo; do not edit by hand
+sync-assets.sh   pulls the graphics from CPCArt
+```
+
+The graphics are made in the [`CPCArt`](../CPCArt) repo and copied in with
+`./sync-assets.sh --regen`. `assets/SPRITES.md` documents every sprite.
+
+## Reading the code
+
+Start with [`DESIGN.md`](DESIGN.md). Three parts explain most of the rest:
+
+1. **[§2.2 The frame budget](DESIGN.md#22-the-frame-budget)**: drawing one large dome
+   costs almost six frames, and every other decision follows from that.
+2. **[§4 The memory map](DESIGN.md#4-memory-map--all-128-kb)**: all eight banks are
+   spoken for, with a few hundred bytes to spare.
+3. **[§7 The batch scheduler](DESIGN.md#7-the-batch-scheduler)**: agents, production,
+   routing and events are sliced over a 16-frame wheel with a fixed budget per frame.
+   The simulation is allowed to think more slowly as the colony grows; the frame rate
+   is not allowed to drop.
