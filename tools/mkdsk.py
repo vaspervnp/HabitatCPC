@@ -60,7 +60,26 @@ FILES = [
     ("GAME2.BIN",   "game2.bin", 0,      0x0000),   # από το σύμβολο
     ("GAME.BIN",    "game.bin",  0x0100, 0x0000),
     ("GEN.BIN",     "gen.bin",   0x8000, 0x8000),
+    # ΟΙ ΣΕΛΙΔΕΣ ΤΟΥ TUTORIAL (βήμα 175, tools/tupages.py): ASCII, χωρίς
+    # κεφαλίδα, και δεν τις φορτώνει ο φορτωτής. Τις διαβάζει το παιχνίδι μία
+    # μία, βρίσκοντας το αρχείο στον κατάλογο (src/tpage.asm).
+    ("TUTOR.TXT",   "tutor.txt", None,   None),
 ]
+
+# ΧΩΡΙΣ ΤΑ ΜΗΔΕΝΙΚΑ ΤΟΥ ΤΕΛΟΥΣ (βήμα 175): η BANK6.BIN είχε 12 KB μηδενικά, τους
+# πίνακες της προσομοίωσης πριν από το game_new, και ο δίσκος δεν είχε χώρο για
+# το TUTOR.TXT — τα αρχεία έφταναν στον πρώτο τομέα του track 23 και τα slots
+# του §11 ξεκινούν στο 24. Ο φορτωτής μηδενίζει την τράπεζα 6 πριν τη φορτώσει
+# (src/boot.asm), άρα η μνήμη είναι ίδια.
+TRIM = {"BANK6.BIN"}
+
+
+def staged(name, src):
+    """Τα bytes του αρχείου όπως μπαίνουν στον δίσκο."""
+    data = open(os.path.join(BUILD, src), "rb").read()
+    if name in TRIM:
+        data = data.rstrip(b"\0")
+    return data
 
 
 def run(cmd, cwd=None):
@@ -101,10 +120,10 @@ def write_disc_tab():
     import menuworld
     files = menuworld.geom()["BAR_FILES"]
     sect = 0
-    for name, src, _, _ in FILES:
-        if name in ("LOADER.BIN", "MENU.BIN"):
+    for name, src, load, _ in FILES:
+        if name in ("LOADER.BIN", "MENU.BIN") or load is None:
             continue
-        sect += (os.path.getsize(os.path.join(BUILD, src)) + 128 + 511) // 512
+        sect += (len(staged(name, src)) + 128 + 511) // 512
     k = files * 256 // sect
     assert 0 < k < 256 and k * sect <= files * 256
     with open(os.path.join(BUILD, "disc_tab.asm"), "w", encoding="utf-8") as f:
@@ -347,9 +366,13 @@ def build():
     run([IDSK, DSK, "-i", bas, "-t", "0"])
     total = os.path.getsize(bas)
     for name, src, load, exe in FILES:
-        path = os.path.join(BUILD, src)
-        total += os.path.getsize(path)
-        shutil.copy(path, os.path.join(stage, name))
+        data = staged(name, src)
+        total += len(data)
+        with open(os.path.join(stage, name), "wb") as f:
+            f.write(data)
+        if load is None:                        # ASCII (βήμα 175)
+            run([IDSK, DSK, "-i", os.path.join(stage, name), "-t", "0"])
+            continue
         run([IDSK, DSK, "-i", os.path.join(stage, name),
              "-t", "1", "-c", f"{load:04X}", "-e", f"{exe:04X}"])
     return total

@@ -397,6 +397,13 @@ def cost(sym, g, t_end, old):
     m.poke(sym["UI_SPD"], 0)
     m.run_frames(4)
     TB.call_us(m, sym, sym["UI_HIDE"], reps=1)
+    # ΧΩΡΙΣ ΤΗ ΣΕΛΙΔΑ (βήμα 175): από το 1 ως το 14 το βήμα αλλάζει, και το
+    # tuo_go τελειώνει με jp tu_page, που περιμένει πλήκτρο. Εδώ μετριέται το
+    # γεγονός ως εκεί (ret στη θέση του jp)· τη σελίδα τη μετρά το
+    # tests/test_tupage.py.
+    tp = sym["TU_PAGE"]
+    jp = [0xC3, tp & 255, tp >> 8]
+    patched = t_end.patch_code(jp, [0xC9, 0, 0])
     got = {}
     for s0 in (16, 1, 1):
         t_end.b6[t_end.tu] = s0
@@ -404,7 +411,9 @@ def cost(sym, g, t_end, old):
         got[s0] = max(got.get(s0, 0), us)
         got[(s0, "->")] = t_end.step()
     TB.call_us(m, sym, sym["UI_SHOW"], reps=1)
-    check(got[1] <= COST_ON and got[(1, "->")] == 14 and got[(16, "->")] == 16,
+    if patched:
+        t_end.patch_code([0xC9, 0, 0], jp)
+    check(patched and got[1] <= COST_ON and got[(1, "->")] == 14 and got[(16, "->")] == 16,
           f"ΚΟΣΤΟΣ: ένα γεγονός με tutorial ως {got[1]} µs (ταβάνι {COST_ON}), από το βήμα 1 "
           f"ως το {got[(1, '->')]}: {got[16]} το φέρσιμο του κώδικα και της γραμμής, "
           f"{got[1] - got[16]} τα δεκατρία μετρήματα")
@@ -421,6 +430,7 @@ def disc(sym, g):
     dsk = os.path.join(ROOT, "build", "habitat.dsk")
     want = texts()
     m = CPC()
+    B.pages(m, sym)                      # οι σελίδες του tutorial (βήμα 175) κλείνουν
     L = __import__("play").layout()
     tu = L["G_node_occ"] + 253 - 0x4000                       # EC_TU
     wi = L["G_worldinfo"] - 0x4000

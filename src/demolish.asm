@@ -141,6 +141,17 @@ tu_run:
         ldir
         jp      tuo_go                  ; src/tutor.asm, στο GH_BUF
         assert  tuo_go == GH_BUF
+; tu_open — η εισαγωγή του tutorial και το βήμα 1 (βήμα 175), μία φορά, μόλις
+; στηθεί το παιχνίδι: το boot_go το αφήνει στη στοίβα ως την επιστροφή του
+; ui_init (src/startup.asm). Σε κόσμο που δεν είναι του tutorial το tu_ev
+; είναι ret, και δεν γίνεται τίποτα.
+tu_open:
+        ld      a,(tu_ev)
+        or      a
+        ret     nz
+        call    ui_hide
+        xor     a                       ; η εισαγωγή (το ui_hide χαλάει το A)
+        jp      hp_tut                  ; src/help.asm
 
 ; ov_copy — A κομμάτια των 16 από τις τρύπες της τράπεζας 1 (HL, ένα ανά
 ; γραμμή των 128) στο DE, συνεχή. ov_cpgh — το ίδιο στο GH_BUF (βήμα 148).

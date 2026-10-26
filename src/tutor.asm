@@ -58,6 +58,7 @@ TU_MEAT     equ 9
 tuo_go:
         call    ob_b6                   ; θόλοι, δομές, EC_TU, worldinfo
         ld      a,(EC_TU)
+        ld      (tuo_o),a               ; για τη σελίδα, στο τέλος (βήμα 175)
         cp      TU_YOURS
         jr      nz,tuo_new
         inc     a                       ; το μήνυμα κράτησε ως αυτό το γεγονός
@@ -114,6 +115,8 @@ tuo_txt:
         ld      a,'P'                   ; το τέλος του «C=SHIP»
 tuo_33:
         ld      (de),a
+        ld      a,(tuo_s)
+        ld      (tp_cur),a              ; η σελίδα του «?» (src/tpage.asm, βήμα 175)
         ; --- οι βλάβες σβηστές στα βήματα (or αντί για and στο ev_fault) ---
         ld      a,(tuo_s)
         dec     a
@@ -134,7 +137,21 @@ tuo_ev:
         ld      (tu_ev),a
         ld      bc,GA_PORT + PAGE_B1
         out     (c),c
-        ret
+        ; --- ΚΑΙ Η ΣΕΛΙΔΑ ΤΟΥ ΝΕΟΥ ΒΗΜΑΤΟΣ (βήμα 175, src/tpage.asm) ---
+        ; Μόνο όταν το βήμα άλλαξε, από το 2 ως το μήνυμα του τέλους: το 1 το
+        ; δείχνει το tu_open μαζί με την εισαγωγή, και στο 16 δεν μένει τίποτα.
+        ; Μετά από ένα φόρτωμα το βήμα είναι αυτό που σώθηκε, και καμία.
+        ld      a,(tuo_o)
+        ld      b,a
+        ld      a,(tuo_s)
+        cp      b
+        ret     z
+        cp      2
+        ret     c
+        cp      TU_YOURS + 1
+        ret     nc
+        jp      tu_page                 ; src/help.asm. ΟΧΙ call: ο τομέας της
+                                        ; σελίδας γράφεται εδώ, στο GH_BUF
 
 ; tuo_done — A = βήμα 1-14. CY αν έγινε. Η 6 στο παράθυρο.
 tuo_done:
@@ -260,5 +277,6 @@ tuo_tab:
         db      TU_SHIP, 0                      ; 14 πλοίο
         assert  $ - tuo_tab == 2 * TU_N
 tuo_s:      db 0                        ; το βήμα
+tuo_o:      db 0                        ; το βήμα πριν από αυτό το γεγονός
 tuo_i:      db 0                        ; η γραμμή του κειμένου
 tuo_buf     equ $                       ; 32 bytes, μετά τον κώδικα: δεν γράφονται

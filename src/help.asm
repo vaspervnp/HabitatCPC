@@ -21,16 +21,51 @@ HP_TEXT     equ 6
 ;
 ; Ο ΓΥΡΙΣΜΟΣ ΕΙΝΑΙ ΕΝΑ ΑΛΜΑ ΚΑΜΕΡΑΣ ΣΤΟ ΙΔΙΟ ΣΗΜΕΙΟ: καθαρή οθόνη, οι διακοπές
 ; πίσω (is_on), το κάδρο από την αρχή, οι λωρίδες από την αρχή.
+;
+; ΣΤΟ TUTORIAL (βήμα 175) το «?» δείχνει πρώτα τη σελίδα του βήματος
+; (src/tpage.asm), και ένα δεύτερο «?» πάνω της αυτή εδώ. Το tu_ev είναι nop
+; όσο τρέχουν τα βήματα και το μήνυμα του τέλους (src/tutor.asm), ret αλλιώς.
 ; ---------------------------------------------------------------------------
 hp_show:
         call    ui_hide                 ; το GH_BUF αδειάζει: εκεί τρέχει η βοήθεια
-        ld      hl,OV3_HOLE
-        ld      a,OV3_ROWS
-        call    ov_cpgh                 ; src/demolish.asm· γυρίζει με την 1
-        call    hpo_show
-        ; --- πίσω ---
+        ld      a,(tu_ev)
+        or      a
+        jr      nz,hp_h                 ; NZ: κανένα tutorial, η βοήθεια
+        dec     a                       ; #FF: η σελίδα του βήματος
+hp_tut:                                 ; το tu_open (src/demolish.asm): A = 0, η εισαγωγή
+        call    tp_page                 ; NZ: «?»
+hp_h:
+        call    hp_maybe
+        jp      ui_show
+
+; tu_page — A = σελίδα του tutorial (#FF: του βήματος), με τον κέρσορα σβηστό,
+; και πίσω χωρίς αυτόν: από το tuo_go, στη μέση ενός FIRE, ενός εξοπλισμού ή
+; του πλοίου, τον δείχνει ο δρόμος που το κάλεσε (src/tutor.asm). Με «?» πάνω
+; στη σελίδα, και η βοήθεια.
+tu_page:
+        call    tp_page
+hp_maybe:
+        call    nz,hp_body
+; hp_back — η οθόνη από την αρχή, χωρίς τον κέρσορα: ένα άλμα κάμερας στο
+; ίδιο σημείο.
+hp_back:
         call    hw_clear
         call    is_on
         call    view_draw
         call    hud_inval
-        jp      uh_show                 ; ui_hudall, ui_show (src/ui.asm)
+        jp      ui_hudall
+
+hp_body:
+        ld      hl,OV3_HOLE
+        ld      a,OV3_ROWS
+        call    ov_cpgh                 ; src/demolish.asm· γυρίζει με την 1
+        jp      hpo_show
+
+; tp_page — η σελίδα A από τον δίσκο: ο οδηγός του (το σώσιμο, sv_ovl) στο
+; SV_ORG, και ο κώδικάς της στην 7 (src/tpage.asm). NZ αν την έκλεισε το «?».
+tp_page:
+        call    sv_ovl                  ; κρατά το A
+        ld      bc,GA_PORT + PAGE_B7
+        out     (c),c
+        call    tp_show
+        jp      ov_b1                   ; κρατά τις σημαίες

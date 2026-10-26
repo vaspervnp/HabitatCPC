@@ -187,10 +187,22 @@ are the keys to press, starting from the main view.
 | 13 | `T` `P` | a **landing pad** |
 | 14 | `C`, `FIRE` | **call a colonist ship** |
 
-In the tutorial each step's line appears under the buttons and is done as soon as
-the building is placed. There are no hazards until the ship has been called. Then
-the line says `THE COLONY IS YOURS`, and it is a normal game, which you can save like
-any other.
+![A tutorial page: step 2, the oxygen dome](img/tutorial.png)
+
+**The tutorial explains each step on a page of its own.**
+- Before anything else, a page about the screen: the bars, the stocks, the cursor and
+  the buttons. Then step 1's page.
+- When a step is done, the game stops and shows the next step's page: what to build,
+  why the colony needs it, which keys to press, and what to watch. Any key goes back to
+  the colony.
+- The step's line stays under the buttons, and `?` shows its page again. A second `?`
+  on the page shows what every button does.
+- The pages are read from the disc (`TUTOR.TXT`), so leave the disc in the drive. Without
+  it, the page says where it is.
+
+A step is done as soon as its building is placed. There are no hazards until the ship
+has been called. Then a last page says `THE COLONY IS YOURS`, and it is a normal game,
+which you can save like any other.
 
 ## 7. Building
 

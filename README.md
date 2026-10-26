@@ -21,7 +21,7 @@ fit in a Z80 and 128 KB.
 - **A world built for each game**: 128 × 128 tiles from a 16-bit seed, on four
   planets (desert, ice, storm, barren moon), chosen from a menu drawn over a piece of
   a real world. There is also a **tutorial**: fourteen guided steps on a barren moon,
-  then a normal game.
+  each with a page of instructions, then a normal game.
 - **Domes and corridors:**
   - three dome sizes and ten rooms, fitted slot by slot with the machines the room
     allows;

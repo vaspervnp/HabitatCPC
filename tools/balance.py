@@ -45,8 +45,43 @@ def boot(sym, snapshot):
     m = CPC()
     m.run_frames(60)
     assert m.quickload(snapshot), "quickload απέτυχε"
+    pages(m, sym)
     m.run_frames(250)
     return m
+
+
+def pages(m, sym):
+    """ΟΙ ΣΕΛΙΔΕΣ ΤΟΥ TUTORIAL (βήμα 175, src/tpage.asm) περιμένουν ένα πλήκτρο
+    με το παιχνίδι σταματημένο. Οσοι παίζουν με τα πλήκτρα τις κλείνουν μόλις
+    ανοίξουν: μετά από κάθε m.run_frames κοιτάμε το tp_pg (τράπεζα 7, #FF όταν
+    δεν δείχνεται καμία) και πατάμε SPACE ως να κλείσει. Πόσες, στο m.pages."""
+    tp = sym.get("TP_PG")
+    m.pages = []
+    if tp is None:
+        return
+    import cpc
+    from cpc import KEY_SPACE
+    b7 = cpc._lib.cpcemu_ram_ptr(m._h, 7)
+    name = sym["TP_NAME"] + 1 - 0x4000
+    run = m.run_frames
+
+    def run_frames(n=1):
+        run(n)
+        for _ in range(40):
+            pg = b7[tp - 0x4000]
+            # μόνο αφού φορτωθεί το TEXT.BIN: πριν η 7 είναι μηδενικά (δίσκος)
+            if pg == 0xFF or bytes(b7[name:name + 11]) != b"TUTOR   TXT":
+                return
+            m.pages.append(pg)
+            # Το χειριστήριο που ίσως κρατά ακόμη ο καλών (stick): η σελίδα
+            # περιμένει πρώτα να αφεθούν όλα (tp_key).
+            m.joystick(0)
+            m.key_down(KEY_SPACE)
+            run(4)
+            m.key_up(KEY_SPACE)
+            run(40)
+        raise RuntimeError("μια σελίδα του tutorial δεν κλείνει")
+    m.run_frames = run_frames
 
 
 # Ποιο αντικείμενο του καταλόγου ζητά ΥΛΙΚΟ ΔΙΠΛΑ ΤΟΥ, και πόσο πλατύ είναι

@@ -120,6 +120,17 @@ boot:
         ld      (bt_pl),a
         ld      a,1                     ; από εδώ η μπάρα μετρά τα αρχεία
         ld      (bt_on),a
+        ; ΠΡΩΤΑ Η ΤΡΑΠΕΖΑ 6 ΜΗΔΕΝ (βήμα 175): η BANK6.BIN είναι στον δίσκο
+        ; χωρίς τα 12 KB μηδενικά του τέλους της (tools/mkdsk.py), που ως τότε
+        ; τα έδινε το ίδιο το αρχείο. Ενα 6128 δεν ξεκινά με μηδενική μνήμη.
+        ld      bc,GA_PORT + PAGE_B6
+        out     (c),c
+        ld      hl,SCRATCH
+        ld      de,SCRATCH + 1
+        ld      bc,#3FFF
+        ld      (hl),l                  ; L = 0
+        ldir
+        assert  (SCRATCH & 255) == 0
         ld      hl,n_bank6
         ld      b,n_bank6_e - n_bank6
         ld      de,SCRATCH
