@@ -137,10 +137,10 @@ joystick.
 
 | Key | Action |
 |---|---|
-| Cursor keys / joystick | Move the cursor. In a menu, left/right picks the item and up/down the room. |
+| Cursor keys / joystick | Move the cursor, one tile a press. Held, it moves again every fifth of a second. In a menu, left/right picks the item and up/down the room. |
 | `FIRE` / `COPY` | Select, confirm, place. On a dome, with nothing selected: open its machines (`FIT`). |
 | `ESC` / fire 2 | Cancel, back. |
-| `SPACE` | Go to the button bar. Left/right picks a group, `FIRE` or `SPACE` opens it. It opens on the last group you built from, so `SPACE` `SPACE` returns to where you were. |
+| `SPACE` | Go to the button bar. Left/right picks a group, `FIRE` or `SPACE` opens it. It opens on the last group you built from, so `SPACE` `SPACE` returns to where you were. While you place a building or a corridor, `SPACE` places it, as `FIRE` does. |
 | The letter on a button | Press that button while it is on the bar. From the main view: `D` `R` `P` `E` `T` `M`. |
 | `?` (the `/` key) | The help screen: every button with one line about it. Any key returns. |
 | `1` `2` `3` `4` | Speed: pause, normal, ×2, ×4. You can still build while paused. |
@@ -200,7 +200,7 @@ any other.
 1. Pick it from the button bar (for example `D` `S` `O`).
 2. A **ghost** of the building follows the cursor. It is green where the building
    can go, and red where it cannot, with the reason on the panel.
-3. `FIRE` places it, and `ESC` goes back.
+3. `FIRE` or `SPACE` places it, and `ESC` goes back.
 
 **What it costs:**
 - The panel shows the price in Metal (`FE`) and Bioplastic (`BI`), and a dome's

@@ -102,6 +102,12 @@ is_vsp: ld      c,1
         out     (c),c
         ld      a,(is_pal + 2)
         out     (c),a
+        ; ΤΟ ΡΟΛΟΙ ΤΟΥ ΚΕΡΣΟΡΑ: ένα byte που ανεβαίνει μία φορά ανά frame, ό,τι
+        ; κι αν κάνει ο βρόχος (ui_move, src/ui.asm). Ο βρόχος χάνει frames όταν
+        ; σκρολάρει ή σχεδιάζει, οπότε οι γύροι του δεν είναι χρόνος. 30 T.
+        ld      a,(is_fc)
+        inc     a
+        ld      (is_fc),a
         ld      a,is_top & 255
 is_next:
         ld      (IS_VEC + 1),a
@@ -244,6 +250,7 @@ isf_lp:
 is_pal:     db GA_INK + #0C, GA_INK + #12, GA_INK + #0B
             db 0, 0, 0
             db GA_INK + #0C, GA_INK + #12, GA_INK + #0B
+is_fc:      db 0                    ; frames, mod 256 (το ρολόι του κέρσορα)
 
 ; (Το is_init — διάνυσμα, IM 1, R7, τα pens του κάδρου — ζει από το βήμα 103
 ; μέσα στο start του src/main.asm, τον μόνο καλούντα του.)

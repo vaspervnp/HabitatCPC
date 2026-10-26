@@ -229,13 +229,16 @@ def main():
         mm.run_frames(4)
 
     # --- 1. κέρσορας και κάμερα -----------------------------------------
-    # Η κίνηση διαβάζει ΣΤΑΘΜΗ: κρατημένο πλήκτρο = ένα tile ανά κύκλο, και ο
-    # κύκλος κρατά 3 ως 9 frames όταν σκρολάρει. Ο έλεγχος είναι ακριβώς αυτό.
+    # Η κίνηση διαβάζει ΣΤΑΘΜΗ, με επανάληψη: το πάτημα κινεί αμέσως, και
+    # κρατημένο ένα tile ανά UM_REP = 10 frames του ρολογιού (μετά το βήμα 174·
+    # ως τότε ένα tile ανά κύκλο). Εδώ, χωρίς διακοπή, το ρολόι είναι οι κύκλοι
+    # του βρόχου (tests/uitest.asm), που κρατούν 3 ως 9 frames όταν σκρολάρει.
+    # Ο πραγματικός χρόνος, στο tests/test_keys.py.
     m = boot()
     cam0 = sb(m.peek(sym["CAM_TX"]))
     t0 = m.peek(sym["TICK_N"])
     m.key_down(KEY_RIGHT)
-    m.run_frames(60)
+    m.run_frames(250)                   # κάτω από 256 κύκλους: το TICK_N είναι ένα byte
     m.key_up(KEY_RIGHT)
     # Ο emulator βγάζει το πλήκτρο από τη μήτρα στο ΤΕΛΟΣ του επόμενου frame:
     # το kbd_key_up των chips μόνο το σημαδεύει, και το σβήνει το kbd_update που
@@ -250,9 +253,9 @@ def main():
     cam1 = sb(m.peek(sym["CAM_TX"]))
     ticks = (t1 - t0) & 0xFF
     moves = cur // 2
-    if not (ticks - 2 <= moves <= ticks + 1):
+    if not (abs(moves - (1 + (ticks - 1) // 10)) <= 1):
         print(f"ΑΠΟΤΥΧΙΑ κέρσορας: {ticks} κύκλοι κρατημένου πλήκτρου -> "
-              f"{moves} βήματα")
+              f"{moves} βήματα, η πρόζα λέει {1 + (ticks - 1) // 10}")
         fails += 1
     elif cam1 <= cam0:
         print(f"ΑΠΟΤΥΧΙΑ κάμερα: δεν ακολούθησε ({cam0} -> {cam1})")
@@ -578,6 +581,51 @@ def main():
     else:
         print(f"OK το εργοτάξιο χρωστά {owed[0]} φορτία μετάλλου και {owed[1]} "
               f"βιοπλαστικού ({cost}/{bio}) και δημοσίευσε δύο Supply, καμία Build")
+
+    # --- 4β. ΚΑΙ ΤΟ SPACE ΧΤΙΖΕΙ, ΟΠΩΣ ΤΟ FIRE ----------------------------
+    # Ο παίκτης το ζήτησε μετά το βήμα 174: στο PLACE το SPACE δεν έκανε
+    # τίποτα, ενώ στη μπάρα και στις γραμμές ήταν ήδη «πάτα». Ο ίδιος θόλος στην
+    # ίδια θέση, με το SPACE αντί για το FIRE. ΑΡΝΗΤΙΚΟ: το and του uist_place
+    # χωρίς το bit του A_MENU (όπως ως το 174) — το SPACE δεν χτίζει.
+    def space_build(patch=None):
+        mm = boot()
+        tap(mm, KEY_SPACE)              # -> MENU, είδος 0 = DOME S
+        mm.set_joystick_type(1)
+        mm.run_frames(2)
+        mm.joystick(0x10)               # FIRE -> PLACE
+        mm.run_frames(4)
+        mm.joystick(0)
+        mm.run_frames(6)
+        goto(mm, 2 * tx + 4, 2 * ty + 4, 2)
+        if patch:
+            at = [a for a in range(sym["UIST_PLACE"], sym["UIST_PLACE"] + 8)
+                  if mm.peek(a) == 0xE6 and mm.peek(a + 1) == 0x70]
+            assert len(at) == 1, "το and του uist_place δεν βρέθηκε"
+            mm.poke(at[0] + 1, 0x30)
+        st = mm.peek(sym["UI_STATE"])
+        fe = mm.peek(g + 6) | (mm.peek(g + 7) << 8)
+        # ΧΩΡΙΣ ΧΕΙΡΙΣΤΗΡΙΟ: με το joystick ανοιχτό ο εξομοιωτής στέλνει το
+        # SPACE ως fire του χειριστηρίου (chips/cpc.h), και η δοκιμή θα
+        # δοκίμαζε το FIRE — το αρνητικό το έπιασε.
+        mm.set_joystick_type(0)
+        mm.run_frames(2)
+        tap(mm, KEY_SPACE)
+        mm.run_frames(60)
+        return st, mm.peek(sym["BD_NODE"]), fe - (mm.peek(g + 6) | (mm.peek(g + 7) << 8))
+    st, nd, paid = space_build()
+    if st != UI_PLACE or nd != node or paid != cost:
+        print(f"ΑΠΟΤΥΧΙΑ SPACE: κατάσταση {st}, κόμβος {nd} (με το FIRE {node}), "
+              f"πληρώθηκαν {paid} (με το FIRE {cost})")
+        fails += 1
+    else:
+        print(f"OK το SPACE στο PLACE έχτισε όπως το FIRE: ο θόλος {nd}, {paid} μέταλλο")
+    st, nd, paid = space_build(patch=True)
+    if nd != 255 or paid:
+        print(f"ΑΠΟΤΥΧΙΑ ΑΡΝΗΤΙΚΟ: χωρίς το A_MENU στο and το SPACE έχτισε ακόμη "
+              f"(κόμβος {nd}, {paid} μέταλλο)")
+        fails += 1
+    else:
+        print("OK ΑΡΝΗΤΙΚΟ: χωρίς το A_MENU στο and του uist_place το SPACE δεν χτίζει τίποτα")
 
     # --- 5. ΠΟΙΑ μηχανήματα, και με ποια ΣΕΙΡΑ (§6.5) --------------------
     # Η σειρά ήταν ως το βήμα 44 η σειρά του αυτόματου γεμίσματος: με την

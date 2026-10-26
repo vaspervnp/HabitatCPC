@@ -56,7 +56,12 @@ vs_high:
         call    ui_tick
         ld      hl,tick_n
         inc     (hl)
+        ; ΤΟ ΡΟΛΟΙ ΤΟΥ ΚΕΡΣΟΡΑ (src/isr.asm στο παιχνίδι): εδώ δεν υπάρχει
+        ; διακοπή, και ένας γύρος του βρόχου μετρά για ένα frame.
+        ld      hl,is_fc
+        inc     (hl)
         jr      loop
+is_fc:      db 0
 
 ; --- είσοδοι που οδηγεί το harness ---
 do_hide:

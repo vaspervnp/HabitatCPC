@@ -308,9 +308,14 @@ def main():
         g.key_up(key)
 
     # Ο κέρσορας: το εφέ είναι ΕΝΑ frame, οπότε το πιάνουμε frame προς frame.
+    # Από τη στιγμή που πατιέται: μετά το βήμα 174 ο κέρσορας κινείται μία φορά,
+    # στο πρώτο frame του πατήματος (ui_move), και ως το key_up το εφέ έχει
+    # τελειώσει. Ως τότε κινούνταν και μετά, και το παράθυρο ήταν μετά το key_up.
     seen = 0
-    tap_game(KEY_RIGHT)
-    for _ in range(12):
+    g.key_down(KEY_RIGHT)
+    for f in range(15):
+        if f == 3:
+            g.key_up(KEY_RIGHT)
         g.run_frames(1)
         if g.psg_regs()[10]:
             seen += 1

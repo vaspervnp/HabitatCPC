@@ -184,9 +184,29 @@ def ui_flow(sym, g, col):
     check(m.peek(sym["UI_STATE"]) == 3 and m.peek(sym["LN_A"]) == 255,
           "το FIRE στο CORRIDOR μπαίνει στην κατάσταση LINK χωρίς αφετηρία")
     goto(PLANT[0][1], PLANT[0][2], 3)
-    fire()
+    # ΜΕ ΤΟ SPACE (μετά το βήμα 174, ο παίκτης): στο LINK, όπως και στο PLACE,
+    # το SPACE είναι το FIRE. Το δεύτερο, πιο κάτω, μένει FIRE.
+    # Χωρίς χειριστήριο: με το joystick ανοιχτό ο εξομοιωτής στέλνει το SPACE
+    # ως fire του χειριστηρίου (chips/cpc.h).
+    m.set_joystick_type(0)
+    m.run_frames(2)
+    # Αρνητικό πρώτα: χωρίς το A_MENU στο and του uist_link το SPACE δεν
+    # διαλέγει τίποτα.
+    at = [a for a in range(sym["UIST_LINK"], sym["UIST_LINK"] + 8)
+          if m.peek(a) == 0xE6 and m.peek(a + 1) == 0x70]
+    check(len(at) == 1, "το and του uist_link βρέθηκε")
+    m.poke(at[0] + 1, 0x30)
+    tap(KEY_SPACE)
+    m.run_frames(10)
+    check(m.peek(sym["LN_A"]) == 255, f"ΑΡΝΗΤΙΚΟ: χωρίς το A_MENU στο and το SPACE "
+          f"δεν διάλεξε τίποτα ({m.peek(sym['LN_A'])})")
+    m.poke(at[0] + 1, 0x70)
+    tap(KEY_SPACE)
+    m.run_frames(10)
+    m.set_joystick_type(1)
+    m.run_frames(2)
     check(m.peek(sym["LN_A"]) == 12,
-          f"το πρώτο FIRE διάλεξε τον θόλο {m.peek(sym['LN_A'])}")
+          f"το πρώτο πάτημα, SPACE, διάλεξε τον θόλο {m.peek(sym['LN_A'])}")
     goto(PLANT[1][1], PLANT[1][2], 3)
     check(m.peek(sym["UI_BAD"]) == 0 and m.peek(sym["CR_N"]) == 2,
           "το φάντασμα δείχνει έγκυρη διαδρομή με στροφή")
