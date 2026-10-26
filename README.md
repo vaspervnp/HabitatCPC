@@ -61,10 +61,11 @@ and the chosen world is built in about five.
 It is a complete game. The ten delivery milestones of
 [`DESIGN.md` §14](DESIGN.md#14-delivery-plan) are built, and what remains is tuning.
 
-- **In progress: the balance at 160 colonists.** The game holds 160 since
-  milestone 173 ([`DESIGN.md` §6.1](DESIGN.md#the-ids-at-milestone-173)); the
-  scripted player and the balance at 160 are the last step of
-  [the plan](DESIGN.md#more-than-80-colonists-the-plan-at-milestone-169).
+- **160 colonists since milestones 173–174.** The game holds them
+  ([`DESIGN.md` §6.1](DESIGN.md#the-ids-at-milestone-173)), and the scripted player
+  ends 160 sols with 113 colonists a world on average, two worlds of eight at 157–159
+  ([§10.1](DESIGN.md#a-hundred-and-sixty-at-milestone-174)). What holds the others
+  back — power, Metal, room — is in [§15](DESIGN.md#15-open-risks).
 - **Still owed: a check on a real CPC 6128.** The raster splits, the disc's timing and
   the mid-frame CRTC writes have been tested only on the emulator
   ([`DESIGN.md` §15](DESIGN.md#15-open-risks)).

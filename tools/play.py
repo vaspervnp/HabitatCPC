@@ -1042,7 +1042,9 @@ def step(name, item, near, room=None, codes=(), after=(), when=None, again=False
                 aside=aside, seq=seq)
 
 
-def room_free(G, upto=80):
+def room_free(G, upto=EC.AG_BOT0):
+    """Χώρος για ένα πλοίο: ως το ταβάνι, και ως τους 160 από το βήμα 174 (80 ως
+    τότε, όσοι χωρούσαν στις θέσεις αποίκων)."""
     r = G.rows[-1]
     return r["ship"] == 0 and r["alive"] + 4 <= min(r["popcap"], upto)
 
@@ -1083,12 +1085,16 @@ def ship_ok(G):
     # τριάντα επτά έμειναν χωρίς νερό για το οξυγόνο, χωρίς θέση για αντλία.
     # Με δέκα sol οι αποικίες έμεναν στους δεκαοκτώ (μέσος 19,0 έναντι 25,3).
     # Το νερό δεν μπαίνει στην αποθήκη (βήμα 122): πάντα πέντε sol.
+    # ΠΕΝΤΕ SOL ΤΩΝ 80 ΠΑΝΩ ΑΠΟ ΤΟΥΣ 80 (βήμα 174): το νερό και η τροφή χωρούν
+    # ως 600 το καθένα, και το 5 x (ζωντανοί + 4) τα περνά από τους 117 — εκεί
+    # σταματούσαν οι αποικίες, στους 117-120 (v174d). Ως τους 80 ίδιο με πριν.
+    days = 5 * min(want, 84)
     for k in ((S_STARCH_I, S_VEG_I, S_MEAT_I, S_WATER) if G.grow else ()):
         v = [r["stock"][k] for r in rows]
-        if v[-1] < v[0] and v[-1] < (want if full and k != S_WATER else 5 * want):
+        if v[-1] < v[0] and v[-1] < (want if full and k != S_WATER else days):
             return False
     return (min(r["o2p"] for r in rows) >= O2_PER_COL * want
-            and food[-1] >= 5 * want and grows)
+            and food[-1] >= days and grows)
 
 
 def plan_base():
@@ -1340,7 +1346,11 @@ def water_short(G):
     # με το ρεύμα κομμένο τα δύο τρίτα του χρόνου. Οι νύχτες είναι το ένα τρίτο.
     if sum(1 for r in last(G) if r["pok"] != 1) * 2 > len(last(G)):
         return False
-    return (w[-1] < w[0] or w[-1] < 5) and w[-1] < 60 + 5 * G.rows[-1]["alive"]
+    # ΤΟ ΟΡΙΟ ΤΩΝ 80 ΚΑΙ ΠΑΝΩ ΑΠΟ ΤΟΥΣ 80 (βήμα 174): με 60 + 5 ανά άποικο, από
+    # τους 108 το όριο περνά τα 600 που χωρά το νερό, και κάθε πτώση έχτιζε
+    # αντλία — 16-20 στο sol 160 (p174), έξι ρεύματος η καθεμία, με το νερό στα
+    # 460-540. Ως τους 80 ίδιο με πριν.
+    return (w[-1] < w[0] or w[-1] < 5) and w[-1] < 60 + 5 * min(80, G.rows[-1]["alive"])
 
 
 def power_short(G, night):
@@ -1526,8 +1536,13 @@ def plan_big():
         # υποστήριξη ζωής — και τη MEALS. Μετά την τροφή, ένας ηλιακός 15 μετάλλων
         # περίμενε πίσω από ένα κυλικείο 20 που δεν πληρωνόταν, και η αποικία
         # πεινούσε με 190 άμυλο στην αποθήκη (BEEF·3, ρεύμα 36 για 50-56 τη μέρα).
-        step("ηλιακός+", SOLAR, None, zone="edge", after=["ηλιακός 2"],
-             when=demand("ηλιακός+", lambda G: power_short(G, False)), again=True),
+        # ΑΝΕΜΟΓΕΝΝΗΤΡΙΑ, ΟΧΙ ΗΛΙΑΚΟΣ (βήμα 174): 27 x άνεμος / 3, μέρα και νύχτα,
+        # κατά μέσο όρο 13,5, ενώ ο ηλιακός 18 μόνο τη μέρα, 10,8 ανά sol. Πάνω από
+        # τους 80 οι 48 θέσεις δομών γεμίζουν, και η ανεμογεννήτρια δίνει
+        # περισσότερο ρεύμα ανά θέση και χρειάζεται λιγότερους συσσωρευτές.
+        # Ως το 173 ηλιακός, με το όνομα «ηλιακός+».
+        step("ανεμογεννήτρια+", TURBINE, None, zone="edge", after=["ηλιακός 2"],
+             when=demand("ανεμογεννήτρια+", lambda G: power_short(G, False)), again=True),
         step("συλλέκτης+", COLLECTOR, None, zone="edge", after=["συλλέκτης"],
              when=demand("συλλέκτης+", lambda G: power_short(G, True)), again=True),
         # ΤΟ ΝΕΡΟ ΠΡΙΝ ΑΠΟ ΤΟ ΟΞΥΓΟΝΟ (βήμα 168): το οξυγόνο γίνεται από νερό.
@@ -1562,9 +1577,10 @@ def plan_big():
         # sol 60) — στο 161 όμως χτιζόταν σε 3 κόσμους από τους 8.
         step("airlock 2", AIRLOCK, (-24, -24), after=["airlock"],
              when=lambda G: G.grow and alive(G) >= 16),
-        # ΤΟ ΤΑΒΑΝΙ (βήμα 140): 6 + 48 ανά Control, ως 80. Με ένα, 54.
+        # ΤΟ ΤΑΒΑΝΙ (βήμα 140): 6 + 48 ανά Control, ως 80. Με ένα, 54. Από το
+        # βήμα 174 ως 160, με τέσσερα: 54, 102, 150, 160.
         step("έλεγχος+", DOME_S, None, "control", zone="core", after=["έλεγχος"],
-             when=lambda G: G.grow and G.rows[-1]["popcap"] < 80
+             when=lambda G: G.grow and G.rows[-1]["popcap"] < EC.AG_BOT0
              and G.rows[-1]["popcap"] - alive(G) < 8, again=True),
         step("γεύματα+", DOME_S, None, "canteen", [MEALS], zone="core", fill=True, grow=True, after=["γεύματα"],
              when=demand("γεύματα+", lambda G: food_short(G, "meals")), again=True),
@@ -1761,7 +1777,10 @@ def ready(G, s):
 # έπαιρναν πρώτες το μέταλλο, και η «γεύματα+» περίμενε πίσω από τα 30 με
 # άμυλο 340 και λαχανικά 315 στην αποθήκη: σε δύο από τα τρία batch 7 πέθαναν
 # από πείνα στο sol 106-118. Χωρίς το απόθεμα, κανένας (v168f, n168f).
-LIFE = ("οξυγόνο+", "αντλία+", "airlock 2", "γεύματα+")
+# ΚΑΙ ΤΟ ΡΕΥΜΑ (βήμα 174): πάνω από τους 80 το ρεύμα έπεφτε το 31% του χρόνου
+# (p174), τα εργοστάσια μετάλλου σταματούσαν μαζί του, και ο «ηλιακός+» περίμενε
+# 45 μέταλλα (15 και τα 30) με το μέταλλο κάτω από 45 το 68% του χρόνου.
+LIFE = ("οξυγόνο+", "αντλία+", "airlock 2", "γεύματα+", "ανεμογεννήτρια+")
 
 
 def reserve(G, s):

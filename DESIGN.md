@@ -3363,6 +3363,9 @@ measured at step 4:
    at `EC_ALIVE`. The landing's alert with 48 outside grew to 20,580 µs.
 5. **Milestone 174: the scripted player and the balance at 160**, with plays of 160
    sols.
+   **Built at milestone 174** ([§10.1](#a-hundred-and-sixty-at-milestone-174)). The player goes to 160 with four
+   changes, and ends 160 sols with 907 alive in eight worlds against 609 (113.4 a world
+   against 76.1); two worlds reach 157–159. The tables hold 160 and no more.
 
 Each step is measured before the next one starts. If the bytes do not come, the
 fallback is 96 colonists inside the 128 ids, which needs none of steps 1–3.
@@ -17429,6 +17432,100 @@ fill. `v168g` ends event for event as `v168f`, which is the same player with
 `v166d`'s dome. Finding the dome once per airlock changes the landing's cost, not the
 play ([§6.10](#into-the-airlocks-dome-at-milestone-168)).
 
+#### A hundred and sixty, at milestone 174
+
+This is step 5 of [the plan for 160 colonists](#more-than-80-colonists-the-plan-at-milestone-169),
+the last one: the scripted player (`tools/play.py`) at 160, and plays of 160 sols.
+Nothing in the game changed at this milestone.
+
+**Up to 160.** `room_free` lets a ship come up to 160 (`EC.AG_BOT0`; 80 until now), and
+`έλεγχος+` builds Control rooms until the cap is 160: four of them.
+
+**Then four things in the player, each measured.**
+- **The water's threshold stops at 80's.** `αντλία+` built a pump whenever the water
+  fell under 60 + 5 per colonist. From 109 colonists that is above the 600 the water
+  holds, so every dip built a pump: 14–16 on average at sol 160, six power each, with the water
+  at 460–540. It is now 60 + 5 × min(80, alive), the same as before up to 80.
+- **Turbines, not solar panels, for more power** (`ανεμογεννήτρια+`, `ηλιακός+` until
+  now). A turbine gives 27 × wind / 3, day and night, 13.5 on average; a panel 18 by
+  day, 10.8 a sol, and needs collectors for the night. The 48 structure slots fill,
+  and a turbine gives more power a slot.
+- **Power joins `LIFE`**, built without the 30 of Metal the player keeps
+  ([milestone 140](#past-thirty-three-at-milestone-140)). Above 80 the power was shed 31 %
+  of the time after sol 80, the Metal factories stopped with it, and `ηλιακός+` waited
+  for 45 with the Metal under 45 68 % of the time.
+- **A ship's five sols stop at 80's.** `ship_ok` asks for water and food for five sols,
+  5 × (alive + 4). From 117 colonists that is above the 600 that each holds, and no
+  ship came: with the first three changes no colony passed 120. It is now
+  5 × min(alive + 4, 84), the same as before up to 80.
+
+**The batches**, eight worlds and 160 sols. A control (`n`) is the same player on a
+binary with one, two or three `nop`s at the head of `ob_corr`, which changes the
+timing and nothing else:
+
+| Batch | The player | Alive at 160 | at 120 | at 60 | Deaths | to intruders | hunger, thirst | air |
+|---|---|---|---|---|---|---|---|---|
+| `o174` | milestone 173: up to 80 | 609 | 605 | 408 | 66 | 14 | 2 | 50 |
+| `p174` | up to 160 | 740 | 715 | 408 | 100 | 16 | 34 | 50 |
+| `n174p` | `p174`, control | 742 | 715 | 404 | 37 | 8 | 27 | 2 |
+| `v174a` | and solar panels in `LIFE` | 803 | 751 | 427 | 112 | 17 | 95 | 0 |
+| `v174c` | turbines in `LIFE` | 791 | 782 | 451 | 39 | 24 | 15 | 0 |
+| `v174e` | turbines, the water's threshold | 713 | 768 | 431 | 127 | 20 | 1 | 106 |
+| `v174d` | turbines in `LIFE`, the water's threshold | 833 | 819 | 451 | 22 | 22 | 0 | 0 |
+| `n174d` | `v174d`, control 1 | 738 | 782 | 456 | 287 | 27 | 8 | 252 |
+| `n2174d` | `v174d`, control 2 | 818 | 818 | 456 | 93 | 21 | 1 | 71 |
+| `n3174d` | `v174d`, control 3 | 833 | 810 | 456 | 21 | 21 | 0 | 0 |
+| `v174f` | `v174d` and large domes from 80 | 811 | 782 | 451 | 39 | 18 | 21 | 0 |
+| `v174g` | `v174d` and `μέταλλο+` in `LIFE` | 600 | 816 | 459 | 298 | 21 | 129 | 148 |
+| **`v174h`** | **milestone 174: `v174d` and the five sols** | **907** | **871** | 451 | **44** | 22 | 22 | 0 |
+| `n3174h` | `v174h`, control 3 | 918 | 906 | 456 | 78 | 21 | 57 | 0 |
+
+| World | `o174` | `p174` | `v174d` | `v174h` | `n3174h` |
+|---|---|---|---|---|---|
+| `1048` 0 | 77 | 97 | 107 | 99 | 99 |
+| `1048` 1 | 80 | 117 | 49 | 49 | 49 |
+| `5A5A` 2 | 62 | 62 | 88 | 88 | 98 |
+| `ACE1` 0 | 77 | 89 | 120 | **159** | **157** |
+| `ACE1` 1 | 80 | 92 | 117 | **159** | **159** |
+| `BEEF` 0 | 78 | 116 | 118 | 144 | **157** |
+| `BEEF` 2 | 77 | 83 | 119 | 101 | 88 |
+| `C0DE` 0 | 78 | 84 | 115 | 108 | 111 |
+
+**`v174h` is milestone 174.** It ends with 907 alive at sol 160 against `o174`'s 609
+(113.4 a world against 76.1), and its control with 918. Three worlds pass 140 in
+both, and `ACE1` 0 and 1 reach 157–159 of 160. The batches are noisy at 160 sols: `v174d`
+and its three controls end at 738–833, and one of the four lost 252 to the air.
+
+**What was tried and not kept.**
+- Solar panels in `LIFE` (`v174a`): the panels took the Metal the gardens waited for,
+  and 93 died of hunger.
+- The turbines without `LIFE` (`v174e`): `5A5A` 2 lost its power and 106 to the air.
+- Large domes from 80 colonists (`v174f`): 811 against 833, with 21 dead of hunger.
+- `μέταλλο+` in `LIFE` (`v174g`): it asks under 40 Metal for a dome of 24 and the 30,
+  and so is never paid, as `ορυχείο+` was at
+  [milestone 160](#colonies-that-stop-at-milestone-160). Without the 30 it was built:
+  4.1 Metal factories against 2.6, power shed 36 % of the time against 28 %, and 600
+  alive with 298 dead.
+
+**What holds a colony of 160** (`v174h` and `n3174h`):
+- **The tables.** At 144–159 the colonies have 53–64 domes of 64, 47–48 structures
+  of 48 and 93–111 corridors of 128. `BEEF` 0 has all 64 domes. The tables of
+  [milestone 169](#more-than-80-colonists-the-plan-at-milestone-169) hold 160, and no
+  more.
+- **Metal.** After sol 80 the Metal is under 45 57–60 % of the time. The worlds that
+  stop at 88–111 wait for a garden's medium dome (54) or a turbine (18).
+- **Pumps stop when the power is shed**, and the `OXYGEN` machines go on drinking
+  ([§15](#15-open-risks)). After sol 80 the power is shed 25–29 % of the time, against 15 % in
+  `o174`. In `n174d` `BEEF` 0 had 518 water at sol 99 and 2 at sol 103, and 97 died
+  of air at sol 110. `v174h` and `n3174h` had no such fall.
+- **A valley.** With turbines `1048` 1 stops at 49 in nine batches of ten (58 in the
+  tenth): from sol 47 there is no site for `οξυγόνο+` or `έλεγχος+`. With panels it
+  reached 117–119.
+
+**The tests.** `tests/test_tutor.py` and `tests/test_noroom.py`, the two that play with
+`tools/play.py`, pass. The player is the same up to 80 colonists in every rule but the
+turbines and power in `LIFE`.
+
 ### 10.2 Milestones
 
 No victory screen — Planetbase's own choice, and the right one for a game about a
@@ -18457,6 +18554,10 @@ gap.
 | **Eight domes of a kind** (milestone 140) | Low | The room lists hold eight domes of each type: a ninth Storage adds no capacity, a ninth canteen or quarters is never chosen for a need, a ninth factory is never searched for a Bot. **The user chose to keep it, written down** ([§6.8](#eight-of-a-kind-measured-at-milestone-140)): a medium Storage holds 300 and a large 600. |
 | **Growth outruns the food chain** (found at milestone 131) | Medium | With materials topped up, colonies of 10–22 starved: one lab feeds about fourteen, and the scripted player found no room for a second. A ship comes when the store is full, not when production can follow ([§10.1](#past-twenty-at-milestone-131)). |
 | **Spares run out when Metal runs short** (found at milestone 158) | Medium | In one game of eight at 120 sols ([§4.2](#the-start-in-the-ghosts-log-at-milestone-158), `ACE1` 1, a timing-only divergence from milestone 157's): no Storage dome built, the store full, Ore 0–10 and Metal at its reserve of 30, so the `SPARES` machine stopped; repairs took the Spares from 20 to 0 in 20 sols, then the `SPARES` machine and two `OXYGEN` broke with none, and 42 colonists suffocated at sol 109.1. The same world lives in milestone 157's game (46) and in the control (61). Milestones 143–144 closed this for 60 sols by the player; at 120 the Metal reserve can still starve the Spares. Not chosen yet: Spares exempt from the Metal reserve, a repair priority for `SPARES` and `OXYGEN`, the player buying Spares when Metal is short. **Milestone 160 found the player's second mine is never built**: it is asked for under 40 Metal and costs 30 plus the reserve of 30 ([§10.1](#colonies-that-stop-at-milestone-160)). Without that dead end, five off-vein mines left `ACE1` 0's Metal at the reserve, the Spares ran out from sol 105, and 21 died of air. The user chose to treat the mines with this risk. At milestone 159 ([§4.2](#128-corridors-and-their-scan-limit-at-milestone-159)) `ACE1` 1 lives (30, and 18 in its control), but it and `5A5A` 2 stop at the first Control's 54 with the Ore at 0 most of the time: the player's steps behind a held mine never come. |
+| **Pumps stop when the power is shed** (found at milestone 174) | High | Under `POWER_ESS` the game stops the pumps with the mines, factories and gardens, while the `OXYGEN` machines, which are life support, go on drinking ([§10.1](#a-hundred-and-sixty-at-milestone-174)). Above 100 colonists the power is shed 25–36 % of the time after sol 80, against 15 % in a colony held at 80. In one batch of four with the same player (`n174d`) `BEEF` 0's water went from 518 to 2 in four sols and 97 died of air; in two `5A5A` 2 lost 71. Not chosen yet: the pumps as life support, or a player that keeps its power ahead of the colony. |
+| **The tables hold 160 and no more** (milestone 174) | Low | At 144–159 colonists the colonies have 53–64 domes of 64, 47–48 structures of 48 and 93–111 corridors of 128 ([§10.1](#a-hundred-and-sixty-at-milestone-174)). |
+| **Metal holds most colonies under 120** (milestone 174) | Medium | After sol 80 the Metal is under 45 57–60 % of the time, and five worlds of eight stop at 88–111 waiting for a garden's dome (54) or a turbine (18) ([§10.1](#a-hundred-and-sixty-at-milestone-174)). The player's `μέταλλο+` is asked for under 40 and costs 54, so it is never paid, like the second mine of [milestone 160](#colonies-that-stop-at-milestone-160); without the reserve it took the power and 298 lives (`v174g`). |
+| **A valley without sites** (milestone 174) | Low | `1048` 1 stops at 49 with the turbine player in nine batches of ten: from sol 47 there is no site for oxygen or a Control room within the player's radii ([§10.1](#a-hundred-and-sixty-at-milestone-174)). With panels it reached 117–119. A question of where the player builds, as at [milestone 165](#the-neck-of-the-valley-at-milestone-165). |
 | **A colony fills its valley** (found at milestone 160) | Low | A dome needs a corridor of up to 12 pieces to another dome, over ground, dust or foundation ([§9.3](#every-building-needs-a-neighbour-at-milestone-85)) and, since milestone 161, rock ([§9.4](#over-rock-too-at-milestone-161)). Where rock, mountain and water close a colony in, the valley runs out. `1048` 1 at sol 80 had no site for a dome anywhere in the world, 50 colonists and 600 Metal in store ([§10.1](#colonies-that-stop-at-milestone-160)). The player's own limit, 32 tiles from the domes' centre, was lifted at milestone 160. **Milestone 161, the user's choice, lets a corridor cross rock**: a third to a half more dome sites in the stuck colonies that still had some (32 → 49, 19 → 31, 180 → 232), none for `1048` 1 at sol 80, which mountain and a lake close. **Played, it gave fewer colonists, not more**: 410 at sol 120 against 446 with the old rule at the same speed. The scripted player spends the sites sooner — `5A5A` 2 filled its valley at 17 domes by sol 45 and stayed at 18 colonists — and two colonies stopped at the first Control's cap behind the Metal-held medbay — the player's order, changed at milestone 162 ([§10.1](#the-players-order-at-milestone-162)). **At milestone 164 `5A5A` 2 filled its valley again**: a medium dome at sol 37 closed the pass between mountain and lake, 32 sites for a small dome became 13, and none was left from sol 44. **Milestone 165, the user's choice, changes the player's choice, and the risk is Low since** ([§10.1](#the-neck-of-the-valley-at-milestone-165)). Under 40 sites, a medium dome that closes over three times what the step's small one would close, plus 2, is built small. `5A5A` 2 went east through the pass and ends at 64, and no world ends below milestone 164: 547 → 595 (control 596). A fixed limit, no medium dome under 40 sites, also saved `5A5A` 2 but left `1048` 1 at 50: its small domes spent the valley before the second Control. Open: a small dome or a structure's path can still close a neck, since only the step's two domes are compared. Also open: mountain or shallow water, which the user did not take. |
 | **Water at seventy** (found at milestone 162) | Medium | Milestone 145 keeps one pump site ahead for the scripted player ([§10.1](#water-kept-at-milestone-145)), which held to sixty-odd colonists. In two of milestone 162's batches `1048` 0 grew to 76 and 68 by sol 85–95, the water fell to 0 — once with no site for another pump, once with pumps built to sol 78 and the power at its life-support level — and the `OXYGEN` machines stopped: 66 and 49 died of air at once ([§10.1](#the-players-order-at-milestone-162)). The batch the user chose reached 77 there with one death; the same can happen to it. **It happened again at milestone 166**, on the path of a variant that was not kept (`v166d`): `1048` 0 at 77, the water at 0 by sol 109–112, 53 dead of air at sol 113 ([§6.10](#everyone-inside-at-milestone-166)). **At milestone 168 it was found to be the player's order**, not the water: an `οξυγόνο+` waiting for the metal of nine pieces of corridor held back the `αντλία+` of 22 for two and a half sols, and `BEEF` 2 of `v168d` lost 82 to air at sols 54 and 112. The pump now comes before the oxygen ([§10.1](#the-players-plants-at-milestone-168)), and in `v168g` no world has water under 20 after sol 30 (`v168a`: 30 samples in `1048` 0, 15 in `5A5A` 2). The game still has no warning before the water runs out. |
 | ~~Intruders kill whoever is outside~~ (found at milestone 165) | ~~Medium~~ | **Resolved at milestone 166, the user's choice: the alert, everyone inside** ([§6.10](#everyone-inside-at-milestone-166)). In the eight big plays of milestone 165, 60 of 62 deaths were to intruders, and a probe of the 95 raids found all 67 dead outside: 33 newcomers waiting for work at the pad where the intruders' ship lands, 30 at the mine, 55 before any guard struck. At the landing every colonist outside who is not a guard and not already going in now takes `T_FIGHT` and walks to the nearest ready airlock. Probed again: 13 raid deaths, 6 before a guard's blow, 82 of 95 raids without a death; 14 deaths in all, 606 alive at sol 120 against 595. Open: five guards died against one, since the intruders now meet them, and the late food wall still stops `1048` 0 and `ACE1` 0 at 74. |
