@@ -609,8 +609,11 @@ def main():
     # ΟΣΑ ΓΡΑΦΕΙ ΤΟ ΠΑΙΧΝΙΔΙ ΟΣΟ ΤΡΕΧΕΙ (βήμα 110): οι ανάγκες ζουν από τότε
     # εδώ, με μία μεταβλητή και τον τελεστή του ens_call (src/needs.asm· το
     # nd_room έφυγε στο βήμα 120, το δωμάτιο μένει στον B). Το δείγμα
-    # παίρνεται αφού τρέξει ο τροχός, οπότε αυτά δεν είναι πια του build.
-    live = {sym["ND_I"], sym["ENS_CALL"] + 1, sym["ENS_CALL"] + 2}
+    # παίρνεται αφού τρέξει ο τροχός, οπότε αυτά δεν είναι πια του build. Από
+    # το βήμα 176 και το ef_pmp του κύκλου ροής (src/flow.asm: το ρεύμα των
+    # αντλιών)· σε άδεια αποικία μένει 0, αλλά δεν είναι του build.
+    live = {sym["ND_I"], sym["ENS_CALL"] + 1, sym["ENS_CALL"] + 2,
+            sym["EF_PMP"], sym["EF_PMP"] + 1}
     labs = sorted((v, k) for k, v in sym.items() if at <= v < at + len(code))
     bad = [at + i for i, (x, y) in enumerate(zip(got, code)) if x != y and at + i not in live]
     where = [next(k for v, k in reversed(labs) if v <= a) + f"+{a - next(v for v, k in reversed(labs) if v <= a)}"

@@ -363,8 +363,10 @@ the full 160 with four.
 - **A sol** (a day) lasts four minutes at normal speed, and about 40% of it is night.
 - **Power.** Panels give nothing at night. A collector carries the colony through it,
   and turbines turn in the dark.
-  - When power runs short the colony sheds load: only life support keeps running, and
-    the line says `LOW POWER`.
+  - When power runs short the colony sheds load, in steps: the mines, factories and
+    gardens stop first, then the extractors, and the oxygen machines last. The
+    battery feeds the machines and the extractors only while it keeps enough for
+    the oxygen through a night. The line says `LOW POWER` while load is shed.
   - With no power at all it says `NO POWER`: the machines stop, then the oxygen.
 - **Air.** Without enough oxygen machines, or without power or water for them, the
   line says `NO OXYGEN` and health drains fast.
@@ -454,7 +456,7 @@ The line shows the most urgent message, in this order:
 | `NO OXYGEN` | Life support is short. Health drains fast. |
 | `INTRUDERS` | Someone is being attacked. |
 | `SUIT AIR LOW` | Someone outside has less than a minute of air. |
-| `LOW POWER` | Load shed: only life support is running. |
+| `LOW POWER` | Load shed: mines, factories and gardens are stopped. The oxygen runs, and the extractors while there is power for them. |
 | `METEOR SHOWER` | Impacts are falling now. |
 | `LOW ON FOOD` / `LOW ON WATER` | Less than one portion per colonist left. |
 | `NO ENGINEER` … | Something waits to be built or installed, and nobody alive can do it. The line names what waits. |

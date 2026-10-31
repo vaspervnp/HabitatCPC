@@ -1753,9 +1753,10 @@ def tweak(G, spec):
         elif k == "reserve":
             # Η ΡΕΖΕΡΒΑ ΤΗΣ ΜΠΑΤΑΡΙΑΣ (βήμα 138, μέτρηση): RESERVE_CYC κύκλοι
             # υποστήριξης ζωής, 8 στο παιχνίδι (τρία add hl,hl στο ef_balance)·
-            # reserve=4 ή 2 σβήνει ένα ή δύο. Μια νύχτα είναι 4,7 κύκλοι.
+            # reserve=4 ή 2 σβήνει ένα ή δύο. Μια νύχτα είναι 4,7 κύκλοι. Από
+            # το βήμα 176 στο ef_try.
             e = G.X["EC_EPOWER"]
-            a = codeat.find(G.m, G.sym["EF_BALANCE"], [0x2A, e & 255, e >> 8, 0x29, 0x29, 0x29, 0xEB], 80)
+            a = codeat.find(G.m, G.sym["EF_TRY"], [0x2A, e & 255, e >> 8, 0x29, 0x29, 0x29, 0xEB], 80)
             assert a, "δεν βρέθηκε η ρεζέρβα του ef_balance"
             for i in range({8: 0, 4: 1, 2: 2}[int(v)]):
                 codeat.poke(G.m, a + 3 + i, 0)

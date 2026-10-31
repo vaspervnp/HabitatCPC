@@ -480,9 +480,25 @@ def flow_balance(e, alive, inside):
         e.gameover = 1
 
 
+def tries(e, prod, want, cap, ess):
+    """Φτάνει το ρεύμα για ζήτηση want; Από την παραγωγή (το περίσσευμα
+    φορτίζει), ή από τη μπαταρία ΜΕ ΡΕΖΕΡΒΑ: δανείζει μόνο όσο μένει πίσω ό,τι
+    θέλει το οξυγόνο για οκτώ κύκλους, δηλαδή για μια νύχτα. Χωρίς αυτό η σειρά
+    «πρώτα οι μηχανές, μετά το οξυγόνο» δεν σημαίνει τίποτα: οι μηχανές
+    αδειάζουν τη μπαταρία στους δύο πρώτους κύκλους της νύχτας και το οξυγόνο
+    σβήνει ούτως ή άλλως (src/flow.asm, ef_try)."""
+    if prod >= want:
+        e.power_store = min(e.power_store + prod - want, cap)
+        return True
+    if e.power_store >= (want - prod) + ess * RESERVE_CYCLES:
+        e.power_store -= want - prod
+        return True
+    return False
+
+
 def flow_cycle(e):
     store_check(e)                      # η αποθήκη (βήμα 122): πριν σκάψουν τα ορυχεία
-    prod = cap = water = 0
+    prod = cap = water = pump = 0
     use = e.mach_power
     e.mines = 0
     for i in range(MAX_STRUCT):
@@ -498,7 +514,7 @@ def flow_cycle(e):
         elif k == K_COLLECTOR:
             cap += COLLECTOR_CAP[sz]
         elif k == K_EXTRACTOR:
-            use += EXTRACTOR_POWER[sz]
+            pump += EXTRACTOR_POWER[sz]
             water += EXTRACTOR_OUT[sz]
         elif k == K_MINE:
             # ΣΚΑΒΕΙ ΟΠΟΙΟΣ ΕΙΝΑΙ ΕΚΕΙ (βήμα 94, src/flow.asm και src/drill.asm),
@@ -519,37 +535,38 @@ def flow_cycle(e):
     if e.lost:                              # βήμα 115: src/repost.asm
         sweep(e)
 
+    # ΟΙ ΑΝΤΛΙΕΣ ΣΤΑΜΑΤΟΥΝ ΤΕΛΕΥΤΑΙΕΣ ΠΡΙΝ ΑΠΟ ΤΟ ΟΞΥΓΟΝΟ (βήμα 176): το νερό
+    # είναι ο αέρας, αφού το πίνουν οι μηχανές OXYGEN. Ως τότε έπεφταν με το
+    # φορτίο, και στους 160 το νερό μιας αποικίας πήγε 518 -> 2 σε τέσσερα sol
+    # και 97 πέθαναν από αέρα. Τρία σκαλιά: πρώτα σταματούν οι μηχανές, μετά
+    # οι αντλίες, τελευταίο το οξυγόνο. Η ρεζέρβα μένει του οξυγόνου: με τις
+    # αντλίες μέσα στη ρεζέρβα η αποικία έριχνε φορτίο το 33% του χρόνου αντί
+    # για 16-22%, και 264 πέθαναν από πείνα (src/flow.asm, ef_try).
+    use += pump
+    ess = e.ess_power
     e.power_prod, e.power_cap, e.power_use = prod, cap, use
-    if prod >= use:
-        e.power_store = min(e.power_store + prod - use, cap)
+    if tries(e, prod, use, cap, ess):
         e.power_ok = POWER_ALL
-    elif e.power_store >= (use - prod) + e.ess_power * RESERVE_CYCLES:
-        # ΜΕ ΡΕΖΕΡΒΑ, ΟΧΙ ΩΣ ΤΗΝ ΤΕΛΕΥΤΑΙΑ ΜΟΝΑΔΑ. Η μπαταρία δανείζεται στις
-        # μηχανές μόνο όσο μένει πίσω ό,τι χρειάζεται η υποστήριξη ζωής για
-        # οκτώ κύκλους — δηλαδή για μια νύχτα. Χωρίς αυτό η σειρά «πρώτα οι
-        # μηχανές, μετά το οξυγόνο» δεν σημαίνει τίποτα: οι μηχανές αδειάζουν
-        # τη μπαταρία στους δύο πρώτους κύκλους της νύχτας και το οξυγόνο
-        # σβήνει ούτως ή άλλως.
-        e.power_store -= use - prod
-        e.power_ok = POWER_ALL
-    elif prod >= e.ess_power:
-        # Ρίχνει φορτίο: αντλίες, ορυχεία, εργοστάσια, κήποι σταματούν και το
-        # περίσσευμα φορτίζει.
-        e.power_store = min(e.power_store + prod - e.ess_power, cap)
-        e.power_ok = POWER_ESS
-    elif e.power_store >= e.ess_power - prod:
-        e.power_store -= e.ess_power - prod
+    elif tries(e, prod, ess + pump, cap, ess):
+        # Ρίχνει φορτίο: ορυχεία, εργοστάσια, κήποι σταματούν, οι αντλίες όχι.
         e.power_ok = POWER_ESS
     else:
-        e.power_store = 0
-        e.power_ok = POWER_NONE
+        water = 0                           # και οι αντλίες
+        if prod >= ess:
+            e.power_store = min(e.power_store + prod - ess, cap)
+            e.power_ok = POWER_ESS
+        elif e.power_store >= ess - prod:
+            e.power_store -= ess - prod
+            e.power_ok = POWER_ESS
+        else:
+            e.power_store = 0
+            e.power_ok = POWER_NONE
 
-    if e.power_ok == POWER_ALL:             # οι αντλίες θέλουν ρεύμα
+    if water:                               # 0 αν σταμάτησαν και οι αντλίες
         add_stock(e, S_WATER, water)
         # Το νερό βγαίνει από ΔΟΜΕΣ, όχι από μηχανές θόλου, αλλά βγαίνει εδώ —
         # και το §10.2 το θέλει. Το μετάλλευμα από το βήμα 95 στην παράδοση.
-        if water:
-            e.prod_mask |= 1 << S_WATER
+        e.prod_mask |= 1 << S_WATER
 
 
 def mine_rate(n, half=False):
