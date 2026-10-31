@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from sprites import load_map, load_bin, ROOT
 import buttons
 
-TEXT_MAX = 3200                 # = TEXT_MAX του src/uitext.asm (assert εκεί): κείμενα + src/st7.asm
+TEXT_MAX = 3840                 # = TEXT_MAX του src/uitext.asm (assert εκεί): κείμενα + src/st7.asm
 B6C_MAX = 5633                  # = B6C_MAX του src/bots.asm (assert στο main.asm)· 5.815 ως το 171 με τον χάρτη των εισβολέων στην κορυφή του (βήμα 172: στο node_occ), 256 ως το 92, 1.280 ως το 93, 1.298 ως το 95, 1.554 ως το 109 (τα κελύφη, βήμα 110), 5.138 ως το 110 (οι εννιά φιγούρες, βήμα 111), 5.063 ως το 113 (το αδιαφανές τέλος των κελυφών, βήμα 114), 5.831 ως το 135 (ο επισκέπτης, βήμα 136), 5.767 ως το 151 (το struct_ptr, βήμα 152)
 B1C_MAX = 488                   # = B1C_MAX του src/commit.asm (assert στο main.asm), βήμα 94· 152: και το bar_want
 MAX_CORR = 128                  # = MAX_CORR του src/const.asm (assert στο main.asm), βήμα 159· 96 ως το 158

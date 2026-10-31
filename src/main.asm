@@ -312,6 +312,7 @@ OVI_R1      equ zz_ovi + zz_ovi_end - GH_BUF
         org     OV_R1, OVI_R1
         include "dm_hand.asm"
         include "top.asm"               ; βήμα 157: το όριο σάρωσης, τρέχει εδώ
+        include "goals.asm"             ; βήμα 177: το G και το αίτημα σελίδας, τρέχουν εδώ
 TU_TXT:
         include "tutext.asm"
 zz_tut_end:

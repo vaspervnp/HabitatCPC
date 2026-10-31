@@ -54,13 +54,20 @@ def pages(m, sym):
     """ΟΙ ΣΕΛΙΔΕΣ ΤΟΥ TUTORIAL (βήμα 175, src/tpage.asm) περιμένουν ένα πλήκτρο
     με το παιχνίδι σταματημένο. Οσοι παίζουν με τα πλήκτρα τις κλείνουν μόλις
     ανοίξουν: μετά από κάθε m.run_frames κοιτάμε το tp_pg (τράπεζα 7, #FF όταν
-    δεν δείχνεται καμία) και πατάμε SPACE ως να κλείσει. Πόσες, στο m.pages."""
+    δεν δείχνεται καμία) και πατάμε SPACE ως να κλείσει. Πόσες, στο m.pages.
+
+    ΚΑΙ ΤΑ ΟΡΟΣΗΜΑ (βήμα 177): μια σελίδα για κάθε ορόσημο που πιάνεται, ίδια.
+    Η ΣΕΛΙΔΑ ΤΟΥ ΤΕΛΟΥΣ ΟΜΩΣ ΟΧΙ: εκεί κάθε πλήκτρο εκτός από το L ξαναρχίζει
+    το παιχνίδι από το μενού. Το L, και το ESC στην επιλογή φορτώματος που
+    ανοίγει: η νεκρή αποικία μένει, όπως ως το βήμα 176."""
     tp = sym.get("TP_PG")
     m.pages = []
     if tp is None:
         return
     import cpc
-    from cpc import KEY_SPACE
+    import tupages
+    from cpc import KEY_SPACE, KEY_ESC
+    pg_end = tupages.TP_N - 1                   # PG_END, src/const.asm
     b7 = cpc._lib.cpcemu_ram_ptr(m._h, 7)
     name = sym["TP_NAME"] + 1 - 0x4000
     run = m.run_frames
@@ -76,10 +83,11 @@ def pages(m, sym):
             # Το χειριστήριο που ίσως κρατά ακόμη ο καλών (stick): η σελίδα
             # περιμένει πρώτα να αφεθούν όλα (tp_key).
             m.joystick(0)
-            m.key_down(KEY_SPACE)
-            run(4)
-            m.key_up(KEY_SPACE)
-            run(40)
+            for k in ("l", KEY_ESC) if pg == pg_end else (KEY_SPACE,):
+                m.key_down(k)
+                run(4)
+                m.key_up(k)
+                run(40)
         raise RuntimeError("μια σελίδα του tutorial δεν κλείνει")
     m.run_frames = run_frames
 

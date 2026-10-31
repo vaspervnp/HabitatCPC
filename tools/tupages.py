@@ -20,9 +20,13 @@
   - μόνο οι χαρακτήρες της γραμματοσειράς, 32-95: κεφαλαία, ψηφία, σημεία·
     όχι το «@», που χωρίζει σελίδες·
   - ως TP_W χαρακτήρες η γραμμή χωρίς τους αστερίσκους, και ζυγοί αστερίσκοι·
-  - ως TP_H γραμμές το σώμα μιας σελίδας (οι σειρές 3-22 της οθόνης).
+  - ως TP_H γραμμές το σώμα μιας σελίδας (οι σειρές 3-22 της οθόνης);
+  - το «^» μόνο στις σελίδες του G και του τέλους (βήμα 177), και πάντα με
+    ένα από τα πεδία του FIELDS μετά: το πλάτος του μετρά όσο το πιο πλατύ
+    που μπορεί να γράψει.
 """
 import os
+import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -32,7 +36,11 @@ BUILD = os.path.join(ROOT, "build")
 
 TP_W = 76                       # στήλες 2-77 (src/tpage.asm: TP_COL)
 TP_H = 20                       # σειρές 3-22 (TP_BROW ως πριν από το υποσέλιδο)
-TP_N = 16                       # εισαγωγή, 14 βήματα (TU_N), «THE COLONY IS YOURS»
+TP_N = 23                       # εισαγωγή, 14 βήματα (TU_N), «THE COLONY IS YOURS»,
+                                # και από το βήμα 177 τα πέντε ορόσημα, το G και το τέλος
+TP_FLD = 21                     # από αυτήν τα πεδία «^» (src/tpage.asm, tp_field)
+FIELDS = {**{c: 4 for c in "01234"},            # «DONE» ή τέσσερα κενά
+          **{c: 5 for c in "ABCDEFGHIJKL"}}     # ένας αριθμός, ως 65535
 
 
 class Fail(Exception):
@@ -66,7 +74,7 @@ def parse(path=SRC):
 def check(pages):
     if len(pages) != TP_N:
         raise Fail(f"{len(pages)} σελίδες, όχι {TP_N}")
-    for title, n, body in pages:
+    for k, (title, n, body) in enumerate(pages):
         rows = [(title, n)] + body
         for text, ln in rows:
             for c in text:
@@ -75,6 +83,10 @@ def check(pages):
             if text.count("*") % 2:
                 raise Fail(f"γραμμή {ln}: μονός αριθμός αστερίσκων")
             w = len(text.replace("*", ""))
+            for m in re.finditer(r"\^(.?)", text):
+                if k < TP_FLD or m.group(1) not in FIELDS:
+                    raise Fail(f"γραμμή {ln}: «^{m.group(1)}» δεν είναι πεδίο εδώ")
+                w += FIELDS[m.group(1)] - 2
             if w > TP_W:
                 raise Fail(f"γραμμή {ln}: {w} χαρακτήρες, ως {TP_W}")
         if len(body) > TP_H:

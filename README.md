@@ -66,9 +66,13 @@ It is a complete game. The ten delivery milestones of
   ends 160 sols with 113 colonists a world on average, two worlds of eight at 157–159
   ([§10.1](DESIGN.md#a-hundred-and-sixty-at-milestone-174)). What holds the others
   back — power, Metal, room — is in [§15](DESIGN.md#15-open-risks).
-- **Still owed: a check on a real CPC 6128.** The raster splits, the disc's timing and
-  the mid-frame CRTC writes have been tested only on the emulator
-  ([`DESIGN.md` §15](DESIGN.md#15-open-risks)).
+- **The milestones are seen since milestone 177**: a page when one is reached, `G` for
+  all five, and an end page after the last death, from which `L` loads and any other key
+  starts a new colony from the menu
+  ([`DESIGN.md` §10.2–10.3](DESIGN.md#seen-at-milestone-177)).
+- **Still owed: a check on a real CPC 6128.** The raster splits, the disc's timing, the
+  mid-frame CRTC writes and the new colony's restart through the ROM have been tested
+  only on the emulator ([`DESIGN.md` §15](DESIGN.md#15-open-risks)).
 
 ## Playing
 

@@ -148,6 +148,7 @@ joystick.
 | `H` | Centre the view on the middle of the map, where the ship is. |
 | `S` / `L` | Save / load, from the main view ([section 15](#15-info-demolition-speed-saving)). |
 | `C` | Call a colonist ship ([section 12](#12-ships-colonists-visitors-merchants-intruders)). |
+| `G` | The milestones: all five, and how far the colony is from each ([section 16](#16-goals-and-losing)). From the main view. |
 
 ![The help screen, on ?](img/help.png)
 
@@ -502,8 +503,30 @@ they raise the colony's prestige, which brings visitors:
 | Automation | 8 bots |
 | Habitat | 80 colonists, independent, five sols in a row with no deaths |
 
+- **When a milestone is reached**, a page says so, what it adds, and what the next one
+  asks. The game waits for a key. If you are placing a building, the page comes as soon
+  as you are back on the main view. Two milestones at once are two pages.
+- **`G`**, from the main view, shows all five: `DONE`, or what each one asks and how far
+  the colony is from it (colonists, sols all green, goods made here, sols without a trade,
+  bots, sols without a death). Under them are the sol, the prestige, the coins and the
+  most colonists so far.
+
+![G: the milestones](img/milestones.png)
+
 **The colony is lost only when everyone is dead** (`COLONY LOST`). A colony of two
 with no power is still alive, and saving it is the point.
+
+When the last colonist dies, the page `COLONY LOST` shows the sols lived, the most
+colonists, the prestige, the coins and the milestones reached:
+
+- `L` loads a saved colony, with the slot chooser of
+  [section 15](#15-info-demolition-speed-saving).
+- **Any other key starts a new colony from the menu.** The game disc must be in the
+  drive.
+- After `ESC` in the slot chooser you stay with the dead colony, and `G` shows the page
+  again.
+
+![The end of a colony](img/lost.png)
 
 ## 17. Tips
 

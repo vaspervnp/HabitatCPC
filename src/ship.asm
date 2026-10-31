@@ -505,6 +505,19 @@ sr_m4:
         ; ζωντανοί, το σερί χωρίς θάνατο ως το 30, 5 ανά σαλόνι ή δέντρο ως τα
         ; έξι, και η εύνοια, που πρώτα σβήνει κατά ένα. Ως 250. ---
 sr_pres:
+        ifdef HAS_VIEW
+        ; ΤΟ ΟΡΟΣΗΜΟ ΦΑΙΝΕΤΑΙ (βήμα 177): τα bits του EC_MILE που δεν είχαν
+        ; σελίδα ακόμη τη ζητούν, στα bits 1-5 του ms_req, και από εδώ είναι
+        ; ειπωμένα (EC_MSEEN). Τα δοκιμαστικά του τροχού (tests/simtest.asm)
+        ; δεν έχουν μπάρα.
+        ld      hl,EC_MSEEN
+        ld      a,(EC_MILE)
+        ld      c,(hl)
+        ld      (hl),a
+        xor     c                       ; τα καινούργια: το EC_MSEEN είναι μέσα στο EC_MILE
+        add     a,a                     ; στα bits 1-5· το 0 μένει 0
+        call    nz,ms_raise
+        endif
         ld      hl,EC_GOOD
         ld      a,(hl)
         or      a
@@ -571,3 +584,24 @@ sr_streak:
 srs_st:
         ld      (hl),a
         ret
+
+        ifdef HAS_VIEW
+; ms_raise — μια σελίδα περιμένει (βήμα 177): A, με το bit 0 μηδέν, μπαίνει
+; στο ms_req (src/input.asm) — μαζί με ό,τι περίμενε ήδη, αν περίμενε. Και η
+; μπάρα από την αρχή στο επόμενο bar_sync, ώστε το bk_more να βάλει το αίτημα
+; στη μπάρα των ομάδων (src/goals.asm): μια θέση ξαναζωγραφίζεται, μία φορά.
+; Από τον κύκλο του sol με τα ορόσημα, και από τον κύκλο ροής με A = 0 όταν
+; πεθάνουν όλοι (src/flow.asm). Κρατά τα BC, DE.
+ms_raise:
+        ld      hl,ms_req
+        bit     0,(hl)
+        jr      z,msr_or                ; περίμενε ήδη ένα
+        ld      (hl),0
+msr_or:
+        or      (hl)
+        ld      (hl),a
+        ld      a,BT_NONE - 1           ; καμία κατάσταση, κανένα κουμπί
+        ld      (bs_id),a
+        ld      (bsg_was),a             ; ui_state: το bar_sync ξαναρωτά
+        ret
+        endif

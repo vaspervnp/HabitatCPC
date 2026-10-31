@@ -66,8 +66,10 @@ AB_LOAD     equ 3
 AB_HOME     equ 4
 AB_SHIP     equ 5
 AB_TRADE    equ 6                       ; βήμα 93· το AB_HELP ήταν 6
-AB_HELP     equ 7
+AB_GOAL     equ 7                       ; βήμα 177: το G, στον πίνακα (το AB_HELP ήταν 7)
 AB_DEMO     equ 8                       ; βήμα 101: το src/act.asm πριν από τον πίνακα
+AB_HELP     equ 9
+BT_GOAL     equ BT_N                    ; βήμα 177: μετά το bt_end, χωρίς εικόνα
 
 ; ---------------------------------------------------------------------------
 ; bt_tab — ανά κουμπί: το γράμμα, η γραμμή και η μάσκα του πλήκτρου στη μήτρα
@@ -111,6 +113,12 @@ bt_tab:
         db '?',3,#40, KB_ACT << 5 | AB_HELP     ; 34 (το πλήκτρο / ?)
 bt_end:
         assert  bt_end - bt_tab == 4 * BT_N
+; ΤΑ ΟΡΟΣΗΜΑ ΣΤΟ G (βήμα 177): ένα κουμπί που δεν ζωγραφίζεται. Μόνο στη μπάρα
+; των ομάδων, όπου κανένα G δεν είναι κουμπί, και ως εκεί το φέρνει το bk_more
+; (src/goals.asm), όχι το bw_id. Το ίδιο κουμπί είναι και το αίτημα σελίδας
+; (ms_req, src/input.asm). Μετά το bt_end: η βοήθεια και το tools/buttons.py
+; μετρούν BT_N.
+        db 'G',6,#10, KB_ACT << 5 | AB_GOAL     ; 35
 
 ; Οι ομάδες: το πρώτο αντικείμενο του καταλόγου. (Το πρώτο κουμπί και πόσα
 ; τα δίνει το ac_l_grp πιο κάτω, που είναι οι ομάδες με τη σειρά και το ?.)
@@ -321,8 +329,6 @@ sl_pens:    db #0F, #0F
             db #0F, #F0
             dw sl_ctr                   ; BS_RED: πράσινο κουμπί, κόκκινο σύμβολο
 
-sl_at:      dw 0
-sl_piq:     dw 0
 sl_src:     dw 0
 sl_pic:     dw 0
 sl_po:      db 0
@@ -337,7 +343,11 @@ sl_ctr:     db #00,#10,#20,#30,#40,#50,#60,#70,#80,#90,#A0,#B0,#C0,#D0,#E0,#F0
         assert  sl_ctw == sl_ctg + 16 && sl_ctr == sl_ctw + 16
 ; ΜΕΤΑ ΤΟΝ ΠΙΝΑΚΑ, όχι πριν (βήμα 155): τα 3 bytes τους γύρισαν το align 16 στο
 ; μηδέν, αφού το rt_flush (src/graph.asm) πήρε 4 και το έσπρωξε 13 bytes. Και
-; το bs_pend από το βήμα 157, για το byte του ob_struct_sort (src/object.asm).
+; το bs_pend από το βήμα 157, για το byte του ob_struct_sort (src/object.asm),
+; και τα sl_at, sl_piq από το βήμα 177, για το ms_req και το κουμπί του G
+; (src/input.asm, το bt_tab), που το έσπρωξαν 11.
+sl_at:      dw 0
+sl_piq:     dw 0
 sl_gly:     dw 0
 sl_id:      db 0
 bs_pend:    db 0                        ; μένουν κουμπιά για το επόμενο frame

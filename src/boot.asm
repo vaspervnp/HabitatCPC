@@ -44,6 +44,7 @@ CAS_IN_CLOSE    equ #BC7A
 SCR_SET_MODE    equ #BC0E
 SCR_SET_INK     equ #BC32
 SCR_SET_BORDER  equ #BC38
+MC_START        equ #BD16               ; MC START PROGRAM, στο jumpblock (βήμα 177)
 
 LF_BUF          equ #9800               ; 2 KB, βασική RAM
 GEN_ORG         equ #8000               ; όπου φορτώνεται η γεννήτρια
@@ -149,6 +150,23 @@ boot:
         ld      de,G_text
         ld      c,PAGE_B7
         call    ld_bank
+        ; ΤΟ MC START PROGRAM ΤΗΣ ROM (βήμα 177), όσο ζει το firmware: η λέξη
+        ; του jumpblock (μετά το RST 1, η διεύθυνση με τα bits 15/14 της ROM)
+        ; στο πρώτο word των κειμένων (tp_rom, src/uitext.asm). Μια νέα αποικία
+        ; από τη σελίδα του τέλους ξαναστήνει το firmware από εκεί
+        ; (src/tpage.asm), σε όποια ROM κι αν έχει το μηχάνημα. Χωρίς RST 1
+        ; εκεί, 0: ένα reset.
+        ld      bc,GA_PORT + PAGE_B7
+        out     (c),c
+        ld      hl,0
+        ld      a,(MC_START)
+        cp      #CF                     ; RST 1, το LOW JUMP
+        jr      nz,bt_norom
+        ld      hl,(MC_START + 1)
+bt_norom:
+        ld      (G_text),hl
+        ld      bc,GA_PORT + PAGE_B1
+        out     (c),c
         ; Το ίδιο για τον κώδικα του τροχού στην τράπεζα 6 (βήμα 92, src/bots.asm),
         ; πάνω στη δέσμευση b6code: η BANK6.BIN του pack.py την έχει άδεια.
         ld      hl,n_b6code

@@ -34,13 +34,20 @@ TP_WHITE    equ #FF                     ; pen 3 όπου ο γλύφος έχε�
 TP_GREEN    equ #0F                     ; pen 2, όπως το hp_green
 TP_KQ       equ 3                       ; το «?», το πλήκτρο /: γραμμή 3 του πίνακα,
 TP_KQM      equ #40                     ; bit 6 (0 = πατημένο)
+TP_KL       equ 4                       ; το L της σελίδας του τέλους (βήμα 177)
+TP_KLM      equ #10
+TP_STUB     equ #8000                   ; η επανεκκίνηση: έξω από το παράθυρο, κάτω
+                                        ; από τον φορτωτή (#9000) και τον buffer του
         include "../build/tupages.asm"  ; TP_N, tp_idx
+        assert  TP_N == PG_END + 1      ; src/const.asm, src/tupages.txt
 
 ; tp_show — A = σελίδα: 0 η εισαγωγή (και μετά η 1), #FF η σελίδα του βήματος
 ; (tp_cur). Γυρίζει με NZ αν το πλήκτρο που την έκλεισε ήταν το «?», με τις
 ; διακοπές κλειστές και την οθόνη όλη Mode 1: το ξαναζωγραφίζει ο καλών
 ; (hp_back, src/help.asm).
 tp_show:
+        cp      TP_CHOOSE
+        call    z,ms_go                 ; τα ορόσημα και το τέλος (βήμα 177)
         inc     a
         jr      nz,tps_pg
         ld      a,(tp_cur)
@@ -89,23 +96,241 @@ tps_ch:
 tps_foot:
         ld      hl,-HUD_TOPB + TP_FROW * 80 + TP_COL
         call    tp_line
+        ld      a,(tp_pg)
+        cp      PG_END
         ld      hl,tp_foot
+        jr      nz,tps_ft
+        ld      hl,tp_endf              ; το τέλος: L, ή μια νέα αποικία
+tps_ft:
         call    tp_str
-        call    tp_key                  ; NZ: το «?»
-        jr      nz,tps_out
+        call    tp_key                  ; NZ: το «?», ή το L στο τέλος
         ld      hl,tp_pg
         ld      a,(hl)
+        jr      nz,tps_spec
+        cp      PG_END
+        jp      z,tp_new                ; κάθε άλλο πλήκτρο: από το μενού, χωρίς γυρισμό
         inc     (hl)                    ; μετά την εισαγωγή το βήμα 1
         or      a
         jr      z,tps_one
-        xor     a                       ; Z: όχι το «?»
+        call    tp_mnext                ; τα ορόσημα που μένουν (βήμα 177)
+        jr      nz,tps_one
+        jr      tps_out                 ; Z: όχι το «?»
+tps_spec:
+        cp      PG_END                  ; το L: Z, χωρίς βοήθεια· το φόρτωμα το
+        jr      nz,tps_out              ; ανοίγει το ms_key (src/goals.asm)
+        xor     a
 tps_out:
         push    af
         call    fdc_off
         ld      hl,tp_pg
         ld      (hl),#FF                ; καμία σελίδα: το βλέπουν οι δοκιμές και ο tools/play.py
+        xor     a
+        ld      (tp_mnew),a             ; ένα «?» στη μέση τα αφήνει
         pop     af
         ret
+
+; ms_go — ποια σελίδα για το ms_key (src/goals.asm), και τα νούμερά της στο
+; ms_val (βήμα 177, DESIGN §10.2). Η σειρά: όταν η αποικία χάθηκε, η σελίδα του
+; τέλους — και για το G. Αλλιώς τα ορόσημα του αιτήματος (ms_req, τα bits 1-5:
+; τα έβαλε εκεί ο κύκλος του sol, που τα σημείωσε και στο EC_MSEEN), το πρώτο
+; τώρα και τα άλλα στο tp_mnew. Αλλιώς η σελίδα του G. Τα νούμερα, words, με τη
+; σειρά των πεδίων ^A-^L του src/tupages.txt:
+;   A ζωντανοί        B sols όλα πράσινα    C από τα 3 της Βιομηχανίας
+;   D από τα 10 αγαθά E sols χωρίς εμπόριο  F ζωντανά ρομπότ
+;   G sols χωρίς θάνατο H το sol            I το κύρος
+;   J τα νομίσματα    K οι περισσότεροι     L τα ορόσημα
+; και τα bits των οροσήμων για τα ^0-^4. Ο,τι είναι στην τράπεζα 6 το φέρνει το
+; rd6 της 2 (src/link.asm): από εδώ η 6 δεν μπαίνει στο παράθυρο. A = η σελίδα.
+ms_go:
+        ld      hl,ms_req
+        ld      c,(hl)
+        ld      (hl),#FF                ; το αίτημα πάρθηκε
+        push    bc
+        ld      de,ms_val
+        ld      a,(EC_ALIVE)            ; A
+        call    msg_b
+        ld      a,(EC_GREENS)           ; B
+        call    msg_b
+        ld      hl,(EC_PRODM)
+        ld      a,l
+        and     IND_MASK                ; C (src/ship.asm)
+        call    msg_n
+        ld      a,h
+        and     DEP_MASK >> 8
+        ld      c,0
+        call    msg_pc                  ; D: τα δύο πάνω, και...
+        ld      a,l
+        call    msg_n0                  ; ...τα οκτώ κάτω
+        ld      a,(EC_NOTRADE)          ; E
+        call    msg_b
+        ld      hl,G_agent_fields + AG_BOT0
+        ld      bc,AG_NBOT * 256 + 0
+        assert  F_ALIVE == 1            ; όπως το ship_tick
+msg_bot:
+        call    rd6
+        and     F_ALIVE
+        add     a,c
+        ld      c,a
+        inc     l
+        djnz    msg_bot
+        call    msg_c                   ; F
+        ld      a,(EC_NODEATH)          ; G
+        call    msg_b
+        ld      a,(EC_SOL)              ; H
+        call    msg_b
+        ld      hl,EC_PREST             ; I
+        call    msg_6
+        ld      hl,EC_COINS             ; J, 16 bits
+        call    rd6
+        ld      (de),a
+        inc     de
+        inc     hl
+        call    rd6
+        ld      (de),a
+        inc     de
+        ld      hl,EC_PEAK              ; K
+        call    msg_6
+        ld      a,(EC_MILE)             ; L
+        ld      b,a
+        call    msg_n
+        ld      a,b
+        ld      (de),a                  ; ms_mile
+        ; --- ποια σελίδα ---
+        pop     bc                      ; C = το αίτημα
+        ld      a,(EC_GAMEOVER)
+        or      a                       ; και Cy = 0, για το rra
+        ld      a,PG_END
+        ret     nz
+        ld      a,c
+        rra                             ; το bit 0: 1, κανένα αίτημα (το G)
+        jr      c,msg_g
+        and     #1F                     ; τα καινούργια ορόσημα,
+        ld      hl,EC_MILE
+        and     (hl)                    ; όσα έχει η αποικία: ένα φόρτωμα στη μέση
+        jr      z,msg_g
+        ld      c,a
+        dec     a
+        and     c
+        ld      (tp_mnew),a             ; όλα εκτός από το πρώτο
+        ld      a,PG_MS0 - 1
+msg_lo:
+        inc     a
+        srl     c
+        jr      nc,msg_lo
+        ret
+msg_g:
+        ld      a,PG_GOALS
+        ret
+; msg_n — A: τα bits του, ως ένα word στο (DE). msg_n0 — το ίδιο, με C ήδη
+; μετρημένα. msg_c — το C. msg_6 — το (HL) της 6. msg_b — το A.
+msg_n:
+        ld      c,0
+msg_n0:
+        call    msg_pc
+msg_c:
+        ld      a,c
+        jr      msg_b
+msg_6:
+        call    rd6
+msg_b:
+        ld      (de),a
+        inc     de
+        xor     a
+        ld      (de),a
+        inc     de
+        ret
+; msg_pc — C += τα bits του A.
+msg_pc:
+        or      a
+        ret     z
+        srl     a
+        jr      nc,msg_pc
+        inc     c
+        jr      msg_pc
+
+; tp_mnext — το επόμενο ορόσημο του tp_mnew (ms_go), η σελίδα του στο
+; tp_pg. NZ αν υπάρχει. Δύο ορόσημα στο ίδιο sol: δύο σελίδες, η μία μετά την
+; άλλη, με τη σειρά των bits.
+tp_mnext:
+        ld      hl,tp_mnew
+        ld      a,(hl)
+        or      a
+        ret     z
+        ld      c,a
+        dec     a
+        and     c
+        ld      (hl),a                  ; χωρίς το πρώτο
+        ld      a,PG_MS0 - 1
+tpm_lo:
+        inc     a
+        srl     c
+        jr      nc,tpm_lo
+        ld      (tp_pg),a
+        or      a                       ; NZ: το srl άφησε ίσως Z
+        ret
+
+; tp_new — κάθε πλήκτρο εκτός από το L στη σελίδα του τέλους: ΜΙΑ ΝΕΑ ΑΠΟΙΚΙΑ,
+; από το μενού. Το μενού και ο φορτωτής θέλουν το firmware, που το παιχνίδι το
+; έχει σβήσει (ο χώρος του AMSDOS είναι η τράπεζα 2). Το ξαναστήνει η ίδια η
+; ROM: το MC START PROGRAM, όπως μετά από ένα RUN, τρέχει το tpn_stub, που
+; ξυπνά το AMSDOS (KL ROM WALK), φορτώνει το LOADER.BIN, και πηδά εκεί. Η
+; διεύθυνσή του στη ROM δεν είναι ίδια σε κάθε μηχάνημα: τη διάβασε ο
+; φορτωτής από το jumpblock όσο ζούσε το firmware (src/boot.asm), στο tp_rom
+; (src/uitext.asm), με τα bits 15 και 14 να λένε ποια ROM ανάβει. Χωρίς αυτήν
+; (0): ένα reset, στο BASIC.
+tp_new:
+        ld      hl,tpn_stub
+        ld      de,TP_STUB
+        ld      bc,tpn_stub_end - tpn_stub
+        ldir
+        ld      hl,(tp_rom)
+        ld      a,h
+        rlca
+        rlca
+        and     3                       ; τα bits 15, 14: πάνω και κάτω ROM σβηστές...
+        add     a,a
+        add     a,a                     ; ...στα bits 3, 2 του RMR
+        or      #81                     ; RMR, Mode 1
+        ld      (TP_STUB + tps_rmr - tpn_stub),a
+        ld      a,h
+        and     #3F
+        ld      h,a
+        ld      (TP_STUB + tps_jp - tpn_stub),hl
+        jp      TP_STUB
+
+; tpn_stub — αντιγράφεται στο TP_STUB και τρέχει εκεί: η ROM ανάβει, και ό,τι
+; είναι στο #0000-#3FFF γίνεται ROM. Οι διευθύνσεις του, σχετικές με αυτό.
+tpn_stub:
+        di
+        im      1
+        ld      bc,GA_PORT + #C0        ; η βασική μνήμη, όπως μετά από reset
+        out     (c),c
+tps_rmr     equ $ + 1
+        ld      bc,GA_PORT + #89        ; η κάτω ROM αναμμένη (το γράφει το tp_new)
+        out     (c),c
+        ld      hl,TP_STUB + tpb_boot - tpn_stub
+        ld      c,0
+tps_jp      equ $ + 1
+        jp      0                       ; το MC START PROGRAM της ROM (το tp_new)
+tpb_boot:
+        ld      de,#0040                ; όπως το BASIC: η μνήμη για τις ROM φόντου
+        ld      hl,#ABFF
+        call    #BCCB                   ; KL ROM WALK: το AMSDOS
+        ld      hl,TP_STUB + tpb_name - tpn_stub
+        ld      b,tpb_end - tpb_name
+        ld      de,#9800                ; ο buffer του, όπως στον φορτωτή (LF_BUF)
+        call    #BC77                   ; CAS IN OPEN
+        jr      nc,tpb_fail
+        ld      hl,#9000
+        call    #BC83                   ; CAS IN DIRECT
+        call    #BC7A                   ; CAS IN CLOSE
+        jp      #9000                   ; ο φορτωτής, από την αρχή του
+tpb_fail:
+        rst     0                       ; κανένας δίσκος: reset
+tpb_name:   db "LOADER.BIN"
+tpb_end:
+tpn_stub_end:
+        assert  TP_STUB + tpn_stub_end - tpn_stub <= #9000
 
 ; tp_line — HL = θέση (από το cam_p, όπως το hp_go): εκεί η αρχή της γραμμής,
 ; πράσινα.
@@ -127,8 +352,15 @@ tp_str:
         pop     hl
         jr      tp_str
 
-; tp_put — A = ένας χαρακτήρας του κειμένου: γλύφος, «*», CR ή τίποτα.
+; tp_put — A = ένας χαρακτήρας του κειμένου: γλύφος, «*», CR ή τίποτα. Από
+; το βήμα 177 και «^»: ο επόμενος είναι πεδίο (tp_field).
 tp_put:
+        ld      hl,tp_fl
+        dec     (hl)
+        jr      z,tp_field              ; ο χαρακτήρας μετά το «^»
+        ld      (hl),0
+        cp      '^'
+        jr      z,tpp_fld
         cp      13
         jr      z,tpp_cr
         cp      '*'
@@ -177,6 +409,69 @@ tpp_cr:
         ld      de,80
         add     hl,de
         jr      tp_line
+tpp_fld:
+        ld      (hl),1
+        ret
+
+; tp_field — A = ο χαρακτήρας μετά το «^» (βήμα 177, src/tupages.txt). «0»-«4»:
+; DONE αν πιάστηκε το ορόσημο, μια παύλα αν όχι. «A»-«L»: το word του
+; ms_val, σε δεκαδικά χωρίς μηδενικά μπροστά. Τα γράφει το ms_go.
+tp_field:
+        sub     'A'
+        jr      nc,tpf_num
+        add     a,'A' - '0'
+        ld      b,a
+        inc     b
+        ld      a,(ms_mile)
+tpf_bit:
+        rrca                            ; το bit n στο Cy στην (n+1)-οστή
+        djnz    tpf_bit
+        ld      hl,tp_done
+        jp      c,tp_str
+        ld      hl,tp_none
+        jp      tp_str
+tpf_num:
+        add     a,a
+        ld      e,a
+        ld      d,0
+        ld      hl,ms_val
+        add     hl,de
+        ld      a,(hl)
+        inc     hl
+        ld      h,(hl)
+        ld      l,a
+        xor     a
+        ld      (tp_nz),a
+        ld      de,-10000
+        call    tpn_d
+        ld      de,-1000
+        call    tpn_d
+        ld      de,-100
+        call    tpn_d
+        ld      de,-10
+        call    tpn_d
+        ld      a,l                     ; οι μονάδες, πάντα
+        jr      tpn_ch
+; tpn_d — ένα ψηφίο: πόσα DE (αρνητικό) χωρούν στο HL. Μηδέν μπροστά: τίποτα.
+tpn_d:
+        ld      a,-1
+tpn_lp:
+        inc     a
+        add     hl,de
+        jr      c,tpn_lp
+        sbc     hl,de                   ; Cy = 0: μία αφαίρεση παραπάνω, πίσω
+        ld      c,a
+        ld      a,(tp_nz)
+        or      c
+        ret     z
+        ld      a,c
+tpn_ch:
+        add     a,'0'
+        ld      (tp_nz),a               ; όχι μηδέν: από εδώ κάθε ψηφίο
+        push    hl
+        call    tp_put
+        pop     hl
+        ret
 
 ; tp_get — A = το επόμενο byte του αρχείου, NC. C αν ο τομέας του δεν διαβάστηκε.
 tp_get:
@@ -289,15 +584,22 @@ tpf_no:
 ; tp_key — περιμένει να αφεθεί ό,τι κρατιέται (το «?» που την άνοιξε, το
 ; FIRE που έχτισε), ένα πλήκτρο ή το χειριστήριο, και να αφεθεί κι αυτό:
 ; αλλιώς το ίδιο πάτημα θα έκανε κάτι στο παιχνίδι (όπως το hp_up). NZ αν
-; ήταν το «?».
+; ήταν το «?» — ή το L, στη σελίδα του τέλους (βήμα 177).
 tp_key:
         call    tpk_up
 tpk_dn:
         call    tp_any
         jr      z,tpk_dn
+        ld      a,(tp_pg)               ; στη σελίδα του τέλους το L (βήμα 177)
+        cp      PG_END
         ld      a,(key_now + TP_KQ)
+        ld      c,TP_KQM
+        jr      nz,tpk_q
+        ld      a,(key_now + TP_KL)
+        ld      c,TP_KLM
+tpk_q:
         cpl
-        and     TP_KQM
+        and     c
         push    af
         call    tpk_up
         pop     af
@@ -321,6 +623,9 @@ tpa_lp:
         ret
 
 tp_foot:    db "*ANY KEY*  GO ON             *?*  WHAT EVERY BUTTON DOES",0
+tp_endf:    db "*L*  LOAD A SAVED COLONY     *ANY OTHER KEY*  A NEW COLONY",0
+tp_done:    db "*DONE*",0
+tp_none:    db "-   ",0
 tp_nodisc:  db "*THIS PAGE IS ON THE GAME'S DISC*",13,13
             db "PUT THE DISC BACK IN THE DRIVE, AND PRESS *?* TO SEE IT.",0
 tp_name:    db 0,"TUTOR   TXT",0
@@ -333,3 +638,9 @@ tp_off:     dw 0
 tp_at:      dw 0
 tp_ls:      dw 0
 tp_blk:     ds 16
+; ΤΑ ΝΟΥΜΕΡΑ ΤΩΝ ΣΕΛΙΔΩΝ (βήμα 177): τα γράφει όλα μαζί το ms_go.
+ms_val:     ds 2 * 12                   ; ^A-^L
+ms_mile:    db 0                        ; ^0-^4: τα bits του EC_MILE
+tp_mnew:    db 0                        ; τα ορόσημα που μένουν να δειχτούν
+tp_fl:      db 0                        ; 1: ο επόμενος χαρακτήρας είναι πεδίο
+tp_nz:      db 0                        ; όχι μηδέν: γράφτηκε ψηφίο

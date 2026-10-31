@@ -60,7 +60,7 @@ A_JOY       equ #3F                     ; οι ενέργειες 0-5, και α
 ; αλλού, και όταν η τράπεζα 0 μετακινήθηκε κατά τους χειριστές της διακοπής
 ; πέρασε σελίδα εκεί. Αν δεν χωρά, πηγαίνει στην αρχή της επόμενης — στο
 ; main.asm σήμερα χωρά και δεν κοστίζει τίποτα.
-        if      ($ & 255) > 256 - 2 * A_ACTIONS - KEY_LINES
+        if      ($ & 255) > 256 - 2 * A_ACTIONS - KEY_LINES - 1
         align   256
         endif
 act_src:
@@ -81,6 +81,13 @@ act_src:
         db      (key_now + 4) & 255, #10        ; L φόρτωσε
         db      (key_now + 7) & 255, #40        ; C κάλεσε πλοίο
 key_now:    defs KEY_LINES
+; ΤΟ ΑΙΤΗΜΑ ΜΙΑΣ ΣΕΛΙΔΑΣ (βήμα 177), ΣΑΝ ΕΝΔΕΚΑΤΗ ΓΡΑΜΜΗ ΤΟΥ ΠΛΗΚΤΡΟΛΟΓΙΟΥ: το
+; bit 0 στο 0 είναι «πατημένο», και τα bits 1-5 τα ορόσημα που περιμένουν σελίδα.
+; Το γράφουν ο κύκλος του sol όταν πιαστεί ορόσημο και ο κύκλος ροής όταν
+; πεθάνουν όλοι (ms_raise, src/ship.asm)· #FF ξανά το ms_go (src/tpage.asm),
+; που διαλέγει τη σελίδα. Το διαβάζει ο κώδικας του bk_scan όπως κάθε γράμμα της
+; μπάρας (bk_more, src/goals.asm): γι' αυτό εδώ, στη σελίδα του key_now.
+ms_req:     db #FF
 act_now:    dw 0
 act_hit:    dw 0
 
@@ -193,4 +200,5 @@ ib_l:   rrca                            ; το bit n στο Cy στην (n+1)-ο
 
         assert  key_now == act_src + 2 * A_ACTIONS
         assert  (act_src >> 8) == ((key_now + KEY_LINES - 1) >> 8)
+        assert  ms_req == key_now + KEY_LINES && (ms_req >> 8) == (key_now >> 8)
         assert  A_JOY == (1 << A_UP | 1 << A_DOWN | 1 << A_LEFT | 1 << A_RIGHT | 1 << A_FIRE | 1 << A_CANCEL)

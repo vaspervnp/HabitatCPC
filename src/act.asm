@@ -199,9 +199,10 @@ btk_act:
         ld      (ui_state),a            ; UI_LOOK
         jp      (hl)
 
-btk_ajp:    dw ac_info, fit_enter, ac_save, ac_load, ac_home, cw_open, tr_open
+btk_ajp:    dw ac_info, fit_enter, ac_save, ac_load, ac_home, cw_open, tr_open, ms_key
         assert  AB_INFO == 0 && AB_FIT == 1 && AB_SAVE == 2 && AB_LOAD == 3
         assert  AB_HOME == 4 && AB_SHIP == 5 && AB_TRADE == 6   ; το tr_open: src/lines.asm
+        assert  AB_GOAL == 7                    ; το ms_key: src/goals.asm (βήμα 177)
 
 ac_info:
         ld      a,UI_INFO
