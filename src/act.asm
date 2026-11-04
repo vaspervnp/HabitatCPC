@@ -294,7 +294,7 @@ ac_panel:
         call    hud_page                ; τα κείμενα στην 7, και για τις γραμμές
         ld      a,(ac_mode)
         cp      CW_MODE
-        jp      z,cw_panel              ; οι γραμμές (src/lines.asm, βήμα 93)
+        jp      z,cw_panel              ; οι γραμμές, στην 7 (src/panel7.asm, βήμα 180)
         jp      nc,tr_panel
         ld      a,'<'
         call    hud_char
@@ -315,7 +315,7 @@ ac_panel:
         call    ln_row4                 ; ως τον δείκτη ταχύτητας, και η σειρά 4
         pop     hl
         call    hud_text
-acp_end:                                ; οι γραμμές (src/lines.asm)
+acp_end:                                ; οι πίνακες της 7 (src/panel7.asm)
         ld      b,40
         call    hud_to
         call    hud_page1

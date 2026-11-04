@@ -81,8 +81,12 @@ class Game:
         m.run_frames(60)
         assert m.quickload(TG.COLONY), "quickload απέτυχε"
         m.run_frames(120)
+        b7 = cpc._lib.cpcemu_ram_ptr(m._h, 7)
         for at, v in patch:
-            m.poke(at, v)
+            if 0x4000 <= at < 0x8000:       # το τύπωμα, στην 7 από το βήμα 180 (in_p7)
+                b7[at - 0x4000] = v
+            else:
+                m.poke(at, v)
         self.tap("1")                       # παύση: ο τροχός δεν αλλάζει τίποτα
         self.b4 = cpc._lib.cpcemu_ram_ptr(m._h, 4)
         self.b6 = cpc._lib.cpcemu_ram_ptr(m._h, 6)
@@ -266,9 +270,15 @@ def main():
     m = Game(sym).m
 
     def find(at, pat, span=300):
-        i = m.read_ram(sym[at], span).find(bytes(pat))
+        a = sym[at]
+        if 0x4000 <= a < 0x8000:            # το τύπωμα, στην 7 από το βήμα 180 (src/panel7.asm)
+            b7 = cpc._lib.cpcemu_ram_ptr(m._h, 7)
+            ram = bytes(b7[a - 0x4000:a - 0x4000 + span])
+        else:
+            ram = m.read_ram(a, span)
+        i = ram.find(bytes(pat))
         assert i >= 0, f"δεν βρέθηκε το {pat} στο {at}"
-        return sym[at] + i
+        return a + i
 
     ms = sym["MT_SCAN"]
     # στο MT_CURSOR από το βήμα 101: το ίδιο ερώτημα κάνει και η κατεδάφιση

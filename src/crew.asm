@@ -24,7 +24,7 @@ CW_BIAS     equ 2048                    ; d + 2048 > 0 πάντα: 10 c <= 1270
 CW_REC      equ G_crew                  ; 8 x [d + CW_BIAS (2), t, -], ρόλοι 0-7
 CW_BP       equ G_crew + 32             ; το κάτω byte της εγγραφής του καλύτερου
         assert  (G_crew & 255) + 33 <= 256  ; μία σελίδα (tools/pack.py)
-        assert  (EC_LAND & 255) + CW_N <= 256  ; το cw_panel (src/lines.asm)
+        assert  (EC_LAND & 255) + CW_N <= 256  ; το cw_panel (src/panel7.asm)
 
 ; ---------------------------------------------------------------------------
 ; cw_count — ship_crew, μία φορά ανά πλοίο, πριν από τις γεννήσεις, με την

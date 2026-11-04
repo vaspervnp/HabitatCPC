@@ -45,6 +45,10 @@
   3δ. Κανένα out (c),c στα αρχεία του b6code (βήμα 110): τρέχουν από το
      παράθυρο, και μια άλλη τράπεζα εκεί θα έφερνε την επόμενη εντολή από
      αυτήν. Αρνητικό: το mt_ground του βήματος 109.
+  3ε. Ούτε στον κώδικα της τράπεζας 7 (βήμα 180): ούτε out (c),c ούτε
+     hud_text7 / hud_page1 στα αρχεία μετά τα κείμενα — οι δομές, οι σελίδες,
+     και οι πίνακες του I και των γραμμών. Αρνητικό: το hud_text7 του in_panel
+     όπως ήταν ως το βήμα 179.
   4. Ο κόσμος είναι ΠΑΡΑΓΜΕΝΟΣ: η γεννήτρια έτρεξε ως ξεχωριστό φόρτωμα και
      γέμισε την τράπεζα 4. Το snapshot φορτώνει έτοιμο επίπεδο· ο δίσκος δεν
      έχει τέτοιο αρχείο.
@@ -647,6 +651,41 @@ def main():
     old = ("        push    bc\n        ld      bc,GA_PORT + PAGE_B4\n"
            "        out     (c),c\n        ld      a,(hl)\n")
     check(pages(old) == [3], "ΑΡΝΗΤΙΚΟ: το mt_ground του βήματος 109 θα πιανόταν")
+
+    # --- 3ε. ο κώδικας της τράπεζας 7 δεν σελιδοποιεί (βήματα 170, 175, 180) --
+    # Τρέχει από το παράθυρο όπως το b6code, και από το βήμα 180 μαζί του και οι
+    # πίνακες του I και των δύο γραμμών (src/panel7.asm): ούτε out (c),c, ούτε
+    # hud_text7 ή hud_page1, που τελειώνουν βάζοντας την 1 εκεί που τρέχει. Τα
+    # αρχεία, όσα φέρνει το src/uitext.asm μετά τα κείμενα. Εξω μένει μόνο το
+    # tpn_stub του tpage.asm: αντιγράφεται στο #8000 και τρέχει εκεί.
+    ut = open(os.path.join(ROOT, "src", "uitext.asm"), encoding="utf-8").read()
+    ut = ut[ut.index("zz_text_end:"):ut.index("zz_st7_end:")]
+    b7files = re.findall(r'^\s+include\s+"([^"]+)"', ut, re.M)
+
+    def pages7(text):
+        bad, stub = [], False
+        for n, line in enumerate(text.splitlines()):
+            code = line.split(";")[0]
+            if code.startswith("tpn_stub:"):
+                stub = True
+            elif code.startswith("tpn_stub_end:"):
+                stub = False
+            if stub:
+                continue
+            if (re.match(r"\s+out\s+\(c\),c", code)
+                    or re.search(r"\b(call|jp|jr)\b.*\b(hud_text7|hud_page1)\b", code)):
+                bad.append(n + 1)
+        return bad
+    hits7 = [(f, pages7(open(os.path.join(ROOT, "src", f), encoding="utf-8").read()))
+             for f in b7files]
+    hits7 = [(f, n) for f, n in hits7 if n]
+    check("panel7.asm" in b7files and len(b7files) >= 3 and not hits7,
+          f"ο κώδικας της 7 δεν σελιδοποιεί: {', '.join(b7files)}"
+          + (f" — {hits7}" if hits7 else ""))
+    # ΑΡΝΗΤΙΚΟ: το τύπωμα του I όπως ήταν στο src/info.asm ως το βήμα 179
+    old7 = ("        ld      hl,t_i_none\n        call    hud_text7\n"
+            "        jr      inp_r3\n")
+    check(pages7(old7) == [2], "ΑΡΝΗΤΙΚΟ: το hud_text7 του in_panel ως το βήμα 179 θα πιανόταν")
 
     # --- 3γ. ο κώδικας των τρυπών (βήματα 101-102, 155) ---------------------
     # Τον φέρνει η BANK1.BIN στο OV_LOAD, κάτω από τα εικονίδια, και το

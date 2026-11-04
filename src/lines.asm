@@ -4,8 +4,9 @@
 ; σειρές 3-4 του HUD, τα βέλη, FIRE και ESC. Η γραμμή του πλοίου είναι του
 ; βήματος 91 και ως το 93 ζούσε στο src/crew.asm· το μέτρημα και η επιλογή του
 ; νεοφερμένου, που τα καλεί μόνο ο τροχός, πήγαν στην τράπεζα 6 (b6code), και
-; η γραμμή έμεινε εδώ, στην τράπεζα 0, γιατί τη ζωγραφίζει το HUD με την 7 στο
-; παράθυρο.
+; η γραμμή έμεινε εδώ, στην τράπεζα 0. ΤΟ ΤΥΠΩΜΑ ΤΩΝ ΔΥΟ ΓΡΑΜΜΩΝ, το cw_panel και
+; το tr_panel, ΕΙΝΑΙ ΣΤΗΝ 7 από το βήμα 180 (src/panel7.asm): το HUD τις
+; ζωγραφίζει με την 7 στο παράθυρο, και τα 260 bytes τους τα θέλει η 0.
 
 ; ---------------------------------------------------------------------------
 ; Η ΓΡΑΜΜΗ ΤΟΥ ΠΛΟΙΟΥ: μία υπο-κατάσταση του μενού ενεργειών (UI_ACT, το
@@ -72,50 +73,6 @@ cwe_n:
         ld      hl,(cw_ptr)
         ret
 
-; cw_panel — από το ac_panel, στη σειρά 3, στήλη 0. Οι οδηγίες στη σειρά 3
-; και η λίστα στη 4, που έχει 40 στήλες: πέντε φορές «>WRK 20» είναι 35, και
-; στη σειρά 3 θα κολλούσαν στην ταχύτητα (35-39) — οι δύο σειρές είναι μία
-; γραμμή οθόνης. Τελειώνει όπως εκείνο.
-cw_panel:
-        ld      hl,t_cw_keys
-        call    hud_text
-        call    ln_row4
-        call    hud_space               ; ένα κενό μετά το PAUSE
-        ld      hl,t_cw_names
-        xor     a
-cwp_lp:
-        push    af                      ; i, στη στοίβα ως το τέλος του γύρου
-        push    hl
-        ld      hl,cw_sel
-        cp      (hl)
-        ld      a,'>'
-        jr      z,cwp_m
-        ld      a,' '
-cwp_m:
-        call    hud_char
-        pop     hl
-        call    hud_text                ; «WRK»
-        inc     hl
-        pop     af
-        push    hl
-        push    af
-        add     a,EC_LAND & 255
-        ld      l,a
-        ld      h,EC_LAND >> 8
-        ld      a,(hl)
-        add     a,a
-        ld      b,a
-        add     a,a
-        add     a,a
-        add     a,b                     ; % = 10 t
-        ld      b,3
-        call    hud_numa                ; «  0», « 20», «100»
-        pop     af
-        pop     hl
-        inc     a
-        cp      CW_N
-        jr      c,cwp_lp
-        jp      acp_end                 ; src/act.asm
 
 cw_sel:     db 0
 cw_ptr:     dw 0
@@ -186,86 +143,6 @@ trt_here:
         ld      c,TRADE_N + 1           ; και τα νομίσματα (βήμα 135)
         jp      cw_lr                   ; ui_lr, ήχος, ui_dirty, ui_panel (src/act.asm)
 
-; tr_panel — σειρά 3, στήλη 0. Τελειώνει όπως το cw_panel.
-tr_panel:
-        call    tr_sum
-        ld      a,'+'
-        call    hud_char
-        ld      a,(EC_MARKUP)
-        ld      b,2
-        call    hud_numa
-        ld      a,'%'
-        call    hud_char
-        ld      hl,t_tr_take
-        call    hud_text
-        ld      hl,(tr_take)
-        ld      b,4
-        call    hud_num
-        ld      hl,t_tr_give
-        call    hud_text
-        ld      hl,(tr_give)
-        ld      b,4
-        call    hud_num
-        call    tr_ok
-        ld      hl,t_tr_fire
-        call    nc,hud_text
-        call    ln_row4                 ; --- σειρά 4 ---
-        call    tr_load                 ; HL -> net
-        push    hl
-        call    hud_space               ; ένα κενό μετά το PAUSE, όπως το cw_panel:
-        ld      a,'<'                   ; οι σειρές 3 και 4 είναι μία γραμμή
-        call    hud_char
-        ld      a,(tr_g)
-        ld      hl,tr_name
-        call    ob_addu
-        ld      l,(hl)                  ; ήδη x8 (t_f_names)
-        ld      h,0
-        ld      de,t_f_names
-        add     hl,de
-        call    hud_text
-        ld      a,'>'
-        call    hud_char
-        ld      hl,t_tr_ship
-        call    hud_text
-        ld      a,(tr_cq)               ; ως 40 (tr_lot x 4), ή 150 νομίσματα
-        call    tr_qn
-        pop     hl
-        ld      a,(hl)                  ; net
-        or      a
-        jr      z,trp_0
-        ld      hl,t_tr_take
-        jp      p,trp_n
-        neg
-        ld      hl,t_tr_give
-trp_n:  push    af
-        call    hud_text
-        pop     af
-        call    tr_qn
-        jr      trp_hv
-trp_0:  ld      a,(tr_g)
-        cp      1                       ; CY: τα νομίσματα, ένα ψηφίο ακόμη
-        ld      a,8
-        adc     a,0
-        ld      b,a
-        call    hud_blank
-trp_hv: ld      hl,t_tr_have
-        call    hud_text
-        ld      hl,(tr_hv)
-        ld      b,3                     ; ως το EC_CAP, 600, ή το COIN_MAX, 999
-        call    hud_num
-        ld      a,(tr_g)
-        or      a
-        jp      z,acp_end               ; τα νομίσματα: η αξία τους είναι 1
-        call    hud_space
-        ld      a,'@'
-        call    hud_char
-        ld      a,(tr_g)
-        ld      hl,tr_value
-        call    ob_addu
-        ld      a,(hl)
-        ld      b,3
-        call    hud_numa
-        jp      acp_end                 ; src/act.asm
 
 ; ---------------------------------------------------------------------------
 ; tr_open — το κουμπί του εμπόρου (btk_ajp, src/act.asm), από το LOOK.

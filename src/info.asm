@@ -44,7 +44,8 @@ mtc_hit:
 
 ; ---------------------------------------------------------------------------
 ; in_panel — από το ui_panel, με το HUD στη σειρά 3, στήλη 0. Τελειώνει στο
-; uip_spd, την ταχύτητα στις στήλες 35-39 της σειράς 3.
+; uip_spd, την ταχύτητα στις στήλες 35-39 της σειράς 3. Εδώ ό,τι διαβάζεται·
+; το τύπωμα στην 7 από το βήμα 180 (in_p7, src/panel7.asm).
 ; ---------------------------------------------------------------------------
 in_panel:
         ; --- ό,τι χρειάζεται από τις τράπεζες 6 και 4, πριν τυπωθεί τίποτα:
@@ -74,104 +75,11 @@ inp_rec:
         ld      a,#FF                   ; όλο το byte: το tl_occ (src/tiles.asm)
         call    tl_occ                  ; με την 4 μέσα, και μετά πάλι η 1
         ld      (in_w),a
-        ; Η τράπεζα 1 ξαναμπαίνει με τον πρώτο γλύφο: το hud_char γυρίζει
-        ; στο hud_pg, που το hud_text7 αφήνει πάντα στην 1.
-        ; --- σειρά 3: το κτίριο ---
-        ld      a,(in_t)
-        or      a
-        jr      z,inp_none
-        ; Το όνομα από τον κατάλογο: δέκα bytes το καθένα, οι θόλοι κατά
-        ; μέγεθος από το t_dome_s, οι δομές κατά είδος από το t_solar.
-        dec     a
-        ld      hl,t_dome_s
-        jr      z,inp_nm
-        ld      hl,t_solar
-inp_nm:
-        ld      a,(in_k)
-        add     a,a
-        ld      c,a
-        add     a,a
-        add     a,a
-        add     a,c                     ; x10
-        call    ob_addu
-        call    hud_text                ; εννέα στήλες, με τα κενά του
-        ; --- το δωμάτιο, για θόλο: η θέση του στο rm_list δίνει το όνομα ---
-        ld      a,(in_t)
-        dec     a
-        jr      nz,inp_noroom
-        ld      a,(in_r)
-        ld      hl,rm_list
-        ld      bc,10
-        cpir
-        jr      nz,inp_noroom           ; άδειο ή αεροθάλαμος: κανένα όνομα
-        ld      a,18                    ; HL = rm_list + θέση + 1, θέση = 9 - C:
-        sub     c                       ; rm_names + 2 x θέση = HL + 18 - C
-        call    ob_addu
-        ld      a,(hl)
-        inc     hl
-        ld      h,(hl)
-        ld      l,a
-        call    hud_text7
-inp_noroom:
-        ld      b,20                    ; 9 + 10 στήλες, και ένα κενό
-        call    hud_to
-inp_state:
-        ld      a,(in_st)
-        cp      DS_ACTIVE
-        ld      hl,t_i_act
-        jr      z,inp_st
-        ld      hl,t_i_site
-inp_st:
-        call    hud_text7
-        call    hud_space
-        ld      hl,t_i_hp
-        call    hud_text7
-        ; Η ακεραιότητα είναι 0-255 (και στο εργοτάξιο η πρόοδος, §6.9): στα
-        ; εκατό, 255 x 101 / 256 = 100.
-        ld      a,(in_hp)
-        ld      c,101
-        call    ob_mul                  ; HL = ακεραιότητα x 101
-        ld      a,h
-        ld      b,3
-        call    hud_numa
-        ld      a,'%'
-        call    hud_char
-        jr      inp_r3
-inp_none:
-        ; Κατοχή χωρίς θόλο ή δομή από πάνω: διάδρομος. Το cr_stamp σφραγίζει
-        ; τα tiles του με το ίδιο bit που βάζει και το χτίσιμο (W_OCC_STRUCT).
-        ; Από το βήμα 85 ως το 130 και το μονοπάτι στο έδαφος, με κατοχή 2·
-        ; από το 131 είναι θεμέλιο χωρίς κατοχή (src/link.asm), και το I λέει
-        ; NOTHING BUILT και στη σειρά 4 το θεμέλιο, όπως για τη σύνδεση εδάφους.
-        ld      a,(in_w)
-        and     W_OCC_MASK
-        ld      hl,t_corr               ; τράπεζα 2
-        jr      nz,inp_name
-        ld      hl,t_i_none
-        call    hud_text7
-        jr      inp_r3
-inp_name:
-        call    hud_text
-inp_r3:
-        ; --- σειρά 4: το έδαφος, και η φλέβα αν είναι βουνό με μετάλλευμα ---
-        call    ln_row4                 ; κενά ως τη στήλη 35, και η σειρά 4
-        ld      a,(in_w)
-        and     7
-        ld      c,a
-        add     a,a
-        add     a,a
-        add     a,c
-        add     a,a
-        add     a,c                     ; x11
-        ld      hl,t_i_cls
-        call    ob_addu
-        call    hud_text7
-        ld      a,(in_w)
-        and     #0F
-        cp      #08 + W_MOUNTAIN        ; βουνό, με το bit του πόρου
-        ld      hl,t_i_ore
-        call    z,hud_text7
-        jp      acp_end                 ; κενά ως τη στήλη 40, uip_spd
+        ; ΤΟ ΤΥΠΩΜΑ ΣΤΗΝ ΤΡΑΠΕΖΑ 7 από το βήμα 180 (in_p7, src/panel7.asm): ο
+        ; γλύφος γυρίζει εκεί (hud_pg), και τα κείμενα φαίνονται χωρίς hud_text7.
+        ld      bc,GA_PORT + PAGE_B7
+        call    hud_page
+        jp      in_p7
 
 in_t:       db 0                ; 0 τίποτα, 1 θόλος, 2 δομή
 in_k:       db 0                ; μέγεθος θόλου / είδος δομής
