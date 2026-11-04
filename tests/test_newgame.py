@@ -375,6 +375,21 @@ def main():
     # STORE_BASE, αλλιώς το παιχνίδι ξεκινά με STORAGE FULL — χωρίς κήπους και
     # γεώτρηση ως να χτιστεί κάτι. Με βιοπλαστικό 160, όπως είχε προταθεί: 521.
     cargo = sum(v for k, v in STOCK.items() if k)
+    # Η ΑΝΑΦΟΡΑ ΕΧΕΙ ΤΟ ΙΔΙΟ ΑΜΠΑΡΙ (βήμα 179): το tools/econ.py το έγραφε 500
+    # όταν το src/const.asm έγινε 750, και μόνο ένα byte του test_sim διαφώνησε.
+    asm = next(int(l.split()[2]) for l in open(os.path.join(ROOT, "src", "const.asm"),
+                                              encoding="utf-8")
+               if l.startswith("STORE_BASE "))
+    if asm != EC.STORE_BASE:
+        print(f"ΑΠΟΤΥΧΙΑ: το αμπάρι της αναφοράς {EC.STORE_BASE}, του src/const.asm {asm}")
+        fails += 1
+    else:
+        print(f"OK το αμπάρι της αναφοράς (tools/econ.py) = του src/const.asm: {asm}")
+    if 500 == asm:
+        print("ΑΠΟΤΥΧΙΑ: ΑΡΝΗΤΙΚΟ — το 500 της αναφοράς ως το βήμα 178 θα περνούσε")
+        fails += 1
+    else:
+        print(f"OK ΑΡΝΗΤΙΚΟ: το 500 της αναφοράς ως το βήμα 178 διαφωνεί με το {asm}")
     if cargo >= EC.STORE_BASE:
         print(f"ΑΠΟΤΥΧΙΑ: το φορτίο {cargo} δεν χωρά στο αμπάρι ({EC.STORE_BASE})")
         fails += 1

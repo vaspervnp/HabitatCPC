@@ -375,7 +375,7 @@ the full 160 with four.
   Starch, Vegetables and Meat together. The greenhouse makes the first two and the
   lab the third.
 - **Storage.**
-  - Until you build a Storage dome, the ship's hold is your store: 500 for everything
+  - Until you build a Storage dome, the ship's hold is your store: 750 for everything
     but Water.
   - Each Storage dome adds 100, 300 or 600 by size.
   - When the store is full the line says `STORAGE FULL`. The greenhouses, the mines

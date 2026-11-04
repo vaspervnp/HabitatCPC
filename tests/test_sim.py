@@ -1218,7 +1218,8 @@ def store_branches(sym, g, nexthop, sim0):
         ("ένα λιγότερο", lambda e: total(e, cap(e) - 1), 0),
         ("ακριβώς γεμάτη", lambda e: total(e, cap(e)), 1),
         ("πολύ πάνω", lambda e: total(e, cap(e) + 700), 1),
-        ("χωρίς θόλο Storage", lambda e: (no_store(e), total(e, 700)), 1),
+        # πάνω από το αμπάρι μόνο (500 ως το βήμα 179, 750 από τότε)
+        ("χωρίς θόλο Storage", lambda e: (no_store(e), total(e, EC.STORE_BASE + 200)), 1),
         ("θόλος L, ένα λιγότερο", lambda e: (large(e), total(e, cap(e) - 1)), 0),
         ("θόλος L, ακριβώς", lambda e: (large(e), total(e, cap(e))), 1),
     )
@@ -1318,7 +1319,8 @@ def store_branches(sym, g, nexthop, sim0):
               f"{STORE_FLOW_US}), {us8} με οκτώ ({STORE_FLOW8_US})")
         return 1
     print(f"OK αποθήκη:  {len(cases)} κύκλοι ροής στα όρια — ένα λιγότερο, ακριβώς, "
-          f"πολύ πάνω, χωρίς θόλο Storage (500), με θόλο L (1.100) — και μετά από "
+          f"πολύ πάνω, χωρίς θόλο Storage ({EC.STORE_BASE}), με θόλο L "
+          f"({EC.STORE_BASE + EC.STORE_SIZE[2]}) — και μετά από "
           f"τον καθένα ένα σάρωμα της παραγωγής στον ίδιο Z80, και ένα από γεμάτη "
           f"σε «ένα λιγότερο»: ίδια bytes με την αναφορά· οι σωροί {pile0} -> {dug} "
           f"όταν χωρά, ίδιοι όταν γεμίσει· γεμάτη, κήποι και VITROMEAT σταματούν και οι "

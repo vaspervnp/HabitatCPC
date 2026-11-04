@@ -5412,11 +5412,12 @@ The player asked for storage capacity and for a limit on production. Asked how, 
 chose **one capacity for all goods together**, as in Planetbase, and **no limit but
 that one**: a machine stops only when the storage is full.
 
-- **What fits.** `STORE_BASE`, 500, is the ship's hold: the start cargo is 468 without
+- **What fits.** `STORE_BASE`, 500 until milestone 179 and **750** since
+  ([below](#a-bigger-hold-at-milestone-179)), is the ship's hold: the start cargo was 468 without
   its Water ([§10.1](#101-start-state)), so the first sols never stop. Each Storage
   dome in use adds 100, 300 or 600 by size, the numbers [§6.8](#68-rooms-machines-plants)
   has promised since the first draft. There are at most eight (`ROOM_MAX`), so the
-  capacity runs from 500 to 5,300.
+  capacity runs from 750 to 5,550 (500 to 5,300 until milestone 179).
 - **What counts: every stock but Water**, 13 of 14. Water is pumped and drunk every
   revolution. Counted, two extractors would fill the storage on their own and stop the
   food. The old ceiling per stock, `EC_CAP` = 600, stays: it bounds Water and every
@@ -5986,6 +5987,36 @@ stopped with the load; it stays until a player step measures it.
   reserve, so the pumps stop too, 0 of 8 shed intervals with the water rising. With the
   pumps pumping at every level, the negative, 2 rise.
 - **`test_disc.py`** counts `ef_pmp` among the bytes `b6code` writes while it runs.
+
+#### A bigger hold, at milestone 179
+
+The player: "the starting capacity should be bigger — I have 10 FE and 59 BI and it
+says `STORAGE FULL`". The cargo is 498 of the hold's 500 without its Water
+([§10.1](#101-start-state)), so the first thing a mine digs or a garden grows fills
+it. Offered 750, 1,000 and 1,500, **the player chose 750**; the Storage domes keep
+their 100, 300 and 600.
+
+It is the one constant, `STORE_BASE`, and the reference's copy of it in
+`tools/econ.py`, which still said 500 when the game said 750: one byte of the
+structure table differed in `tests/test_sim.py`'s supply scene. `tests/test_newgame.py`
+now compares the two, with milestone 178's 500 as the negative, and `test_sim`'s
+"no Storage dome" case fills the store to the hold plus 200 instead of a written 700.
+No byte moved and no timing changed; the only number of the suite that did,
+`test_tutor`'s 4,840 → 4,880 µs, is the tutorial's own game going another way (its
+steps end at sol 9.24 instead of 8.61), not code.
+
+The scripted player, eight worlds for 160 sols, two batches of each hold (the second
+with a `nop` in `ob_corr`, which moves every frame's timing and nothing else):
+
+| Hold | Living at sol 160 | Deaths | Store full | Full by sol 20 |
+|---|---|---|---|---|
+| 500 | 697 / 739 | 258 / 235 | 28 % / 25 % | 4 % / 4 % |
+| **750** | **821 / 795** | 183 / 320 | 16 % / 18 % | **0 %** / 0 % |
+
+**About ninety more living, 12 %**, more than the two batches of either hold differ
+from each other (42 and 26). `5A5A_2`, lost at sol 92 in both batches with 500, lives
+in both with 750. The deaths go both ways and say nothing. The store is full a sixth
+of the time instead of a quarter, and never in the first twenty sols.
 
 ### 6.6 Needs
 
@@ -6996,7 +7027,7 @@ drawn (`assets/SPRITES.md` §4).
 | Canteen | `canteen` | `food` | meals, morale |
 | Oxygen | `oxygen` | `oxygen` (small domes only) | life support |
 | Greenhouse | `greenhouse` | 12 plant species | starch, vegetables, medicine, morale |
-| Storage | `storage` | — | capacity for every good but Water, 100 / 300 / 600 over the ship's hold of 500 (milestone 122, [§6.5](#storage-at-milestone-122)) |
+| Storage | `storage` | — | capacity for every good but Water, 100 / 300 / 600 over the ship's hold of 750 (500 until milestone 179; milestone 122, [§6.5](#storage-at-milestone-122)) |
 | Airlock | `airlock` | — | unused: the airlock is a structure since milestone 86 ([§6.2](#62-the-node-graph)) |
 | **Factory** | `factory` | `iron`, `bioplastic`, `spares`, `robots`, `weapons` | refining and manufacture |
 | **Lab** | `lab` | `processors`, `medical`, `vitromeat` | medicine, printed meat, high-tech goods |
@@ -15940,8 +15971,8 @@ workers, an engineer and a biologist — stand outside beside the **ship** at `(
 structure 0, not a building ([§6.2](#inside-and-outside--milestone-87)) — with its
 cargo: **60 Water, 100 Food, 60 Ore, 189 Metal, 137 Bioplastic, 12 Spares**, and a
 population cap of 6, the crew, since there is no Control dome yet. Until the first
-Storage dome the hold is the storage: 500 for everything but Water, 498 of it the
-cargo ([§6.5](#storage-at-milestone-122)); 468 until milestone 133 added 30 Bioplastic
+Storage dome the hold is the storage: 750 for everything but Water since milestone 179
+(500 until then), 498 of it the cargo ([§6.5](#storage-at-milestone-122)); 468 until milestone 133 added 30 Bioplastic
 ([below](#bioplastic-for-the-start-at-milestone-133)). Until milestone 120
 it was four colonists, 40 Food, 4 Spares and a cap of 4
 ([below](#the-scripted-player-at-milestone-120)). The first thing the player builds is the first dome, from
