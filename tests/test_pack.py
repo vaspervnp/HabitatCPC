@@ -322,7 +322,8 @@ def main():
 
     # 7β'. Ο ΕΙΣΒΟΛΕΑΣ (βήμα 111): στον δακτύλιο, η σιλουέτα του αποίκου pixel
     #     προς pixel, κόκκινη (pen 8) εκτός από τα τέσσερα μαύρα — από τα bytes
-    #     της τράπεζας 6. Και έξω η ίδια, με τη σκιά του αποίκου.
+    #     της τράπεζας 6. Και έξω η ίδια· η σκιά του αποίκου μένει μαύρη, και στα
+    #     δύο από το βήμα 178.
     def pens(tab, j):
         o, px = pack.fig_off(j), {}
         for y in range(8):
@@ -337,7 +338,9 @@ def main():
 
     def foe_ok(ring, tab):
         col, foe = pens(tab, jc), pens(tab, jf)
-        sil = {p for p, v in pens(ring, jc).items()}
+        # Το σώμα, χωρίς τη σκιά: από το βήμα 178 και ο δακτύλιος έχει μαύρο
+        # κάτω δεξιά από τη φιγούρα, και ο άποικος δεν έχει μαύρο αλλού.
+        sil = {p for p, v in pens(ring, jc).items() if v != 0}
         want = {p: (0 if p in pack.FOE_BLACK else 8) if p in sil else v
                 for p, v in col.items()}
         return foe == want and len(pack.FOE_BLACK) == 4 and pack.FOE_BLACK <= sil

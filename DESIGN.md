@@ -12571,6 +12571,65 @@ changed. The rule for whoever draws next: **art that will stand on bare terrain 
 an edge in a colour no planet's ground uses** — `tests/test_silhouette.py` checks every
 outdoor structure against all four.
 
+#### White metal, lit from above, at milestone 178
+
+The player asked for two proposals "in the style of Planetbase, with the Amstrad's
+vivid colours", saw them as repaints of a real frame from the emulator, and chose the
+first: **white metal by day**. Its mock-up lit everything from the upper left —
+a highlight on the glass, shadows to the lower right — and **that light does not fit**:
+domes and rings are one north-west quadrant drawn four times, mirrored
+([§4.4](#44---quads-nw-is-mandatory)), so whatever is painted into them is symmetric about both
+axes. Four quadrants of each would cost about 22 KB that no bank has. The player
+chose the version that fits, shown side by side with the mock-up: **light from above**.
+
+All of it is art, made in `CPCArt` (`tools/palette.py`, `geometry.py`, `terrain.py`,
+`structures.py`, `make_sprites.py`) and synced with `sync-assets.sh`:
+
+- **Pens 2 and 3 exchange colours.** The dome's floor is Pastel cyan (fw 23), its rim
+  and the band of glass Sky blue (fw 11) — the floor reads as light glass. Icons,
+  machines and plants are drawn on pen 2 and follow it.
+- **Tubes are white with grey edges**, the other way round from before: the corridors,
+  the rings, the doors and the outdoor structures have their body in pen 5 and their
+  edges and joints in pen 4 (`PEN_CORR_FLOOR` is `PEN_WHITE` now). The foundation
+  tiles, the landing pad and the mine stay grey concrete, with the pens named outright.
+  The joints of milestone 96 and the corners of 129 follow by themselves: `pack.joints`
+  takes its colour from the inside of `corr_h`, and `tools/corner.py` now reads the
+  edge and the inside from the same sprite instead of writing 5 and 4.
+- **The dome is glass that darkens towards the rim**: a solid band of pen 3 up to 3
+  visual pixels in from the rim, a chequer to 6, and a glint of pen 5 on each of the
+  four diagonals 5 to 10 pixels in. The chequer counts from the frame's nearest edge, so
+  it stays symmetric. The layout still uses the plain floor: icon and machine boxes go
+  where the floor is, and being opaque they cover whatever glass is under them.
+- **Every figure on a ring has a shadow.** Bright yellow on bright white is 1.07 to 1,
+  and the colonist, the commonest figure, vanished. The slots now carry a black pixel
+  below-right of the figure, the rule the figures outside have had since milestone 89;
+  `pack.fig_grid` leaves the black out of the figure and `out_figs` puts it back for the
+  ring as well as outside, so `check_ring` still proves that the empty slot plus the
+  figure is the baked slot.
+- **Quiet ground.** Ground, dust and rock are drawn patterns instead of random noise:
+  0–8 marks a tile for ground (12–14 before), 16–20 for dust (24–46) and 18–24 for rock
+  (50–54), in 1 × 2 cells, the rock lit from above. Mountains have a third of the cracks
+  (dither 7 % instead of 22 %) and a **cliff face on their south edge**: four lines of
+  the ground's base above the two-line dark band.
+
+**It costs nothing.** `sprites.bin` keeps its 36,864 bytes and every sprite its offset,
+size and mask; only pixels changed. The disc is 93,439 bytes, as before. Every timing
+that the 91 tests shared with milestone 177 printed the same number, to the
+microsecond.
+
+`tests/test_style.py` holds the rules from `assets/sprites.bin`: white bodies and grey
+edges on every corridor, ring and door, a band of glass beyond the rim and glints in
+every dome size, a shadow below-right of every figure in all 3 × 8 × 8 ring slots, and
+the quiet ground, with the ground's border all base. Its negatives: a corridor with
+milestone 177's roles, a dome with a flat floor, the slots with their shadows wiped
+(192 of 192 fail), and a tile with the old noise. `tests/test_silhouette.py` takes its
+second negative's colour from the solar frame itself — grey until now, white since.
+
+What it gives up, in [§15](#15-open-risks): **the icons were drawn against Sky blue**,
+and their yellow and white details now stand on Pastel cyan at 1.1 and 1.2 to 1
+instead of 3.5 and 3.8. They read by their dark edges; the canteen's yellow table is
+the weakest.
+
 ---
 
 ## 9. Interface
@@ -18613,7 +18672,8 @@ tests in this document runnable rather than aspirational:
 | Intruders | in the simulation harness, sixteen revolutions of slot 15 pinned (twelve until milestone 138's half blow, [§6.10](#half-the-blow-at-milestone-138)) with four intruders, 80 colonists and ten guards against `tools/entity.py` byte for byte — two colonists and three intruders fall, by hand, by gun from a neighbour and on the node — then a whole wheel of 640 ticks, and the slot's cost: ≤ 6,200 µs in the fight, ≤ 480 without intruders; since milestone 150 a guard on a need inside goes to the fight and one outside does not, and tick by tick the needs' `T_NEED` never moves a fighter a step ([§6.10](#guards-leave-their-needs-for-the-fight-at-milestone-150)) — seven negatives and the gate's; since milestone 166 the alert: the intruders' ship lands with colonists outside at the pad, at structures, walking, at a dome's node, a guard, one on `T_NEED`, two out of reach of any airlock and a dead one, slot 15 byte for byte against `econ.foe_alert`, the rule on all 80, seven negatives ([§6.10](#everyone-inside-at-milestone-166)); since milestone 168 into the airlock's dome: a dome that is not ready first among an airlock's neighbours, the scene of 48 byte for byte too with 28 sent to an airlock that has no ready dome, the landing's cost ≤ 7,100 µs with seven outside at three nodes and ≤ 20,000 with 48 at changing nodes (6,650 and 19,400 until then), four more negatives ([§6.10](#into-the-airlocks-dome-at-milestone-168)) (`test_sim.py`). In the game, `colony.sna`: the ship lands two, outside and red on the screen; one enters a dome, and with no guards a colonist dies; two guards take the two Guns, drop both, and go back to the board, the HUD from `INTRUDERS` to `ALL SYSTEMS OK`; since milestone 150 a thirsty guard inside goes to the fight with water under 64 and takes no step with the needs' `T_NEED` until both fall; since milestone 166 a colonist standing at the pad when the intruders land gets `T_FIGHT` and the airlock, and walks in unhurt, and since milestone 168 the dome behind the airlock, read from the graph, which they reach unhurt — eight negatives (`test_intruder.py`, [§6.10](#intruders-at-milestone-111)) |
 | Palette | the only test that looks at **colour** rather than pen number: a share-per-pen pattern on screen, weighed against `palette_fw` and against each planet's four pens (`test_palette.py`) |
 | The palette for drawing | the four `assets/palette*.gpl` read as Aseprite reads them: sixteen named colours in pen order, equal to `palette_fw` with that planet's row of `planet_pens`, the file names from `PLANETS` in `sprites.asm`, no stray `.gpl`, and the terrain table equal to `planet_pens`. Negatives: two colours swapped, pens 11 and 13 swapped on the desert and 7 and 10 on the barren moon (same colour — only the name catches it), a name dropped, a table value changed, the header in the wrong case, the ice file holding the desert, a palette named after the wrong planet (`test_gpl.py`, [§8.6](#86-palette)) |
-| Structures stay visible | every masked outdoor structure in `sprites.bin` — fifteen, solar to ship — decoded with its mask, and no pixel on the edge of its shape may have the colour of the ground's base on any planet. Negatives: the ship with its outline erased loses 26 edge pixels on the barren moon (exactly what the pre-milestone-50 `sprites.bin` gives), and a ground painted the solar frame's grey swallows `solar_m` (`test_silhouette.py`, [§8.6](#86-palette)) |
+| Structures stay visible | every masked outdoor structure in `sprites.bin` — fifteen, solar to ship — decoded with its mask, and no pixel on the edge of its shape may have the colour of the ground's base on any planet. Negatives: the ship with its outline erased loses 26 edge pixels on the barren moon (exactly what the pre-milestone-50 `sprites.bin` gives), and a ground painted the solar frame's colour — grey until milestone 178, white since, read from the sprite — swallows `solar_m` (`test_silhouette.py`, [§8.6](#86-palette)) |
+| White metal, lit from above | from `sprites.bin`: the dome's floor Pastel cyan and its rim Sky blue; every corridor, ring and door white in the body and grey at the edges; a band of glass beyond the rim and glints in all three dome sizes; a shadow below-right of every figure in all 3 × 8 × 8 ring slots, without which bright yellow on white is 1.07 to 1; ground, dust and rock with fewer marks than milestone 177's tiles, the ground's border all base. Negatives: milestone 177's corridor roles, a dome with a flat floor, the slots with their shadows wiped (192 of 192 fail), a tile with the old noise (`test_style.py`, [§8.6](#white-metal-lit-from-above-at-milestone-178)) |
 | Game speed | the four speed keys against the simulation's own frame counter, and the HUD indicator read back off the screen (`test_speed.py`) |
 | Playability of every seed | headless run of N seeds, assert water and ore within 30 tiles of centre — **which is now a playability claim and not a cosmetic one** ([§6.5](#65-economy)) |
 
@@ -19039,6 +19099,7 @@ gap.
 | Mid-frame writes land where aimed, but only on the emulator's CRTC | Low | The border control in `tests/test_camera.py` hits line 160 exactly. Real hardware still wants a check, but nothing now depends on a mid-frame *address* write. |
 | **The raster splits of milestone 83 are timed on the emulator** | Medium | Mode and palette writes, not addresses, and timed from the Gate Array's own interrupt, which every CPC has. Each write has ≥ 10 µs of margin against a late interrupt (`tests/test_split.py` breaks it at 20 µs). Real hardware is the check still owed, and a different Gate Array (the Plus) would want its own measurement. |
 | **The disc's timing is the emulator's** (milestone 113) | Medium | The emulator's µPD765 has no rotation and no spin-up, moves the head at once, and ends a read with IC = 00. The loader ([§13.3](#133-the-loader-reads-the-disc-itself-at-milestone-113)) and the save's driver ([§11](#on-a-real-drive-at-milestone-113)) were written for the real one: IC = 01 + EN accepted (tested with the bytes themselves), the seek waited for, 15 ms settle, 0.46 s for the motor on a save, sixteen retries of 100 ms on the loader. None of the timings has run on a 6128. The loader falls back to AMSDOS on any failure; the save has no fallback and reports `DISC ERROR`. Since milestone 128 the player may wait in the planet menu for longer than AMSDOS keeps the motor on; the emulator has no spin-up, so the sixteen retries are what a real drive would lean on there. |
+| **The icons were drawn against Sky blue** (milestone 178) | Low | Since the white-metal style the dome's floor is Pastel cyan, and the yellow and white details of the room icons, machines and plants stand on it at 1.1 and 1.2 to 1 instead of 3.5 and 3.8 ([§8.6](#white-metal-lit-from-above-at-milestone-178)). They read by their dark edges in the screenshots of the manual's colony; the canteen's yellow table is the weakest. A redraw of the weak ones is `CPCArt` work (`tools/icons.py`), with no bytes. |
 | **A new colony is the ROM's restart** (milestone 177) | Medium | The end page's "any other key" turns the lower ROM on and calls `MC START PROGRAM`, then wakes AMSDOS with `KL ROM WALK` (`HL` `&ABFF`, as BASIC 1.1 is taken to do) and reads `LOADER.BIN` ([§10.3](#the-end-at-milestone-177)). Measured in the emulator, with the 6128's ROMs: 187 frames to the menu, and a new colony from it. The ROM's address is read by the loader from the jumpblock, so another ROM's is used; the RAM and the screen the firmware initialises are what it expects after a reset. Not run on a real 6128, nor on a Plus, whose firmware is another; without `RST 1` at `&BD16` the loader writes 0 and the key resets to BASIC. |
 | **A milestone is marked seen at the sol, not at its page** (milestone 177) | Low | The sol's pass writes `EC_MSEEN` and puts the new milestones in `ms_req`, which the save does not keep ([§10.2](#seen-at-milestone-177)). A save made while the page still waits (the player in `PLACE` or in the `MANAGE` group across the sol, then `M` `S`) and loaded later loses the page; `G` still shows `DONE`. A request waiting at a load stays, and shows only those of its milestones the loaded colony has too (`ms_go` ands it with `EC_MILE`). |
 | **The interrupt costs 5.9 % of every frame** (1,177 µs), estimated at 3.8 % | Medium | The waits are fixed by `R7 = 33`. `R7 = 34` would save ~500 µs a frame with the picture eight lines higher; the top wait could host `snd_tick` ([§8.1](#two-modes-and-two-palettes-the-raster-splits-at-milestone-83)). |

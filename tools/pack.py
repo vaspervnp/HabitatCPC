@@ -239,7 +239,9 @@ def fig_grid(smap, blob, name):
                     pe = _m0_pens(blob[e.off + y * 2 + xb])
                     pf = _m0_pens(blob[f.off + y * 2 + xb])
                     for k in range(2):
-                        if pf[k] != pe[k]:
+                        # Το μαύρο είναι η σκιά (βήμα 178), όχι η φιγούρα: την
+                        # ξαναβάζει το out_figs, και έξω και στον δακτύλιο.
+                        if pf[k] != pe[k] and pf[k] != 0:
                             x = xb * 2 + k
                             if grid[y][x] not in (None, pf[k]):
                                 raise Fail(f"φιγούρα {name}: οι θέσεις διαφωνούν "
@@ -252,8 +254,9 @@ def fig_grid(smap, blob, name):
 
 def out_figs(smap, blob, shadow=True):
     """10 φιγούρες x 8 γραμμές x (μάσκα, data, μάσκα, data), στη θέση του
-    fig_off: FIG_RUN bytes, οι δύο τρύπες μηδέν. Με σκιά για έξω (fig_gfx),
-    χωρίς για τον δακτύλιο (fig_ring)."""
+    fig_off: FIG_RUN bytes, οι δύο τρύπες μηδέν. Με σκιά και έξω (fig_gfx) και,
+    από το βήμα 178, στον δακτύλιο (fig_ring): πάνω στο λευκό μέταλλο ο κίτρινος
+    άποικος δεν φαινόταν."""
     data = bytearray(FIG_RUN)
     for j, name in enumerate(FIG_ALL):
         grid = fig_grid(smap, blob, name)
@@ -792,7 +795,7 @@ def build_runs(smap, blob):
     # Η λίστα και οι τρεις ομάδες φιγούρων ΣΕ ΣΕΛΙΔΑ: τέσσερις στήλες των 64
     # στο L (src/figure.asm), και φιγούρα * 32 στο L. Πρώτες, γιατί το #5E00
     # είναι ήδη αρχή σελίδας.
-    empty, ring = slot_empty(smap, blob), out_figs(smap, blob, shadow=False)
+    empty, ring = slot_empty(smap, blob), out_figs(smap, blob)
     check_ring(smap, blob, empty, ring)
     # ΣΕ ΑΥΤΗ ΤΗ ΣΕΙΡΑ ΑΠΟ ΤΟ ΒΗΜΑ 111. Οι δύο ομάδες φιγούρων αρχίζουν στο 192
     # μιας σελίδας (FIG_PHASE) και είναι 289 bytes η καθεμία· ό,τι μπαίνει πριν

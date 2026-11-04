@@ -111,12 +111,17 @@ def main():
     check(set(bad) == {names[3]},
           "ΑΡΝΗΤΙΚΟ: το πλοίο χωρίς περίγραμμα χάνεται στον %s — %s"
           % (names[3], bad or "ΔΕΝ ΠΙΑΣΤΗΚΕ"))
-    # 2. Ενας πλανήτης με βάση εδάφους το γκρι (fw 13) του πλαισίου των ηλιακών.
-    grey = dict(palettes, test=palette_of(0, ground=base[4]))
-    bad = lost(decode(blob, smap["solar_m"]), grey)
+    # 2. Ενας πλανήτης με βάση εδάφους το χρώμα του πλαισίου των ηλιακών: το
+    #    pen που έχει τα περισσότερα pixels της άκρης τους (γκρι ως το βήμα
+    #    178, λευκό από τότε — το λέει το sprite, όχι ένας αριθμός εδώ).
+    solar = decode(blob, smap["solar_m"])
+    e = list(edge(solar))
+    frame = max(set(e), key=e.count)
+    same = dict(palettes, test=palette_of(0, ground=base[frame]))
+    bad = lost(solar, same)
     check(set(bad) == {"test"},
-          "ΑΡΝΗΤΙΚΟ: έδαφος στο γκρι fw %d, το solar_m χάνεται — %s"
-          % (base[4], bad or "ΔΕΝ ΠΙΑΣΤΗΚΕ"))
+          "ΑΡΝΗΤΙΚΟ: έδαφος στο χρώμα του πλαισίου (pen %d, fw %d), το solar_m χάνεται — %s"
+          % (frame, base[frame], bad or "ΔΕΝ ΠΙΑΣΤΗΚΕ"))
 
     n = len(structs) + 3
     print("\n%d/%d" % (n - len(FAIL), n))

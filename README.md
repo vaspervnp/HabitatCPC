@@ -70,6 +70,10 @@ It is a complete game. The ten delivery milestones of
   all five, and an end page after the last death, from which `L` loads and any other key
   starts a new colony from the menu
   ([`DESIGN.md` §10.2–10.3](DESIGN.md#seen-at-milestone-177)).
+- **Since milestone 178 the art is white metal, lit from above**, in the style of
+  Planetbase: white tubes with grey edges, domes of glass that darkens towards the rim,
+  and quiet ground. The sprites keep their sizes and masks, so nothing draws slower
+  ([`DESIGN.md` §8.6](DESIGN.md#white-metal-lit-from-above-at-milestone-178)).
 - **Still owed: a check on a real CPC 6128.** The raster splits, the disc's timing, the
   mid-frame CRTC writes and the new colony's restart through the ROM have been tested
   only on the emulator ([`DESIGN.md` §15](DESIGN.md#15-open-risks)).
