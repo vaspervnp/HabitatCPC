@@ -18582,7 +18582,9 @@ anything, test included; `tests/test_save.py` now writes slot 3 (tracks 36–41)
 slot 1 back to prove it was untouched, and reads slot 3 back to prove it holds its own
 game. They belong to no AMSDOS file: this is the game's own disc, `tools/mkdsk.py`
 checks at build time that no file reaches track 24, and a save that overwrote one
-would be silent otherwise.
+would be silent otherwise. Since milestone 183 the disc is EXTENDED
+([§13.4](#134-an-extended-disc-at-milestone-183)): Retro Virtual Machine, given the
+standard disc, kept only the track a save had written.
 
 The header is checked **before** a single byte of the game is overwritten. An empty
 slot is `&E5` from end to end — perfectly valid bytes, an invalid game — and without
@@ -18857,7 +18859,7 @@ assets/sprites.asm ─┬─ tools/pack.py ─> page2 bank1 bank6 bank7 .bin ─
                     └─ tools/mkoffsets.py ─> sprite_consts.asm        │
 src/main.asm ─┬─ rasm ─> game.bin + game2.bin ──────────────────────┐ │
 src/gen.asm  ─┼─ rasm ─> gen.bin                                    │ │
-src/menu.asm ─┼─ rasm ─> menu.bin  (data: tools/menuworld.py)       ├─┴─ iDSK ─> habitat.dsk
+src/menu.asm ─┼─ rasm ─> menu.bin  (data: tools/menuworld.py)       ├─┴─ iDSK ─> habitat.dsk (EXTENDED, §13.4)
 src/boot.asm ─┴─ rasm ─> boot.bin                                   │
                          HABITAT.BAS (three lines) ─────────────────┘
 ```
@@ -18906,7 +18908,7 @@ failure.
 | Tool | Path | Role |
 |---|---|---|
 | `rasm` | `~/rasm/rasm.exe` | assembler; handles banking directives and `align 256` |
-| `iDSK` | `~/idsk/iDSK` | builds the `.dsk` image |
+| `iDSK` | `~/idsk/iDSK` | builds the `.dsk` image, a standard one, which `tools/dsk.py` rewrites as EXTENDED since milestone 183 ([§13.4](#134-an-extended-disc-at-milestone-183)) |
 | `tools/mapsize.py` | — | per-file byte counts for bank 0 and bank 2's code, by assembling a copy of `main.asm` with a label before every `include` — and, since milestone 66, one after it, so that `main.asm`'s own code is counted as `main.asm` wherever it sits. `tools/mkdsk.py` says how many bytes are left; this says who took them, which is the half that tells you what to move |
 | `tools/agents.py` | — | reads the colonists' own fields out of bank 6 while the game runs: what each one is doing, where, and how full their bars are. [§6.6](#66-needs)'s oscillation is invisible in stocks and in the HUD; it is obvious in one colonist's `dest` sampled every 25 frames. It steals the CPU **only in the vsync wait at the top of the loop**, where the stack is at its base and only `BC` is live — taken anywhere else, the scaffolding leaves a nail on the stack per sample and the colony ends up with 217 living |
 | `cpcemu` | `~/cpcemu/cpc.py` | **headless** CPC 6128 — Z80 + gate array + CRTC + PPI + FDC + PSG, renders to a framebuffer, dumps PNG. **Extended for milestone 20**: `cpcemu_psg_reg` / `cpcemu_psg_addr` in `cpcheadless.c` expose the AY's registers, because sound is otherwise invisible to every check — the emulator ran with `audio.volume = 0` and nothing outside the chip could say whether a write arrived. Additive; the old `.so` is kept beside the new one |
@@ -19381,6 +19383,55 @@ because the loader grew past it, for `&A200` under HIMEM.
   nine result cases as `fd_ok`, with the same two planted faults. The loader's
   symbols are in `build/boot.sym`.
 
+### 13.4 An EXTENDED disc, at milestone 183
+
+**The player's save destroyed the disc.** Retro Virtual Machine 2.1.20 ran the game
+from `build/habitat.dsk`, and the save hung. The file it then wrote back held 5,120
+bytes:
+
+- an `EXTENDED CPC DSK` header;
+- a track-size table that was zero everywhere except track 24, the first track of slot 1;
+- that one track's 4,864 bytes.
+
+There was no catalogue and no game left. The player's diagnosis was the format.
+
+**The cause is the format.** `iDSK` writes the *standard* `.dsk`: one size for every
+track at `&32`, and zeros where an EXTENDED image keeps a size per track at `&34`.
+The emulator read that disc correctly, because the game loaded and ran. When it
+saved the disc back, it kept only the track the game had written. The hang most
+likely came from the next track of the slot, 25, which by then no longer existed
+for it.
+
+`cpcemu` does not reproduce the hang. Its controller answers a write to a missing
+track at once: a save on a copy of the disc without track 25 says `DISC ERROR` after
+30 frames, and the whole disc says `SAVED TO SLOT 1` after 59.
+
+**Since milestone 183 `tools/mkdsk.py` writes EXTENDED.** `iDSK` builds the standard
+image as before, and `to_extended` (`tools/dsk.py`) rewrites only its 256-byte
+header:
+
+- the signature;
+- the creator, `HabitatCPC`;
+- `&13` (4,864 bytes) for each of the 42 tracks in the table.
+
+It also sets the real sector length in bytes 6–7 of each sector's entry, which
+`iDSK` already wrote as 512. The 42 tracks after the header are byte for byte those
+of the standard image. No code changed, and neither did a file or a sector.
+
+`tools/dsk.py` reads both formats now (`track_at`), and so does `tests/test_disc.py`'s
+`sector_at`, which assumed the standard one.
+
+**Tests.**
+- `tests/test_fdc.py` checks the header first:
+  - EXTENDED;
+  - 42 tracks of `&13`;
+  - as many bytes in the file as the table says.
+- **Its negative is the emulator's file**: the same disc with only track 24 in the table and in the file, 5,120 bytes. It fails the check.
+- `test_save`, `test_disc`, `test_tutor` and `test_tupage` boot, save and read pages from the EXTENDED disc. Their logs are line for line those of milestone 182, boot frames included.
+
+**Not verified:** Retro Virtual Machine itself, which runs only on the player's
+desktop. A save there on the new disc is the test that matters.
+
 ---
 
 ## 14. Delivery plan
@@ -19443,6 +19494,7 @@ gap.
 | ~~HUD re-render on every scroll step, ≈ 0.4 frames, estimated not measured~~ | ~~Medium~~ | **Measured at 2.55 frames**, six times the estimate, and then cut ([§8.1](#81-screen-layout)). The cell cache of [§9.2](#92-hud) took an ordinary tick to 1.15, and milestone 52's smaller HUD to **0.65**; a camera step, which moves every cell, still pays **1.75** (2.30 before milestone 52, 2.20 before the font moved to bank 7 at milestone 33). The escape hatch for that one — *move* the HUD block inside the ring instead of re-rendering it — **was taken at milestone 83**: 0.89–0.94 frames per step, cheaper than what it replaced, and the HUD is never rubble after a scroll, paused or not ([§8.1](#81-screen-layout)). |
 | Mid-frame writes land where aimed, but only on the emulator's CRTC | Low | The border control in `tests/test_camera.py` hits line 160 exactly. Real hardware still wants a check, but nothing now depends on a mid-frame *address* write. |
 | **The raster splits of milestone 83 are timed on the emulator** | Medium | Mode and palette writes, not addresses, and timed from the Gate Array's own interrupt, which every CPC has. Each write has ≥ 10 µs of margin against a late interrupt (`tests/test_split.py` breaks it at 20 µs). Real hardware is the check still owed, and a different Gate Array (the Plus) would want its own measurement. |
+| **A save destroyed the disc in Retro Virtual Machine** (found at milestone 183) | High | **Mitigated, not verified** ([§13.4](#134-an-extended-disc-at-milestone-183)). With `iDSK`'s standard `.dsk`, the save hung and the file the emulator wrote back held only track 24, 5,120 bytes. The disc is EXTENDED since then, with every track's size in its table, and `tests/test_fdc.py` rejects the emulator's file. Left: a save in Retro Virtual Machine on the new disc. |
 | **The disc's timing is the emulator's** (milestone 113) | Medium | The emulator's µPD765 has no rotation and no spin-up, moves the head at once, and ends a read with IC = 00. The loader ([§13.3](#133-the-loader-reads-the-disc-itself-at-milestone-113)) and the save's driver ([§11](#on-a-real-drive-at-milestone-113)) were written for the real one: IC = 01 + EN accepted (tested with the bytes themselves), the seek waited for, 15 ms settle, 0.46 s for the motor on a save, sixteen retries of 100 ms on the loader. None of the timings has run on a 6128. The loader falls back to AMSDOS on any failure; the save has no fallback and reports `DISC ERROR`. Since milestone 128 the player may wait in the planet menu for longer than AMSDOS keeps the motor on; the emulator has no spin-up, so the sixteen retries are what a real drive would lean on there. |
 | **The icons were drawn against Sky blue** (milestone 178) | Low | Since the white-metal style the dome's floor is Pastel cyan, and the yellow and white details of the room icons, machines and plants stand on it at 1.1 and 1.2 to 1 instead of 3.5 and 3.8 ([§8.6](#white-metal-lit-from-above-at-milestone-178)). They read by their dark edges in the screenshots of the manual's colony; the canteen's yellow table is the weakest. A redraw of the weak ones is `CPCArt` work (`tools/icons.py`), with no bytes. |
 | **A new colony is the ROM's restart** (milestone 177) | Medium | The end page's "any other key" turns the lower ROM on and calls `MC START PROGRAM`, then wakes AMSDOS with `KL ROM WALK` (`HL` `&ABFF`, as BASIC 1.1 is taken to do) and reads `LOADER.BIN` ([§10.3](#the-end-at-milestone-177)). Measured in the emulator, with the 6128's ROMs: 187 frames to the menu, and a new colony from it. The ROM's address is read by the loader from the jumpblock, so another ROM's is used; the RAM and the screen the firmware initialises are what it expects after a reset. Not run on a real 6128, nor on a Plus, whose firmware is another; without `RST 1` at `&BD16` the loader writes 0 and the key resets to BASIC. |

@@ -88,6 +88,7 @@ sys.path.insert(0, "/home/vasilhs/cpcemu")
 
 from sprites import load_map, load_bin                                  # noqa: E402
 import world as W                                                       # noqa: E402
+import dsk as DK                                                        # noqa: E402
 sys.path.insert(0, HERE)
 import menuread as MR                                                   # noqa: E402
 import menuworld as MW                                                  # noqa: E402
@@ -134,10 +135,12 @@ def boot_syms():
 
 
 def sector_at(dsk, track, sid):
-    """Πού αρχίζει μέσα στην εικόνα ο τομέας sid του track (τυπικό .dsk, μία
-    όψη): οι τομείς ενός track είναι με τη ΣΕΙΡΑ ΤΟΥ ΔΙΣΚΟΥ, πλεγμένοι."""
-    size = int.from_bytes(dsk[0x32:0x34], "little")
-    t = 0x100 + track * size
+    """Πού αρχίζει μέσα στην εικόνα ο τομέας sid του track (μία όψη, τυπικό ή
+    EXTENDED από το βήμα 183): οι τομείς ενός track είναι με τη ΣΕΙΡΑ ΤΟΥ
+    ΔΙΣΚΟΥ, πλεγμένοι."""
+    t = DK.track_at(dsk, track)
+    if t is None:
+        return None
     off = t + 0x100
     for i in range(dsk[t + 0x15]):
         e = t + 0x18 + i * 8

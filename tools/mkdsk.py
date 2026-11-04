@@ -26,7 +26,7 @@
 import os
 import re, shutil, subprocess, sys
 
-from dsk import Dsk
+from dsk import Dsk, to_extended
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -375,6 +375,10 @@ def build():
             continue
         run([IDSK, DSK, "-i", os.path.join(stage, name),
              "-t", "1", "-c", f"{load:04X}", "-e", f"{exe:04X}"])
+    # EXTENDED (βήμα 183, tools/dsk.py): το τυπικό του iDSK το χαλούσε ο Retro
+    # Virtual Machine στο πρώτο σώσιμο, κρατώντας μόνο το track του.
+    data = to_extended(open(DSK, "rb").read())
+    open(DSK, "wb").write(data)
     return total
 
 

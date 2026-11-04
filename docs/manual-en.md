@@ -50,7 +50,7 @@ There is no victory screen. A colony either goes on, or it does not.
 
 - An **Amstrad CPC 6128** (the game needs all 128 KB) with its disc drive, or a CPC
   emulator set to a 6128.
-- The game disc, `habitat.dsk` (see the [README](../README.md) for how it is built).
+- The game disc, `habitat.dsk`, an Extended DSK image (see the [README](../README.md) for how it is built).
 - **The game saves onto its own disc.** Use a copy, and do not write-protect it,
   or saving will fail with `DISC ERROR`.
 

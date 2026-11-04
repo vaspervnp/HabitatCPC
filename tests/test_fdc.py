@@ -13,6 +13,12 @@
   2. Γράφει μοτίβο σε τρεις άδειους τομείς και τους ξαναδιαβάζει.
   3. Ο ΓΕΙΤΟΝΑΣ: ο τομέας #C5 του ίδιου track πρέπει να είναι ακόμη #E5 —
      αλλιώς η εγγραφή πήγε κάπου αλλού εκτός από εκεί που της είπαμε.
+
+Και πριν από όλα, χωρίς εξομοιωτή: Ο ΔΙΣΚΟΣ ΕΙΝΑΙ EXTENDED (βήμα 183,
+tools/dsk.py), με το μέγεθος κάθε track στον πίνακα της κεφαλίδας. Από τον
+τυπικό του iDSK ο Retro Virtual Machine 2.1.20 κράτησε, στο πρώτο σώσιμο, μόνο
+το track 24: το αρχείο που έγραψε είχε στον πίνακα μόνο εκείνο. Αρνητικό: αυτό
+ακριβώς το αρχείο, φτιαγμένο από τον δίσκο μας, απορρίπτεται.
 """
 import os, subprocess, sys
 
@@ -21,7 +27,7 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 sys.path.insert(0, "/home/vasilhs/cpcemu")
 
-from dsk import Dsk                                                     # noqa: E402
+from dsk import Dsk, SIG_EXT, track_at                                  # noqa: E402
 
 RASM = os.path.expanduser("~/rasm/rasm.exe")
 SNA = os.path.join(ROOT, "build", "fdctest.sna")
@@ -50,6 +56,25 @@ def build():
     return sym
 
 
+def ext_ok(buf):
+    """EXTENDED, 42 tracks των 4.864 bytes (#13 x 256) στον πίνακα, και τόσα
+    bytes στο αρχείο."""
+    n = buf[0x30] * buf[0x31]
+    sizes = buf[0x34:0x34 + n]
+    return (buf.startswith(SIG_EXT) and n == 42 and set(sizes) == {0x13}
+            and len(buf) == 256 + 256 * sum(sizes))
+
+
+def rvm_file(buf):
+    """Ο δίσκος όπως τον ξαναέγραψε ο RVM: ο πίνακας μόνο με το track 24, και
+    μόνο εκείνο στο αρχείο (5.120 bytes)."""
+    t = track_at(buf, 24)
+    out = bytearray(buf[:0x100]) + buf[t:t + 0x1300]
+    out[0x34:0x34 + 42] = bytes(42)
+    out[0x34 + 24] = 0x13
+    return bytes(out)
+
+
 def main():
     if not os.path.exists(DSK):
         r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "mkdsk.py")],
@@ -58,6 +83,14 @@ def main():
             sys.exit("mkdsk απέτυχε:\n" + r.stdout + r.stderr)
     sym = build()
     from cpc import CPC
+
+    raw = open(DSK, "rb").read()
+    check(ext_ok(raw), f"ο δίσκος είναι EXTENDED με 42 tracks στον πίνακα "
+                       f"({raw[:8]!r}, {raw[0x30]} tracks, {len(raw)} bytes)")
+    bad = rvm_file(raw)
+    check(len(bad) == 5120 and not ext_ok(bad),
+          f"ΑΡΝΗΤΙΚΟ: ο δίσκος του RVM, με μόνο το track 24 ({len(bad)} bytes), "
+          f"απορρίπτεται")
 
     d = Dsk(DSK)
     m = CPC()

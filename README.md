@@ -106,7 +106,7 @@ From a fresh clone:
 ```bash
 ./tools/build.sh --gen          # tables and bank images from the assets
 python3 tools/mkgentables.py    # the world generator's tables
-python3 tools/mkdsk.py          # assembles everything, writes build/habitat.dsk
+python3 tools/mkdsk.py          # assembles everything, writes build/habitat.dsk (EXTENDED)
 ```
 
 `./tools/build.sh` without `--gen` also runs the test suite. Everything it makes goes
