@@ -6,9 +6,9 @@
 ; στα κουμπιά είναι τα πλήκτρα τους (src/bar.asm): D θόλοι, S μικρός, M μεσαίος,
 ; O C G F B N δωμάτια, P ενέργεια, E πόροι, T μεταφορά.
 ; ---------------------------------------------------------------------------
-tut_00:  db "P S: SOLAR PANEL, FIRE TO BUILD "     ; 1 ηλιακός: P η ομάδα ΕΝΕΡΓΕΙΑ, S ο ηλιακός
+tut_00:  db "P S: SOLAR PANEL, SPACE TO BUILD"     ; 1 ηλιακός: P η ομάδα ΕΝΕΡΓΕΙΑ, S ο ηλιακός
         assert  $ - tut_00 == 32
-tut_01:  db "D S O: OXYGEN DOME, FIRE ON IT  "     ; 2 θόλος οξυγόνου, και FIRE πάνω του: ο εξοπλισμός με το OXYGEN
+tut_01:  db "D S O: OXYGEN DOME, COPY ON IT  "     ; 2 θόλος οξυγόνου, και FIRE πάνω του: ο εξοπλισμός με το OXYGEN
         assert  $ - tut_01 == 32
 tut_02:  db "T A: AN AIRLOCK BY THE DOME     "     ; 3 airlock
         assert  $ - tut_02 == 32
@@ -32,9 +32,9 @@ tut_11:  db "D S N: A CONTROL ROOM           "     ; 12 έλεγχος
         assert  $ - tut_11 == 32
 tut_12:  db "T P: A LANDING PAD              "     ; 13 πίστα
         assert  $ - tut_12 == 32
-tut_13:  db "C, FIRE: CALL A COLONIST SHIP   "     ; 14 πλοίο
+tut_13:  db "C, SPACE: CALL A COLONIST SHIP  "     ; 14 πλοίο
         assert  $ - tut_13 == 32
 tut_14:  db "THE COLONY IS YOURS             "     ; 15 το μήνυμα, ως το επόμενο γεγονός
         assert  $ - tut_14 == 32
-tut_15:  db "SPACE=MENU I=INFO FIRE=FIT C=SHI"     ; και η γραμμή που ήταν (το «P» το γράφει το tuo_go)
+tut_15:  db "SPACE=MENU I=INFO COPY=FIT C=SHI"     ; και η γραμμή που ήταν (το «P» το γράφει το tuo_go)
         assert  $ - tut_15 == 32

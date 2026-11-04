@@ -321,8 +321,10 @@ usl_lr:
         ; ως το βήμα 80 η θέση άλλαζε χωρίς να το λέει η σειρά 3.
         jp      uim_cp                  ; ui_click, ui_panel
 uist_slot:
-        ld      a,(act_hit)             ; ESC ή FIRE: πίσω στο LOOK
-        and     1 << A_CANCEL | 1 << A_FIRE
+        ld      a,(act_hit)             ; ESC, COPY ή SPACE: πίσω στο LOOK
+        ; ΚΑΙ ΤΟ SPACE (βήμα 182): όπως στη μπάρα, στις γραμμές και στο PLACE,
+        ; όπου η σειρά 4 λέει πια SPACE. Ενα bit στο ίδιο and.
+        and     1 << A_CANCEL | 1 << A_FIRE | 1 << A_MENU
         jr      z,usl_lr
         ld      hl,ui_state
         ld      (hl),UI_LOOK

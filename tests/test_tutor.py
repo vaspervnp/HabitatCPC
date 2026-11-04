@@ -9,7 +9,7 @@
   ΓΡΑΜΜΗ       η γραμμή των πλήκτρων κάτω από τα κουμπιά λέει τι να χτιστεί,
                βήμα-βήμα, με τα γράμματα των κουμπιών· μετά το τελευταίο
                «THE COLONY IS YOURS» ώς το επόμενο γεγονός, και μετά ξανά
-               «SPACE=MENU I=INFO FIRE=FIT C=SHIP», όπως σε κάθε παιχνίδι.
+               «SPACE=MENU I=INFO COPY=FIT C=SHIP», όπως σε κάθε παιχνίδι.
   ΒΗΜΑΤΑ       δεκατέσσερα (δεκατρία ήταν το σχέδιο· ο χρήστης διάλεξε δεύτερο
                ηλιακό): ηλιακός, θόλος οξυγόνου με OXYGEN, airlock, αντλία,
                κυλικείο με MEALS, δεύτερος ηλιακός, συλλέκτης, ορυχείο,
@@ -56,7 +56,7 @@ import ovmap as OV                                       # noqa: E402
 
 FAIL = []
 TUT_SNA = os.path.join(ROOT, "build", "tutor.sna")
-LOOK = "SPACE=MENU I=INFO FIRE=FIT C=SHIP"
+LOOK = "SPACE=MENU I=INFO COPY=FIT C=SHIP"
 
 
 def check(ok, msg):

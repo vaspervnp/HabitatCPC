@@ -5,7 +5,7 @@
 
   ΓΡΑΜΜΗ     το C στο LOOK, και το κουμπί του πλοίου στη ΜΕΤΑΦΟΡΑ, ανοίγουν
              τη γραμμή του πλοίου στις σειρές 3-4:
-               σειρά 3   SHIP UP/DN=10% FIRE=CALL ESC=BACK
+               σειρά 3   SHIP UP/DN=10% SPACE=CALL ESC=BACK
                σειρά 4    >WRK 50 ENG 10 BIO 20 MED 10 GRD 10
              με την ταχύτητα στις στήλες 35-39 όπως πάντα. Νέο παιχνίδι: 50%
              εργάτες, 10% μηχανικοί, 20% βιολόγοι, 10% γιατροί, 10% φρουροί
@@ -60,7 +60,7 @@ import cpc                                               # noqa: E402
 FAIL = []
 UI_LOOK, UI_ACT = 0, 7
 NAMES = ["WRK", "ENG", "BIO", "MED", "GRD"]
-KEYS = "SHIP UP/DN=10% FIRE=CALL ESC=BACK"
+KEYS = "SHIP UP/DN=10% SPACE=CALL ESC=BACK"
 PROBE, FLAG = 0x3E80, 0x3EFF
 SHIP_LANDED = 2
 R_CONTROL, VOY_DOME = 1, 2                  # src/const.asm· ο θόλος 2 του colony.sna

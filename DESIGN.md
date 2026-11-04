@@ -12718,7 +12718,7 @@ in one pass over the PSG keyboard matrix.
 | Input | Action |
 |---|---|
 | Cursors / joystick | move the build cursor, one tile a press, and held, again every 200 ms ([below](#space-places-and-one-step-a-press-after-milestone-174)); camera follows at the viewport edge, and both stop at the world's edge ([§8.2](#the-world-has-an-edge-at-milestone-78)). In the menu, left/right picks the item and up/down the room ([§9.3](#93-build-flow)), and the button bar follows the item's group |
-| Fire / `COPY` | select, confirm, place (`SPACE` too in `PLACE` and `LINK`, [below](#space-places-and-one-step-a-press-after-milestone-174)); in `LOOK`, on a dome, open its fitting ([§6.5](#a-room-says-what-fits-the-player-says-what-goes-in)) |
+| `COPY` / fire 1 | in `LOOK`, on a dome, open its fitting ([§6.5](#a-room-says-what-fits-the-player-says-what-goes-in)); in `FIT`, fit the slot. Elsewhere what `SPACE` does: select, confirm, place. The screen says `COPY` only where it is the key, since milestone 182 ([below](#space-and-copy-on-the-screen-at-milestone-182)) |
 | `ESC` | cancel, back |
 | `SPACE` | focus the button bar: left/right picks one of the six groups or `?`, `FIRE` or `SPACE` presses it ([§9.3](#graphical-buttons-at-milestone-84)). It opens on the group last built from, so `SPACE` `SPACE` is the build menu where it was left. In `PLACE` and `LINK` it places, as `FIRE` does ([below](#space-places-and-one-step-a-press-after-milestone-174)) |
 | the letter on a button | presses that button, while the button is on the bar. In `LOOK`: `D` domes, `R` corridor, `P` power, `E` resources, `T` transport, `M` manage. Inside a group, its items ([§9.3](#graphical-buttons-at-milestone-84)) |
@@ -12726,7 +12726,7 @@ in one pass over the PSG keyboard matrix.
 | `1`…`4` | speed: pause, normal, fast, very fast — the wheel advances 0 / 1 / 2 / 4 slots per frame |
 | `I` | what is under the cursor — the building, its state and integrity, and the ground, in the HUD's two message rows until the cursor moves or `ESC` ([below](#what-is-under-the-cursor-at-milestone-79)). Only from `LOOK` |
 | `H` | centre on `(0,0)` |
-| `S` / `L` | save to disc, load from disc ([§11](#11-save-and-load)) — only from `LOOK`. Each opens the slot chooser: left/right pick one of three, `FIRE` goes, `ESC` backs out. Shown at once, paused too, since milestone 80 |
+| `S` / `L` | save to disc, load from disc ([§11](#11-save-and-load)) — only from `LOOK`. Each opens the slot chooser: left/right pick one of three, `SPACE` or `COPY` goes (`SPACE` since milestone 182, [below](#space-and-copy-on-the-screen-at-milestone-182)), `ESC` backs out. Shown at once, paused too, since milestone 80 |
 | `C` | call a colonist ship ([§6.11](#611-ships-and-arrivals)) — only from `LOOK`, and only with a Control room and a free pad |
 | `G` | the milestones: a page with all five, `DONE` or how far the colony is from each, the prestige and the coins; on a lost colony, the end page ([§10.2](#seen-at-milestone-177)). Only on the groups' bar, as a button with no drawing, since milestone 177 |
 
@@ -13152,6 +13152,62 @@ it costs 43–50 µs more (the suite, below).
 milestone 173, and 19,276 with a solar panel's, 43 more: `ui_move`'s first questions
 and the clock in the frames a step spans. Every other change in a time is the
 measurement's phase or another random world in `tests/test_disc.py`.
+
+#### `SPACE` and `COPY` on the screen, at milestone 182
+
+The player: "nothing shows that `COPY` is the `FIT`". A CPC keyboard has no key called
+`FIRE`. The key lines said `FIRE` for `A_FIRE`, which is `COPY` or the joystick's first
+button. Then, after one question: "`SPACE` places a building. `COPY` does the fit."
+
+What each key does, from the code (`src/ui.asm`, `src/act.asm`, `src/lines.asm`,
+`src/fit.asm`):
+
+| State | `COPY` | `SPACE` |
+|---|---|---|
+| `LOOK` | the fitting, on a dome | the button bar |
+| `PLACE`, `LINK` | places | places (milestone 174) |
+| the bar's groups and `MANAGE` | presses | presses |
+| the ship's line, the merchant's | calls, deals | calls, deals |
+| `FIT` | the slot | every slot |
+| the slot chooser | goes | **goes, since this milestone** |
+| the planet menu (`src/menu.asm`) | — | picks, with `RETURN`, `ENTER` and the joystick |
+
+**So the lines name the key the player was told:**
+- `COPY` where only `COPY` does it: `SPACE=MENU I=INFO COPY=FIT C=SHIP` and
+  `UP/DN=PICK COPY=FIT SPACE=ALL`.
+- `SPACE` for everything that picks or places:
+  - `SPACE=PLACE ESC=BACK`, `SPACE=PLACE UP/DN=ROOM` and `READY SPACE TO BUILD`;
+  - `SPACE=GO ESC=BACK`, `SHIP UP/DN=10% SPACE=CALL ESC=BACK` and ` SPACE=DEAL`;
+  - `LEFT RIGHT SPACE ESC`;
+  - the planet menu's `UP/DOWN, SPACE OR ENTER`.
+- The tutorial says the same: its four lines (`src/tutext.asm`) and its eleven page lines
+  (`src/tupages.txt`).
+- `COPY` still does everything it did. The manuals say so in their table of keys.
+
+**The slot chooser** was the one place where `SPACE` did nothing. `uist_slot` asks
+`act_hit` for `A_MENU` too, one more bit in the same `and`, as `PLACE` did at milestone
+174 ([above](#space-places-and-one-step-a-press-after-milestone-174)).
+
+**What it cost:**
+- Five lines are as long as they were. Four are a letter longer:
+  - the slot keys;
+  - the ship's;
+  - the deal;
+  - `SPACE=GO`, whose row 3 is now exactly 35 columns.
+- Those 4 bytes leave 43 of `TEXT_MAX`. The pages' file, `TUTOR.TXT`, is 9 bytes shorter.
+- No code byte moved but in bank 7, after the texts.
+- Every µs of the suite is milestone 181's, but two:
+  - the planet menu draws in 492,430 µs instead of 491,980 (ceiling 500,000), once a
+    boot: its line is a letter longer;
+  - `test_reach`'s cursor step with a solar panel takes 19,273 µs instead of 19,276.
+- The manuals' seven pictures with a key line were taken again: the menu, the start,
+  the ghost, the fitting, the colony, the ship's line and the tutorial's page.
+
+**Tests:**
+- The tests that read the lines off the screen now expect them: `test_act`, `test_build`,
+  `test_crew`, `test_game`, `test_info`, `test_trade` and `test_tutor`.
+- `test_save` picks the empty slot with `SPACE` too. Its negative is the `and` without
+  `A_MENU`, as until this milestone: the chooser stays open.
 
 ### 9.2 HUD
 

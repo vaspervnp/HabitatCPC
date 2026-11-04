@@ -297,7 +297,7 @@ def main():
     # το χειριστήριο, που όσο είναι αναμμένο κλέβει τα βελάκια από τη μήτρα —
     # γι' αυτό ανάβει και σβήνει γύρω από κάθε πάτημα.
     from sprites import load_map, load_bin
-    from cpc import KEY_RIGHT, KEY_ESC
+    from cpc import KEY_RIGHT, KEY_ESC, KEY_SPACE
     import hudread
 
     def hud_row(row):
@@ -323,9 +323,9 @@ def main():
 
     SV_SLOTS = 3
 
-    def disc_op(key, slot=0):
-        """S ή L, μετά (slot) φορές δεξιά, μετά FIRE. Γυρίζει τα frames που
-        κράτησε η κεφαλή."""
+    def disc_op(key, slot=0, space=False):
+        """S ή L, μετά (slot) φορές δεξιά, μετά FIRE — ή SPACE (βήμα 182).
+        Γυρίζει τα frames που κράτησε η κεφαλή."""
         press(key)
         # Η επιλογή ΘΥΜΑΤΑΙ την τελευταία θέση — γι' αυτό πάμε προς τα εκεί
         # αντί να μετράμε πατήματα από το μηδέν.
@@ -335,7 +335,10 @@ def main():
             n += 1
         assert m.peek(sym["SL_PICK"]) == slot, "η επιλογή δεν έφτασε στη θέση"
         m.poke(sym["FD_TRK"], 0)
-        fire(4)
+        if space:
+            press(KEY_SPACE, 4)
+        else:
+            fire(4)
         # ΤΟ ΤΕΛΟΣ ΤΗΣ ΔΟΥΛΕΙΑΣ ΕΙΝΑΙ ΤΟ ΜΗΝΥΜΑ, όχι η θέση της κεφαλής: μια
         # άδεια θέση απορρίπτεται στην πρώτη πίστα και η κεφαλή δεν φτάνει ποτέ
         # εκεί που θα έφτανε ένα κανονικό φόρτωμα. Και το μήνυμα είναι
@@ -597,6 +600,22 @@ def main():
     disc_op("L", 1)
     check("NOTHING IN SLOT 2" in LAST_MSG,
           f"η άδεια θέση το λέει με λόγια, όχι «DISC ERROR»: |{LAST_MSG}|")
+    # ΚΑΙ ΤΟ SPACE ΔΙΑΛΕΓΕΙ ΘΕΣΗ (βήμα 182), όπως στη μπάρα και στο PLACE: η σειρά
+    # 4 λέει LEFT RIGHT SPACE ESC. Η ίδια άδεια θέση, με SPACE αντί για FIRE.
+    disc_op("L", 1, space=True)
+    check("NOTHING IN SLOT 2" in LAST_MSG, f"και με SPACE: |{LAST_MSG}|")
+    # ΑΡΝΗΤΙΚΟ: το and του uist_slot χωρίς το bit του SPACE (#70 -> #30, όπως ως
+    # το βήμα 181): το SPACE δεν κάνει τίποτα, και η επιλογή μένει ανοιχτή.
+    us = sym["UIST_SLOT"]
+    k = bytes(m.read_ram(us, 12)).find(bytes([0xE6, 0x70]))
+    assert k >= 0, "δεν βρέθηκε το and #70 στο uist_slot"
+    m.poke(us + k + 1, 0x30)
+    disc_op("L", 1, space=True)
+    st = m.peek(sym["UI_STATE"])
+    check(st == 4 and "NOTHING IN" not in LAST_MSG,
+          f"ΑΡΝΗΤΙΚΟ: χωρίς το SPACE στο uist_slot η επιλογή μένει (κατάσταση {st}, |{LAST_MSG}|)")
+    press(KEY_ESC)
+    m.poke(us + k + 1, 0x70)
 
     # --- 8. σώσιμο άλλης έκδοσης -----------------------------------------
     # Η εικόνα της προηγούμενης έκδοσης: το sv_magic με SV_VER - 1, σώσιμο

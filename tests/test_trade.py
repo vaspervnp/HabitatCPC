@@ -21,7 +21,7 @@
                σειρά 3   +47% TAKE  110 GIVE  100
                σειρά 4    <METAL  > SHIP 20 TAKE  5 HAVE 595 @ 15
              η 3 το ζύγι (όσα παίρνεις στις τιμές του, όσα δίνεις στην αξία
-             τους, και FIRE=DEAL όταν παίρνεις κάτι και δίνεις τουλάχιστον όσο
+             τους, και SPACE=DEAL όταν παίρνεις κάτι και δίνεις τουλάχιστον όσο
              παίρνεις), η 4 ένα αγαθό: όσα φέρνει, όσα παίρνεις ή δίνεις, όσα
              έχεις, η αξία του. Η ταχύτητα στις στήλες 35-39 όπως πάντα.
   ΒΕΛΗ       αριστερά/δεξιά: τα δεκατρία, πρώτα τα δικά του με τη σειρά του
@@ -211,7 +211,7 @@ class Line:
 
     def rows(self):
         take, give = self.totals()
-        r3 = f"+{self.mk:2d}% TAKE {take:4d} GIVE {give:4d}" + (" FIRE=DEAL" if self.ok() else "")
+        r3 = f"+{self.mk:2d}% TAKE {take:4d} GIVE {give:4d}" + (" SPACE=DEAL" if self.ok() else "")
         g = self.order[self.sel]
         n = self.net[g]
         if g == COINS:
@@ -336,7 +336,7 @@ def line(sym, patch=(), quiet=False):
         if k in (UP, DOWN) and before[g] == md.net[g] and before[g] != 0:
             seen.add(("όριο", NAME[g]))
         if md.ok():
-            seen.add(("FIRE=DEAL",))
+            seen.add(("SPACE=DEAL",))
     if any(G.stock(k) != v for k, v in STOCK.items()) or G.coins() != HAVE_C:
         return "ΓΡΑΜΜΗ: τα αποθέματα άλλαξαν χωρίς ανταλλαγή"
     # ESC: η προσφορά ξεχνιέται
@@ -348,7 +348,7 @@ def line(sym, patch=(), quiet=False):
         return f"ESC: κατάσταση {st}, ξανανοίγει «{G.r34()[0]}» — η πρόζα λέει «{md2.rows()[0]}»"
     say(f"ΓΡΑΜΜΗ: {len(walk_keys())} πλήκτρα, ίδια με την πρόζα — όρια στα "
         f"{', '.join(sorted(x[1] for x in seen if x[0] == 'όριο'))}"
-        f"{', και FIRE=DEAL' if ('FIRE=DEAL',) in seen else ''}; το ESC ξεχνά την προσφορά")
+        f"{', και SPACE=DEAL' if ('SPACE=DEAL',) in seen else ''}; το ESC ξεχνά την προσφορά")
     return None
 
 

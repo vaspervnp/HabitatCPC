@@ -68,7 +68,7 @@ time.
 ![The menu](img/menu.png)
 
 **CHOOSE A WORLD** — move with the cursor keys or the joystick, and choose with
-`FIRE` or `ENTER`. The line under the list describes the world:
+`SPACE` or `ENTER` (or the joystick's fire). The line under the list describes the world:
 
 | Line | World |
 |---|---|
@@ -125,22 +125,22 @@ at the edges of the view.
   `E` resources, `T` transport, `M` manage, `?` help. Inside a group the bar shows
   that group's buttons.
 - **The key line** says what the keys do right now, for example
-  `SPACE=MENU I=INFO FIRE=FIT C=SHIP`.
+  `SPACE=MENU I=INFO COPY=FIT C=SHIP`.
 - **The speed**: `PAUSE`, `x1`, `x2` or `x4`.
 - **While building**, the two rows show the selection and its price, and whether it
-  can be placed: `READY  FIRE TO BUILD`, or the reason it cannot.
+  can be placed: `READY SPACE TO BUILD`, or the reason it cannot.
 
 ## 5. Controls
 
 Everything has a key. The four directions and the two fire buttons also work on the
-joystick.
+joystick: its first fire is `COPY`, its second `ESC`.
 
 | Key | Action |
 |---|---|
 | Cursor keys / joystick | Move the cursor, one tile a press. Held, it moves again every fifth of a second. In a menu, left/right picks the item and up/down the room. |
-| `FIRE` / `COPY` | Select, confirm, place. On a dome, with nothing selected: open its machines (`FIT`). |
+| `SPACE` | Go to the button bar. Left/right picks a group, and `SPACE` opens it. It opens on the last group you built from, so `SPACE` `SPACE` returns to where you were. `SPACE` also places a building or a corridor, picks in a menu, calls the ship, makes a deal and picks a save slot. |
+| `COPY` / fire 1 | On a dome: open its machines (`FIT`). In `FIT`: put the machine in the slot. Everywhere else it does what `SPACE` does. |
 | `ESC` / fire 2 | Cancel, back. |
-| `SPACE` | Go to the button bar. Left/right picks a group, `FIRE` or `SPACE` opens it. It opens on the last group you built from, so `SPACE` `SPACE` returns to where you were. While you place a building or a corridor, `SPACE` places it, as `FIRE` does. |
 | The letter on a button | Press that button while it is on the bar. From the main view: `D` `R` `P` `E` `T` `M`. |
 | `?` (the `/` key) | The help screen: every button with one line about it. Any key returns. |
 | `1` `2` `3` `4` | Speed: pause, normal, ×2, ×4. You can still build while paused. |
@@ -173,8 +173,8 @@ are the keys to press, starting from the main view.
 
 | # | Keys | Build |
 |---|---|---|
-| 1 | `P` `S` | a **solar panel**, then `FIRE` to place it |
-| 2 | `D` `S` `O` | a small **oxygen dome**; then `FIRE` on the dome, and `FIRE` again to fit its `OXYGEN` machine |
+| 1 | `P` `S` | a **solar panel**, then `SPACE` to place it |
+| 2 | `D` `S` `O` | a small **oxygen dome**; then `COPY` on the dome, and `COPY` again to fit its `OXYGEN` machine |
 | 3 | `T` `A` | an **airlock** by the dome: the only way in and out |
 | 4 | `E` `X` | an **extractor** at the water's edge |
 | 5 | `D` `S` `C` | a **canteen**, fitted with `MEALS` |
@@ -186,7 +186,7 @@ are the keys to press, starting from the main view.
 | 11 | `D` `S` `B` | a **lab**, fitted with `MEAT` |
 | 12 | `D` `S` `N` | a **control room** |
 | 13 | `T` `P` | a **landing pad** |
-| 14 | `C`, `FIRE` | **call a colonist ship** |
+| 14 | `C`, `SPACE` | **call a colonist ship** |
 
 ![A tutorial page: step 2, the oxygen dome](img/tutorial.png)
 
@@ -213,7 +213,7 @@ which you can save like any other.
 1. Pick it from the button bar (for example `D` `S` `O`).
 2. A **ghost** of the building follows the cursor. It is green where the building
    can go, and red where it cannot, with the reason on the panel.
-3. `FIRE` or `SPACE` places it, and `ESC` goes back.
+3. `SPACE` places it, and `ESC` goes back.
 
 **What it costs:**
 - The panel shows the price in Metal (`FE`) and Bioplastic (`BI`), and a dome's
@@ -267,10 +267,10 @@ changed afterwards.
 
 ![Fitting a canteen: the slot has a box, the panel shows the machine and its price](img/fit.png)
 
-- `FIRE` on a dome (or `M` `F`) opens it.
+- `COPY` on a dome (or `M` `F`) opens it.
 - Left/right picks a slot, and up/down picks what goes in. The room's main machine
   comes first.
-- `FIRE` installs it, and `SPACE` puts the same machine in every slot, as far as the
+- `COPY` installs it, and `SPACE` puts the same machine in every slot, as far as the
   materials go. `ESC` closes.
 - The box around the slot is green when you can pay for the machine, red when you
   cannot, and pink when it is already there.
@@ -394,7 +394,7 @@ All ships land on the **landing pad**, one at a time.
 
 - Left/right picks a specialty, and up/down moves its share in steps of 10%. The
   shares always add up to 100.
-- `FIRE` calls the ship. It comes down a few seconds later with **four colonists**,
+- `SPACE` calls the ship. It comes down a few seconds later with **four colonists**,
   each of the specialty your colony lacks most against the shares.
 - The messages: `NEED A CONTROL ROOM`, `NEED A LANDING PAD`, `A SHIP IS ALREADY
   DUE`, `COLONIST SHIP CALLED`.
@@ -411,14 +411,14 @@ All ships land on the **landing pad**, one at a time.
 says `MERCHANT LANDED`, and `T` `M` (the `TRADE` button) opens the trade line:
 
 ```
-+40% TAKE  210 GIVE  250 FIRE=DEAL
++40% TAKE  210 GIVE  250 SPACE=DEAL
  <METAL  > SHIP 20 TAKE 10 HAVE  75 @ 15
 ```
 
 - Left/right walks through the goods, the merchant's own first.
 - **Up** takes one more lot, and **down** gives one more.
 - The top line weighs what you take, at the merchant's prices, against what you give,
-  at their value. `FIRE` makes the deal when you give at least as much as you take.
+  at their value. `SPACE` makes the deal when you give at least as much as you take.
 - **One deal per visit.** Colonists and carrier bots carry the goods to and from the
   pad, and the merchant leaves when they are done.
 - Coins can be traded too.
@@ -473,7 +473,7 @@ The line shows the most urgent message, in this order:
 - **Info** (`I`, or `M` `I`): what is under the cursor — the building, its state
   (`SITE` or `ACTIVE`), its condition (`HP`), and the ground (`GROUND`, `DUST`,
   `ROCK`, `MOUNTAIN`, `WATER`, `ORE VEIN`…).
-- **Demolish**: put the cursor on the building, then `M` `D` and `FIRE`.
+- **Demolish**: put the cursor on the building, then `M` `D` and `SPACE`.
   - It works on domes and structures, finished or not. A dome's corridors go with it.
   - **The ship** can come down once you have a finished airlock and a Storage dome.
     Until then `D` opens a red `DEMOLISH`, and its line says what is missing:
@@ -494,7 +494,7 @@ The line shows the most urgent message, in this order:
   because the simulation does four times the work. Paused, you can still look around
   and build.
 - **Saving and loading** (`S` / `L` from the main view, or `M` `S` / `M` `L`):
-  - Left/right picks one of **three slots**, `FIRE` goes, and `ESC` backs out.
+  - Left/right picks one of **three slots**, `SPACE` goes, and `ESC` backs out.
   - The messages: `SAVING TO DISC...`, `SAVED TO SLOT 1`, `LOADING FROM DISC...`,
     `LOADED FROM SLOT 1`, `NOTHING IN SLOT 2` (an empty slot), `DISC ERROR`.
   - Saves are written to the game disc.

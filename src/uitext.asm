@@ -64,17 +64,17 @@ x_t_dskerr:   db "DISC ERROR",0
 x_t_empty:    db "NOTHING IN SLOT 1",0
 x_t_slsave:   db "SAVE TO SLOT  ",0
 x_t_slload:   db "LOAD FROM SLOT",0
-x_t_slkeys:   db "LEFT RIGHT FIRE ESC",0
+x_t_slkeys:   db "LEFT RIGHT SPACE ESC",0
 x_t_pause:    db "PAUSE",0
 x_t_x1:       db "  x1 ",0
 x_t_x2:       db "  x2 ",0
 x_t_x4:       db "  x4 ",0
-x_t_look:     db "SPACE=MENU I=INFO FIRE=FIT C=SHIP",0
-x_t_keys:     db "FIRE=PLACE ESC=BACK ",0
+x_t_look:     db "SPACE=MENU I=INFO COPY=FIT C=SHIP",0
+x_t_keys:     db "SPACE=PLACE ESC=BACK",0
         ; Το tutorial γράφει εδώ τις γραμμές του (βήμα 149, src/tutor.asm): 32
         ; χαρακτήρες από τις τρύπες και ο 33ος, κενό ή το «P» αυτού εδώ.
         assert  x_t_keys - x_t_look == 34
-x_t_ok:       db "READY  FIRE TO BUILD",0
+x_t_ok:       db "READY SPACE TO BUILD",0
 x_t_block:    db "BLOCKED",0
 x_t_poor:     db "NOT ENOUGH MATERIAL",0
 x_t_ln1:      db "PICK THE FIRST DOME",0
@@ -91,7 +91,7 @@ x_t_bi:       db "BI",0
 ; καθένα με κενά: το γράμμα μεγέθους μπαίνει μετά. Είναι οι ίδιες λέξεις με τα
 ; κουμπιά της βοήθειας, πιο κάτω, και δείχνουν πια εκεί· τη στήλη του γράμματος
 ; τη βρίσκει το hud_to (src/ui.asm). 110 bytes, για το BROKEN και ό,τι έρθει.)
-x_t_keysr:    db "FIRE=PLACE  UP/DN=ROOM",0
+x_t_keysr:    db "SPACE=PLACE UP/DN=ROOM",0
 x_t_ship:     db "COLONIST SHIP CALLED",0
 x_t_shipno:   db "A SHIP IS ALREADY DUE",0
 x_t_noctl:    db "NEED A CONTROL ROOM",0
@@ -100,12 +100,12 @@ x_t_nopad:    db "NEED A LANDING PAD",0
 ; Η γραμμή του πλοίου (src/crew.asm, βήμα 91): τέσσερα bytes το όνομα, με τη
 ; σειρά των ρόλων 0-4 — το cw_panel τα διαβάζει στη σειρά.
 x_t_cw_names: db "WRK",0, "ENG",0, "BIO",0, "MED",0, "GRD",0
-x_t_cw_keys:  db "SHIP UP/DN=10% FIRE=CALL ESC=BACK",0
+x_t_cw_keys:  db "SHIP UP/DN=10% SPACE=CALL ESC=BACK",0
 
 ; Η γραμμή του εμπόρου (src/lines.asm, βήμα 93· το tr_panel στο src/panel7.asm).
 x_t_tr_take:  db " TAKE ",0
 x_t_tr_give:  db " GIVE ",0
-x_t_tr_fire:  db " FIRE=DEAL",0
+x_t_tr_fire:  db " SPACE=DEAL",0
 x_t_tr_ship:  db " SHIP ",0
 x_t_tr_have:  db " HAVE ",0
 x_t_deal:     db "TRADE DONE",0
@@ -120,7 +120,7 @@ x_t_f_names:  db "OXYGEN ",0, "METAL  ",0, "PLASTIC",0, "WEAPONS",0
               db "ORE    ",0        ; 18: μόνο για τη γραμμή του εμπόρου (βήμα 93)
               db "COINS  ",0        ; 19: κι αυτά (βήμα 135)
 x_t_f_slot:   db "SLOT ",0
-x_t_f_keys:   db "UP/DN=PICK FIRE=FIT SPACE=ALL",0
+x_t_f_keys:   db "UP/DN=PICK COPY=FIT SPACE=ALL",0
 
 ; Τι έχει κάτω ο κέρσορας (src/info.asm, βήμα 79). Τα εδάφη ΕΝΤΕΚΑ bytes το
 ; καθένα, με τη σειρά του W_*: το in_panel τα βρίσκει με x11.
@@ -184,7 +184,7 @@ x_t_r_lng:    db "LOUNGE",0
               db "DEMOLISH",0, "MATERIAL BACK",0       ; βήμα 101
               db "HELP",0, "THIS SCREEN",0
 x_t_help_end:
-x_t_a_keys:   db "FIRE=GO ESC=BACK",0
+x_t_a_keys:   db "SPACE=GO ESC=BACK",0
 x_t_hfoot:    db "THE LETTER ON A BUTTON IS ITS KEY.   PRESS ANY KEY TO GO BACK",0
 
 ; Το σκάφος στη γραμμή του DEMOLISH (βήμα 181, dm_can): τι αφήνει, ή τι λείπει.

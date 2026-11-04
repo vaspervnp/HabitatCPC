@@ -7,7 +7,7 @@
   SPACE      εστιάζει στη μπάρα των ομάδων (ΘΟΛΟΙ, ΔΙΑΔΡΟΜΟΣ, ΕΝΕΡΓΕΙΑ, ΠΟΡΟΙ,
              ΜΕΤΑΦΟΡΑ, ΔΙΑΧΕΙΡΙΣΗ, ?), στην ομάδα του αντικειμένου που
              διαλέχτηκε τελευταίο· το διαλεγμένο λευκό. Οι σειρές 3-4:
-               σειρά 3   < POWER        >  FIRE=GO ESC=BACK
+               σειρά 3   < POWER        >  SPACE=GO ESC=BACK
                σειρά 4   MAKE AND STORE POWER
              με την ταχύτητα στις στήλες 35-39 όπως πάντα.
   M          η ΔΙΑΧΕΙΡΙΣΗ: INFO, FIT, SAVE, LOAD, CENTRE, DEMOLISH, ?, στο INFO.
@@ -137,7 +137,7 @@ TEXT = dict(zip([n for n, _ in B.BUTTONS], TB.HELP))
 def rows(name):
     """(σειρά 3, σειρά 4) του μενού, με το `name` διαλεγμένο."""
     t, d = TEXT[name]
-    return TI.same(f"< {t:13s}>  FIRE=GO ESC=BACK "), TI.same(f"{d:40s}")
+    return TI.same(f"< {t:13s}>  SPACE=GO ESC=BACK"), TI.same(f"{d:40s}")
 
 
 def focus_bar(name):
