@@ -18854,7 +18854,8 @@ cause no overrun.
   - `test_act`, `test_dblock` and `test_unlink`, which read the overlay's map.
 - The switches are not in the shared `cpcemu`. The table above is
   `~/.cache/habitat-m183/quirk.py ROOT QUIRKS TIMED [TRACK]`.
-- **Not verified in Retro Virtual Machine.** A save there is the test that matters.
+- **Verified in Retro Virtual Machine 2.1.20 by the player**, the same evening: the save
+  works, and the disc the emulator wrote back holds all 51 sectors of slot 1.
 
 ## 12. Asset gaps
 
@@ -19511,11 +19512,9 @@ of the standard image. No code changed, and neither did a file or a sector.
 - **Its negative is the emulator's file**: the same disc with only track 24 in the table and in the file, 5,120 bytes. It fails the check.
 - `test_save`, `test_disc`, `test_tutor` and `test_tupage` boot, save and read pages from the EXTENDED disc. Their logs are line for line those of milestone 182, boot frames included.
 
-**Not verified:** Retro Virtual Machine itself, which runs only on the player's
-desktop. A save there on the new disc is the test that matters.
-
 **It still hung there**, without destroying the disc: the driver waited for ever,
-and the fix is in [§11](#the-save-that-hung-at-milestone-183).
+and the fix is in [§11](#the-save-that-hung-at-milestone-183). With both, the player's
+save in Retro Virtual Machine works, and the disc it wrote back keeps all 42 tracks.
 
 ---
 
@@ -19579,7 +19578,7 @@ gap.
 | ~~HUD re-render on every scroll step, ≈ 0.4 frames, estimated not measured~~ | ~~Medium~~ | **Measured at 2.55 frames**, six times the estimate, and then cut ([§8.1](#81-screen-layout)). The cell cache of [§9.2](#92-hud) took an ordinary tick to 1.15, and milestone 52's smaller HUD to **0.65**; a camera step, which moves every cell, still pays **1.75** (2.30 before milestone 52, 2.20 before the font moved to bank 7 at milestone 33). The escape hatch for that one — *move* the HUD block inside the ring instead of re-rendering it — **was taken at milestone 83**: 0.89–0.94 frames per step, cheaper than what it replaced, and the HUD is never rubble after a scroll, paused or not ([§8.1](#81-screen-layout)). |
 | Mid-frame writes land where aimed, but only on the emulator's CRTC | Low | The border control in `tests/test_camera.py` hits line 160 exactly. Real hardware still wants a check, but nothing now depends on a mid-frame *address* write. |
 | **The raster splits of milestone 83 are timed on the emulator** | Medium | Mode and palette writes, not addresses, and timed from the Gate Array's own interrupt, which every CPC has. Each write has ≥ 10 µs of margin against a late interrupt (`tests/test_split.py` breaks it at 20 µs). Real hardware is the check still owed, and a different Gate Array (the Plus) would want its own measurement. |
-| **A save destroyed the disc in Retro Virtual Machine, and hung** (found at milestone 183) | High | **Mitigated, not verified** ([§13.4](#134-an-extended-disc-at-milestone-183), [§11](#the-save-that-hung-at-milestone-183)). With `iDSK`'s standard `.dsk`, the file the emulator wrote back held only track 24, 5,120 bytes. The disc is EXTENDED since then, and `tests/test_fdc.py` rejects the emulator's file. The hang was the driver's: a fixed seven-byte result, no `SENSE INTERRUPT` between commands, and transfers without a limit. All three are fixed, and the old driver hangs where Retro Virtual Machine did in a copy of `cpcemu` with those controllers' habits. Left: a save in Retro Virtual Machine itself. |
+| ~~A save destroyed the disc in Retro Virtual Machine, and hung~~ (found at milestone 183) | ~~High~~ | **Resolved at milestone 183, verified by the player in Retro Virtual Machine 2.1.20** ([§13.4](#134-an-extended-disc-at-milestone-183), [§11](#the-save-that-hung-at-milestone-183)). With `iDSK`'s standard `.dsk`, the file the emulator wrote back held only track 24, 5,120 bytes. The disc is EXTENDED since then, and `tests/test_fdc.py` rejects the emulator's file. The hang was the driver's: a fixed seven-byte result, no `SENSE INTERRUPT` between commands, and transfers without a limit. All three are fixed, and the old driver hangs where Retro Virtual Machine did in a copy of `cpcemu` with those controllers' habits. The player's save there now writes all 51 sectors of slot 1. |
 | **The disc's timing is the emulator's** (milestone 113) | Medium | The emulator's µPD765 has no rotation and no spin-up, moves the head at once, and ends a read with IC = 00. The loader ([§13.3](#133-the-loader-reads-the-disc-itself-at-milestone-113)) and the save's driver ([§11](#on-a-real-drive-at-milestone-113)) were written for the real one: IC = 01 + EN accepted (tested with the bytes themselves), the seek waited for, 15 ms settle, 0.46 s for the motor on a save, sixteen retries of 100 ms on the loader. None of the timings has run on a 6128. The loader falls back to AMSDOS on any failure; the save has no fallback and reports `DISC ERROR`. Since milestone 128 the player may wait in the planet menu for longer than AMSDOS keeps the motor on; the emulator has no spin-up, so the sixteen retries are what a real drive would lean on there. |
 | **The icons were drawn against Sky blue** (milestone 178) | Low | Since the white-metal style the dome's floor is Pastel cyan, and the yellow and white details of the room icons, machines and plants stand on it at 1.1 and 1.2 to 1 instead of 3.5 and 3.8 ([§8.6](#white-metal-lit-from-above-at-milestone-178)). They read by their dark edges in the screenshots of the manual's colony; the canteen's yellow table is the weakest. A redraw of the weak ones is `CPCArt` work (`tools/icons.py`), with no bytes. |
 | **A new colony is the ROM's restart** (milestone 177) | Medium | The end page's "any other key" turns the lower ROM on and calls `MC START PROGRAM`, then wakes AMSDOS with `KL ROM WALK` (`HL` `&ABFF`, as BASIC 1.1 is taken to do) and reads `LOADER.BIN` ([§10.3](#the-end-at-milestone-177)). Measured in the emulator, with the 6128's ROMs: 187 frames to the menu, and a new colony from it. The ROM's address is read by the loader from the jumpblock, so another ROM's is used; the RAM and the screen the firmware initialises are what it expects after a reset. Not run on a real 6128, nor on a Plus, whose firmware is another; without `RST 1` at `&BD16` the loader writes 0 and the key resets to BASIC. |
