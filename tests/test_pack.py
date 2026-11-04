@@ -100,6 +100,12 @@ def main():
         if name == "struct_dims":       # βήμα 151: τα s και m των ενεργειακών μηδέν
             for k in range(4):
                 want[k * 8:k * 8 + 4] = bytes(4)
+            # βήμα 181: τα κιβώτια, το ένατο είδος του CPCArt, έχουν τις διαστάσεις
+            # του σκάφους, και το παιχνίδι τις βρίσκει εκεί (CR_BOX): 64 bytes
+            check(len(want) == 72 and want[64:72] == want[56:64],
+                  f"struct_dims του sprites.bin: {len(want)} B, τα κιβώτια {list(want[64:72])}")
+            want, got = want[:64], img[r.addr - base:r.addr - base + 64]
+            check(r.size == 64, f"struct_dims {r.size} B, όχι 64")
         check(got == bytes(want),
               f"το {name} στο #{r.addr:04X} δεν είναι τα bytes του sprites.bin")
         checked += 1
@@ -116,7 +122,8 @@ def main():
         return img[r.addr - base:r.addr - base + r.size]
     w16 = lambda t, i: t[2 * i] | t[2 * i + 1] << 8
     sp, sd = table("struct_ptr"), table("struct_dims")
-    check(len(sp) == 16, f"struct_ptr {len(sp)} bytes, όχι 16 (ένα ανά είδος, βήμα 152)")
+    check(len(sp) == 18, f"struct_ptr {len(sp)} bytes, όχι 18 (ένα ανά είδος, βήμα 152, "
+                         f"και τα κιβώτια του 181)")
     for k, kind in enumerate(("solar", "turbine", "collector", "extractor")):
         for z, size in enumerate("sml"):
             name = f"{kind}_{size}"
@@ -134,6 +141,13 @@ def main():
         check(w16(sp, k) == by_name[kind].addr and sd[8 * k] and sd[8 * k + 1]
               and not any(sd[8 * k + 2:8 * k + 8]),
               f"το {kind}: struct_ptr #{w16(sp, k):04X}, διαστάσεις {list(sd[8 * k:8 * k + 8])}")
+    # ΤΑ ΚΙΒΩΤΙΑ (βήμα 181): το ένατο είδος, χωρίς δικές του διαστάσεις — το
+    # struct_dims μένει 64 bytes, και το (8 x 4 + CR_BOX) & 255 πέφτει στο 28, του
+    # σκάφους· το CR_GONE στο 29, 0x0
+    check(len(sd) == 64 and w16(sp, 8) == by_name["crates"].addr
+          and sd[(8 * 4 + 252) * 2 & 255:][:2] == sd[56:58] and sd[56] and sd[57]
+          and sd[(8 * 4 + 253) * 2 & 255:][:2] == bytes(2),
+          f"τα κιβώτια: struct_dims {len(sd)} B, struct_ptr #{w16(sp, 8):04X}")
     for size in "sml":
         t = table(f"icon_{size}_ptr")
         check(f"icon_{size}_airlock" not in by_name

@@ -79,15 +79,17 @@ from refrender import Canvas                              # noqa: E402
 PLAY, SCR_W = S.PLAY_LINES, 80
 CAM = S.Camera(-18, -3)                 # το τύλιγμα μέσα στην εικόνα (test_object)
 PROBE = 0x3E80
-KINDS = ["solar", "turbine", "collector", "extractor", "mine", "airlock", "pad", "ship"]
+KINDS = ["solar", "turbine", "collector", "extractor", "mine", "airlock", "pad", "ship",
+         "crates"]                      # τα κιβώτια του σκάφους: βήμα 181
 # (ολόκληρη, στήλη, κελί): τα χειρότερα του βήματος 169, και τα ταβάνια από το 171
 # (στο 170 ο ηλιακός 11.276, 5.912, 1.469· το βήμα 16 bit του 171 είναι 6 T η γραμμή)
 OLD = {0: (14209, 7311, 1722), 1: (14209, 7311, 1722), 2: (14209, 7311, 1722),
        3: (14209, 7311, 1722), 4: (23247, 9435, 1724), 5: (7475, 5183, 1724),
-       6: (11149, 6553, 1556), 7: (7475, 5183, 1724)}
+       6: (11149, 6553, 1556), 7: (7475, 5183, 1724), 8: (7475, 5183, 1724)}
 NOW = {0: (11228, 5864, 1461), 1: (11228, 5864, 1461), 2: (11228, 5864, 1461),
        3: (11228, 5864, 1461), 4: (18282, 7542, 1463), 5: (5966, 4186, 1461),
-       6: (11144, 6548, 1549), 7: (5966, 4186, 1461)}       # βήμα 171
+       6: (11144, 6548, 1549), 7: (5966, 4186, 1461),       # βήμα 171
+       8: (5966, 4186, 1461)}           # τα κιβώτια (181): όσο το σκάφος, στη θέση του
 CEIL = {k: tuple(v + v // 100 for v in t) for k, t in NOW.items()}
 
 FAIL = []
@@ -100,6 +102,9 @@ def check(ok, msg):
 
 
 def dims(a, kind):
+    if kind == 8:                       # τα κιβώτια: το πλαίσιο του σκάφους (CR_BOX)
+        i = S.dims_at(kind, 252)
+        return 252, a.struct_dims[i], a.struct_dims[i + 1]
     for size in range(4):
         w = a.struct_dims[kind * 8 + size * 2]
         if w:
@@ -125,7 +130,7 @@ def cases(a, rnd):
     full = (0, SCR_W, 0, PLAY)
     r, xw = wraps()[0]
     out = []
-    for kind in range(8):
+    for kind in range(len(KINDS)):
         size, w, h = dims(a, kind)
 
         def at(fx, fy):                 # fx = 2 cx + 72 - w/2, fy = 8 cy + 48 - h/2
@@ -358,7 +363,7 @@ def main():
         g = label.split()[0]
         worst[(kind, g)] = max(worst.get((kind, g), 0), us or 10**9)
     check(not FAIL, f"{len(allc)} περιπτώσεις, κάθε byte της οθόνης ίδιο με την αναφορά")
-    for kind in range(8):
+    for kind in range(len(KINDS)):
         got = (worst[(kind, "ολόκληρη")], worst[(kind, "στήλη")], worst[(kind, "κελί")])
         ok = all(g <= c and g < o for g, c, o in zip(got, CEIL[kind], OLD[kind]))
         check(ok, f"{KINDS[kind]:<10} ολόκληρη {got[0]:>6} µs, στήλη {got[1]:>5}, κελί "

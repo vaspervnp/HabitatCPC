@@ -70,7 +70,9 @@ DOME_REC, STRUCT_REC = 24, 8
 NS = EC.MAX_STRUCT                      # 48 από το βήμα 156 (32 ως τότε)
 D_SIZE, D_STATE, D_POWER, D_OPS, D_MACH, D_HEALTH = 2, 4, 6, 7, 8, 16
 ST_KIND, ST_STATE, ST_INTEG, ST_OPS, ST_OWED = 2, 4, 5, 6, 7
-K_MINE = 8
+K_MINE = EC.K_MINE                      # 4· ως το βήμα 181 εδώ 8, κανένα είδος ως
+                                        # τότε, και ο μετεωρίτης το χτυπούσε ως δομή —
+                                        # από το 181 τα κιβώτια, που δεν χτυπιούνται
 EC_NBUILD = 91
 CEIL_BIG = 17_500                       # us: η μεγάλη αποικία, τίποτα χαμένο (16.648)
 CEIL_FULL = 10_500                      # us: 30 εργοτάξια, πίνακας γεμάτος (9.916)

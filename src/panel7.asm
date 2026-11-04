@@ -19,7 +19,7 @@ in_p7:
         ; --- σειρά 3: το κτίριο ---
         ld      a,(in_t)
         or      a
-        jr      z,inp_none
+        jp      z,inp_none
         ; Το όνομα από τον κατάλογο: δέκα bytes το καθένα, οι θόλοι κατά
         ; μέγεθος από το t_dome_s, οι δομές κατά είδος από το t_solar.
         dec     a
@@ -35,6 +35,9 @@ inp_nm:
         add     a,c                     ; x10
         call    ob_addu
         call    hud_text                ; εννέα στήλες, με τα κενά του
+        ld      a,(in_k)
+        cp      K_CRATES                ; ένας θόλος έχει εδώ το μέγεθός του, 0-2
+        jr      z,inp_box
         ; --- το δωμάτιο, για θόλο: η θέση του στο rm_list δίνει το όνομα ---
         ld      a,(in_t)
         dec     a
@@ -76,6 +79,43 @@ inp_st:
         call    hud_numa
         ld      a,'%'
         call    hud_char
+        jr      inp_r3
+; ΤΑ ΚΙΒΩΤΙΑ ΤΟΥ ΣΚΑΦΟΥΣ (βήμα 181, src/crates.asm): ό,τι μένει από το καθένα
+; και σε πόσα sol χάνεται, στη θέση της κατάστασης και της ακεραιότητας:
+;   CRATES    FE 150 BI 100 10 SOL
+; Ο σωρός είναι ένας, πρώτα το μέταλλο ως το CR_BIO και από κάτω το βιοπλαστικό.
+inp_box:
+        call    hud_space
+        ld      hl,t_fe
+        call    hud_text
+        call    hud_space
+        ld      a,(in_ow)
+        sub     CR_BIO
+        jr      nc,inb_fe
+        xor     a                       ; το μέταλλο τελείωσε
+inb_fe:
+        ld      b,3
+        call    hud_numa
+        call    hud_space
+        ld      hl,t_bi
+        call    hud_text
+        call    hud_space
+        ld      a,(in_ow)
+        cp      CR_BIO
+        jr      c,inb_bi
+        ld      a,CR_BIO
+inb_bi:
+        ld      b,3
+        call    hud_numa
+        call    hud_space
+        ld      a,(in_ops)              ; το sol της λήξης, & 63 (και το bit της Haul)
+        ld      hl,EC_SOL
+        sub     (hl)
+        and     CR_SMASK
+        ld      b,2
+        call    hud_numa
+        ld      hl,txt_sol
+        call    hud_text
         jr      inp_r3
 inp_none:
         ; Κατοχή χωρίς θόλο ή δομή από πάνω: διάδρομος. Το cr_stamp σφραγίζει

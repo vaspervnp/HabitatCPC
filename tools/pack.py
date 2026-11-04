@@ -140,7 +140,7 @@ HUD_CELLS = (bytes(8)                      # #7B κενό (#80 ως το βήμ�
 # άδειες, οπότε η σκιά χωρά πάντα μέσα στα 4x8.
 # Οι πίνακες που διαβάζει ΜΟΝΟ το πέρασμα αντικειμένων, με την 6 μέσα: στην
 # τράπεζα 6 από το βήμα 90, με αυτή τη σειρά, σε μία σελίδα.
-OB6 = ("struct_ptr", "icon_s_ptr", "icon_m_ptr", "icon_l_ptr",
+OB6 = ("icon_s_ptr", "icon_m_ptr", "icon_l_ptr",
        "corr_slots", "conn_points", "interior_ofs")
 
 FIG_NAMES = ["colonist", "biologist", "medic", "guard", "carrier", "driller",
@@ -546,8 +546,10 @@ def build_runs(smap, blob):
     # ΜΟΝΟ ΤΟ ΜΕΓΑΛΟ ΜΕΓΕΘΟΣ ΤΩΝ ΤΕΣΣΑΡΩΝ ΕΝΕΡΓΕΙΑΚΩΝ (βήμα 151): ο κατάλογος
     # δίνει μόνο αυτό (bds_sz, src/build.asm), και τα s και m, 4 x 640 bytes της
     # τράπεζας 7, δεν τα ζωγράφισε ποτέ το παιχνίδι — μόνο οι δοκιμές.
+    # ΚΑΙ ΤΑ ΚΙΒΩΤΙΑ (βήμα 181): ό,τι αφήνει το σκάφος, στο πλαίσιό του (CR_BOX,
+    # src/const.asm), με τη δική τους θέση μόνο στο struct_ptr.
     STRUCTS = ([f"{k}_l" for k in ("solar", "turbine", "collector", "extractor")]
-               + ["mine", "airlock", "pad", "ship"])
+               + ["mine", "airlock", "pad", "ship", "crates"])
 
     arena, bank1, bank5, bank6, bank7 = [], [], [], [], []
     ptr = {}            # όνομα πίνακα -> λίστα ονομάτων run, για 2ο πέρασμα
@@ -671,6 +673,14 @@ def build_runs(smap, blob):
             d = bytearray(r.data)
             for k in range(4):
                 d[k * 8:k * 8 + 4] = bytes(4)
+            # ΧΩΡΙΣ ΤΗ ΘΕΣΗ ΤΩΝ ΚΙΒΩΤΙΩΝ (βήμα 181): το CPCArt δίνει και του
+            # ένατου είδους, αλλά το παιχνίδι τα βάζει στο πλαίσιο του σκάφους
+            # (CR_BOX, src/const.asm), και ο πίνακας μένει 64 bytes: 8 ακόμη
+            # μετακινούσαν ό,τι ακολουθεί, μέσα στο μπλοκ που σώζεται, και το
+            # rt_nodes μια σελίδα πιο κάτω. Γι' αυτό πρέπει να είναι ίσο.
+            assert len(d) == 72 and d[64:72] == d[56:64], \
+                f"τα κιβώτια δεν έχουν το πλαίσιο του σκάφους: {list(d[56:72])}"
+            d = d[:64]
             r = Run(n, len(d), bytes(d))
         if n in flat:
             r.page = r.size
@@ -684,13 +694,13 @@ def build_runs(smap, blob):
     # διαβάσει δείκτη (src/object.asm). Ως το 151 ο πίνακας είχε κι αυτός
     # τέσσερις θέσεις ανά είδος, 64 bytes: τα 48 πήγαν στο b6code.
     ptr["struct_ptr"] = ([f"{k}_l" for k in ("solar", "turbine", "collector", "extractor")]
-                         + ["mine", "airlock", "pad", "ship"])
+                         + ["mine", "airlock", "pad", "ship", "crates"])
 
     # --- παραγόμενοι πίνακες δεικτών ---------------------------------------
     # Οσοι διαβάζονται μόνο από το πέρασμα αντικειμένων ΕΦΥΓΑΝ από εδώ (βήμα
     # 90): στην τράπεζα 6 ή στην 5, πιο κάτω (OB6, και το mach_ptr).
     for tab, names in ptr.items():
-        if tab != "plant_ptr" and tab not in OB6 and tab != "mach_ptr":
+        if tab not in ("plant_ptr", "mach_ptr", "struct_ptr") and tab not in OB6:
             arena.append(Run(tab, len(names) * 2, bytes(len(names) * 2),
                              note="παράγεται",
                              page=len(names) * 2 if tab == "tile_ptr" else 0))
@@ -767,6 +777,13 @@ def build_runs(smap, blob):
     # σώζεται — ξαναχτίζεται μόλις αλλάξει κελί.
     arena.append(Run("hud_shadow", 120, None,
                      note="ΔΕΣΜΕΥΣΗ — ένας κωδικός ανά κελί HUD"))
+    # ΚΑΙ ΜΕΤΑ ΤΟ hud_shadow, έξω από το μπλοκ που σώζεται, ο struct_ptr (βήμα
+    # 181): με τα κιβώτια 9 είδη, 18 bytes, και στην τράπεζα 6 τα 16 του ήταν ο
+    # τελευταίος πίνακας πριν από τις φιγούρες, που θέλουν το 160 μιας σελίδας
+    # (FIG_PHASE): δύο bytes ακόμη εκεί και οι φιγούρες πήγαιναν 256 πιο κάτω,
+    # πάνω στο b6code. Το ob_struct τον διαβάζει με add, adc, όπου κι αν πέσει.
+    arena.append(Run("struct_ptr", len(ptr["struct_ptr"]) * 2,
+                     bytes(len(ptr["struct_ptr"]) * 2), note="παράγεται"))
 
     # --- τράπεζα 6 ----------------------------------------------------------
     bank6.append(Run("flip_mode0", 256, blob[smap["flip_mode0"].off:
@@ -815,11 +832,13 @@ def build_runs(smap, blob):
     # ΑΠΟ ΤΟ ΒΗΜΑ 171 η κενή θέση, οι φιγούρες του δακτυλίου, οι διάδρομοι και
     # οι γωνίες είναι στην ΤΡΑΠΕΖΑ 7 (πιο κάτω), για τα πεδία των 160 αποίκων
     # (DESIGN §6.1). Οι φιγούρες έξω (fig_gfx) μένουν, στο 160 μιας σελίδας: οι
-    # πέντε πίνακες πριν από αυτές είναι 160 bytes ακριβώς μετά το fig_list, και
-    # κανένα κενό. (Ως το 170: η κενή θέση, δύο διάδρομοι και ένας πίνακας πριν,
-    # 191 bytes ανάμεσα στις δύο ομάδες, κενά 8 + 1.)
+    # πίνακες πριν από αυτές ήταν 160 bytes ακριβώς μετά το fig_list, κανένα
+    # κενό, ως το βήμα 181· από τότε τέσσερις, 144, και 16 ελεύθερα — ο
+    # struct_ptr πήγε στην τράπεζα 2, πιο πάνω. (Ως το 170: η κενή θέση, δύο
+    # διάδρομοι και ένας πίνακας πριν, 191 bytes ανάμεσα στις δύο ομάδες, κενά
+    # 8 + 1.)
     bank6 += [ob6("corr_slots"), ob6("conn_points"), ob6("icon_m_ptr"),
-              ob6("icon_s_ptr"), ob6("struct_ptr")]
+              ob6("icon_s_ptr")]
     bank6.append(Run("fig_gfx", FIG_RUN, out_figs(smap, blob), phase=FIG_PHASE,
                      note="παράγεται από τα slot_*: οι 10 φιγούρες με μάσκα και σκιά (fig_code)"))
     bank6 += [ob6("icon_l_ptr"), ob6("interior_ofs")]

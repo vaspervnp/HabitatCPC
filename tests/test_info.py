@@ -74,6 +74,14 @@ def s8(v):
     return v - 256 if v > 127 else v
 
 
+def in_p7(sym, at):
+    """Ο κώδικας του src/panel7.asm, στην τράπεζα 7 από το βήμα 180. ΟΧΙ όλο το
+    παράθυρο: εκεί είναι και το b1code της 1, που πειράζουν τα tests/test_act.py,
+    test_bar.py και test_trade.py (bww_man) — ως το βήμα 181 πήγαιναν στην 7, και
+    τα αρνητικά τους δεν έβλεπαν τίποτα."""
+    return sym["IN_P7"] <= at < sym["ZZ_ST7_END"]
+
+
 class Game:
     def __init__(self, sym, patch=()):
         self.sym = sym
@@ -83,7 +91,7 @@ class Game:
         m.run_frames(120)
         b7 = cpc._lib.cpcemu_ram_ptr(m._h, 7)
         for at, v in patch:
-            if 0x4000 <= at < 0x8000:       # το τύπωμα, στην 7 από το βήμα 180 (in_p7)
+            if in_p7(sym, at):              # το τύπωμα, στην 7 από το βήμα 180
                 b7[at - 0x4000] = v
             else:
                 m.poke(at, v)
@@ -271,7 +279,7 @@ def main():
 
     def find(at, pat, span=300):
         a = sym[at]
-        if 0x4000 <= a < 0x8000:            # το τύπωμα, στην 7 από το βήμα 180 (src/panel7.asm)
+        if in_p7(sym, a):                   # το τύπωμα, στην 7 από το βήμα 180 (src/panel7.asm)
             b7 = cpc._lib.cpcemu_ram_ptr(m._h, 7)
             ram = bytes(b7[a - 0x4000:a - 0x4000 + span])
         else:

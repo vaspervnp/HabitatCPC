@@ -474,8 +474,17 @@ The line shows the most urgent message, in this order:
   (`SITE` or `ACTIVE`), its condition (`HP`), and the ground (`GROUND`, `DUST`,
   `ROCK`, `MOUNTAIN`, `WATER`, `ORE VEIN`…).
 - **Demolish**: put the cursor on the building, then `M` `D` and `FIRE`.
-  - It works on domes and structures, finished or not, but never on the ship. A
-    dome's corridors go with it.
+  - It works on domes and structures, finished or not. A dome's corridors go with it.
+  - **The ship** can come down once you have a finished airlock and a Storage dome.
+    Until then `D` opens a red `DEMOLISH`, and its line says what is missing:
+    `NEEDS AIRLOCK`, `NEEDS STORAGE` or `NEEDS AIRLOCK + STORAGE`. With both, the
+    line says `LEAVES 150 FE + 100 BI FOR 10 SOLS`.
+    - The ship becomes a pile of crates in its place.
+    - Your workers carry them to storage, ten at a time and Metal first, like ore
+      from a mine.
+    - Whatever is still there after 10 sols is lost.
+    - `I` on the crates shows what is left and how many sols remain.
+    - The hold's 750 stays after the ship is gone.
   - While a ship is due or at the pad, the pad and the Storage domes cannot be
     demolished.
   - You get back **half** of what the building, its corridors and its machines cost.

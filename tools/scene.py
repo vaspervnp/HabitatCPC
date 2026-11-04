@@ -55,7 +55,7 @@ MACH = ["oxygen", "iron", "bioplastic", "weapons", "processors", "robots",
 PLANTS = ["peas", "rice", "potatoes", "wheat", "maize", "tomatoes", "lettuce",
           "onions", "radishes", "mushrooms", "medicinal", "tree"]
 STRUCT_KINDS = ["solar", "turbine", "collector", "extractor",
-                "mine", "airlock", "pad", "ship"]
+                "mine", "airlock", "pad", "ship", "crates"]     # τα κιβώτια: βήμα 181
 DIRS = ["n", "ne", "e", "se", "s", "sw", "w", "nw"]
 R_GREENHOUSE = 5
 NO_MACH = 255
@@ -607,10 +607,17 @@ def struct_sprite(a, kind, size):
     return k if kind >= 4 else f"{k}_{SIZES[size]}"
 
 
+def dims_at(kind, size):
+    """Η θέση στο struct_dims όπως τη βγάζει το παιχνίδι: είδος * 4 + μέγεθος σε 8
+    bits, και x 2 σε 8 bits (ob_struct). Τα κιβώτια του σκάφους (βήμα 181) έχουν
+    μέγεθος 252, το πλαίσιο του σκάφους, και 253 όταν έφυγαν, το 0,0 μετά."""
+    return (((kind * 4 + size) & 255) * 2) & 255
+
+
 def draw_struct(canvas, a, cam, colony, i, clip):
     kind, size = colony.s(i, S_KIND), colony.s(i, S_SIZE)
-    w = a.struct_dims[kind * 8 + size * 2]
-    h = a.struct_dims[kind * 8 + size * 2 + 1]
+    w = a.struct_dims[dims_at(kind, size)]
+    h = a.struct_dims[dims_at(kind, size) + 1]
     if w == 0:
         return
     name = struct_sprite(a, kind, size)

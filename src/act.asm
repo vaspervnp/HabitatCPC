@@ -210,11 +210,19 @@ ac_info:
 ; ac_demo — το D, ή FIRE στο DEMOLISH (βήμα 101). Κόκκινο: όχι. Από τη
 ; γραμμή του, με το DEMOLISH διαλεγμένο: γκρεμίζει (dm_go). Αλλιώς ανοίγει τη
 ; ΔΙΑΧΕΙΡΙΣΗ πάνω του: η σειρά 3 λέει DEMOLISH και FIRE=GO ESC=BACK, και το
-; FIRE είναι η επιβεβαίωση.
+; FIRE είναι η επιβεβαίωση. Το σκάφος που δεν γκρεμίζεται ακόμη (βήμα 181):
+; βουίζει, και ανοίγει στο κόκκινο DEMOLISH, που η γραμμή του λέει τι λείπει.
 ac_demo:
         ld      a,(ac_fit)
         and     AF_DEMO
+        jr      nz,acd_ok
+        ld      hl,(dm_why)             ; src/demolish.asm (dm_can)
+        ld      a,h
+        or      a
         jp      z,uip_deny
+        call    uip_deny
+        jr      acd_menu
+acd_ok:
         ld      a,(ui_state)
         cp      UI_ACT
         jr      nz,acd_menu
@@ -304,6 +312,17 @@ ac_panel:
         call    hud_text
         inc     hl
         push    hl                      ; η γραμμή του
+        ; ΤΟ ΣΚΑΦΟΣ ΠΟΥ ΔΕΝ ΓΚΡΕΜΙΖΕΤΑΙ ΑΚΟΜΗ (βήμα 181): στη θέση της γραμμής
+        ; του DEMOLISH, τι λείπει (dm_why, src/demolish.asm)
+        call    ac_cur
+        cp      BT_DEMO
+        jr      nz,acp_ln
+        ld      hl,(dm_why)
+        ld      a,h
+        or      a
+        jr      z,acp_ln
+        ex      (sp),hl
+acp_ln:
         ld      b,15                    ; ως 12 γράμματα το όνομα
         call    hud_to
         ld      a,'>'

@@ -1053,10 +1053,10 @@ def negatives(sym, g):
         ("το airlock που μπαίνει μόνο του δεν μετριέται", first_lock,
          [(find(m, sym["ALC_NONE"], [0x21] + w(g + 63) + [0x34], 40) + 3, 0)]),
         # --- βήμα 87 ---
-        # sub K_SHIP στο al_scans γίνεται sub 255: το σκάφος μετράει ως δομή
-        # (cp K_SHIP ως το βήμα 155)
+        # cp K_SHIP στο al_scans γίνεται cp 255: το sbc δίνει πάντα CY, και το
+        # σκάφος μετράει ως δομή (cp K_SHIP ως το βήμα 155, sub K_SHIP ως το 180)
         ("το σκάφος μετράει ως δομή", rules,
-         [(find(m, sym["AL_SCANS"], [0xD6, 7], 30) + 1, 255)]),
+         [(find(m, sym["AL_SCANS"], [0xFE, 7, 0x9F], 30) + 1, 255)]),
         # cp l · jr nc στο lk_anchor γίνεται jr c: καμία άγκυρα δεν περνά
         ("η άγκυρα που δεν διαλέγει τη μικρότερη απόσταση", first_lock,
          [(find(m, sym["LK_ANCHOR"], [0xBD, 0x30], 80) + 1, 0x38)]),

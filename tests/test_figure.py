@@ -534,7 +534,7 @@ def scenario(sym, g, patch=(), quiet=False):
 
 
 AG = 127                                                 # κανείς δεν είναι ο 127
-K_SHIP = 7                                               # src/const.asm: το τελευταίο είδος δομής
+K_SHIP = 7                                               # src/const.asm: το τελευταίο είδος με δικές του διαστάσεις (τα κιβώτια του βήματος 181 έχουν του σκάφους)
 
 
 def corner(w, patch=(), quiet=False):

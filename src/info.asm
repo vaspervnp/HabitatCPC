@@ -66,8 +66,8 @@ inp_rec:
         inc     hl
         inc     hl                      ; D_SIZE / ST_KIND
         ld      de,in_k
-        ld      bc,4                    ; μέγεθος/είδος, δωμάτιο/μέγεθος,
-        ldir                            ; κατάσταση, ακεραιότητα
+        ld      bc,6                    ; μέγεθος/είδος, δωμάτιο/μέγεθος, κατάσταση,
+        ldir                            ; ακεραιότητα, και των κιβωτίων ST_OPS, ST_OWED
         assert  D_ROOM == D_SIZE + 1 && D_STATE == D_SIZE + 2 && D_INTEG == D_SIZE + 3
         assert  ST_SIZE == ST_KIND + 1 && ST_STATE == ST_KIND + 2 && ST_INTEG == ST_KIND + 3
         assert  D_SIZE == ST_KIND
@@ -86,6 +86,9 @@ in_k:       db 0                ; μέγεθος θόλου / είδος δομ�
 in_r:       db 0                ; δωμάτιο θόλου / μέγεθος δομής
 in_st:      db 0                ; κατάσταση
 in_hp:      db 0                ; ακεραιότητα
+in_ops:     db 0                ; τα κιβώτια (βήμα 181): η λήξη στα κάτω έξι bits,
+in_ow:      db 0                ; και ο σωρός
 in_w:       db 0                ; το byte του κόσμου
         assert  in_r == in_k + 1 && in_st == in_k + 2 && in_hp == in_k + 3
+        assert  in_ops == in_k + ST_OPS - ST_KIND && in_ow == in_k + ST_OWED - ST_KIND
         assert  rm_names == rm_list + 10

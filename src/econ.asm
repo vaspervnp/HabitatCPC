@@ -819,7 +819,16 @@ ev_after:
         call    mt_tick                 ; η βροχή μετεωριτών (src/meteor.asm)
         ld      a,(ev_newday)
         or      a
-        call    nz,sol_rollover
+        jr      z,eva_bot               ; όσο το call nz που ήταν εδώ, 3 µs
+        call    sol_rollover
+        ; τα κιβώτια του σκάφους (βήμα 181, src/crates.asm): μόνο η δομή 0 έχει
+        ; ποτέ το μέγεθος CR_BOX. Εδώ και όχι στο sol_rollover, που το b6code του
+        ; έχει 10 bytes, και 9 µs στο sol αντί για 30 της κλήσης
+eva_cr:                                 ; ως το eva_bot: το probe του tests/test_crates.py
+        ld      a,(G_struct_tbl + ST_SIZE)
+        cp      CR_BOX
+        call    z,cr_sol
+eva_bot:
         jp      bot_tick                ; τα ρομπότ από το απόθεμα, και μετά το
                                         ; ship_tick (src/bots.asm, βήμα 92)
 

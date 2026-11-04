@@ -387,15 +387,16 @@
   airlock               #7FBC    512  16x32 px       mask+data  εξωτερικές δομές
   pad                   #81BC   1024  32x64 px       αδιαφανές  εξωτερικές δομές
   ship                  #85BC    512  16x32 px       mask+data  εξωτερικές δομές
-  struct_dims           #87BC     64                            πίνακες δομών
-  machine_count         #87FC      3                            πίνακες δωματίου
-  machine_slots         #87FF     48                            πίνακες δωματίου
-  machine_rules         #882F     12                            πίνακες δωματίου
-  room_machines         #883B     24                            πίνακες δωματίου
-  interior_ofs          #8853      6                            πίνακες δωματίου
-  font_gfx              #8859   1536                            γραμματοσειρά
-  palette_fw            #8E59     16                            παλέτα
-  sprites_pad           #8E69    151                            στοίχιση
-  flip_mode0            #8F00    256                            πίνακας καθρεφτισμού
+  crates                #87BC    512  16x32 px       mask+data  εξωτερικές δομές
+  struct_dims           #89BC     72                            πίνακες δομών
+  machine_count         #8A04      3                            πίνακες δωματίου
+  machine_slots         #8A07     48                            πίνακες δωματίου
+  machine_rules         #8A37     12                            πίνακες δωματίου
+  room_machines         #8A43     24                            πίνακες δωματίου
+  interior_ofs          #8A5B      6                            πίνακες δωματίου
+  font_gfx              #8A61   1536                            γραμματοσειρά
+  palette_fw            #9061     16                            παλέτα
+  sprites_pad           #9071    143                            στοίχιση
+  flip_mode0            #9100    256                            πίνακας καθρεφτισμού
 
-  ΣΥΝΟΛΟ                       36864
+  ΣΥΝΟΛΟ                       37376

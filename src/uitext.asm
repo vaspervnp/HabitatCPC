@@ -187,6 +187,13 @@ x_t_help_end:
 x_t_a_keys:   db "FIRE=GO ESC=BACK",0
 x_t_hfoot:    db "THE LETTER ON A BUTTON IS ITS KEY.   PRESS ANY KEY TO GO BACK",0
 
+; Το σκάφος στη γραμμή του DEMOLISH (βήμα 181, dm_can): τι αφήνει, ή τι λείπει.
+; Στο τέλος, για να μη μετακινηθεί κανένα από τα παλιά: το BROKEN και το όνομα
+; της μηχανής του κόστιζαν 2 µs περισσότερα στη θέση μετά το TRADE DONE.
+x_t_dm_ship:  db "LEAVES 150 FE + 100 BI FOR 10 SOLS",0
+x_t_dm_sto:   db "NEEDS STORAGE",0
+x_t_dm_lock:  db "NEEDS AIRLOCK",0
+x_t_dm_both:  db "NEEDS AIRLOCK + STORAGE",0
 zz_text_end:
         ; ΚΑΙ Ο ΚΩΔΙΚΑΣ ΤΗΣ 7 (βήμα 170, src/st7.asm), αμέσως μετά και στο ίδιο
         ; αρχείο του δίσκου: οι ετικέτες του στο παράθυρο (#4000-#7FFF), τα bytes
@@ -290,6 +297,10 @@ t_tr_fire equ x_t_tr_fire - TEXT_IMG + G_text
 t_tr_ship equ x_t_tr_ship - TEXT_IMG + G_text
 t_tr_have equ x_t_tr_have - TEXT_IMG + G_text
 t_deal    equ x_t_deal - TEXT_IMG + G_text
+t_dm_ship equ x_t_dm_ship - TEXT_IMG + G_text
+t_dm_sto  equ x_t_dm_sto - TEXT_IMG + G_text
+t_dm_lock equ x_t_dm_lock - TEXT_IMG + G_text
+t_dm_both equ x_t_dm_both - TEXT_IMG + G_text
 
         ; Το κενό είναι 1.280 bytes και τελειώνει εκεί που αρχίζει το επόμενο
         ; πράγμα της τράπεζας 7. Χωρίς αυτόν τον έλεγχο, ένα κείμενο παραπάνω θα

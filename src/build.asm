@@ -551,6 +551,7 @@ t_mine:     db "MINE     ",0
 t_lock:     db "AIRLOCK  ",0
 t_pad:      db "LANDING  ",0
 t_shipn:    db "SHIP     ",0          ; το I πάνω στο σκάφος (βήμα 87)
+t_crates:   db "CRATES   ",0          ; και στα κιβώτια του (βήμα 181): K_CRATES = 8
 
 ; --- η τρέχουσα επιλογή, αντιγραμμένη από τον κατάλογο ---------------------
 bd_kind:    db 0
