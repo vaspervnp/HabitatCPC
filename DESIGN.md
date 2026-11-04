@@ -10645,7 +10645,9 @@ wrong row ([§15](#15-open-risks)).
   is −128: the other side of the world. At 127 the snap now goes half a tile back, to
   126. `tests/test_place.py`'s rule for `bd_select` says so, and tries 127 on purpose.
 - **A save made before this milestone has its camera clamped on load.** It may hold
-  x = −65, or worse.
+  x = −65, or worse. Until milestone 183: version 3 has refused such saves since
+  milestone 87, and the 29 bytes went to the disc driver
+  ([§11](#the-save-that-hung-at-milestone-183)).
 
 The cost is 35 bytes in bank 0 (`ui.asm` 1,966 → 2,001) and 27 in bank 2 (`build.asm`
 +10, `save.asm` +17). A cursor step that does not scroll takes 11 µs longer, 5,153 →
@@ -18553,7 +18555,7 @@ and `L` open a slot chooser, both only from `LOOK`.
 | | **Total** | **26,112** (24,064 until milestone 172) |
 
 The world plane **is** saved, in full. Regenerating it from the seed would cost
-5.1 s on every load (13.5 until milestone 112) ([§5.10](#510-player-modification)); the 46 sectors (47 since milestone 154, 51 since 172: 60 frames to save and 77 to load,
+5.1 s on every load (13.5 until milestone 112) ([§5.10](#510-player-modification)); the 46 sectors (47 since milestone 154, 51 since 172: 59 frames to save and 76 to load since milestone 183's driver, 60 and 77 until then,
 57 and 75 at 171) cost
 **0.7 s measured in the emulator** (`tests/test_save.py`), plus 0.46 s for the motor
 to come up to speed since milestone 113 ([below](#on-a-real-drive-at-milestone-113)) —
@@ -18773,6 +18775,86 @@ that the save writes ([§10.2](#seen-at-milestone-177)). The block's place and l
 not change, so `SV_VER` stays 13: a save of milestone 176 loads with both at 0. Its next
 sol's pass then shows the pages of the milestones it already had, once, and the end page
 shows the most colonists counted from the load.
+
+#### The save that hung, at milestone 183
+
+**On the EXTENDED disc ([§13.4](#134-an-extended-disc-at-milestone-183)) the save
+still hung in Retro Virtual Machine.** It no longer destroyed the disc. The file the
+emulator wrote back had all 42 tracks, and only one sector had changed: `&C1` of track
+24, the header, with its magic `HBT=`. `&C2` was still `&E5`. So the controller took
+the first `WRITE DATA` and the driver never finished the second.
+
+Three things in `src/fdc.asm` waited without end, and the other projects' drivers name
+two of them. TerraCPC's notes, carried into FuriousFowlsCPC's `disk.asm`, say "only
+sector #C1 ever landed" on WinAPE, for either of two reasons:
+
+- **A `WRITE DATA` result of three bytes.** The result phase was read as a fixed seven
+  bytes. The fourth `fdc_in` waits for ever.
+- **A latched interrupt.** The controller keeps the interrupt of the command that
+  ended and swallows the next command byte until a `SENSE INTERRUPT STATUS` clears it.
+  Its parameters are then read as commands, and the driver's next `fdc_out` waits for
+  ever on a controller that wants to talk.
+- **And a sector that never comes.** The transfer loops waited for `RQM` with no limit.
+
+**Measured, because Retro Virtual Machine cannot be run here.** A copy of `cpcemu` in
+`~/.cache/habitat-m183/cpcemu` has four switches in its µPD765. Switch 1 makes the
+result of a `WRITE DATA` three bytes. Switch 2 latches the interrupt after a
+`WRITE DATA`, switch 4 after a `READ DATA`. Switch 8 never finds the sector. With
+the game booted from the disc, then the switches on, then `S` and `L`, the old driver
+gives:
+
+| Switches | The driver of milestone 182 | The driver of milestone 183 |
+|---|---|---|
+| none | saves in 59 frames, loads in 73 | 58 and 72 |
+| 1, short result | **hangs** after `&C1` of track 24 | 57 and 72 |
+| 2, latched after a write | **hangs** at `&C2` of track 24 | 58 and 72 |
+| 1 + 2 | **hangs** after `&C1` | 57 and 72 |
+| 4, latched after a read | — | 58 and 72 |
+| 1 + 2 + 4 | — | 57 and 72 |
+| 8, no sector | **hangs** at `&C1` | `DISC ERROR` after 69 frames |
+
+The first two hang exactly where Retro Virtual Machine did: the header written and
+nothing more. Each passes with the emulator's timed controller too (`upd765_t.timed`,
+rotation and overrun, added to the sources at `~/cpcemu` on 14 October and not in
+its library). Saves there take 64–65 frames and loads 156–157, and the new loops
+cause no overrun.
+
+**The new driver.**
+- **One `SENSE INTERRUPT STATUS` before every command**, in `fdc_cmd3`, which `SEEK` and
+  the transfers share.
+  - The first version put it before the transfers only. With switch 2 the save then
+    hung at the next track, because the latched interrupt swallowed the `SEEK` after
+    `&C9`.
+  - The new `fdc_sis` asks once, and reads the PCN only when there is one. `fdc_seek`'s
+    loop uses it too.
+  - On a µPD765 the answer is one byte, `&80`. `cpcemu` always answers two.
+- **The result phase is read while CB is set**, as the ROM reads it, up to 256 polls
+  with no byte (about 4 ms). ST0 starts at `&80`, so a result of no bytes is a failure.
+- **Every transfer loop gives up** after 65,536 polls without `RQM`, about 0.9 s: a
+  sector comes round every 200 ms. The loops keep `BC` at `&FB7E` and reach the data
+  port with `inc c`.
+  - A poll without `RQM` takes 14 µs. A byte is then 11–12 µs away, so it is reached at
+    most 26 µs after `RQM`. The controller gives 32 µs at 250 kbit/s MFM, and TerraCPC's
+    loop has the same budget in Retro Virtual Machine.
+  - `A = &FF` is returned, and the player sees `DISC ERROR`.
+
+**The bytes, which had to be found in place.**
+- The save's code ended 1 byte under its header (`SV_HDR`), and the image under the icons (`OV_LOAD`) had 17 bytes left.
+- The new driver costs 47 bytes more. Moving the save-only code into the header's 512 bytes would have cost about 80 more in the image, so it was tried and given up.
+- They come from four places:
+  - `sv_cam` (29 bytes): it clamped the camera of saves made before milestone 78 ([§8.2](#the-world-has-an-edge-at-milestone-78)), which version 3 has refused since milestone 87;
+  - the `ng_zero` of the header's last 499 bytes (9 bytes): nothing reads them, and they now hold whatever `GH_BUF` holds;
+  - `call z,sv_body` (2 bytes);
+  - `fdc_in`, `fdc_out` and the motor's two routines (7 bytes).
+- The overlay is 647 bytes as before, still 41 rows.
+
+**Tests.**
+- With the shared `cpcemu`:
+  - `test_save`, `test_fdc`, `test_disc`, `test_tutor` and `test_tupage` (a save there takes 59 frames and a load 76, 60 and 77 at milestone 182);
+  - `test_act`, `test_dblock` and `test_unlink`, which read the overlay's map.
+- The switches are not in the shared `cpcemu`. The table above is
+  `~/.cache/habitat-m183/quirk.py ROOT QUIRKS TIMED [TRACK]`.
+- **Not verified in Retro Virtual Machine.** A save there is the test that matters.
 
 ## 12. Asset gaps
 
@@ -19432,6 +19514,9 @@ of the standard image. No code changed, and neither did a file or a sector.
 **Not verified:** Retro Virtual Machine itself, which runs only on the player's
 desktop. A save there on the new disc is the test that matters.
 
+**It still hung there**, without destroying the disc: the driver waited for ever,
+and the fix is in [§11](#the-save-that-hung-at-milestone-183).
+
 ---
 
 ## 14. Delivery plan
@@ -19494,7 +19579,7 @@ gap.
 | ~~HUD re-render on every scroll step, ≈ 0.4 frames, estimated not measured~~ | ~~Medium~~ | **Measured at 2.55 frames**, six times the estimate, and then cut ([§8.1](#81-screen-layout)). The cell cache of [§9.2](#92-hud) took an ordinary tick to 1.15, and milestone 52's smaller HUD to **0.65**; a camera step, which moves every cell, still pays **1.75** (2.30 before milestone 52, 2.20 before the font moved to bank 7 at milestone 33). The escape hatch for that one — *move* the HUD block inside the ring instead of re-rendering it — **was taken at milestone 83**: 0.89–0.94 frames per step, cheaper than what it replaced, and the HUD is never rubble after a scroll, paused or not ([§8.1](#81-screen-layout)). |
 | Mid-frame writes land where aimed, but only on the emulator's CRTC | Low | The border control in `tests/test_camera.py` hits line 160 exactly. Real hardware still wants a check, but nothing now depends on a mid-frame *address* write. |
 | **The raster splits of milestone 83 are timed on the emulator** | Medium | Mode and palette writes, not addresses, and timed from the Gate Array's own interrupt, which every CPC has. Each write has ≥ 10 µs of margin against a late interrupt (`tests/test_split.py` breaks it at 20 µs). Real hardware is the check still owed, and a different Gate Array (the Plus) would want its own measurement. |
-| **A save destroyed the disc in Retro Virtual Machine** (found at milestone 183) | High | **Mitigated, not verified** ([§13.4](#134-an-extended-disc-at-milestone-183)). With `iDSK`'s standard `.dsk`, the save hung and the file the emulator wrote back held only track 24, 5,120 bytes. The disc is EXTENDED since then, with every track's size in its table, and `tests/test_fdc.py` rejects the emulator's file. Left: a save in Retro Virtual Machine on the new disc. |
+| **A save destroyed the disc in Retro Virtual Machine, and hung** (found at milestone 183) | High | **Mitigated, not verified** ([§13.4](#134-an-extended-disc-at-milestone-183), [§11](#the-save-that-hung-at-milestone-183)). With `iDSK`'s standard `.dsk`, the file the emulator wrote back held only track 24, 5,120 bytes. The disc is EXTENDED since then, and `tests/test_fdc.py` rejects the emulator's file. The hang was the driver's: a fixed seven-byte result, no `SENSE INTERRUPT` between commands, and transfers without a limit. All three are fixed, and the old driver hangs where Retro Virtual Machine did in a copy of `cpcemu` with those controllers' habits. Left: a save in Retro Virtual Machine itself. |
 | **The disc's timing is the emulator's** (milestone 113) | Medium | The emulator's µPD765 has no rotation and no spin-up, moves the head at once, and ends a read with IC = 00. The loader ([§13.3](#133-the-loader-reads-the-disc-itself-at-milestone-113)) and the save's driver ([§11](#on-a-real-drive-at-milestone-113)) were written for the real one: IC = 01 + EN accepted (tested with the bytes themselves), the seek waited for, 15 ms settle, 0.46 s for the motor on a save, sixteen retries of 100 ms on the loader. None of the timings has run on a 6128. The loader falls back to AMSDOS on any failure; the save has no fallback and reports `DISC ERROR`. Since milestone 128 the player may wait in the planet menu for longer than AMSDOS keeps the motor on; the emulator has no spin-up, so the sixteen retries are what a real drive would lean on there. |
 | **The icons were drawn against Sky blue** (milestone 178) | Low | Since the white-metal style the dome's floor is Pastel cyan, and the yellow and white details of the room icons, machines and plants stand on it at 1.1 and 1.2 to 1 instead of 3.5 and 3.8 ([§8.6](#white-metal-lit-from-above-at-milestone-178)). They read by their dark edges in the screenshots of the manual's colony; the canteen's yellow table is the weakest. A redraw of the weak ones is `CPCArt` work (`tools/icons.py`), with no bytes. |
 | **A new colony is the ROM's restart** (milestone 177) | Medium | The end page's "any other key" turns the lower ROM on and calls `MC START PROGRAM`, then wakes AMSDOS with `KL ROM WALK` (`HL` `&ABFF`, as BASIC 1.1 is taken to do) and reads `LOADER.BIN` ([§10.3](#the-end-at-milestone-177)). Measured in the emulator, with the 6128's ROMs: 187 frames to the menu, and a new colony from it. The ROM's address is read by the loader from the jumpblock, so another ROM's is used; the RAM and the screen the firmware initialises are what it expects after a reset. Not run on a real 6128, nor on a Plus, whose firmware is another; without `RST 1` at `&BD16` the loader writes 0 and the key resets to BASIC. |

@@ -92,8 +92,7 @@ svo_save:
         call    sv_hdr_make
         call    sv_begin
         call    sv_hdr_io
-        jr      nz,sv_stop
-        call    sv_body
+        call    z,sv_body
 sv_stop:
         push    af
         call    fdc_off
@@ -135,18 +134,11 @@ sv_after:
         ld      a,(SV_HDR + 7)
         call    pal_planet              ; ο κόσμος που ήρθε μπορεί να είναι άλλος πλανήτης
         call    is_on                   ; ΜΕΤΑ την παλέτα: δύο out ανά pen (src/isr.asm)
-        ; Η κάμερα μέσα στον κόσμο: μια θέση σωσμένη πριν από το βήμα 78 μπορεί
-        ; να την έχει στο -65 ή και πέρα, και μια πλήρης σχεδίαση εκεί διαβάζει
-        ; λάθος σειρές (DESIGN §15).
+        ; Η κάμερα όπως σώθηκε. Ως το βήμα 182 το sv_cam την έφερνε μέσα στον
+        ; κόσμο, για θέσεις σωσμένες πριν από το βήμα 78, στο -65 ή και πέρα·
+        ; εκείνες τις απορρίπτει η έκδοση από τότε, και τα 29 bytes του πήγαν
+        ; στα όρια του οδηγού (src/fdc.asm, βήμα 183).
         ld      hl,(SV_HDR + 8)         ; L = cam_tx, H = cam_ty
-        ld      a,l
-        ld      b,CAM_XMAX + #80
-        call    sv_cam
-        ld      l,a
-        ld      a,h
-        ld      b,CAM_YMAX + #80
-        call    sv_cam
-        ld      h,a
         ld      (cam_tx),hl             ; cam_tx, cam_ty διπλανά (ui.asm)
         ld      hl,(SV_HDR + 10)
         ld      (cur_hx),hl             ; cur_hx, cur_hy διπλανά (ui.asm)
@@ -282,9 +274,9 @@ SV_STATE    equ G_hud_shadow - SV_STATE_N * 512
 ; sv_hdr_make / sv_hdr_ok — η κεφαλίδα.
 ; ---------------------------------------------------------------------------
 sv_hdr_make:
-        ld      hl,SV_HDR
-        ld      bc,511
-        call    ng_zero                 ; src/hw.asm
+        ; Τα 499 bytes μετά τα δεκατρία γράφονται όπως είναι, ό,τι έχει το
+        ; GH_BUF: κανείς δεν τα διαβάζει. Ως το βήμα 182 ένα ng_zero τα
+        ; μηδένιζε, 9 bytes που πήγαν στον οδηγό (βήμα 183).
         ld      hl,sv_magic
         ld      de,SV_HDR
         ld      bc,5
@@ -321,21 +313,6 @@ svo_bad:
         ret
 
 sv_magic:   db "HBT", SV_VER + '0', SV_VER
-
-; sv_cam — A προσημασμένο -> στο [-64, B - #80]. Με το xor #80 η σειρά των
-; προσημασμένων γίνεται σειρά ανυπόγραφων, και αρκούν δύο cp.
-sv_cam:
-        xor     #80
-        cp      #40                     ; -64
-        jr      nc,svc_hi
-        ld      a,#40
-svc_hi:
-        cp      b
-        jr      c,svc_ok
-        ld      a,b
-svc_ok:
-        xor     #80
-        ret
 
 sv_slot:    db 0
 sv_cmd:     db 0

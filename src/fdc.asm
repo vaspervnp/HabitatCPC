@@ -31,9 +31,8 @@ FDC_PORT    equ #FB                 ; υψηλό byte: #FB7E κατάσταση,
 ; 1 s.
 ; ---------------------------------------------------------------------------
 fdc_on:
-        ld      bc,FDC_MOTOR
         ld      a,1
-        out     (c),a
+        call    fdc_mot
         ld      de,0                    ; 65.536 φορές
 fon_lp:
         dec     de
@@ -43,8 +42,9 @@ fon_lp:
         ret
 
 fdc_off:
-        ld      bc,FDC_MOTOR
         xor     a
+fdc_mot:
+        ld      bc,FDC_MOTOR
         out     (c),a
         ret
 
@@ -54,38 +54,32 @@ fdc_off:
 ; ---------------------------------------------------------------------------
 fdc_out:
         ld      e,a
-        ld      b,FDC_PORT
+        ld      bc,FDC_PORT * 256 + #7E
 fo_wait:
-        ld      c,#7E
         in      a,(c)
         add     a,a                     ; carry = RQM
         jr      nc,fo_wait
         add     a,a                     ; carry = DIO
         jr      c,fo_wait               ; θέλει να δώσει — δεν είναι η σειρά μας
-        ld      c,#7F
+        inc     c                       ; #FB7F: τα δεδομένα
         out     (c),e
         ld      a,e
         ret
 
 fdc_in:
-        ld      b,FDC_PORT
+        ld      bc,FDC_PORT * 256 + #7E
 fi_wait:
-        ld      c,#7E
         in      a,(c)
         add     a,a
         jr      nc,fi_wait
         add     a,a
         jr      nc,fi_wait              ; DIO=0 — δεν έχει τίποτε να δώσει
-        ld      c,#7F
+        inc     c
         in      a,(c)
         ret
 
 ; ---------------------------------------------------------------------------
 ; fdc_seek — A = track. Κινεί την κεφαλή και περιμένει να σταματήσει.
-;
-; Το SENSE INTERRUPT STATUS είναι ΔΥΟ bytes όταν υπάρχει εκκρεμής διακοπή και
-; ΕΝΑ (#80, «άκυρη εντολή») όταν δεν υπάρχει. Αν διαβάσεις δεύτερο byte που
-; δεν υπάρχει, κολλάς για πάντα — γι' αυτό ελέγχεται το #80 πριν.
 ;
 ; ΩΣ 40 x 256 ΕΡΩΤΗΣΕΙΣ (βήμα 113), περίπου ένα δευτερόλεπτο. Ως τότε 100,
 ; ~8 ms, ενώ ένα βήμα της κεφαλής θέλει 12 και τα slots είναι 24 tracks πιο
@@ -100,15 +94,7 @@ fdc_seek:
         ld      b,0
 fs_lp:
         push    bc
-        ld      a,#08                   ; SENSE INTERRUPT STATUS
-        call    fdc_out
-        call    fdc_in
-        ld      c,a                     ; ST0
-        cp      #80
-        jr      z,fs_inv
-        call    fdc_in                  ; PCN — μόνο αν υπάρχει
-fs_inv:
-        ld      a,c
+        call    fdc_sis
         pop     bc
         and     #20                     ; SE: η κίνηση τελείωσε
         ret     nz
@@ -116,6 +102,24 @@ fs_inv:
         dec     d
         jr      nz,fs_lp
         ret                             ; δεν κάθεται· το διάβασμα θα το δείξει
+
+; ---------------------------------------------------------------------------
+; fdc_sis — ένα SENSE INTERRUPT STATUS. A = ST0, και το PCN διαβασμένο.
+;
+; Είναι ΔΥΟ bytes όταν υπάρχει εκκρεμής διακοπή και ΕΝΑ (#80, «άκυρη
+; εντολή») όταν δεν υπάρχει. Αν διαβάσεις δεύτερο byte που δεν υπάρχει,
+; κολλάς για πάντα — γι' αυτό ελέγχεται το #80 πριν. Χαλάει BC, E.
+; ---------------------------------------------------------------------------
+fdc_sis:
+        ld      a,#08                   ; SENSE INTERRUPT STATUS
+        call    fdc_out
+        call    fdc_in                  ; ST0
+        cp      #80
+        ret     z
+        ld      e,a
+        call    fdc_in                  ; PCN — μόνο αν υπάρχει
+        ld      a,e
+        ret
 
 ; ---------------------------------------------------------------------------
 ; fdc_cmd — τα εννιά bytes της READ DATA / WRITE DATA. A = ο κωδικός.
@@ -141,7 +145,17 @@ fdc_cmd:
 
 ; fdc_cmd3 — A = εντολή, και μετά drive 0 / head 0 και το (fd_trk): τα τρία
 ; πρώτα bytes, κοινά στο SEEK και στο READ / WRITE DATA.
+;
+; ΠΡΩΤΑ Η ΔΙΑΚΟΠΗ ΠΟΥ ΠΕΡΙΜΕΝΕΙ (βήμα 183): ένα SENSE INTERRUPT. Ενας ελεγκτής
+; εξομοιωτή κρατά τη διακοπή του τέλους μιας εντολής και ΤΡΩΕΙ την επόμενη ως
+; να τη σβήσει ένα SENSE· οι παράμετροί της διαβάζονται τότε ως εντολές (το
+; έμαθε ο οδηγός του TerraCPC στο WinAPE: έφτανε μόνο ο #C1, όπως εδώ στον
+; Retro Virtual Machine). Πριν από το SEEK επίσης: μετά τον #C9 ενός track
+; ήταν το SEEK που χανόταν. Στον μPD765 απαντά #80, «τίποτα».
 fdc_cmd3:
+        push    af
+        call    fdc_sis
+        pop     af
         call    fdc_out
         xor     a
         call    fdc_out                 ; drive 0, head 0
@@ -151,20 +165,35 @@ fdc_cmd3:
 ; ---------------------------------------------------------------------------
 ; fdc_rsect / fdc_wsect — ένας τομέας από/προς το HL.
 ; In:  (fd_trk), (fd_sect), HL. Out: A = 0 εντάξει, αλλιώς όχι μηδέν (fd_ok).
+;
+; Η ΑΝΑΜΟΝΗ ΤΟΥ ΤΟΜΕΑ ΕΧΕΙ ΤΕΛΟΣ (βήμα 183): 65.536 ερωτήσεις χωρίς RQM, 14 us η
+; καθεμία, κάτι λιγότερο από ένα δευτερόλεπτο — ο τομέας περνά κάτω από την
+; κεφαλή μία φορά ανά 200 ms. Μετά το A = #FF και το σώσιμο λέει DISC ERROR.
+; Ως τότε ο βρόχος περίμενε για πάντα έναν ελεγκτή που δεν θα απαντούσε. Το
+; BC μένει στο #FB7E και το INC C το πάει στα δεδομένα: ως το RQM μετά από
+; ερώτηση χωρίς αυτό 14 us, ως το byte 12 ακόμη, μέσα στα 32 που δίνει ο
+; ελεγκτής στα 250 kbit/s MFM.
 ; ---------------------------------------------------------------------------
 fdc_rsect:
         ld      a,#46                   ; READ DATA, MFM
         call    fdc_cmd
-        ld      b,FDC_PORT
+        ld      bc,FDC_PORT * 256 + #7E
+        ld      de,0
 fdr_w:
-        ld      c,#7E
         in      a,(c)
-        add     a,a
-        jr      nc,fdr_w                ; RQM
+        add     a,a                     ; carry = RQM
+        jr      c,fdr_rq
+        dec     de
+        ld      a,d
+        or      e
+        jr      nz,fdr_w
+        jr      fd_tout
+fdr_rq:
         add     a,a                     ; carry = DIO, πρόσημο = EXM
         jp      p,fd_end                ; EXM=0: η μεταφορά τελείωσε
-        ld      c,#7F
+        inc     c
         in      a,(c)
+        dec     c
         ld      (hl),a
         inc     hl
         jr      fdr_w
@@ -172,21 +201,37 @@ fdr_w:
 fdc_wsect:
         ld      a,#45                   ; WRITE DATA, MFM
         call    fdc_cmd
-        ld      b,FDC_PORT
+        ld      bc,FDC_PORT * 256 + #7E
+        ld      de,0
 fdw_w:
-        ld      c,#7E
         in      a,(c)
         add     a,a
-        jr      nc,fdw_w
+        jr      c,fdw_rq
+        dec     de
+        ld      a,d
+        or      e
+        jr      nz,fdw_w
+fd_tout:
+        or      #FF                     ; A = #FF, NZ: ο ελεγκτής δεν απάντησε
+        ret
+fdw_rq:
         add     a,a
         jp      p,fd_end
-        ld      c,#7F
         ld      a,(hl)
+        inc     c
         out     (c),a
+        dec     c
         inc     hl
         jr      fdw_w
 
-; fd_end — η φάση αποτελέσματος: επτά bytes, και τα ST0, ST1, ST2 κρίνουν.
+; fd_end — η φάση αποτελέσματος, και τα ST0, ST1, ST2 κρίνουν.
+;
+; ΟΣΟ Ο ΕΛΕΓΚΤΗΣ ΕΙΝΑΙ ΑΠΑΣΧΟΛΗΜΕΝΟΣ (CB, βήμα 183), όχι επτά bytes: ένας
+; εξομοιωτής δίνει λιγότερα στο WRITE DATA (ο WinAPE τρία, του TerraCPC), και
+; το έβδομο fdc_in θα περίμενε για πάντα. Ετσι κάνει και η ROM. Το ST0 ξεκινά
+; #80, «άκυρη», για ένα αποτέλεσμα χωρίς κανένα byte. Ως 256 ερωτήσεις χωρίς
+; byte, ~4 ms: ο ελεγκτής δίνει το επόμενο σε μικροδευτερόλεπτα, και ένας που
+; περιμένει παραμέτρους (CB, RQM, χωρίς DIO) δεν θα δώσει ποτέ.
 ;
 ; ΣΤΟ CPC ΚΑΘΕ ΜΕΤΑΦΟΡΑ ΤΕΛΕΙΩΝΕΙ «ΑΝΩΜΑΛΑ» (βήμα 113). Το σήμα TC του μPD765
 ; δεν είναι συνδεδεμένο: ο ελεγκτής φτάνει στο EOT και αναφέρει IC = 01 (ST0
@@ -198,14 +243,28 @@ fdw_w:
 fd_end:
         push    hl
         ld      hl,fd_res
-        ld      b,7
-fde_lp:
-        push    bc
-        call    fdc_in                  ; χαλάει μόνο A, BC
+        ld      (hl),#80
+        ld      d,0
+fde_w:
+        in      a,(c)
+        bit     4,a                     ; CB: η εντολή δεν τελείωσε ακόμη
+        jr      z,fde_end
+        add     a,a
+        jr      nc,fde_t                ; RQM
+        add     a,a
+        jr      nc,fde_t                ; DIO: θέλει να πάρει — όχι αποτέλεσμα
+        inc     c
+        in      a,(c)
+        dec     c
         ld      (hl),a
         inc     hl
-        pop     bc
-        djnz    fde_lp
+        jr      fde_w
+fde_t:
+        dec     d
+        jr      nz,fde_w
+        pop     hl
+        jr      fd_tout
+fde_end:
         pop     hl
 fd_ok:
         ld      a,(fd_res)
