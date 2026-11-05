@@ -277,24 +277,50 @@ zz_bank0_end:
 ;
 ; ΤΡΕΙΣ ΠΕΡΙΟΧΕΣ ΑΠΟ ΤΟ ΒΗΜΑ 155 (src/ov_inst.asm, src/const.asm): ως το 154
 ; όλα ήταν στις στήλες 96-127 των 96 γραμμών του DIST, σε κομμάτια των 32. Με
-; 112 κόμβους οι τρύπες έγιναν των 16, και η εικόνα κρατά, με τη σειρά:
+; 112 κόμβους οι τρύπες έγιναν των 16, και η BANK1.BIN κρατά, με τη σειρά:
+;   OV_R1, συνεχές, ΣΤΗ ΘΕΣΗ ΤΟΥ (βήμα 186): οι χειριστές της κατεδάφισης
+;     (τρέχουν εκεί), οι δεκαέξι γραμμές του tutorial, ο κώδικάς του (για το
+;     GH_BUF). Ως το 185 ερχόταν κι αυτό μέσα στην εικόνα, και ένα ldir τον
+;     έφερνε στο #6000: η εικόνα είχε 17 bytes. Τώρα η BANK1.BIN αρχίζει από
+;     το #6000, και το OV_R1 έρχεται κατευθείαν εκεί.
 ;   ο εγκαταστάτης (τρέχει στο GH_BUF), και μπροστά του το ov_install, που
 ;     τον φέρνει εκεί και τρέχει στη θέση του;
-;   OV_R1, συνεχές: οι χειριστές της κατεδάφισης (τρέχουν στη θέση τους), οι
-;     δεκαέξι γραμμές του tutorial, ο κώδικάς του (για το GH_BUF);
 ;   OV_R2, κομμάτια των 16 στις 64 γραμμές θόλων του DIST: το σώσιμο με τον
 ;     οδηγό του δίσκου (για το SV_ORG = GH_BUF, με τα 512 της κεφαλίδας,
 ;     SV_HDR, στο τέλος του GH_BUF), η βοήθεια (για το GH_BUF);
 ;   OV_R3, κομμάτια των 16 στις 112 γραμμές του NEXTHOP, τράπεζα 5: η
-;     κατεδάφιση (για το GH_BUF).
-; Κάθε κομμάτι στα 16 του (ή στο byte του, στο OV_R1). Το OV_LOAD κρατά 3 KB
-; κάτω από τα εικονίδια (2 ως το βήμα 147), όσο το μπλοκ των δομών του DIST
-; (DB_ROW), που γεμίζει μόνο μετά, από το rt_flush. ---
-OV_LOAD     equ #6400                   ; = το OV_LOAD του src/boot.asm
+;     κατεδάφιση, και από το βήμα 186 ο χάρτης (για το GH_BUF).
+; Κάθε κομμάτι στα 16 του (ή στο byte του, στο OV_R1). Η εικόνα του
+; εγκαταστάτη, του OV_R2 και του OV_R3 κάθεται μετά το OV_R1, ως τα
+; εικονίδια: στο μπλοκ των δομών του DIST (DB_ROW), που γεμίζει μόνο μετά,
+; από το rt_flush, και στα λίγα bytes του OV_R1 που περισσεύουν. ---
+OV_LOAD     equ OV_R1                   ; = το OV_LOAD του src/boot.asm (#6400 ως το βήμα 185)
+OVI_N       equ 8                       ; τα κομμάτια του OV_R3 στον εγκαταστάτη (πιο κάτω)
 OV_MAX      equ #7000 - OV_LOAD
         assert  OV_UNIT == 16           ; τα >> 4 πιο κάτω (το / του rasm στρογγυλεύει)
-        assert  OV_LOAD == DB_ROW && DB_ROW + STRUCT_CAP * DB_STRIDE == #7000
-        org     OV_LOAD
+        assert  OV_R1 + 1024 == DB_ROW && DB_ROW + STRUCT_CAP * DB_STRIDE == #7000
+; --- OV_R1 ---
+        org     OV_R1
+        include "dm_hand.asm"
+        include "top.asm"               ; βήμα 157: το όριο σάρωσης, τρέχει εδώ
+        include "goals.asm"             ; βήμα 177: το G και το αίτημα σελίδας, τρέχουν εδώ
+TU_TXT:
+        include "tutext.asm"
+zz_tut_end:
+TU_AT       equ zz_tut_end              ; ο κώδικας του tutorial, στο OV_R1
+        org     GH_BUF, TU_AT
+zz_ov4:
+        include "tutor.asm"
+zz_ov4_end:
+        assert  tuo_buf + 32 <= GH_BUF + GH_LOG
+        assert  zz_tut_end - TU_TXT == (TU_YOURS + 1) * 32
+TU_LEN      equ zz_ov4_end - GH_BUF
+R1_LEN      equ TU_AT + TU_LEN - OV_R1
+        assert  OV_R1 + R1_LEN <= DB_ROW
+        save    "../build/ovl4.bin", TU_AT, TU_LEN
+        save    "../build/ovr1.bin", OV_R1, R1_LEN      ; όλο το OV_R1, για τις δοκιμές
+; --- ο εγκαταστάτης, μετά το OV_R1 ---
+        org     OV_R1 + R1_LEN
 ; ov_install — στην εκκίνηση, με την τράπεζα 1 στο παράθυρο (src/main.asm,
 ; μετά το pal_planet): ο εγκαταστάτης στο GH_BUF, και εκεί. Γυρίζει με την 1.
 ov_install:
@@ -308,29 +334,8 @@ zz_ovi:
         include "ov_inst.asm"
 zz_ovi_end:
         assert  ovi_go == GH_BUF
-OVI_R1      equ zz_ovi + zz_ovi_end - GH_BUF
-; --- OV_R1 ---
-        org     OV_R1, OVI_R1
-        include "dm_hand.asm"
-        include "top.asm"               ; βήμα 157: το όριο σάρωσης, τρέχει εδώ
-        include "goals.asm"             ; βήμα 177: το G και το αίτημα σελίδας, τρέχουν εδώ
-TU_TXT:
-        include "tutext.asm"
-zz_tut_end:
-TU_AT       equ zz_tut_end              ; ο κώδικας του tutorial, στο OV_R1
-        org     GH_BUF, OVI_R1 + TU_AT - OV_R1
-zz_ov4:
-        include "tutor.asm"
-zz_ov4_end:
-        assert  tuo_buf + 32 <= GH_BUF + GH_LOG
-        assert  zz_tut_end - TU_TXT == (TU_YOURS + 1) * 32
-TU_LEN      equ zz_ov4_end - GH_BUF
-R1_LEN      equ TU_AT + TU_LEN - OV_R1
-        assert  OV_R1 + R1_LEN <= DB_ROW
-        save    "../build/ovl4.bin", OVI_R1 + TU_AT - OV_R1, TU_LEN
-        save    "../build/ovr1.bin", OVI_R1, R1_LEN     ; όλο το OV_R1, για τις δοκιμές
 ; --- OV_R2 ---
-OVI_R2      equ OVI_R1 + R1_LEN
+OVI_R2      equ zz_ovi + zz_ovi_end - GH_BUF
 ; ΣΤΗΝ ΑΡΧΗ ΤΟΥ GH_BUF, ΚΑΙ Η ΚΕΦΑΛΙΔΑ ΣΤΟ ΤΕΛΟΣ (μετά το βήμα 174). Το sv_ovl
 ; φέρνει ΟΛΟΚΛΗΡΕΣ γραμμές των 16. Από το βήμα 155 ως τότε ο κώδικας ήταν 647
 ; bytes μετά τα 512 της κεφαλίδας, και η 41η γραμμή του έγραφε 8 bytes πέρα από
@@ -372,9 +377,24 @@ R3_UNITS    equ (zz_ovl_end - GH_BUF + 15) >> 4
         assert  R3_UNITS <= NODE_CAP
         save    "../build/ovl.bin", OVI_R3, zz_ovl_end - GH_BUF
 OV_ROWS     equ R3_UNITS
-        assert  OVI_R3 + R3_UNITS * OV_UNIT <= OV_LOAD + OV_MAX
-OVI_CH      equ floor((R3_UNITS + 2) / 3)  ; το ov_install σε τρία κομμάτια (src/ov_inst.asm· δύο ως το βήμα 157)
-        assert  3 * OVI_CH >= R3_UNITS && 3 * OVI_CH <= NODE_CAP && OVI_R3 + 3 * OVI_CH * OV_UNIT <= #7000
+; ΚΑΙ Ο ΧΑΡΤΗΣ (βήμα 186, src/map_ov.asm), στις γραμμές του NEXTHOP μετά την
+; κατεδάφιση. Τρέχει στο GH_BUF, με τους δύο πίνακές του στο MP_TA από πάνω.
+        org     GH_BUF, OVI_R3 + R3_UNITS * OV_UNIT
+zz_ov5:
+        include "map_ov.asm"
+zz_ov5_end:
+        assert  zz_ov5_end <= MP_TA && MP_TA + 256 <= GH_BUF + GH_LOG
+OV5_ROWS    equ (zz_ov5_end - GH_BUF + 15) >> 4
+        save    "../build/ovl5.bin", OVI_R3 + R3_UNITS * OV_UNIT, zz_ov5_end - GH_BUF
+OV5_HOLE    equ OV_R3 + R3_UNITS * 128
+R3_ALL      equ R3_UNITS + OV5_ROWS
+        assert  R3_ALL <= NODE_CAP
+        assert  OVI_R3 + R3_ALL * OV_UNIT <= OV_LOAD + OV_MAX
+; ΣΕ ΟΚΤΩ ΚΟΜΜΑΤΙΑ από το βήμα 186 (src/ov_inst.asm, το OVI_N πιο πάνω):
+; τρία ως τότε, δύο ως το 157. Το ovi_buf χωρά 23 κάτω από την αποικία δοκιμών,
+; και οκτώ φορές το κομμάτι δεν πρέπει να περνά τις 112 γραμμές του NEXTHOP.
+OVI_CH      equ floor((R3_ALL + OVI_N - 1) / OVI_N)
+        assert  OVI_N * OVI_CH >= R3_ALL && OVI_N * OVI_CH <= NODE_CAP && OVI_R3 + OVI_N * OVI_CH * OV_UNIT <= #7000
 
         org     BOOT_ORG - 256
 zz_colony:
@@ -468,6 +488,7 @@ zz_page2_end:
         org     G_b1code
         include "commit.asm"
         include "bar1.asm"              ; βήμα 152: το bar_want, από την τράπεζα 0
+        include "map.asm"               ; βήμα 186: η είσοδος του χάρτη
 zz_b1code_end:
         assert  zz_b1code_end <= G_b1code + B1C_MAX
         assert  G_b1code + B1C_MAX == #8000

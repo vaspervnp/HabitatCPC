@@ -149,8 +149,23 @@ joystick: its first fire is `COPY`, its second `ESC`.
 | `S` / `L` | Save / load, from the main view ([section 15](#15-info-demolition-speed-saving)). |
 | `C` | Call a colonist ship ([section 12](#12-ships-colonists-visitors-merchants-intruders)). |
 | `G` | The milestones: all five, and how far the colony is from each ([section 16](#16-goals-and-losing)). From the main view. |
+| `TAB` | The world map. From the main view. |
 
 ![The help screen, on ?](img/help.png)
+
+**The world map** (`TAB`) shows the whole world on one page, one dot a tile:
+
+- black is ground you can build on;
+- brown is rock, mountains and craters, where nothing is built;
+- blue is water;
+- white is the colony: its buildings, corridors and paths;
+- brown with white dots is an ore vein.
+
+The frame is what the screen shows. The cursor keys move it, `SPACE` (or `COPY`) takes
+the view there with the cursor in the middle, and `ESC` (or `TAB` again) goes back to
+where you were. The game waits while the map is open.
+
+![The world map, on TAB](img/map.png)
 
 **The buttons inside each group:**
 

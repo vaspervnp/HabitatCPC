@@ -11,7 +11,8 @@
           bytes ανά γραμμή: το σώσιμο (build/ovl2.bin), και από την επόμενη
           γραμμή του η βοήθεια (build/ovl3.bin).
   OV_R3   τράπεζα 5, οι στήλες 112-127 του NEXTHOP: η κατεδάφιση
-          (build/ovl.bin).
+          (build/ovl.bin), και από την επόμενη γραμμή της ο χάρτης (βήμα 186,
+          build/ovl5.bin).
 
 Οι διευθύνσεις είναι του παραθύρου (&4000-&7FFF)· το bank(n)[a - 0x4000] του
 εξομοιωτή είναι το byte, όποια τράπεζα κι αν φαίνεται τη στιγμή εκείνη.
@@ -52,11 +53,14 @@ def pieces(sym):
     του build). Τα "hand" και "tutext" δεν έχουν δικό τους αρχείο· είναι μέσα
     στο "r1", το OV_R1 ολόκληρο (build/ovr1.bin)."""
     dm, sv, hp, tu = _bin("ovl.bin"), _bin("ovl2.bin"), _bin("ovl3.bin"), _bin("ovl4.bin")
+    mp = _bin("ovl5.bin")
     r1 = _bin("ovr1.bin")                   # όλο το OV_R1, όπως φτάνει
     rows2 = -(-len(sv) // UNIT)
+    rows3 = -(-len(dm) // UNIT)
     hand = sym["TU_TXT"] - sym["DH_RSIZE"]
     return {
         "dm": (5, spread(OV_R3, len(dm)), GH, dm),
+        "map": (5, spread(OV_R3 + rows3 * 128, len(mp)), GH, mp),
         "save": (1, spread(OV_R2, len(sv)), GH, sv),     # στο GH_BUF + 512 ως το βήμα 174
         "help": (1, spread(OV_R2 + rows2 * 128, len(hp)), GH, hp),
         "tutor": (1, list(range(sym["ZZ_TUT_END"], sym["ZZ_TUT_END"] + len(tu))), GH, tu),

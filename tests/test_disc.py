@@ -704,11 +704,15 @@ def main():
     # #6000: οι χειριστές της κατεδάφισης, οι γραμμές και ο κώδικας του
     # tutorial.
     import ovmap as OV
-    got = {n: (OV.read(m, sym, n), OV.pieces(sym)[n][3]) for n in ("dm", "save", "help", "r1")}
+    # ΚΑΙ Ο ΧΑΡΤΗΣ (βήμα 186, build/ovl5.bin), μετά την κατεδάφιση στο NEXTHOP·
+    # και η BANK1.BIN από το #6000, με το OV_R1 στη θέση του.
+    got = {n: (OV.read(m, sym, n), OV.pieces(sym)[n][3])
+           for n in ("dm", "save", "help", "r1", "map")}
     check(len(got["dm"][1]) > 512 and len(got["save"][1]) > 512 and len(got["help"][1]) > 128
-          and len(got["r1"][1]) > 512 + 256 and all(x == y for x, y in got.values()),
-          "ο κώδικας της κατεδάφισης, του σωσίματος, της βοήθειας και του tutorial ήρθε "
-          "από τον δίσκο στις τρύπες: "
+          and len(got["r1"][1]) > 512 + 256 and len(got["map"][1]) > 512
+          and all(x == y for x, y in got.values()),
+          "ο κώδικας της κατεδάφισης, του σωσίματος, της βοήθειας, του tutorial και του "
+          "χάρτη ήρθε από τον δίσκο στις τρύπες: "
           + ", ".join(f"{n} {len(w)} bytes ({sum(a != b for a, b in zip(h, w))} διαφορετικά)"
                       for n, (h, w) in got.items()))
 

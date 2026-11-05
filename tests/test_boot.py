@@ -12,7 +12,7 @@ DESIGN §4.2).
   ΑΘΙΚΤΟΣ   στο main.sna και στο colony.sna, τη στιγμή που αρχίζει το
             game_new, η αποικία και ο κώδικας της εκκίνησης (ZZ_COLONY ως
             ZZ_BOOT_END) είναι όπως στο snapshot: ό,τι έτρεξε ως εκεί — ο
-            εγκαταστάτης των τρυπών με την κατεδάφιση σε τρία κομμάτια στο
+            εγκαταστάτης των τρυπών με την κατεδάφιση και τον χάρτη σε οκτώ κομμάτια (τρία ως το βήμα 185) στο
             ovi_buf, και το tutorial — έγραψε μόνο από κάτω τους. Τα assert του
             src/main.asm το λένε από τις διευθύνσεις· εδώ το βλέπουμε να
             συμβαίνει, και τυπώνεται το ψηλότερο byte που γράφτηκε.
@@ -93,9 +93,10 @@ def intact(sym, sna, b1=()):
 
 def two_halves(sym):
     """Ο εγκαταστάτης όπως ως το βήμα 157: δύο μισά. Στην εικόνα (τράπεζα 1,
-    zz_ovi): το πρώτο call ovi_half σβηστό, και τα OVI_CH του ovi_half (ld
-    bc,OVI_CH * 16 μετά το ld de,ovi_buf· ld a,OVI_CH μετά το ld hl,ovi_buf)
-    στο μισό των R3_UNITS."""
+    zz_ovi): από τα call ovi_half μένει ένα (το τελευταίο κομμάτι πέφτει από
+    κάτω), και τα OVI_CH του ovi_half (ld bc,OVI_CH * 16 μετά το ld
+    de,ovi_buf· ld a,OVI_CH μετά το ld hl,ovi_buf) στο μισό όλων. Από το βήμα
+    186 τα κομμάτια είναι οκτώ (OVI_N), τρία ως τότε."""
     m = cpc.CPC()
     m.run_frames(60)
     assert m.quickload(TG.SNA, start=False)
@@ -107,11 +108,14 @@ def two_halves(sym):
     i1 = img.find(call)
     i2 = img.find(bytes([0x11, buf & 255, buf >> 8, 0x01]))
     i3 = img.find(bytes([0x21, buf & 255, buf >> 8, 0x3E]))
-    assert i1 >= 0 and img.find(call, i1 + 3) == i1 + 3 and i2 > 0 and i3 > 0, \
-        "δεν βρέθηκαν τα δύο call ovi_half, το ld de,ovi_buf · ld bc και το ld hl,ovi_buf · ld a"
-    n = img[i3 + 4]                          # OVI_CH: 22 = 66 / 3
-    h = (3 * n + 1) // 2                     # 33, όσο ως το βήμα 157
-    return [(a + i1 + k, 0) for k in range(3)] + \
+    calls = 0
+    while i1 >= 0 and img[i1 + 3 * calls:i1 + 3 * calls + 3] == call:
+        calls += 1
+    assert calls >= 2 and i2 > 0 and i3 > 0, \
+        "δεν βρέθηκαν τα call ovi_half, το ld de,ovi_buf · ld bc και το ld hl,ovi_buf · ld a"
+    n = img[i3 + 4]                          # OVI_CH: 14, οκτώ κομμάτια για 111
+    h = ((calls + 1) * n + 1) // 2           # 56, δύο μισά, όπως ως το βήμα 157
+    return [(a + i1 + k, 0) for k in range(3 * (calls - 1))] + \
            [(a + i2 + 4, (h * 16) & 255), (a + i2 + 5, (h * 16) >> 8), (a + i3 + 4, h)]
 
 

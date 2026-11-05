@@ -318,16 +318,37 @@ class Run:
         return None
 
     def game(self, limit=900):
-        """Ως να γυρίσει στο παιχνίδι: καμία σελίδα, διακοπές (το is_fc τρέχει)."""
+        """Ως να γυρίσει στο παιχνίδι: καμία σελίδα, διακοπές (το is_fc τρέχει),
+        και ο βρόχος διαβάζει τα πλήκτρα (listening). Χωρίς το τελευταίο, από
+        το βήμα 186 ο κόσμος του DESERT (άλλο R, άλλα μεγέθη αρχείων) έφτανε
+        εδώ στη μέση της πρώτης πλήρους σχεδίασης, 221 ms χωρίς σάρωση, και το
+        G των 4 frames του tests/test_goals.py χανόταν."""
         for f in range(limit):
             if self.pg() == 0xFF:
                 a = self.m.peek(self.sym["IS_FC"])
                 self.m.run_frames(2)
                 if self.m.peek(self.sym["IS_FC"]) != a:
                     self.m.run_frames(20)
+                    self.listening()
                     return f
             self.m.run_frames(1)
         return None
+
+    def listening(self, limit_ms=3000):
+        """Ως να σαρώσει ο βρόχος τα πλήκτρα δύο φορές: ένα σημάδι στη γραμμή 9
+        του key_now (το χειριστήριο), που το in_scan ξαναγράφει πριν το
+        διαβάσει κανείς — εκτός από το ui_tick και τις σελίδες, που σαρώνουν
+        πρώτα, κανείς δεν κοιτάζει το key_now."""
+        at = self.sym["KEY_NOW"] + 9
+        seen = 0
+        for _ in range(limit_ms):
+            self.m.poke(at, 0xAA)
+            self.m.run_us(1000)
+            if self.m.peek(at) != 0xAA:
+                seen += 1
+                if seen == 2:
+                    return True
+        return False
 
     def tap(self, key, gap=20):
         self.m.key_down(key)

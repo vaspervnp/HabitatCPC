@@ -44,8 +44,8 @@ fit in a Z80 and 128 KB.
   intruders.
 - **Demolition**, including the starting ship, which leaves crates of Metal and
   Bioplastic for the workers to carry to storage within 10 sols.
-- An info key, four speeds, and **save and load** in three slots on the game's own
-  disc.
+- An info key, a **world map** on `TAB` (since milestone 186), four speeds, and
+  **save and load** in three slots on the game's own disc.
 - **Sound:** effects on the AY, and a tune during world generation.
 
 The game loads from its own disc. `RUN"HABITAT` shows the menu after a few seconds,

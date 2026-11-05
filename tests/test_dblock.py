@@ -35,8 +35,9 @@
 Αρνητικά, με τον κώδικα πειραγμένο: το jb_best χωρίς το jr nc,jbs_bk (στόχος
 δομή από τη γραμμή του θόλου, όπως ως το 154)· το su_lock χωρίς το jr
 nc,sul_st· το sp_take χωρίς το jr nc,sps_bk· το blk_row με τη γραμμή μία πιο
-κάτω (add a,#C0 -> add a,#00)· το ov_install χωρίς το call ovi_half, που
-φέρνει μόνο το πρώτο μισό της κατεδάφισης.
+κάτω (add a,#C0 -> add a,#00)· το ov_install χωρίς ένα call ovi_half, που
+δεν φέρνει το τελευταίο κομμάτι του OV_R3: το τέλος του χάρτη από το βήμα 186
+(οκτώ κομμάτια, OVI_N), το τρίτο της κατεδάφισης ως τότε.
 """
 import os, random, sys
 
@@ -225,7 +226,7 @@ def holes(sym, patch=None):
     m = cpc.CPC()
     m.run_frames(60)
     assert m.quickload(bytes(d))
-    names = ("dm", "save", "help", "r1")
+    names = ("dm", "save", "help", "r1", "map")         # ο χάρτης από το βήμα 186
     want = {n: OV.pieces(sym)[n][3] for n in names}
     m.run_frames(50)                        # το hw_clear πριν από το ov_install: ~5 frames
     first = {n: OV.read(m, sym, n) for n in names}
@@ -271,7 +272,7 @@ def negatives(sym):
         ("το su_lock χωρίς το jr nc,sul_st", locks, nop2(sl)),
         ("το sp_take χωρίς το jr nc,sps_bk", sources, nop2(sp)),
         ("το blk_row με τη γραμμή μία πιο κάτω", rows, [(br + 1, 0)]),
-        ("το ov_install με ένα μισό της κατεδάφισης (χωρίς το call ovi_half)", holes,
+        ("το ov_install με ένα κομμάτι λιγότερο (χωρίς ένα call ovi_half)", holes,
          ([0xCD] + w(sym["OVI_HALF"]), [0, 0, 0])),
     ]
 
