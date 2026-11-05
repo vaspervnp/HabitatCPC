@@ -253,10 +253,14 @@ def ui_flow(sym, g, col):
     fire()
     rec = snoop(m, sym, 0xC5, gc + S.CORR_REC * col.n_corr, S.CORR_REC * 2)   # τράπεζα 5 (βήμα 154)
     after = m.peek(g + 3 * 2) | (m.peek(g + 3 * 2 + 1) << 8)
+    # ΚΑΙ ΓΥΡΙΣΕ ΣΤΟ LOOK (βήμα 185, ο παίκτης): ως το 184 έμενε στο LINK με
+    # ln_a = 255, για τον επόμενο. Το αρνητικό του uip_late, που μοιράζονται η
+    # τοποθέτηση και ο διάδρομος, είναι στο tests/test_build.py.
+    st = m.peek(sym["UI_STATE"])
     check(rec[0] == 12 and rec[1] == 13 and rec[S.CORR_REC] == 255
-          and m.peek(sym["LN_A"]) == 255 and after < before,
-          f"το δεύτερο FIRE έχτισε: {list(rec[:S.CORR_REC])} {list(rec[S.CORR_REC:])}, "
-          f"μέταλλο {before} -> {after}")
+          and st == 0 and after < before,
+          f"το δεύτερο FIRE έχτισε και γύρισε στο LOOK: {list(rec[:S.CORR_REC])} "
+          f"{list(rec[S.CORR_REC:])}, μέταλλο {before} -> {after}, κατάσταση {st}")
 
     # --- ΚΑΙ ΦΑΙΝΕΤΑΙ ΣΩΣΤΑ: το cr_redraw εναντίον πλήρους σχεδίασης -------
     # Από το βήμα 35 ο διάδρομος που μπαίνει ΔΕΝ ξαναζωγραφίζει το κάδρο: μόνο

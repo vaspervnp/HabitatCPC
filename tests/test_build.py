@@ -627,6 +627,73 @@ def main():
     else:
         print("OK ΑΡΝΗΤΙΚΟ: χωρίς το A_MENU στο and του uist_place το SPACE δεν χτίζει τίποτα")
 
+    # --- 4γ. ΠΙΣΩ ΣΤΟ LOOK (βήμα 185) ---------------------------------------
+    # Ο παίκτης: «όταν χτίζω κάτι να κλείνει το μενού και να επιστρέφει πίσω
+    # στο αρχικό». Ενα FIRE πάνω στον θόλο 0 της αποικίας δεν χτίζει, και η
+    # κατάσταση μένει PLACE. Ενα FIRE στην καθαρή θέση χτίζει και γυρίζει στο
+    # LOOK αμέσως. Ο κέρσορας του LOOK (1 x 1) περιμένει τις σειρές του
+    # εργοταξίου (ui_owed), όπως το φάντασμα ως το 184. ΑΡΝΗΤΙΚΟ: το
+    # ld (hl),UI_LOOK του uip_late γίνεται UI_PLACE, όπως έμενε ως το 184.
+    def back(patch=False):
+        mm = boot()
+        if patch:
+            a = sym["UIP_LATE"]
+            st_ = sym["UI_STATE"]
+            if [mm.peek(a + k) for k in range(5)] != [0x21, st_ & 255, st_ >> 8, 0x36, UI_LOOK]:
+                return "το ld (hl),UI_LOOK του uip_late δεν βρέθηκε"
+            mm.poke(a + 4, UI_PLACE)
+        tap(mm, KEY_SPACE)              # -> MENU, είδος 0 = DOME S
+        mm.set_joystick_type(1)
+        mm.run_frames(2)
+        mm.joystick(0x10)               # FIRE -> PLACE
+        mm.run_frames(4)
+        mm.joystick(0)
+        mm.run_frames(6)
+
+        def fire():
+            mm.joystick(0x10)
+            mm.run_frames(6)
+            mm.joystick(0)
+            mm.run_frames(2)
+        d0 = colony_.dome[0:2]
+        goto(mm, d0[0], d0[1], 2)       # πάνω στον θόλο 0: κόκκινο
+        bad = mm.peek(sym["UI_BAD"])
+        fire()
+        mm.run_frames(20)
+        st_bad, nd_bad = mm.peek(sym["UI_STATE"]), mm.peek(sym["BD_NODE"])
+        goto(mm, 2 * tx + 4, 2 * ty + 4, 2)
+        fire()
+        st_now, owed = mm.peek(sym["UI_STATE"]), mm.peek(sym["UI_OWED"])
+        k = 0
+        while (mm.peek(sym["RV_PEND"]) or mm.peek(sym["UI_OWED"])) and k < 400:
+            mm.run_frames(1)
+            k += 1
+        mm.run_frames(4)
+        got = (bad != 0, st_bad, nd_bad, st_now, owed, mm.peek(sym["BD_NODE"]) != 255,
+               mm.peek(sym["UI_STATE"]), mm.peek(sym["UI_OWED"]),
+               mm.peek(sym["UI_W"]), mm.peek(sym["UI_H"]))
+        want = (True, UI_PLACE, 255, UI_LOOK, 1, True, UI_LOOK, 0, 1, 1)
+        mm.set_joystick_type(0)
+        if got != want:
+            return (f"(κόκκινο, κατάσταση, κόμβος) μετά το άκυρο FIRE {got[:3]}, (κατάσταση, "
+                    f"ui_owed) αμέσως μετά το καλό {got[3:5]}, κόμβος {got[5]}, και μετά τις "
+                    f"σειρές (κατάσταση, ui_owed, ui_w, ui_h) {got[6:]} — η πρόζα λέει {want}")
+        return None
+    why = back()
+    if why:
+        print(f"ΑΠΟΤΥΧΙΑ ΠΙΣΩ ΣΤΟ LOOK: {why}")
+        fails += 1
+    else:
+        print("OK πίσω στο LOOK (βήμα 185): ένα FIRE πάνω σε θόλο μένει στο PLACE χωρίς να "
+              "χτίσει· ένα καλό χτίζει και γυρίζει στο LOOK αμέσως, και ο κέρσορας 1 x 1 "
+              "περιμένει τις σειρές του εργοταξίου (ui_owed)")
+    why = back(patch=True)
+    if why is None or "δεν βρέθηκε" in why:
+        print(f"ΑΠΟΤΥΧΙΑ ΑΡΝΗΤΙΚΟ «μένει στο PLACE»: {why or 'δεν το έπιασε τίποτα'}")
+        fails += 1
+    else:
+        print(f"OK ΑΡΝΗΤΙΚΟ «μένει στο PLACE, όπως ως το 184»: {why}")
+
     # --- 5. ΠΟΙΑ μηχανήματα, και με ποια ΣΕΙΡΑ (§6.5) --------------------
     # Η σειρά ήταν ως το βήμα 44 η σειρά του αυτόματου γεμίσματος: με την
     # αριθμητική σειρά της room_machines το εργαστήριο έβγαζε επεξεργαστές και
@@ -671,6 +738,9 @@ def main():
     else:
         print("OK το οξυγόνο μόνο σε μικρό θόλο, όπως λέει το machine_rules")
 
+    # ΞΑΝΑ ΣΤΟ PLACE, στην ίδια θέση: από το βήμα 185 η τοποθέτηση γυρίζει στο
+    # LOOK, όπου το ui_bad δεν υπολογίζεται (ui_show, μόνο στο PLACE).
+    goto(m4, 2 * tx + 4, 2 * ty + 4, UI_PLACE)
     bad2 = m4.peek(sym["UI_BAD"])
     if bad2 == 0:
         print("ΑΠΟΤΥΧΙΑ: η ίδια θέση δείχνει ακόμη ελεύθερη μετά το χτίσιμο")

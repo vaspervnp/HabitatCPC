@@ -5568,7 +5568,7 @@ They did not choose a supply drop or a reserve of 30 Metal.
   - `hl_pile` tests it on every dig: `bit` and `jr`, 8 µs a mine with someone at work.
 - **Free with no other mine.** `bd_mprice` (bank 0) looks through the 32 structure records for a mine that is built or a site, and sets the price to 0 if there is none.
   - A demolished record keeps its kind, so its state is checked too.
-  - It runs when the mine is chosen in the catalogue, and after every placement. The UI stays in PLACE, and the second mine placed in a row must pay.
+  - It runs when the mine is chosen in the catalogue, and after every placement. Until milestone 185 the UI stayed in PLACE, and the second mine placed in a row must pay ([§9.3](#back-to-look-after-building-at-milestone-185)).
   - `ST_FREE`, bit 3, marks a mine that cost nothing. Demolished, it gives nothing back. Otherwise a free site, placed and taken down, would hand over 30 Metal each time.
 - **What it fixes.**
   - The scripted player's world `1048` at milestone 120 never found a place for the mine within reach of a vein ([§10.1](#the-scripted-player-at-milestone-120)).
@@ -13710,7 +13710,8 @@ item → a ghost follows the cursor,
 snapped to the correct parity
 ([§3.4](#34-anchors-are-centres)) — half a tile on, or half a tile back at the world's
 east and south edges ([§8.2](#the-world-has-an-edge-at-milestone-78)) — with invalid
-footprint tiles tinted. Fire commits,
+footprint tiles tinted. Fire commits, and since milestone 185 goes back to `LOOK`
+([below](#back-to-look-after-building-at-milestone-185));
 `ESC` backs out.
 
 **The menu is flat, not `category → item → size`.** Eleven things — three dome
@@ -13787,7 +13788,8 @@ per byte, and a one-byte-wide column (a frame side) walks down the screen withou
 saving its address per row. Large dome, open ground: show 131 → **18 ms**. Red, over
 the site just placed: 263 → **57 ms**, all of it drawn.
 
-**After a dome is placed, the ghost waits for it.** It used to come straight back,
+**After a dome is placed, the ghost waits for it**, and since milestone 185 `LOOK`'s cursor does
+([below](#back-to-look-after-building-at-milestone-185)). It used to come straight back,
 red, over the new site; with the site now appearing a row per frame
 ([§6.9](#69-construction)), every row would have had to lift it and drop it again. So
 `uip_fire` leaves it off and sets `ui_owed`, and `ui_tick` shows it one frame after
@@ -15229,6 +15231,79 @@ over the world on load; the format did not change (`SV_VER` 8).
 - **`tests/test_disc.py`.** The negative that starts `mn_prev` at 0 read `mw_k` after the
   game's files had covered `MENU.BIN` at `&4000`; until milestone 130 the byte there
   happened to be under 32. It now compares the screen with every world's menu.
+
+#### Back to `LOOK` after building, at milestone 185
+
+The player: "when I build something, the menu should close and go back to the start".
+Until milestone 184 a placement stayed in `PLACE` with the same item, ready for the
+next one, and a corridor of `R` stayed in `LINK` with no start picked. `ESC` went
+back to `MENU`, and a second `ESC` to `LOOK`. Asked, the player chose:
+
+- **Every successful build returns to `LOOK`**: a dome, a structure, and a corridor
+  of `R`.
+- **`FIT` stays open** after a machine goes into a slot. A dome is fitted slot by
+  slot.
+- A `FIRE` that is refused (a red ghost, not enough materials, no room in the tables)
+  stays where it was, as before.
+
+**It is one write in `uip_late`**, the ending that the placement and the corridor have
+shared since milestone 44 ("one ending for 'built'", above):
+`ld hl,ui_state · ld (hl),UI_LOOK`, 5 bytes, before its `jr z`. `ld (hl),n` leaves
+the flags alone, so the `Z` that says whether rows are still owed still chooses the
+ending.
+
+- **With rows to come**, `ui_owed` waits as it did for the ghost. What comes back
+  after the last row is `LOOK`'s 1 × 1 cursor. Its `ui_show` runs `ui_panel`, and
+  `bar_sync` puts back `LOOK`'s rows 3–4 and the six groups, because their signature
+  holds `ui_state`.
+- **Without**, `hud_draw` and `ui_show` run at once, as before.
+
+**The bytes came from the corridor.** Bank 0 had 7 free, but `bar.asm`'s `align 16`
+comes after `ui.asm`. The 5 bytes crossed a boundary, and the build ended at `&3E89`,
+9 over the tests' floor. After a corridor, `uil_second` wrote `ln_a` = 255, "one route
+at a time", so that `LINK` went on with no start. Now the corridor leaves `LINK`, and
+the only way in is `uim_fire`, which writes the same 255, so the write went. Bank 0
+keeps its 7. Outside `LINK` only the panel's signature reads `ln_a`, and a changed
+value there redraws the rows once.
+
+**The next one.** `SPACE` `SPACE` opens the bar on the group last built from, with the
+same item ([below](#graphical-buttons-at-milestone-84)). A group's letter and an item's
+letter open `PLACE` at once (`P` `S`), as before.
+
+**What it costs.** The write is 5 µs once per build. The return redraws the bar and
+rows 3–4 once, so a placement's worst frame moves by a few milliseconds. Every one
+stays under its limit:
+
+- `tests/test_reveal.py`: the solar panel 92 → 96 ms, the straight corridor 60 → 70,
+  the large dome 72 → 70.
+- `tests/test_link.py`: the medium-to-medium diagonal 48 → 61 ms, under 160.
+- `tests/test_reach.py`: the airlock 111 → 118 ms, the small dome with three corridors
+  80 → 88, the medium dome 71 → 63.
+
+The colonies of those tests also go a little differently afterwards: `test_leftover`'s
+site is built in 500 frames instead of 750, and `test_figure` takes more measures with
+the same worst. Every other number of the suite is milestone 184's.
+
+**Tests.**
+
+- **`tests/test_build.py`**, with the keys:
+  - `FIRE` on dome 0 stays in `PLACE` and builds nothing.
+  - `FIRE` on clear ground builds and is in `LOOK` at once, with `ui_owed` set. After
+    the rows the cursor is 1 × 1 and the debt is paid.
+  - The negative writes `UI_PLACE` in `uip_late`, as until milestone 184: the state
+    stays 2 and the box 4 × 4.
+  - Its check that a built place reads red again now goes back into `PLACE` first,
+    because `LOOK` does not validate.
+- **`tests/test_route.py`**: the second `FIRE` of a corridor builds and is in `LOOK`,
+  where it was `LINK` with `ln_a` = 255.
+- **`tests/test_reveal.py`**: the large dome's red ghost, the worst one, is brought
+  back over its own site with the player's keys (`tools/balance.py`'s `build`, without
+  placing). It still fills the undo log exactly, 1,160 bytes, and loses its last mark
+  with the limit one byte lower. The solar panel's site stripes are now under
+  `LOOK`'s cursor on their centre tile. The negative without `dt_ghost_rect` shows as
+  40 wrong bytes with the cursor, where it was 8 under the red ghost.
+- **`tests/test_tupage.py`**: after the tutorial's page the game is in `LOOK`, and
+  `P` `S` and a step right in `PLACE` leave the camera where it was.
 
 ### 9.4 Corridor routing
 
@@ -19221,7 +19296,7 @@ tests in this document runnable rather than aspirational:
 | The tests' floor | `src/main.asm` asserts that bank 0's code ends at `&3E80` or under (`&3E00` until milestone 141), and `tools/mkdsk.py` that it ends under `&3EC0`; `test_bar.py` and `test_screen.py` stop if it reaches their probe. Milestone 141 tried it both ways: one byte past `&3E80` and the assembly stops; with the code padded to `&3E80` exactly, the 39 tests that write between the code and `&4000` pass, and none writes under `&3E80` but the code it patches on purpose ([§4.2](#the-floor-at-3e80-at-milestone-141)) |
 | Stocks | `ec_stock_ptr`, `ec_add_stock` and `ec_make` in the game's own binary for all fourteen stocks, 336 calls against the rule — the cap, the `EC_PRODM` bit, the other stocks untouched; `ec_make` for every stock no slower than milestone 69 measured it — three negatives (`test_stock.py`) |
 | Water and ore near a pump or a mine | `bd_res` called directly in the game's own binary (`main.sna`, not a test build: the same source assembled differently there at milestone 67), 1,200 times on three planes (the uitest's world, the game's, and a synthetic one with near misses), for every kind in the catalogue at sizes 1×1 to 8×8, against the rule of §6.5 written in Python: `A` and `bd_nres`, the latter starting from garbage; the mine's and the pump's search with nothing to find, no slower than milestone 67 measured it (milestone 123: the mine off a vein 1,050, now a valid place, and the pump 821) — and since milestone 123 `bd_half`, from a random start: `ST_HALF` off a vein, 0 on one, left alone by the pump and the rest, and the panel's signature cleared exactly when it changes — six negatives, the new three a mine refused off a vein as until 122, a signature that stays, a `bd_half` never written (`test_terrain.py`) |
-| Build mode | cursor, ghost-leaves-no-trace, the room picker's row exactly (`< OXYGEN     S >`, `< CANTEEN    S >`, since milestone 119 padded by `hud_to`), the panel rows after a camera step (marked with `#AA` first, so a cell nobody rewrote is visible), validation, placement, payment, the dome placed **empty**, and owing its shell and corridors in loads with two Supply jobs and no Build (milestone 88) (`test_build.py`); since milestone 174's request `SPACE` in `PLACE` builds as `FIRE` does, with a negative, and a held arrow moves once and then once per 10 rounds ([§9.1](#space-places-and-one-step-a-press-after-milestone-174)) |
+| Build mode | cursor, ghost-leaves-no-trace, the room picker's row exactly (`< OXYGEN     S >`, `< CANTEEN    S >`, since milestone 119 padded by `hud_to`), the panel rows after a camera step (marked with `#AA` first, so a cell nobody rewrote is visible), validation, placement, payment, the dome placed **empty**, and owing its shell and corridors in loads with two Supply jobs and no Build (milestone 88) (`test_build.py`); since milestone 174's request `SPACE` in `PLACE` builds as `FIRE` does, with a negative, and a held arrow moves once and then once per 10 rounds ([§9.1](#space-places-and-one-step-a-press-after-milestone-174)); since milestone 185 a refused `FIRE` stays in `PLACE` and a good one returns to `LOOK`, the cursor 1 × 1 after the rows, with the old `UI_PLACE` as the negative ([§9.3](#back-to-look-after-building-at-milestone-185)) |
 | Materials first, then an engineer | the real game from the empty start, the player's keys (milestone 88): a solar panel beside the ship owes `#20`, one Supply and no Build at `FIRE`, 15 Metal gone once; loaded at the ship, `#20` → `#10` → `#00`, the stocks untouched while it is carried, no Build before the last load, only the engineer builds it; a small dome owes 2 and 1, both materials loaded, finished with `power` and `ops` at 0; with no engineer the Build waits 2,000 frames unassigned and row 2 says `NO ENGINEER SOLAR` (since milestone 119 exactly, with the thing waiting), never while materials are carried, and clears when an engineer is back; nobody left inside the dome when it is sealed — four negatives: the Build at `FIRE` as until milestone 87, the Build open to anyone, an `sp_noeng` that never answers, an `lk_each` that puts out only the builder (`test_supply.py`). In the simulation harness: three domes made sites owing loads, with their Supply jobs, 2,400 frames byte for byte against `tools/econ.py`, once with a Storage dome as the source (carriers seen, the source in `node`) and once with none (nobody loads), every site supplied before its Build and built only by roles 1 and 5 — two negatives that must disagree: no Storage domes as sources, and a delivery that closes the job while more is owed (`test_sim.py`) |
 | The build flow, routine by routine | `build.asm`'s entry points called directly in `main.sna`, against rules written from the prose: `bd_ok` for all 256 bytes; `bd_select` for every item and none, at every cursor parity; `bd_rect` at every centre and size, the world's edges included and `bd_ty` left alone when x is out; `bd_check` on random planes with a mountain rim, near the edges and out of the world, with `test_terrain.py`'s model for the material; `bd_afford` and `bd_stock_pay` around the cost; 300 commits on random dome, structure, graph and job tables — the slot, the record, the stamp, the payment, the edges to the nearest dome, the loads owed in the record and the Supply jobs — or the Build, when nothing is owed — from random totals (milestone 88), `ob_idx`, or 255 and nothing; 200 redraws with stubs; the check, `bd_rect`, `bd_afford` and the commit no slower than milestone 73 measured, with the item's own cost owed — and since milestone 123 the mine: `bd_select` free with no other mine in the table (an emptied record that still says mine does not count), `bd_half` cleared; the commit writing `ST_HALF` and `ST_FREE`, paying `bd_metal`, then the next mine's price; a mine's commit timed (1,530 µs) — twelve negatives, the new four a `bd_select` without `bd_mprice`, emptied records counted, no `ST_FREE`, the next mine free as well (`test_place.py`) |
 | Rooms and the catalogue | `rm_build` for every room and size against a model of §6.5 (what the room accepts, what fits the size, the main machine first, the greenhouse by class), with the real `room_machines` and `machine_rules` and with 24 random ones; `BC`, `DE`, `HL` kept across it; every catalogue step from every position in both directions, and `rm_fix` for a dome and a structure; 11 rounds instead of 12 as the negative (milestone 60, `test_build.py`) |
@@ -19246,7 +19321,7 @@ tests in this document runnable rather than aspirational:
 | The storage (milestone 122) | in the simulation harness, byte for byte against `tools/econ.py`, the flag included: a flow cycle (slot 12) at the edges of the capacity — one under it, exactly at it, 700 over, no Storage dome (500), an L dome one under and exactly — each followed **in the same Z80** by a whole production sweep (slot 11, 64 calls), so the code `ec_setfull` rewrote is what runs; and one from a full flag to one under. Full: the mines' piles stay (20 → 22 with room; since milestone 184 they grow to 6 with a full store too, from 4, and only the Haul waits), and since milestone 124 the gardens and `VITROMEAT` stop while the converters run — the total does not rise, no Starch, Vegetables, Medicinal plants or Meat appear, and the goods move (until then no stock changed). The flow cycle at most 8,640 µs with the colony's M dome and 9,020 with eight Storage domes (8,360 at milestone 121; 8,610 and 8,990 at 122, +20 at 123 for the half-yield bit of its two mines at work, +40 and +50 at 126 for the low Drills and the empty-mine check, +40 at 127 for the Metal reserve, +30 and +20 at 138 for the Bioplastic limit, and +40 at 144 for the Spares limit: 8,780 and 9,160 under 8,790 and 9,170). Seven negatives make the Z80 differ: Water counted instead of Food, `VITROMEAT` that does not stop and every machine stopping, the oxygen included (milestone 124; until then "machines that do not stop"), gardens that do not stop, an `ec_setfull` that leaves the third call alone, mines that dig (since milestone 184 a Haul posted with a full store), an M dome of 200. The wheel's own test: `wheel_reset` leaves the storage with room, and a negative without its call. Since milestone 127 the same for the Metal reserve: a flow cycle with Metal at 29, 30 and 200 and a whole sweep after it, byte for byte; with 29 the four Metal eaters make nothing and the Metal does not fall; the heavy visits of slot 11 with the reserve under 12,170 µs (12,520 without); four negatives (every machine passing, the first call left alone, limits of 31 and 29), and `wheel_reset` clearing `ec_keep`, with a negative. Since milestone 138 the Bioplastic limit too: Bioplastic 99, 100, and 100 with Metal 29, the colony's three `PLASTIC` given operators and Starch so they can run — 6 Starch eaten with 99, none with 100; the heavy visits with both bits under 12,240 µs; five more negatives (limits of 101 and 99, the table's second entry left `erm_in`, `erm_inb` and `erm_inkb` letting their machines through). Since milestone 144 the Spares limit too: Spares 19, 20, and 20 with Metal 29 — the colony's `SPARES` makes some with 19 and none with 20; the heavy visits under 12,220 µs with it and 12,310 with all three, none above the visit with no limit; four more negatives (limits of 21 and 19, `erm_inp` letting `SPARES` through, the second call left `erm_in`) and `wheel_reset` clearing it (`test_sim.py`, [§6.5](#bioplastic-stops-at-a-hundred-at-milestone-138), [§6.5](#twenty-spares-at-milestone-144)) |
 | The scarcest ingredient with a full store (milestone 142) | in the simulation harness, byte for byte against `tools/econ.py`, `ec_need` included: eight scenes with the store exactly full — Meat 0, Starch 0, Vegetables 0, Starch 29, all at 30, a tie at 5, Vegetables and Meat at 7, Starch 260 — a flow cycle (slot 12) and one sweep of production (slot 11, 64 calls) in the same Z80; in the reference only the scarcest grows, and nothing with all at 30; `ec_need` from `LOAD_STATE` without a flow cycle; `st_need` called directly on 300 random combinations, with the class and the two switches it writes; the flow cycle with a full store no more than 8,800 and 9,180 µs with eight Storage domes, slot 11's heavy visits with a full store no more than 12,080 and none above the same visit with room (since milestone 184 with `VITROMEAT`'s reserves full, and the same visits while they fill under 12,640) — ten negatives (`test_sim.py`, [§6.5](#only-the-scarcest-goes-on-at-milestone-142)) |
 | The reserves of a full store (milestone 184) | in the simulation harness, byte for byte against `tools/econ.py`, `EC_RSV` and the switch in `erd_call` included: the colony's two `VITROMEAT` with the store full and the battery full (`P_ALL`) — a sweep to 232, a sweep to 248, a sweep that stops at 248, then with room a flow cycle and a sweep back to 200; each against a counterfactual of the same state, the store's Meat +0 and Water −4 while they fill and Meat +6 when they empty; the heavy visits while they fill under 12,490 µs and on the cycle that empties under 13,260 — five negatives: the Meat not taken back, no stop when full, bit 5 for bit 4, `ec_run_one` for `ec_dr1`, a drain that leaves the reserve (`test_sim.py`, [§6.5](#six-at-the-mine-three-in-the-machine-at-milestone-184)) |
-| Building without a freeze | a large Factory, a solar panel and a corridor placed and finished in the real binary: a **canary** byte far from the building must survive (a full redraw repaints it), the screen must match a full redraw of the same state — exactly, outside the canary, since milestone 42 — and the worst frame is measured on a clock that does not lose it at a seam. The large dome must appear in exactly eight frames, one row each, and the ghost must be back after it. The ghost is left over the finishing dome and then moved, once with the lift cut out as a negative control; the red large-dome ghost must fill the undo log **exactly**, 1,160 bytes, and with the limit one byte lower it loses its last mark. Since milestone 109 the solar panel's site has the stripes at its centre and loses them when it is finished, both checked under the cursor's ghost (`ui_hide`, against a full redraw without the ghost) and with it; negatives: no `st_mark`, no `DK_TILE` from `st_built`, no `dt_ghost_rect` in `dh_tile`; and a crater under the cursor's frame, the same negative (`test_reveal.py`); a corridor **with a bend** is compared against a full redraw in `test_route.py` |
+| Building without a freeze | a large Factory, a solar panel and a corridor placed and finished in the real binary: a **canary** byte far from the building must survive (a full redraw repaints it), the screen must match a full redraw of the same state — exactly, outside the canary, since milestone 42 — and the worst frame is measured on a clock that does not lose it at a seam. The large dome must appear in exactly eight frames, one row each, and the ghost must be back after it. The ghost is left over the finishing dome (since milestone 185 brought back with the keys, since the placement returns to `LOOK`) and then moved, once with the lift cut out as a negative control; the red large-dome ghost must fill the undo log **exactly**, 1,160 bytes, and with the limit one byte lower it loses its last mark. Since milestone 109 the solar panel's site has the stripes at its centre and loses them when it is finished, both checked under the cursor's ghost (`ui_hide`, against a full redraw without the ghost) and with it, since milestone 185 `LOOK`'s cursor; negatives: no `st_mark`, no `DK_TILE` from `st_built`, no `dt_ghost_rect` in `dh_tile`; and a crater under the cursor's frame, the same negative (`test_reveal.py`); a corridor **with a bend** is compared against a full redraw in `test_route.py` |
 | Corridors between placed domes | diagonal and bent routes between domes placed through the interface, every size: 0 bad tiles where the route crosses its own ends' footprints, a stone and a third dome still block, the old check patched back in fails. Seven built in all four diagonal directions, byte-exact against a full redraw, with B's door (since milestone 96 its joint) opposite the **last** run; the diagonal comes out **one row per frame**, as many rows as are in view — the rounds counted by a hook on the main loop since milestone 62, and a row costing 6,000 must show three in one — worst frame under 160 ms, and the ghost comes back after. Every frame of a reveal is sampled: what was already on screen must not vanish (13 bytes, against 96 with the terrain repainted; since milestone 96, with the corridors under the shells, 9 against 88). The cursor stepped onto rows still to come must leave no trace (22 bytes with `dt_ghost_rect` cut), a diagonal preview hidden again must leave no marks, and a strip one tile off for `/` must show. Since milestone 97 two short bends, the flag at `b` and the pixel grey on screen, not only equal to a full redraw that would lack it too (negative: `jtb_mark` cut, [§8.4](#the-short-bends-at-milestone-97)); since 129 two vertical ones, one tile north and one south after the bend, the flags read in bank 6. Six previews hidden, two of them climbing into a horizontal run (a mark left behind with `crw_h1`'s fix cut out), and the ghost log of six routes equal to the cursor's frame plus one mark per visible tile — including the worst there is, 21 tiles, 308 bytes (`test_link.py`, [§9.4](#94-corridor-routing), [§4.2](#42-the-eight-banks)) |
 | The corridor router, routine by routine | `route.asm`'s entry points called directly in `main.sna`, two domes written straight into the table: 1,500 pairs — axial, diagonal, nearly diagonal, odd distances, empty and unfinished domes, every size at either end, 40 of them reaching row −65, 166 at 64 tiles or more on an axis (no route, `cr_far` = 1, milestone 81) — with `cr_plan` against `tools/route.py`, `cr_walk`'s tiles in order against `test_route.py`'s, `cr_check` and `cr_stamp` against their rules in a random world (the stamp changing nothing else in any bank), `cr_cost` and `cr_afford` against the arithmetic; 400 commits on random tables — the first slot that fits, never past the last, payment only then, and since milestone 87 through `cr_commit_ln` with one or both domes a site in a fifth of them: the graph's edges only when both are standing (negative: an edge to a site); 500 redraws with stubs on `dirty_push` and `view_add` — the doors (since milestone 96 the joints), the diagonal's rows in view, the axial box, since 96 a column or a row wider where a centred corridor straddles a tile boundary; every fourth of the 2,024 short bends up to 12 tiles, the bend's pixel in a tile the redraw pushes (milestone 97, [§8.4](#the-short-bends-at-milestone-97)); in six geometries plan no slower than milestone 81 measured, and walk, check, afford and commit no slower than milestone 72 (commit +404 µs since milestone 159, whose table of 128 has 32 more records before the last two); since milestone 159 each table with its scan limit, which a commit leaves at the end of its records or higher ([§4.2](#128-corridors-and-their-scan-limit-at-milestone-159)) — sixteen negatives, 96's no half column or row and 97's rows one tile right, which leave short bends out, and since milestone 161 rock refused as until 160, mountain let through, the decor counted and the occupancy not counted, in a random world that has rock and the decor bits ([§9.4](#over-rock-too-at-milestone-161)) (`test_corridor.py`) |
 | Corridor corners | `tools/corner.py`'s three bands with the outline rule are `corr_dr`, `corr_h` and `corr_v`; `tools/scene.py` draws the mitre exactly in 8,072 bends of all eight kinds; the Z80 draws the eight corners byte for byte as `tools/scene.py`; a bent corridor's `ob_corr` at least 200 µs cheaper (280 until milestone 171, whose tiles draw without masks too), and each kind under a ceiling and under milestone 170's cost, than the same build drawing as milestone 128 did — nine negatives ([§8.4](#corners-at-milestone-129), `test_corner.py`) |

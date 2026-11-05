@@ -213,7 +213,8 @@ which you can save like any other.
 1. Pick it from the button bar (for example `D` `S` `O`).
 2. A **ghost** of the building follows the cursor. It is green where the building
    can go, and red where it cannot, with the reason on the panel.
-3. `SPACE` places it, and `ESC` goes back.
+3. `SPACE` places it, and you are back in the main view: `SPACE` `SPACE` opens the
+   same group again for the next one. `ESC` goes back without building.
 
 **What it costs:**
 - The panel shows the price in Metal (`FE`) and Bioplastic (`BI`), and a dome's
@@ -233,7 +234,7 @@ which you can save like any other.
   other structure. The first one needs nothing. Colonists walk those paths in their
   suits.
 - The `R` button links two domes yourself. Pick the first dome, then the second
-  (`PICK THE FIRST DOME`, `NO ROUTE FROM THERE`).
+  (`PICK THE FIRST DOME`, `NO ROUTE FROM THERE`), and you are back in the main view.
 - **Medium and large domes cannot hold oxygen.** Oxygen machines fit only in small
   domes.
 - **The extractor needs water within two tiles** (`NEEDS WATER NEARBY`).

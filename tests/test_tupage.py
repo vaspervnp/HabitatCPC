@@ -379,11 +379,17 @@ def pages(sym, data, idx):
           f"μετά το SPACE, ίδια με το αρχείο (λάθος σειρές {bad})")
     R.tap(KEY_SPACE, 4)
     R.game()
+    # ΣΤΟ LOOK (βήμα 185): η τοποθέτηση γυρίζει εκεί, και η σελίδα το κρατά. Ο
+    # επόμενος ηλιακός με τα ίδια δύο πλήκτρα, P S, και ένα βήμα στο PLACE.
+    look = R.m.peek(sym["UI_STATE"])
+    R.tap("p")
+    R.tap("s")
     st, c0 = R.m.peek(sym["UI_STATE"]), R.m.peek(sym["CAM_TX"])
     R.tap(KEY_RIGHT, 40)
-    check(st == 2 and R.m.peek(sym["CAM_TX"]) == c0,
-          f"ΜΕΤΑ ΤΙΣ ΣΕΛΙΔΕΣ ένα βήμα του κέρσορα στο PLACE δεν κουνά την κάμερα "
-          f"(cam_tx {c0} -> {R.m.peek(sym['CAM_TX'])}): το bd_select ακέραιο")
+    check(look == 0 and st == 2 and R.m.peek(sym["CAM_TX"]) == c0,
+          f"ΜΕΤΑ ΤΙΣ ΣΕΛΙΔΕΣ στο LOOK ({look}), και με P S ένα βήμα του κέρσορα στο "
+          f"PLACE ({st}) δεν κουνά την κάμερα (cam_tx {c0} -> {R.m.peek(sym['CAM_TX'])}): "
+          f"το bd_select ακέραιο")
     from cpc import KEY_ESC
     R.tap(KEY_ESC)
     R.tap(KEY_ESC)
