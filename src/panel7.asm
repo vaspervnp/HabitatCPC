@@ -149,6 +149,26 @@ inp_r3:
         cp      #08 + W_MOUNTAIN        ; βουνό, με το bit του πόρου
         ld      hl,t_i_ore
         call    z,hud_text
+        ; Ο ΣΩΡΟΣ ΕΝΟΣ ΟΡΥΧΕΙΟΥ ΣΕ ΛΕΙΤΟΥΡΓΙΑ (βήμα 184, η επιλογή του χρήστη),
+        ; μετά το έδαφος: «ORE 4/6». Ενας θόλος έχει στο in_k το μέγεθός του, 0-2,
+        ; και ένα εργοτάξιο στο ST_OWED τα υλικά που χρωστά. Το «/6» είναι
+        ; κείμενο: το src/uitext.asm το έχουν και σκαλωσιές χωρίς το haul.asm.
+        assert  MINE_CAP == 6 && K_MINE > 2
+        ld      a,(in_k)
+        cp      K_MINE
+        jr      nz,inp_end
+        ld      a,(in_st)
+        cp      DS_ACTIVE
+        jr      nz,inp_end
+        call    hud_space
+        ld      hl,t_i_pile
+        call    hud_text                ; «ORE»
+        ld      a,(in_ow)
+        ld      b,2
+        call    hud_numa                ; « 4»
+        ld      hl,t_i_cap
+        call    hud_text                ; «/6»
+inp_end:
         jp      acp_end                 ; κενά ως τη στήλη 40, uip_spd
 
 ; cw_panel — από το ac_panel, στη σειρά 3, στήλη 0. Οι οδηγίες στη σειρά 3

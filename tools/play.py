@@ -1705,11 +1705,13 @@ def tweak(G, spec):
         elif k in ("dig", "raw"):
             # ΤΟ ΟΡΥΧΕΙΟ ΣΚΑΒΕΙ ΚΑΙ ΜΕ ΓΕΜΑΤΗ ΑΠΟΘΗΚΗ (βήμα 137, μέτρηση): το
             # «ld a,(ec_full) / or a / jr nz,hlp_pile» του hl_pile χωρίς το jr.
+            # Από το βήμα 184 το παιχνίδι σκάβει έτσι (ως MINE_CAP), και το
+            # μοτίβο δεν υπάρχει: τίποτα να πειραχτεί.
             f = G.sym["EC_FULL"]
             a = codeat.find(G.m, G.sym["HL_PILE"], [0x3A, f & 255, f >> 8, 0xB7, 0x20], 40)
-            assert a, "δεν βρέθηκε το ec_full του hl_pile"
-            codeat.poke(G.m, a + 4, 0)
-            codeat.poke(G.m, a + 5, 0)
+            if a:
+                codeat.poke(G.m, a + 4, 0)
+                codeat.poke(G.m, a + 5, 0)
             # raw: ΚΑΙ ΜΕΤΑΛΛΕΥΜΑ ΚΑΙ ΜΕΤΑΛΛΟ ΕΞΩ ΑΠΟ ΤΗΝ ΑΠΟΘΗΚΗ, όπως το νερό:
             # το st_check δεν τα αθροίζει (τα «ld de,(EC_STOCK + 4|6) / add
             # hl,de» του ξεδιπλωμένου αθροίσματος γίνονται nop). Το ορυχείο

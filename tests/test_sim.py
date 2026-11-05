@@ -87,7 +87,10 @@ def z80_read(m, sym, frames):
             bytes([m.peek(sym["EC_FULL"]),              # η αποθήκη (βήμα 122)
                    m.peek(sym["EC_KEEP"]),              # το μέταλλο (βήμα 127)
                    m.peek(STAGE_OCC + EC.VIN_OFF),      # οι επισκέπτες μέσα (βήμα 136)
-                   m.peek(sym["ERM_NEED"] + 1)]),       # το ec_need (βήμα 142)
+                   m.peek(sym["ERM_NEED"] + 1),         # το ec_need (βήμα 142)
+                   m.peek(STAGE_OCC + EC.RSV_OFF),      # τα αποθεματικά (βήμα 184)
+                   (m.peek(sym["ERD_CALL"] + 1) | m.peek(sym["ERD_CALL"] + 2) << 8)
+                   == sym["EC_DR1"]]),
             m.read_ram(sym["G_JOB_TBL"], EC.MAX_JOB * EC.JOB_REC),
             m.read_ram(sym["G_ROOM_N"], 12) +
             m.read_ram(sym["G_ROOM_LIST"], 96))
@@ -157,6 +160,10 @@ def z80_load(sym, g, sim, rt_n=None, patch=()):
                                             # τον κώδικά του (ec_setfull, βήμα 122)
     m.poke(sym["EC_KEEP"], sim.e.keep)      # και του μετάλλου (βήμα 127)
     m.poke(sym["ERM_NEED"] + 1, sim.e.need) # το ec_need, το immediate του erm_inf (142)
+    # ο κύκλος που αδειάζει τα αποθεματικά (βήμα 184): ο κώδικας του st_need
+    dr = sym["EC_DR1" if sim.e.drain else "EC_RUN_ONE"]
+    m.poke(sym["ERD_CALL"] + 1, dr & 255)
+    m.poke(sym["ERD_CALL"] + 2, dr >> 8)
     enter(m, sym, "LOAD_STATE")
 
     for at, v in patch:                     # τα αρνητικά: κώδικας αλλαγμένος
@@ -201,7 +208,8 @@ def econ_bytes(e):
     από το βήμα 121 τα έξι του EC_X (η ησυχία) στην τράπεζα 6, και από το 122
     το ec_full της τράπεζας 0, από το 127 και το ec_keep, από το 142 και το
     ec_need."""
-    return EC.to_bytes(e) + EC.x_bytes(e) + bytes([e.full, e.keep, e.vin, e.need])
+    return EC.to_bytes(e) + EC.x_bytes(e) + bytes([e.full, e.keep, e.vin, e.need,
+                                                   e.rsv, e.drain])   # βήμα 184
 
 
 def fresh(g, nexthop, src):
@@ -229,7 +237,8 @@ def fresh(g, nexthop, src):
               "ldis", "lev", "full", "keep", "need",       # βήμα 142: need
               "coins", "prestige", "goodwill", "visacc",     # βήμα 134
               "mcoins",                                     # βήμα 135
-              "vin"):                                       # βήμα 136
+              "vin",                                        # βήμα 136
+              "rsv", "drain"):                              # βήμα 184
         setattr(s.e, f, getattr(src.e, f))
     return s
 
@@ -349,7 +358,8 @@ def main():
                            "no_trade_sols", "traded", "pad_node"]),
                   (108, 1, ["ldis_sol"]), (109, 2, ["ldis_frame"]),   # βήμα 121
                   (111, 1, ["lev_sol"]), (112, 2, ["lev_frame"]),
-                  (114, 1, ["full", "keep", "vin", "need"])]        # βήματα 122, 127, 136, 142
+                  (120, 1, ["full", "keep", "vin", "need",        # βήματα 122, 127, 136, 142
+                            "rsv", "drain"])]                     # και 184
         print("ΑΠΟΤΥΧΙΑ οικονομία:")
         for base, width, names in groups:
             for j, n in enumerate(names):
@@ -619,6 +629,10 @@ def main():
 
     # --- η χωρητικότητα των αποθηκών (βήμα 122) ---
     if store_branches(sym, g, nexthop, sim0):
+        return 1
+
+    # --- το αποθεματικό των μηχανών (βήμα 184) ---
+    if reserve_branches(sym, g, nexthop, sim0):
         return 1
 
     # --- το σπανιότερο υλικό του γεύματος (βήμα 142) ---
@@ -1181,11 +1195,13 @@ KEEP4_SWEEP_US, KEEP7_SWEEP_US = 12220, 12310
 def store_branches(sym, g, nexthop, sim0):
     """Η ΑΠΟΘΗΚΗ (βήμα 122): ο κύκλος ροής (θέση 12) στα όρια της
     χωρητικότητας — ένα λιγότερο, ακριβώς, πολύ πάνω· χωρίς τον θόλο Storage·
-    με τον θόλο L — που ανάβει ή σβήνει το ec_full και σκάβει (ή όχι) στα
-    ορυχεία· και μετά ένα ολόκληρο σάρωμα της παραγωγής (θέση 11 καρφωμένη,
-    64 περιστροφές) με το ec_full όπως το άφησε. Ολα τα bytes ίδια στον Z80 και
-    στην αναφορά. Γεμάτη: κανένα αγαθό δεν αλλάζει (ούτε φτιάχνεται ούτε
-    τρώγεται) και ο σωρός δεν μεγαλώνει· αλλιώς φτιάχνονται."""
+    με τον θόλο L — που ανάβει ή σβήνει το ec_full — και μετά ένα ολόκληρο
+    σάρωμα της παραγωγής (θέση 11 καρφωμένη, 64 περιστροφές) με το ec_full όπως
+    το άφησε. Ολα τα bytes ίδια στον Z80 και στην αναφορά. Γεμάτη: κανένα αγαθό
+    δεν αλλάζει (ούτε φτιάχνεται ούτε τρώγεται)· αλλιώς φτιάχνονται.
+    ΤΑ ΟΡΥΧΕΙΑ (βήμα 184): ο σωρός τους δύο κάτω από το MINE_CAP πριν, και
+    γεμάτος μετά, με γεμάτη αποθήκη ή όχι — ως το 183 με γεμάτη δεν σκάβονταν·
+    η Haul μόνο με χώρο: γεμάτη, ο σωρός περιμένει στο ορυχείο."""
     base = fresh(g, nexthop, sim0)
     EC.rooms_rebuild(base.e, base.pc)
     keys = lambda z: (z.a.to_bytes(), bytes(z.e.dome), bytes(z.e.struct),
@@ -1246,23 +1262,34 @@ def store_branches(sym, g, nexthop, sim0):
         got = z80_read(m, sym, 0)
         return (got[0], got[3], got[4], got[5], got[6], got[1])
 
+    mines = [i * EC.STRUCT_REC for i in range(EC.MAX_STRUCT)
+             if base.e.struct[i * EC.STRUCT_REC + EC.ST_KIND] == EC.K_MINE]
+
     def piles(e):
-        return [e.struct[i * EC.STRUCT_REC + EC.ST_OWED] for i in range(EC.MAX_STRUCT)
-                if e.struct[i * EC.STRUCT_REC + EC.ST_KIND] == EC.K_MINE]
+        return [e.struct[b + EC.ST_OWED] for b in mines]
+
+    def hauls(e):
+        return [bool(e.struct[b + EC.ST_OPS] & EC.ST_HAUL) for b in mines]
     SWEEP = 4 * EC.ECON_DIV
     starts = {}
-    pile0 = piles(base.e)
+    pile0 = [EC.MINE_CAP - 2] * len(mines)      # ένας σκάβει: +2, γεμάτος
     dug = None
+    if not mines or hauls(base.e) != [False] * len(mines):
+        print(f"ΑΠΟΤΥΧΙΑ αποθήκη: η αποικία της δοκιμής, ορυχεία {mines}, Haul {hauls(base.e)}")
+        return 1
     for name, setup, full in cases:
         st = fresh(g, nexthop, base)
         setup(st.e)
+        for b in mines:
+            st.e.struct[b + EC.ST_OWED] = EC.MINE_CAP - 2
         st.e.flow_div = 1                       # ο κύκλος ροής σε αυτή την κλήση
         flow = fresh(g, nexthop, st)
         slot12(flow)
-        if flow.e.full != full or (piles(flow.e) == pile0) != bool(full):
+        if flow.e.full != full or piles(flow.e) != [EC.MINE_CAP] * len(mines) \
+           or hauls(flow.e) != [not full] * len(mines):
             print(f"ΑΠΟΤΥΧΙΑ αποθήκη: «{name}» — η αναφορά: γεμάτη {flow.e.full}, "
                   f"σύνολο {sum(st.e.stock[1:])} από {cap(st.e)}, σωροί "
-                  f"{pile0} -> {piles(flow.e)}")
+                  f"{pile0} -> {piles(flow.e)}, Haul {hauls(flow.e)}")
             return 1
         if z80(st, 1, 12) != keys_flow(flow):
             print(f"ΑΠΟΤΥΧΙΑ αποθήκη: «{name}» — ο κύκλος ροής του Z80 διαφέρει "
@@ -1323,8 +1350,9 @@ def store_branches(sym, g, nexthop, sim0):
           f"({EC.STORE_BASE + EC.STORE_SIZE[2]}) — και μετά από "
           f"τον καθένα ένα σάρωμα της παραγωγής στον ίδιο Z80, και ένα από γεμάτη "
           f"σε «ένα λιγότερο»: ίδια bytes με την αναφορά· οι σωροί {pile0} -> {dug} "
-          f"όταν χωρά, ίδιοι όταν γεμίσει· γεμάτη, κήποι και VITROMEAT σταματούν και οι "
-          f"μετατροπές τρέχουν (βήμα 124: το σύνολο πέφτει {conv} σε ένα σάρωμα)")
+          f"και με γεμάτη, Haul μόνο με χώρο (βήμα 184)· γεμάτη, κήποι και VITROMEAT "
+          f"σταματούν και οι μετατροπές τρέχουν (βήμα 124: το σύνολο πέφτει {conv} σε "
+          f"ένα σάρωμα)")
     print(f"              ο κύκλος ροής {us1} us με τον θόλο M (8360 στο 121, 8610 στο 122, 8630 στο 123, 8670 στο 126, ταβάνι "
           f"{STORE_FLOW_US}), {us8} με οκτώ θόλους Storage ({STORE_FLOW8_US})")
 
@@ -1344,16 +1372,21 @@ def store_branches(sym, g, nexthop, sim0):
                  a and [(a + 1, (stock1 - 2) & 255)]))
     # (το «VITROMEAT δεν σταματά» στο meal_branches από το βήμα 142: εδώ το
     # κρέας είναι 0, και το VITROMEAT τρέχει σωστά)
-    a = code_at("ERM_INF", [0xDD, 0x7E, 0x09, 0xE6, 4], 20)
+    # bit 2,(ix+9) · jp z,erm_in (βήμα 184· ως τότε ld a,(ix+9) · and 4 · ret z,
+    # και το αρνητικό and #FF): το jp z nop, και καμία δεν περνά ως μετατροπή
+    ei = sym["ERM_IN"]
+    a = code_at("ERM_INF", [0xDD, 0xCB, 0x09, 0x56, 0xCA, ei & 255, ei >> 8], 20)
     negs.append(("σταματούν όλες, και το οξυγόνο", "ακριβώς γεμάτη",
-                 a and [(a + 4, 0xFF)]))                      # and #FF: κάθε σημαία
+                 a and [(a + 4, 0), (a + 5, 0), (a + 6, 0)]))
     jr = sym["ERP_CHK"] - sym["ERP_FULL"] - 2               # βήμα 142: ld de,jr erp_chk
     a = code_at("EC_SETFULL", [0x11, 0x18, jr], 40)
     negs.append(("οι κήποι δεν σταματούν", "ακριβώς γεμάτη",
                  a and [(a + 1, 0x3E), (a + 2, EC.S_WATER)]))
     # (και το «η τρίτη κλήση μένει erm_in» στο meal_branches, για τον ίδιο λόγο)
-    a = code_at("HL_PILE", [0x3A, full & 255, full >> 8, 0xB7, 0x20], 40)
-    negs.append(("τα ορυχεία σκάβουν", "ακριβώς γεμάτη", a and [(a + 4, 0), (a + 5, 0)]))
+    # (βήμα 184: με γεμάτη σκάβουν, και ο σωρός περιμένει — όχι Haul· ως το 183
+    # το αρνητικό ήταν «τα ορυχεία σκάβουν»)
+    a = code_at("HL_PILE", [0x3A, full & 255, full >> 8, 0xB7, 0xC0], 90)
+    negs.append(("Haul και με γεμάτη", "ακριβώς γεμάτη", a and [(a + 4, 0)]))
     a = sym["STC_CAPS"] + 2
     negs.append(("ο θόλος M χωρά 200", "ένα λιγότερο", [(a, 200), (a + 1, 0)]))
     for what, case, patch in negs:
@@ -1389,6 +1422,14 @@ def store_branches(sym, g, nexthop, sim0):
 # Βήμα 173: όπως ο κύκλος ροής πιο πάνω, +680: 8.760 -> 9.440, 9.140 -> 9.820. Ως
 # το 172 8.840 και 9.210.
 MEAL_FLOW_US, MEAL_FLOW8_US, MEAL_SWEEP_US = 9520, 9900, 12080
+# Βήμα 184: οι μετρήσεις του 142 με τα αποθεματικά των δύο VITROMEAT γεμάτα,
+# όπου σταματούν όπως ως το 183 — 11.380, 11.970, 11.800 και 11.890 us, όλες
+# κάτω από το 183 (11.470, 12.070, 11.890, 12.030): το erm_inf κοιτάζει πρώτα το
+# MF_ADDS, και κάθε μετατροπή γλιτώνει 33 T, πάνω από τα ~20 us που πληρώνει το
+# VITROMEAT που σταματά για τη στοίβα του. Και οι ίδιες με τα αποθεματικά άδεια,
+# όσο γεμίζουν — τα VITROMEAT τρέχουν πάλι: 12.040, 12.630, 12.460, κάτω από τα
+# 12.750 χωρίς γεμάτη αποθήκη (12.770 πριν από το «πρώτα το MF_ADDS»).
+MEAL_FILL_US = 12640
 
 
 def meal_branches(sym, g, nexthop, sim0):
@@ -1528,9 +1569,19 @@ def meal_branches(sym, g, nexthop, sim0):
         m.poke(sym["PIN_SLOT"], 12)
         return tick_us(m, sym)
 
-    def visits(st, full, need):
+    # Τα VITROMEAT με τα αποθεματικά τους γεμάτα (βήμα 184): ο κώδικας του 142,
+    # όπου σταματούν. Ο δρόμος που γεμίζει έχει τη δική του μέτρηση, πιο κάτω.
+    vit = [d * EC.DOME_REC + EC.D_HEALTH + s for d in range(EC.MAX_DOME)
+           for s in range(EC.MACH_SLOTS)
+           if base.e.dome[d * EC.DOME_REC + EC.D_ROOM] != EC.R_GREENHOUSE
+           and base.e.dome[d * EC.DOME_REC + EC.D_MACH + s] == 9
+           and base.e.dome[d * EC.DOME_REC + EC.D_HEALTH + s] & 0x80]
+
+    def visits(st, full, need, h=EC.MACH_HP + 16 * EC.RSV_MAX):
         z = fresh(g, nexthop, st)
         z.e.full, z.e.need = full, need
+        for i in vit:
+            z.e.dome[i] = h
         m = z80_load(sym, g, z, EC.MAX_DOME + EC.MAX_STRUCT)
         m.poke(sym["PIN_SLOT"], 11)
         us = [tick_us(m, sym) for _ in range(SWEEP)]
@@ -1542,15 +1593,18 @@ def meal_branches(sym, g, nexthop, sim0):
         st8.e.room_list[EC.R_STORAGE * EC.ROOM_MAX + k] = k
     st8.e.stock[EC.S_GUN] += cap(st8.e) - sum(st8.e.stock[1:])     # και πάλι γεμάτη
     us1, us8 = flow_us(st0), flow_us(st8)
-    plain = visits(st0, 0, NO)
+    plain = visits(st0, 0, NO, EC.MACH_HP)
     full = {NAME[n]: visits(st0, 1, n) for n in (NO, S, V, M)}
     worst = max(max(v) for v in full.values())
+    # και όσο γεμίζουν τα αποθεματικά (βήμα 184): τα VITROMEAT τρέχουν πάλι
+    fill = {NAME[n]: visits(st0, 1, n, EC.MACH_HP) for n in (NO, S, V)}
+    worst_f = max(max(v) for v in fill.values())
     if us1 > MEAL_FLOW_US or us8 > MEAL_FLOW8_US or worst > MEAL_SWEEP_US \
-            or worst > max(plain):
+            or worst > max(plain) or worst_f > MEAL_FILL_US:
         print(f"ΑΠΟΤΥΧΙΑ γεύμα: ο κύκλος ροής με γεμάτη αποθήκη {us1} us (ταβάνι "
               f"{MEAL_FLOW_US}), {us8} με οκτώ θόλους Storage ({MEAL_FLOW8_US}); οι βαριές "
               f"επισκέψεις {full} (ταβάνι {MEAL_SWEEP_US}, και όχι πάνω από τις {plain} "
-              f"χωρίς γεμάτη)")
+              f"χωρίς γεμάτη); όσο γεμίζουν τα αποθεματικά {fill} (ταβάνι {MEAL_FILL_US})")
         return 1
     print(f"OK γεύμα:  {len(cases)} σκηνές με την αποθήκη γεμάτη — "
           f"{', '.join(n for n, _, _ in cases)} — μεγαλώνει μόνο το σπανιότερο κάτω από "
@@ -1559,7 +1613,8 @@ def meal_branches(sym, g, nexthop, sim0):
           f"τυχαίους συνδυασμούς")
     print(f"              ο κύκλος ροής με γεμάτη {us1} us (8680 στο 141, ταβάνι {MEAL_FLOW_US}), "
           f"{us8} με οκτώ θόλους Storage (9060, {MEAL_FLOW8_US}); οι βαριές επισκέψεις "
-          f"γεμάτη {full} (6880/11390 στο 141, ταβάνι {MEAL_SWEEP_US}), χωρίς {plain}")
+          f"γεμάτη {full} (6880/11390 στο 141, ταβάνι {MEAL_SWEEP_US}), χωρίς {plain}; "
+          f"όσο γεμίζουν τα αποθεματικά (βήμα 184) {fill} (ταβάνι {MEAL_FILL_US})")
 
     # ΑΡΝΗΤΙΚΑ: ο Z80 πειραγμένος, η αναφορά όχι.
     def code_at(name, pat, span=160):
@@ -1570,19 +1625,19 @@ def meal_branches(sym, g, nexthop, sim0):
         return None if k is None else a + k
     es = sym["ESN_ONE"]
     negs = []
-    a = code_at("ERM_INF", [0xDD, 0x7E, 0x09, 0xE6, 4], 20)
-    negs.append(("το VITROMEAT δεν σταματά", "άμυλο 0", a and [(a + 4, 0)]))   # and 0
+    a = code_at("ERM_INF", [0xDD, 0xCB, 0x09, 0x56, 0xCA], 20)
+    negs.append(("το VITROMEAT δεν σταματά", "άμυλο 0", a and [(a + 3, 0x7E)]))   # bit 7: 0
     a = code_at("EC_SETFULL", [0x21, sym["ERM_INF"] & 255, sym["ERM_INF"] >> 8], 40)
     negs.append(("η τρίτη κλήση μένει erm_in", "άμυλο 0",
                  a and [(a + 1, sym["ERM_IN"] & 255), (a + 2, sym["ERM_IN"] >> 8)]))
     a = code_at("ERM_NEED", [0xFE, NO, 0xC8], 4)
     negs.append(("το VITROMEAT σταματά πάντα", "κρέας 0", a and [(a + 2, 0)]))
-    a = code_at("ST_NEED", [0x01, NO, EC.NEED_MIN], 30)        # μετά το όριο των ανταλλακτικών (144)
+    a = code_at("ST_NEED", [0x01, NO, EC.NEED_MIN], 60)        # μετά τα ανταλλακτικά (144) και τα αποθεματικά (184)
     negs.append(("το όριο 31", "όλα 30", a and [(a + 2, 31)]))
     negs.append(("το όριο 29", "άμυλο 29", a and [(a + 2, 29)]))
     a = code_at("ESN_ONE", [0x14, 0x15, 0xC0], 8)
     negs.append(("χωρίς το υψηλό byte", "άμυλο 260", a and [(a + 2, 0)]))
-    a = code_at("ST_NEED", [0x1C, 0x1C, 0xCD, es & 255, es >> 8], 60)
+    a = code_at("ST_NEED", [0x1C, 0x1C, 0xCD, es & 255, es >> 8], 90)
     negs.append(("το κρέας δεν μετρά", "κρέας 0", a and [(a + 2, 0), (a + 3, 0), (a + 4, 0)]))
     a = code_at("ERP_CHK", [0xBE, 0xC0], 16)
     negs.append(("ο κήπος τρέχει όλος", "άμυλο 0", a and [(a + 1, 0)]))
@@ -1605,6 +1660,184 @@ def meal_branches(sym, g, nexthop, sim0):
 # τα προϊόντα τους.
 EATERS = [m for m, r in enumerate(EC.RECIPE) if r[0] == EC.S_METAL]
 EATEN = sorted({EC.RECIPE[m][6] for m in EATERS})
+
+
+# ΤΟ ΑΠΟΘΕΜΑΤΙΚΟ (βήμα 184): οι βαριές επισκέψεις της θέσης 11 — με γεμάτη
+# αποθήκη και τα δύο VITROMEAT να γεμίζουν το δικό τους, και στον κύκλο που τα
+# αδειάζει (ec_dr1 σε κάθε υποδοχή). Γεμίζουν: 6.930 και 12.480 us, απέναντι σε
+# 6.930 και 11.820 όταν είναι γεμάτα και σταματούν — τρέχουν πάλι, και μένουν
+# κάτω από τα 12.810 της ίδιας αποικίας με χώρο (12.690 η πρώτη γραφή, πριν
+# γίνει το erm_inf «πρώτα το MF_ADDS»). Ο κύκλος που αδειάζει: 8.540 και
+# 13.250, απέναντι σε 8.410 και 12.810 χωρίς αυτόν — 6 us σε κάθε υποδοχή που
+# δεν έχει (17 η πρώτη γραφή, 13.530), και δύο ec_make. Μόνο στον κύκλο ροής
+# μετά από αποθεματικά.
+RSV_SWEEP_US, DRAIN_SWEEP_US = 12490, 13260
+
+
+def reserve_branches(sym, g, nexthop, sim0):
+    """ΤΟ ΑΠΟΘΕΜΑΤΙΚΟ ΤΩΝ ΜΗΧΑΝΩΝ (βήμα 184, src/reserve.asm): με γεμάτη
+    αποθήκη και το κρέας όχι το σπανιότερο (ec_need NO_STOCK), το VITROMEAT δεν
+    σταματά όπως ως το 183· βγάζει στο δικό του, στην υγεία του (MACH_HP + 16 r),
+    ως RSV_MAX, και το κρέας της αποθήκης μένει ίδιο. Τέσσερα σκέλη, το καθένα
+    ένας κύκλος ροής (θέση 12) και ένα σάρωμα (θέση 11, 64 κλήσεις) από την
+    κατάσταση της αναφοράς που άφησε το προηγούμενο: 200 + 32 = 232, μετά 248
+    (ό,τι περισσεύει χάνεται), μετά σταματά — ούτε νερό ούτε ρεύμα — και με
+    χώρο το ec_dr1 τα δίνει στην αποθήκη και τρέχουν κανονικά. Ολα τα bytes
+    ίδια στον Z80 και στην αναφορά, και αρνητικά με τον Z80 πειραγμένο. Τι
+    κάνει το κρέας και το νερό, απέναντι στο ίδιο σκέλος της αναφοράς με τα
+    αποθεματικά γεμάτα (σταματούν, όπως ως το 183) ή άδεια."""
+    base = fresh(g, nexthop, sim0)
+    EC.rooms_rebuild(base.e, base.pc)
+    keys = lambda z: (z.a.to_bytes(), bytes(z.e.dome), bytes(z.e.struct),
+                      econ_bytes(z.e), bytes(z.e.job), bytes(z.occ[:128]))
+    SWEEP = 4 * EC.ECON_DIV
+    M_VITRO = 9
+    vit = [d * EC.DOME_REC + EC.D_HEALTH + s for d in range(EC.MAX_DOME)
+           for s in range(EC.MACH_SLOTS)
+           if base.e.dome[d * EC.DOME_REC + EC.D_STATE] == EC.DS_ACTIVE
+           and base.e.dome[d * EC.DOME_REC + EC.D_ROOM] != EC.R_GREENHOUSE
+           and base.e.dome[d * EC.DOME_REC + EC.D_MACH + s] == M_VITRO]
+    full_at = EC.RSV_MAX * 16 + EC.MACH_HP
+
+    def cap(e):
+        return EC.STORE_BASE + sum(
+            EC.STORE_SIZE[e.dome[e.room_list[EC.R_STORAGE * EC.ROOM_MAX + k] * EC.DOME_REC
+                                 + EC.D_SIZE]] for k in range(e.room_n[EC.R_STORAGE]))
+
+    def setup(e, room):
+        """Το κρέας, το άμυλο και τα λαχανικά όχι κάτω από NEED_MIN, τα όπλα
+        (που καμία μηχανή δεν τρώει) ως τη χωρητικότητα μείον room, και η
+        μπαταρία γεμάτη: χωρίς όλο το ρεύμα το VITROMEAT σταματά πριν από το
+        αποθεματικό του, και το σκέλος δεν δοκιμάζει τίποτα."""
+        for k in EC.NEED_OF:
+            e.stock[k] = max(e.stock[k], EC.NEED_MIN + 10)
+        e.stock[EC.S_GUN] += cap(e) - room - sum(e.stock[1:])
+        assert e.stock[EC.S_GUN] >= 0
+        e.power_store = e.power_cap
+        e.flow_div = 1
+
+    def step(st):
+        want = fresh(g, nexthop, st)
+        slot12(want)
+        for _ in range(SWEEP):
+            EC.production_slice(want.e, plant_class=want.pc)
+        return want
+
+    def chain(st, patch=()):
+        m = z80_load(sym, g, fresh(g, nexthop, st), EC.MAX_DOME + EC.MAX_STRUCT, patch)
+        for pin, n in ((12, 1), (11, SWEEP)):
+            m.poke(sym["PIN_SLOT"], pin)
+            m.poke(sym["TICK_COUNT"], n & 0xFF)
+            m.poke(sym["TICK_COUNT"] + 1, n >> 8)
+            enter(m, sym, "RUN_TICKS")
+        got = z80_read(m, sym, 0)
+        return (got[0], got[3], got[4], got[5], got[6], got[1])
+
+    hp = lambda e: [e.dome[i] for i in vit]
+    legs, s = [], fresh(g, nexthop, base)
+    # (όνομα, χώρος, η υγεία που περιμένουμε σε όσα τρέχουν)· πριν από κάθε
+    # σκέλος η αποθήκη ξανά ως τη χωρητικότητα μείον τον χώρο: οι μετατροπές
+    # την αδειάζουν λίγο σε κάθε σάρωμα.
+    plan = (("γεμίζει", 0, EC.MACH_HP + 32), ("ως το 3", 0, full_at),
+            ("γεμάτο, σταματά", 0, full_at), ("χώρος: στην αποθήκη", 10, EC.MACH_HP))
+    for name, room, hp_want in plan:
+        s = fresh(g, nexthop, s)
+        setup(s.e, room)
+        want = step(s)
+        legs.append((name, s, want))
+        s = want
+    ran = [i for i, h in zip(vit, hp(legs[0][2].e)) if h != EC.MACH_HP]
+    if not ran:
+        print(f"ΑΠΟΤΥΧΙΑ αποθεματικό: κανένα VITROMEAT δεν γέμισε ({hp(legs[0][2].e)}): "
+              f"η δοκιμή δεν δοκιμάζει τίποτα")
+        return 1
+    n = len(ran)
+    for (name, before, want), (_, room, hp_want) in zip(legs, plan):
+        got = [want.e.dome[i] for i in ran]
+        if got != [hp_want] * n or want.e.full != (not room) \
+           or want.e.power_ok != EC.POWER_ALL:
+            print(f"ΑΠΟΤΥΧΙΑ αποθεματικό: «{name}» — η αναφορά: υγεία {got}, θέλει "
+                  f"{hp_want}, γεμάτη {want.e.full}, ρεύμα {want.e.power_ok}")
+            return 1
+        if chain(before) != keys(want):
+            print(f"ΑΠΟΤΥΧΙΑ αποθεματικό: «{name}» — ο Z80 διαφέρει από την αναφορά")
+            return 1
+
+    def alt(st, h):
+        s = fresh(g, nexthop, st)
+        for i in ran:
+            s.e.dome[i] = h
+        return step(s)
+    # Γεμίζει: το κρέας της αποθήκης όσο αν ήταν γεμάτα και σταματούσαν, και
+    # δύο νερά λιγότερα ανά VITROMEAT. Αδειάζει: RSV_MAX κρέατα περισσότερα ανά
+    # VITROMEAT απ' όσα αν ήταν άδεια.
+    f0, f1 = legs[0][2].e.stock, alt(legs[0][1], full_at).e.stock
+    d0, d1 = legs[3][2].e.stock, alt(legs[3][1], EC.MACH_HP).e.stock
+    meat = (f0[EC.S_MEAT] - f1[EC.S_MEAT], d0[EC.S_MEAT] - d1[EC.S_MEAT])
+    water = f1[EC.S_WATER] - f0[EC.S_WATER]
+    if meat != (0, n * EC.RSV_MAX) or water != 2 * n:
+        print(f"ΑΠΟΤΥΧΙΑ αποθεματικό: με {n} VITROMEAT το κρέας της αποθήκης +{meat[0]} "
+              f"όσο γεμίζουν και +{meat[1]} όταν αδειάζουν, το νερό -{water}")
+        return 1
+    if legs[2][1].e.rsv == 0 or legs[3][2].e.rsv != 0 or not legs[3][2].e.drain:
+        print(f"ΑΠΟΤΥΧΙΑ αποθεματικό: το EC_RSV {legs[2][1].e.rsv} -> {legs[3][2].e.rsv}, "
+              f"ο κύκλος που αδειάζει {legs[3][2].e.drain}")
+        return 1
+
+    # ΤΟ ΚΟΣΤΟΣ: οι βαριές κλήσεις της θέσης 11 (οι άλλες είναι 160 us).
+    def visits(st, full, drain, h=None):
+        s = fresh(g, nexthop, st)
+        s.e.full, s.e.drain = full, drain
+        for i in ran if h is not None else ():
+            s.e.dome[i] = h
+        m = z80_load(sym, g, s, EC.MAX_DOME + EC.MAX_STRUCT)
+        m.poke(sym["PIN_SLOT"], 11)
+        us = [tick_us(m, sym) for _ in range(SWEEP)]
+        return sorted(u for u in us if u > 200)[-2:]
+    fill = visits(legs[1][1], 1, False)         # γεμάτη, και γεμίζουν
+    stop = visits(legs[1][1], 1, False, full_at)    # γεμάτη, γεμάτα: όπως ως το 183
+    drain = visits(legs[3][1], 0, True)         # ο κύκλος που αδειάζει, με χώρο
+    room = visits(legs[3][1], 0, False, EC.MACH_HP)  # ο ίδιος χωρίς αποθεματικά
+    print(f"OK αποθεματικό: {n} VITROMEAT με γεμάτη αποθήκη, υγεία {EC.MACH_HP} -> "
+          f"{EC.MACH_HP + 32} -> {full_at} -> σταματά, και με χώρο πίσω στο "
+          f"{EC.MACH_HP}: ίδια bytes με την αναφορά σε τέσσερα σκέλη· όσο γεμίζουν "
+          f"το κρέας της αποθήκης +{meat[0]} και το νερό -{water} απέναντι σε γεμάτα, "
+          f"όταν αδειάζουν +{meat[1]} απέναντι σε άδεια")
+    print(f"              οι βαριές κλήσεις της θέσης 11: γεμάτη και γεμίζουν {fill} us "
+          f"(ταβάνι {RSV_SWEEP_US}), γεμάτα {stop}· ο κύκλος που αδειάζει {drain} "
+          f"({DRAIN_SWEEP_US}), χωρίς αποθεματικά και χωρίς αυτόν {room}")
+    if max(fill) > RSV_SWEEP_US or max(drain) > DRAIN_SWEEP_US:
+        print("ΑΠΟΤΥΧΙΑ αποθεματικό: πάνω από το ταβάνι")
+        return 1
+
+    # ΑΡΝΗΤΙΚΑ: ο Z80 πειραγμένος, η αναφορά όχι.
+    def code_at(name, pat, span):
+        a = sym[name]
+        code = run_peek(sym, a, span)
+        k = next((k for k in range(span - len(pat) + 1)
+                  if code[k:k + len(pat)] == pat), None)
+        return None if k is None else a + k
+    negs = []
+    meat = sym["G_ECON_STATE"] + 2 * EC.S_MEAT
+    a = code_at("ERV_FILL", [0x2B, 0x22, meat & 255, meat >> 8], 48)  # dec hl · ld (meat),hl
+    negs.append(("το κρέας μένει στην αποθήκη", 0, a and [(a + 1, 0), (a + 2, 0), (a + 3, 0)]))
+    a = code_at("ERV_FILL", [0xCB, 0x66, 0xC0], 48)        # bit 4,(hl) · ret nz
+    negs.append(("δεν σταματά γεμάτο", 2, a and [(a + 2, 0)]))
+    negs.append(("γεμάτο από το 2", 1, a and [(a + 1, 0x6E)]))   # bit 5
+    a = code_at("ST_NEED", [0x11, sym["EC_DR1"] & 255, sym["EC_DR1"] >> 8], 48)
+    negs.append(("δεν αδειάζει ποτέ", 3, a and [(a + 1, sym["EC_RUN_ONE"] & 255),
+                                                 (a + 2, sym["EC_RUN_ONE"] >> 8)]))
+    a = code_at("EC_DR1", [0x36, EC.MACH_HP], 16)
+    negs.append(("αδειάζει χωρίς να μηδενίσει", 3, a and [(a, 0), (a + 1, 0)]))
+    for what, k, patch in negs:
+        name, before, want = legs[k]
+        if not patch or chain(before, patch) == keys(want):
+            print(f"ΑΠΟΤΥΧΙΑ αποθεματικό: το αρνητικό «{what}» "
+                  f"{'δεν βρήκε τον κώδικά του' if not patch else 'πέρασε'}")
+            return 1
+    print(f"OK αποθεματικό: {len(negs)} αρνητικά — " + ", ".join(w for w, _, _ in negs)
+          + " — ο Z80 διαφέρει από την αναφορά")
+    return 0
 
 
 def keep_branches(sym, g, nexthop, sim0):

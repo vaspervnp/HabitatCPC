@@ -9,7 +9,9 @@
             αλλιώς        CORRIDOR αν το tile έχει κατοχή, NOTHING BUILT αν όχι —
                           και πάνω σε μονοπάτι, που από το βήμα 131 είναι θεμέλιο
                           χωρίς κατοχή (ως το 130 κατοχή 2, και το I έλεγε PATH)
-  σειρά 4   το έδαφος του tile, και ORE VEIN σε βουνό με μετάλλευμα
+  σειρά 4   το έδαφος του tile, και ORE VEIN σε βουνό με μετάλλευμα· σε ορυχείο
+            που δουλεύει και ο σωρός του, «ORE 4/6» (βήμα 184) — όχι σε εργοτάξιο,
+            που χρωστά υλικά στο ίδιο byte
 
 με την ταχύτητα στις στήλες 35-39 όπως πάντα. Μένουν ώσπου να κουνηθεί ο
 κέρσορας ή να πατηθεί το ESC — τότε ξαναγράφουν ό,τι λέει το LOOK — και ένα
@@ -29,7 +31,8 @@
 Αρνητικά, με τον κώδικα πειραγμένο στη μνήμη: οι δομές που δεν ψάχνονται, τα
 εδάφη ανά δέκα bytes αντί για έντεκα, ο κέρσορας που κουνιέται χωρίς να βγει
 από το INFO, το ποσοστό x 100 αντί για x 101, το I που περιμένει το μήνυμα,
-και ο έλεγχος της κατοχής ανάποδα (το μονοπάτι θα λεγόταν CORRIDOR).
+ο έλεγχος της κατοχής ανάποδα (το μονοπάτι θα λεγόταν CORRIDOR), και από το
+βήμα 184 ο σωρός και σε εργοτάξιο, και κανένας σωρός.
 """
 import os, random, sys
 
@@ -43,6 +46,7 @@ import cpc                                               # noqa: E402
 from sprites import load_map, load_bin                   # noqa: E402
 import hudread                                           # noqa: E402
 import scene as S                                        # noqa: E402
+import codeat                                            # noqa: E402
 
 def _lay(name):
     """Μια διεύθυνση του build/layout.asm (βήμα 154: οι πίνακες της 6 κουνήθηκαν)."""
@@ -150,6 +154,8 @@ def want(G, fps, tx, ty):
     else:
         r3 = "CORRIDOR" if w & 0x30 else "NOTHING BUILT"
     r4 = f"{TERRAIN[w & 7]:10s}" + (" ORE VEIN" if w & 0x0F == 0x0B else "")
+    if hit and hit[4] == "s" and k == 4 and st == 2:     # βήμα 184: ο σωρός
+        r4 += f" ORE{G.b6[b + 7]:2d}/6"
     return same(f"{r3:35s}"), same(f"{r4:40s}")
 
 
@@ -194,6 +200,18 @@ def scene(G, a, rnd):
             G.b6[b + i] = v
         spots.append((x, 52, w, h))
         x += w + 1
+    # ΟΡΥΧΕΙΑ ΜΕ ΣΩΡΟ (βήμα 184): ένα σε λειτουργία, που γράφει «ORE 4/6» στη
+    # σειρά 4, και ένα εργοτάξιο που χρωστά υλικά στο ίδιο byte (#21) και δεν
+    # γράφει τίποτα. Με το όριο σάρωσης από τον πίνακα (βήμα 157).
+    w, h = a.struct_dims[4 * 8] // 4, a.struct_dims[4 * 8 + 1] // 16
+    for k, (st, owed) in enumerate([(2, 4), (1, 0x21)]):
+        b = STRUCTS - 0x4000 + 8 * s_free[7 + k]
+        for i, v in enumerate((2 * x + w & 255, 2 * 52 + h & 255, 4, 0, st, 255, 0, owed)):
+            G.b6[b + i] = v
+        spots.append((x, 52, w, h))
+        x += w + 1
+    st0 = STRUCTS - 0x4000
+    codeat.set_top(G.m, G.sym, codeat.top_of(bytes(G.b6[st0:st0 + 8 * S.MAX_STRUCT])))
     # Ενα μονοπάτι στο έδαφος: θεμέλιο χωρίς κατοχή από το βήμα 131 (ως το 130
     # κατοχή 2), με κάθε decor, και δίπλα του tiles κατοχής 1 και 3.
     for k, v in enumerate((0x07, 0x47, 0x87, 0xC7, 0x10, 0x30)):
@@ -224,6 +242,7 @@ def run(sym, a, patch=(), quick=False):
     if quick:
         tiles = tiles[::7]
     tiles += [(-56 + k, 46) for k in range(6)]          # το μονοπάτι (βήμα 85)
+    tiles += [(x + w // 2, y + h // 2) for x, y, w, h in spots[-2:]]   # τα ορυχεία (184)
     for tx, ty in tiles:
         got = look(G, tx, ty)
         exp = want(G, fps, tx, ty)
@@ -301,6 +320,13 @@ def main():
            # jr nz,inp_name μετά το and W_OCC_MASK γίνεται jr z
            ("τον έλεγχο της κατοχής ανάποδα",
             [(find("INP_NONE", [0xE6, 0x30, 0x21], 20) + 5, 0x28)])]
+    # ο σωρός του ορυχείου (βήμα 184): ld a,(in_st) · cp DS_ACTIVE · jr nz -> το jr
+    # nop nop, και ld a,(in_k) · cp K_MINE -> cp 99
+    ist, ink = sym["IN_ST"], sym["IN_K"]
+    at = find("INP_R3", [0x3A, ist & 255, ist >> 8, 0xFE, 2, 0x20], 120)
+    neg.append(("τον σωρό και σε εργοτάξιο", [(at + 5, 0), (at + 6, 0)]))
+    at = find("INP_R3", [0x3A, ink & 255, ink >> 8, 0xFE, 4, 0x20], 120)
+    neg.append(("κανέναν σωρό", [(at + 4, 99)]))
     for label, patch in neg:
         why, _ = run(sym, a, patch, quick=True)
         check(why is not None, f"ΑΡΝΗΤΙΚΟ: με {label} αποτυγχάνει"

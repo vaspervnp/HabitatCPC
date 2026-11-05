@@ -100,6 +100,13 @@ def _adds(r):
 
 
 RECIPE = [r[:9] + (r[9] | (MF_ADDS if _adds(r) else 0),) for r in RECIPE]
+# ΤΟ ΑΠΟΘΕΜΑΤΙΚΟ (βήμα 184, src/reserve.asm): όσες σταματούσαν με γεμάτη
+# αποθήκη βγάζουν πρώτα στο δικό τους, ως RSV_MAX, στα bits 4-5 της υγείας
+# (MACH_HP + 16 r). Ο Z80 ξέρει ότι είναι μόνο το VITROMEAT: το erv_fill βγάζει
+# το κρέας από την αποθήκη και το ec_dr1 το ξαναβάζει.
+RSV_MAX, RSV_Q = 3, 2
+assert [r[6:8] for r in RECIPE if r[9] & MF_ADDS] == [(S_MEAT, RSV_Q)], \
+    "αποθεματικό όχι μόνο του VITROMEAT, ή όχι RSV_Q τον γύρο (src/const.asm)"
 
 # ΤΟ ΑΠΟΘΕΜΑ ΜΕΤΑΛΛΟΥ (βήμα 127, src/econ.asm, erm_ink): όσες τρώνε μέταλλο
 # σταματούν όταν πέσει κάτω από KEEP_METAL. Ο Z80 κοιτάζει μόνο την ΠΡΩΤΗ
@@ -166,9 +173,12 @@ EXTRACTOR_POWER = [1, 3, 6]     # ένα τρίτο πάνελ, όχι δύο �
 MINE_OUT, MINE_POWER = 2, 8         # MINE_OUT: με ΕΝΑΝ που σκάβει (βήμα 94)
 MINE_OPS = 3                        # ως τρεις σε κάθε ορυχείο, όπως το Planetbase
 # Η ΜΕΤΑΦΟΡΑ (βήμα 95, src/haul.asm): το μετάλλευμα μένει σε σωρό στο ορυχείο
-# (ST_OWED), ως HAUL_CAP, και το κουβαλούν φορτία των HAUL_LOAD. Το bit ST_HAUL
-# του ST_OPS λέει ότι η Haul του υπάρχει (το 0x80 είναι της Drill).
-HAUL_LOAD, HAUL_CAP = 10, 30
+# (ST_OWED), ως MINE_CAP, και το κουβαλούν φορτία των MINE_LOAD — όλος ο σωρός
+# (βήμα 184· ως τότε ως 30, φορτία των 10). Με γεμάτη αποθήκη σκάβεται κι αυτό
+# και περιμένει εκεί. Το bit ST_HAUL του ST_OPS λέει ότι η Haul του υπάρχει (το
+# 0x80 είναι της Drill). Το HAUL_LOAD μένει των κιβωτίων του σκάφους.
+HAUL_LOAD = 10
+MINE_CAP = MINE_LOAD = 6
 ST_HAUL = 0x40
 ST_HALF, ST_FREE = 0x04, 0x08     # το ST_OPS ενός ορυχείου (βήμα 123): εκτός φλέβας, δωρεάν
 # Η DRILL ΤΟΥ ΔΕΥΤΕΡΟΥ ΚΑΙ ΤΟΥ ΤΡΙΤΟΥ ΚΑΤΩ ΑΠΟ ΤΙΣ ΜΗΧΑΝΕΣ (βήμα 126, src/drill.asm):
@@ -273,6 +283,11 @@ class Econ:
         self.keep = 0
         # ΚΑΙ ΤΟ ΣΠΑΝΙΟΤΕΡΟ ΥΛΙΚΟ ΤΟΥ ΓΕΥΜΑΤΟΣ (βήμα 142): το ec_need, δίπλα τους.
         self.need = NO_STOCK
+        # ΤΑ ΑΠΟΘΕΜΑΤΙΚΑ (βήμα 184, src/reserve.asm): το EC_RSV, στο node_occ
+        # μετά το EC_TU — όχι μηδέν αφού κάποιο πήρε κάτι — και ο διακόπτης του
+        # st_need: ο κύκλος ροής που τα αδειάζει (ec_dr1 στο erd_call).
+        self.rsv = 0
+        self.drain = False
         self.amenity = 0            # δέντρα και σαλόνια — παρηγοριά (§6.6)
         # Το μήκος του sol είναι ΔΕΔΟΜΕΝΟ και όχι σταθερά: μια δοκιμή που
         # θέλει να δει πέντε sols δεν μπορεί να περιμένει 60.000 frames.
@@ -388,6 +403,8 @@ def run_dome(e, d, plant_class=None):
     green = e.dome[base + D_ROOM] == R_GREENHOUSE
     k = 0                                       # μηχανές με χειριστή ως εδώ
     for s in range(n):
+        if e.drain:                             # ec_dr1 (βήμα 184): πρώτα το
+            drain_slot(e, base + s)             # αποθεματικό στην αποθήκη
         if green:
             p = e.dome[base + D_MACH + s]
             if p == NO_MACH or not e.dome[base + D_HEALTH + s] & 0x80:
@@ -419,11 +436,15 @@ def run_dome(e, d, plant_class=None):
         ins = ((r[0], r[1]), (r[2], r[3]), (r[4], r[5]))
         if any(st != NO_STOCK and e.stock[st] < q for st, q in ins):
             continue                                # λείπει είσοδος: δεν καίει
+        rsv = None
         if e.full and r[9] & MF_ADDS and r[6] != e.need:
-            continue                                # γεμάτη αποθήκη (βήμα 122): ό,τι
-                                                    # προσθέτει (βήμα 124) ούτε τρώει
-                                                    # ούτε ζητά ρεύμα, εκτός από το
-                                                    # σπανιότερο υλικό (βήμα 142)
+            # γεμάτη αποθήκη (βήμα 122): ό,τι προσθέτει (βήμα 124), εκτός από το
+            # σπανιότερο υλικό (βήμα 142), βγάζει στο αποθεματικό του (βήμα 184,
+            # erv_fill) μόνο με όλο το ρεύμα και ως RSV_MAX· αλλιώς ούτε τρώει
+            # ούτε ζητά ρεύμα.
+            rsv = base + D_HEALTH + s
+            if e.power_ok != POWER_ALL or e.dome[rsv] >= MACH_HP + 16 * RSV_MAX:
+                continue
         # Το ρεύμα μετράει ως ΖΗΤΗΣΗ: όσα θα έτρεχαν αν υπήρχε. Με «όσα κάηκαν»
         # το μπλακάουτ μηδένιζε τη ζήτηση και το ρεύμα ξαναγύριζε μόνο του.
         e.acc_power += r[8]
@@ -442,6 +463,25 @@ def run_dome(e, d, plant_class=None):
         elif r[6] != NO_STOCK:              # τα κρεβάτια δεν παράγουν τίποτα
             add_stock(e, r[6], r[7])
             e.prod_mask |= 1 << r[6]        # φτιάχτηκε ΕΔΩ (§10.2)
+            if rsv is not None:             # erv_fill: από την αποθήκη στο αποθεματικό,
+                e.stock[r[6]] = (e.stock[r[6]] - r[7]) & 0xFFFF     # ό,τι
+                h = e.dome[rsv] + 16 * r[7]                        # περισσεύει
+                e.dome[rsv] = h if h <= 255 else MACH_HP + 16 * RSV_MAX  # χάνεται
+                e.rsv = e.dome[rsv]
+
+
+def drain_slot(e, i):
+    """ec_dr1 (βήμα 184, src/reserve.asm), για την υποδοχή i του πίνακα των
+    θόλων: μια μηχανή που δουλεύει με αποθεματικό το δίνει στην αποθήκη. Ο Z80
+    κοιτάζει το bit 5 και κάνει «sub MACH_HP» και τέσσερα rrca."""
+    if e.dome[i + D_MACH] == NO_MACH or not e.dome[i + D_HEALTH] & 0x80:
+        return
+    if not e.dome[i + D_HEALTH] & 0x20:     # «bit 5,(hl)»: 232 και 248 το έχουν
+        return
+    a = (e.dome[i + D_HEALTH] - MACH_HP) & 0xFF
+    e.dome[i + D_HEALTH] = MACH_HP
+    add_stock(e, S_MEAT, ((a >> 4) | (a << 4)) & 0xFF)
+    e.prod_mask |= 1 << S_MEAT
 
 
 def production_slice(e, count=PROD_DOMES, plant_class=None):
@@ -579,15 +619,17 @@ def mine_rate(n, half=False):
 def haul_pile(e, i):
     """Το hl_pile (βήμα 95, src/haul.asm), στο σάρωμα, για το έτοιμο ορυχείο
     i: με όλο το ρεύμα ΤΟΥ ΤΕΛΕΥΤΑΙΟΥ ΙΣΟΖΥΓΙΟΥ (όπως οι μηχανές της θέσης 11)
-    ο σωρός παίρνει τον ρυθμό του, ως HAUL_CAP· και με ή χωρίς, ένας σωρός
-    από HAUL_LOAD χωρίς Haul παίρνει μία."""
+    ο σωρός παίρνει τον ρυθμό του, ως MINE_CAP, και με γεμάτη αποθήκη (βήμα
+    184)· και με ή χωρίς, ένας γεμάτος σωρός χωρίς Haul παίρνει μία — όχι με
+    γεμάτη αποθήκη."""
     st = i * STRUCT_REC
-    if e.power_ok == POWER_ALL and not e.full:      # βήμα 122: ούτε γεμάτη αποθήκη
+    if e.power_ok == POWER_ALL:                     # βήμα 184: και με γεμάτη αποθήκη
         ops = e.struct[st + ST_OPS]
         r = mine_rate(ops & MINE_OPS, ops & ST_HALF)
         if r:
-            e.struct[st + ST_OWED] = min(HAUL_CAP, e.struct[st + ST_OWED] + r)
-    if e.struct[st + ST_OWED] >= HAUL_LOAD and not e.struct[st + ST_OPS] & ST_HAUL:
+            e.struct[st + ST_OWED] = min(MINE_CAP, e.struct[st + ST_OWED] + r)
+    if e.struct[st + ST_OWED] >= MINE_LOAD and not e.full \
+       and not e.struct[st + ST_OPS] & ST_HAUL:
         if post_job(e, J_HAUL, MAX_DOME + i):
             e.struct[st + ST_OPS] |= ST_HAUL
 
@@ -618,6 +660,11 @@ def store_check(e):
         | (4 if e.stock[S_SPARE] >= SPARES_MAX else 0)      # βήματα 127, 138, 144
     if e.full:                                              # βήμα 142 (st_need):
         e.need = need_of(e)                                 # μόνο με γεμάτη
+    # Ο ΔΙΑΚΟΠΤΗΣ ΤΟΥ st_need (βήμα 184): με χώρο, αν κάποιο αποθεματικό πήρε κάτι
+    # από τον προηγούμενο, ένας κύκλος ροής με το ec_dr1, και το EC_RSV μηδέν.
+    e.drain = not e.full and e.rsv != 0
+    if not e.full:
+        e.rsv = 0
 
 
 def need_of(e):
@@ -771,6 +818,7 @@ X_N = 12                                # 6 ως το βήμα 133, 11 ως το
 
 VIN_OFF = X_OFF + X_N                   # το EC_VIN (βήμα 136· ως το 171 το 128 + 120)
 TU_OFF = VIN_OFF + 1                    # το EC_TU (βήμα 149· ως το 171 το 128 + 121)
+RSV_OFF = TU_OFF + 1                    # το EC_RSV (βήμα 184)
 
 
 def occ_hi(e):
@@ -780,6 +828,7 @@ def occ_hi(e):
     hi = bytearray(128)
     hi[X_OFF - 128:X_OFF - 128 + X_N] = x_bytes(e)
     hi[VIN_OFF - 128] = e.vin
+    hi[RSV_OFF - 128] = e.rsv
     return bytes(hi)
 
 
@@ -1108,10 +1157,10 @@ def populate(e, n_dome=POP_DOME, n_struct=POP_STRUCT, seed=11):
         # εδώ. Σαν ρομπότ γεώτρησης, που δεν φεύγει ποτέ.
         if k == K_MINE:
             e.struct[b + ST_OPS] = 1
-            # ΚΑΙ ΔΥΟ ΦΟΡΤΙΑ ΣΤΟΝ ΣΩΡΟ (βήμα 95): ο κύκλος ροής δημοσιεύει Haul
-            # αμέσως, και οι σκηνές του tests/test_sim.py περνούν από φόρτωμα
-            # και παράδοση χωρίς να περιμένουν πέντε κύκλους.
-            e.struct[b + ST_OWED] = 2 * HAUL_LOAD
+            # ΚΑΙ ΓΕΜΑΤΟΣ ΣΩΡΟΣ (βήμα 95· δύο φορτία των 10 ως το 183): ο κύκλος
+            # ροής δημοσιεύει Haul αμέσως, και οι σκηνές του tests/test_sim.py
+            # περνούν από φόρτωμα και παράδοση χωρίς να περιμένουν πέντε κύκλους.
+            e.struct[b + ST_OWED] = MINE_LOAD     # ένα φορτίο, όλος (βήμα 184)
     e.n_struct = n_struct
 
     # Δέκα μικροί θόλοι με γεννήτρια οξυγόνου. Οχι δύο: 2 x 20 = 40 O2 για
@@ -1458,11 +1507,11 @@ def jobs_tick(e, a, F_ALIVE, F_WORKING):
             if node == mine:
                 ms = (mine - MAX_DOME) * STRUCT_REC
                 e.struct[ms + ST_OPS] &= ~ST_HAUL & 0xFF
-                if e.struct[ms + ST_OWED] < HAUL_LOAD:
+                if e.struct[ms + ST_OWED] < MINE_LOAD:
                     a.task[i] = NO_TASK
                     jb[b + J_KIND] = NO_JOB
                     continue
-                e.struct[ms + ST_OWED] -= HAUL_LOAD
+                e.struct[ms + ST_OWED] -= MINE_LOAD
                 a.spare[i] = 0
                 dst = supply_source(e, node)
                 if dst != 255:
@@ -1471,7 +1520,7 @@ def jobs_tick(e, a, F_ALIVE, F_WORKING):
                     a.spare[i] = S_ORE
                     continue
             a.spare[i] = 0
-            add_stock(e, S_ORE, HAUL_LOAD)
+            add_stock(e, S_ORE, MINE_LOAD)
             e.prod_mask |= 1 << S_ORE
             a.task[i] = NO_TASK
             jb[b + J_KIND] = NO_JOB

@@ -316,7 +316,7 @@ Building, fitting and trading are never limited by these.
 | **WIND TURBINE** | Power from the wind, day and night. |
 | **COLLECTOR** | Stores the day's spare power for the night. |
 | **EXTRACTOR** | Water from the ground, beside water. |
-| **MINE** | Ore. 1–3 people dig: more diggers, more ore. **Your colony's first mine is free.** The ore piles up at the mine (up to 30, then it stops) and is carried to storage or to the ship, ten at a time. |
+| **MINE** | Ore. 1–3 people dig: more diggers, more ore. **Your colony's first mine is free.** The mine holds up to 6 ore of its own, then stops; the 6 are carried to storage or to the ship in one trip, and it fills again. |
 | **AIRLOCK** | The way in and out. |
 | **LANDING PAD** | Ships land here. You need one for every kind of ship. |
 
@@ -378,9 +378,11 @@ the full 160 with four.
   - Until you build a Storage dome, the ship's hold is your store: 750 for everything
     but Water.
   - Each Storage dome adds 100, 300 or 600 by size.
-  - When the store is full the line says `STORAGE FULL`. The greenhouses, the mines
-    and the meat printer stop, except for whichever of Starch, Vegetables and Meat is
-    scarcest.
+  - When the store is full the line says `STORAGE FULL`. The greenhouses stop, except
+    for whichever of Starch, Vegetables and Meat is scarcest.
+  - The mines and the meat printer (`MEAT`) do not stop at once: each fills its own
+    store first, 6 ore at a mine and 3 meat at the machine, and then stops. As soon as
+    there is room again, what they hold goes into the store and they fill up again.
 
 ## 12. Ships: colonists, visitors, merchants, intruders
 
@@ -463,7 +465,7 @@ The line shows the most urgent message, in this order:
 | `NO ENGINEER` … | Something waits to be built or installed, and nobody alive can do it. The line names what waits. |
 | `BROKEN` … | A machine waits for its repair. The line names the machine. |
 | `SANDSTORM` | A sandstorm is blowing. |
-| `STORAGE FULL` | Production that adds to the store has stopped. |
+| `STORAGE FULL` | Production that adds to the store has stopped. Mines and the meat printer fill their own 6 and 3 first. |
 | `MERCHANT LANDED` | A merchant is at the pad. |
 | `COLONY LOST` | Everyone is dead. |
 | `ALL SYSTEMS OK` | Nothing to report. |
@@ -472,7 +474,8 @@ The line shows the most urgent message, in this order:
 
 - **Info** (`I`, or `M` `I`): what is under the cursor — the building, its state
   (`SITE` or `ACTIVE`), its condition (`HP`), and the ground (`GROUND`, `DUST`,
-  `ROCK`, `MOUNTAIN`, `WATER`, `ORE VEIN`…).
+  `ROCK`, `MOUNTAIN`, `WATER`, `ORE VEIN`…). On a working mine it also shows the ore
+  the mine holds: `ORE 4/6`.
 - **Demolish**: put the cursor on the building, then `M` `D` and `SPACE`.
   - It works on domes and structures, finished or not. A dome's corridors go with it.
   - **The ship** can come down once you have a finished airlock and a Storage dome.
@@ -480,8 +483,7 @@ The line shows the most urgent message, in this order:
     `NEEDS AIRLOCK`, `NEEDS STORAGE` or `NEEDS AIRLOCK + STORAGE`. With both, the
     line says `LEAVES 150 FE + 100 BI FOR 10 SOLS`.
     - The ship becomes a pile of crates in its place.
-    - Your workers carry them to storage, ten at a time and Metal first, like ore
-      from a mine.
+    - Your workers carry them to storage, ten at a time and Metal first.
     - Whatever is still there after 10 sols is lost.
     - `I` on the crates shows what is left and how many sols remain.
     - The hold's 750 stays after the ship is gone.
@@ -551,8 +553,8 @@ colonists, the prestige, the coins and the milestones reached:
 - **Keep the canteen close to where people work.** Hungry colonists drop their work
   to walk to it.
 - **Build airlocks near the structures outside.** Every trip is spent in a suit.
-- **Add Storage before the store fills.** A full store stops the greenhouses and the
-  mines.
+- **Add Storage before the store fills.** A full store stops the greenhouses, and the
+  mines once each holds its 6.
 - **Call ships when there is room, food and air for them.** Four colonists arrive at
   once.
 - **Spread out the domes** once the colony passes twenty: meteor showers strike round

@@ -204,6 +204,7 @@ ng_dup:
         include "../src/supply.asm"         ; βήμα 88: η τροφοδοσία
         include "../src/suit.asm"           ; βήμα 90: οι στολές
         include "../src/alert.asm"          ; βήμα 166: ο συναγερμός (στο παιχνίδι στη σελίδα 2)
+        include "../src/reserve.asm"        ; βήμα 184: το αποθεματικό των μηχανών (σελίδα 2)
         include "../src/stock.asm"
         include "../src/needs.asm"
         include "../src/ship.asm"

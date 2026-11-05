@@ -327,12 +327,13 @@ dm_haul:
         cp      b
         jr      nz,dmh_out              ; ούτε ο προορισμός
 dmh_go:
+        ld      de,HAUL_LOAD
         ld      a,(hl)                  ; J_SITE
         sub     #80                     ; από τα κιβώτια: #80 | το αγαθό (βήμα 181,
         jr      nc,dmh_g                ; src/haul.asm)
-        ld      a,S_ORE                 ; από ορυχείο: ο κόμβος του
+        ld      a,S_ORE                 ; από ορυχείο: ο κόμβος του,
+        ld      e,MINE_LOAD             ; και το φορτίο του (βήμα 184)
 dmh_g:
-        ld      de,HAUL_LOAD
         call    ec_make                 ; src/stock.asm
 dmh_out:
         pop     bc

@@ -6,21 +6,24 @@
   ΣΩΡΟΣ      ό,τι σκάβεται μένει στο ορυχείο, στο όγδοο byte της εγγραφής
              (ST_OWED): με όλο το ρεύμα στο τελευταίο ισοζύγιο (EC_POK, όπως οι
              μηχανές της θέσης 11), 2, 3, 4 ανά κύκλο ροής με 1, 2, 3 που
-             σκάβουν, ως 30. Γεμάτος, το ορυχείο δεν βγάζει τίποτα όσο κι αν
-             σκάβουν. Ενα εργοτάξιο, που χρωστά υλικά στο ίδιο byte, δεν το
-             αγγίζει τίποτα.
-  ΕΡΓΑΣΙΑ    με σωρό από 10 και πάνω, μία Haul για το ορυχείο — κόμβος 64 +
-             δομή, αδιάθετη, προτεραιότητα 5, J_SITE ο ίδιος κόμβος — με ή
-             χωρίς ρεύμα, και το bit 6 του ST_OPS ως να φορτώσει κάποιος. Οχι
-             δεύτερη· τίποτα, ούτε το bit, με τον πίνακα γεμάτο. Η Drill του
-             ίδιου ορυχείου δημοσιεύεται όπως στο 94, με ή χωρίς το bit 6, και
-             πριν από τη Haul του: και οι δύο στο σάρωμα, δομή προς δομή.
-  ΦΟΡΤΙΟ     στο ορυχείο το bit σβήνει, 10 φεύγουν από τον σωρό, και ο
+             σκάβουν, ως 6 (MINE_CAP, βήμα 184· 30 ως τότε), και με γεμάτη
+             αποθήκη. Γεμάτος, το ορυχείο δεν βγάζει τίποτα όσο κι αν σκάβουν.
+             Ενα εργοτάξιο, που χρωστά υλικά στο ίδιο byte, δεν το αγγίζει
+             τίποτα.
+  ΕΡΓΑΣΙΑ    με γεμάτο σωρό (6, MINE_LOAD· από 10 ως το 183), μία Haul για το
+             ορυχείο — κόμβος 64 + δομή, αδιάθετη, προτεραιότητα 5, J_SITE ο
+             ίδιος κόμβος — με ή χωρίς ρεύμα, και το bit 6 του ST_OPS ως να
+             φορτώσει κάποιος. Οχι με γεμάτη αποθήκη: ο σωρός περιμένει (βήμα
+             184). Οχι δεύτερη· τίποτα, ούτε το bit, με τον πίνακα γεμάτο. Η
+             Drill του ίδιου ορυχείου δημοσιεύεται όπως στο 94, με ή χωρίς το
+             bit 6, και πριν από τη Haul του: και οι δύο στο σάρωμα, δομή προς
+             δομή.
+  ΦΟΡΤΙΟ     στο ορυχείο το bit σβήνει, 6 φεύγουν από τον σωρό, και ο
              πράκτορας κουβαλά μετάλλευμα (spare) ως την κοντινότερη αποθήκη ή το
              σκάφος (J_NODE και dest· το J_SITE μένει το ορυχείο). Χωρίς κανένα
-             που να φτάνεται, το φορτίο παραδίδεται εκεί. Με σωρό κάτω από 10
+             που να φτάνεται, το φορτίο παραδίδεται εκεί. Με σωρό κάτω από 6
              δεν παίρνει τίποτα, και η εργασία κλείνει.
-  ΠΑΡΑΔΟΣΗ   στον προορισμό: +10 μετάλλευμα, «φτιάχτηκε εδώ» (EC_PRODM, §10.2),
+  ΠΑΡΑΔΟΣΗ   στον προορισμό: +6 μετάλλευμα, «φτιάχτηκε εδώ» (EC_PRODM, §10.2),
              spare 0, η εργασία κλείνει.
   ΜΙΣΟΔΡΟΜΙΣ ένας φορτωμένος που αφήνει τη Haul — πεθαίνει, πάει για ανάγκη — την
              αφήνει ανοιχτή και να δείχνει τον προορισμό: ο επόμενος παραδίδει
@@ -30,8 +33,8 @@
              από τη Drill (4): ένας εργάτης με τις δύο ανοιχτές κουβαλά.
   ΑΛΥΣΙΔΑ    στο παιχνίδι που τρέχει, με την πλατφόρμα της αποικίας δοκιμών
              σκάφος, όπως σε νέο παιχνίδι: το ορυχείο στη φλέβα, ο ένας εργάτης
-             σκάβει, ο σωρός φτάνει τα 10, ο άλλος το κουβαλά στο σκάφος και το
-             μετάλλευμα ανεβαίνει 10· και ένα ρομπότ μεταφοράς κάνει το ίδιο.
+             σκάβει, ο σωρός φτάνει τα 6, ο άλλος το κουβαλά στο σκάφος και το
+             μετάλλευμα ανεβαίνει 6· και ένα ρομπότ μεταφοράς κάνει το ίδιο.
   ΚΟΣΤΟΣ     η θέση 13 με μια άφιξη στο ορυχείο και στον προορισμό, κάτω από
              τα ταβάνια COST. Ο κύκλος ροής με ορυχεία: tests/test_drill.py.
 
@@ -39,8 +42,9 @@
 και χωρίς ρεύμα· χωρίς ταβάνι· η Haul χωρίς το bit 6· η Drill που βλέπει το
 bit 6· το bit που δεν σβήνει στο φόρτωμα· φόρτωμα που δεν παίρνει από τον
 σωρό· παράδοση που δεν φτιάχνει μετάλλευμα· ποτέ προορισμός· το μάζεμα γυρίζει
-μια φορτωμένη Haul στο ορυχείο· η Haul στην προτεραιότητα του 94 (2)· και από
-το βήμα 123, το ορυχείο εκτός φλέβας με ολόκληρη απόδοση.
+μια φορτωμένη Haul στο ορυχείο· η Haul στην προτεραιότητα του 94 (2)· από
+το βήμα 123, το ορυχείο εκτός φλέβας με ολόκληρη απόδοση· και από το 184, Haul
+και με γεμάτη αποθήκη, και παράδοση των 10 του ως το 183.
 """
 import os, sys
 
@@ -57,7 +61,8 @@ import graph as GR                                       # noqa: E402
 import cpc                                               # noqa: E402
 
 FAIL = []
-HAUL_LOAD, HAUL_CAP, BIT = 10, 30, 0x40
+MINE_LOAD, MINE_CAP, BIT = 6, 6, 0x40                    # βήμα 184: 10 και 30 ως τότε
+HAUL_LOAD = 10                                           # των κιβωτίων (tests/test_crates.py)
 HALF, FREE = EC.ST_HALF, EC.ST_FREE                     # βήμα 123
 J_HAUL, J_DRILL, J_SUPPLY = EC.J_HAUL, EC.J_DRILL, EC.J_SUPPLY
 K_MINE, K_SHIP, K_PAD = EC.K_MINE, EC.K_SHIP, EC.K_PAD
@@ -108,38 +113,44 @@ def tables(sym):
     roles = m.peek(sym["JOB_ROLES"] + J_HAUL)
     prio = [m.peek(sym["JOB_PRIO"] + k) for k in (J_HAUL, J_DRILL)]
     if (roles, prio) != (0x41, [5, 4]) or (EC.JOB_ROLES[J_HAUL], EC.JOB_PRIO[J_HAUL]) != (0x41, 5) \
-            or (EC.HAUL_LOAD, EC.HAUL_CAP, EC.ST_HAUL) != (HAUL_LOAD, HAUL_CAP, BIT):
+            or (EC.MINE_LOAD, EC.MINE_CAP, EC.ST_HAUL, EC.HAUL_LOAD) \
+            != (MINE_LOAD, MINE_CAP, BIT, HAUL_LOAD):
         return (f"ΠΙΝΑΚΕΣ: Haul ρόλοι #{roles:02X}, προτεραιότητες Haul/Drill {prio}, αναφορά "
                 f"#{EC.JOB_ROLES[J_HAUL]:02X}/{EC.JOB_PRIO[J_HAUL]}, φορτίο/ταβάνι/bit "
-                f"{EC.HAUL_LOAD}/{EC.HAUL_CAP}/{EC.ST_HAUL:#x} — η πρόζα λέει #41, 5 πάνω από 4, 10/30/#40")
+                f"{EC.MINE_LOAD}/{EC.MINE_CAP}/{EC.ST_HAUL:#x}, κιβώτια {EC.HAUL_LOAD} — η πρόζα "
+                f"λέει #41, 5 πάνω από 4, 6/6/#40, 10")
     return None
 
 
 # --------------------------------------------------------------------------
 # ΣΩΡΟΙ — ο κύκλος ροής με ορυχεία, απέναντι στην πρόζα και στην αναφορά
 # --------------------------------------------------------------------------
-# (δομή, εγγραφή, ο σωρός μετά με ρεύμα, χωρίς, Haul με/χωρίς, Drill)
+# (δομή, εγγραφή, ο σωρός μετά με ρεύμα, χωρίς, Haul με/χωρίς, Drill). Από το
+# βήμα 184 ο σωρός ως 6 και η Haul με γεμάτο (6): 30 και 10 ως τότε.
 PSCENE = [(5, [-30, 20, K_MINE, 0, DS_ACTIVE, 255, 1, 0], 2, 0, 0, 0, 1),
-          (6, [-24, 20, K_MINE, 0, DS_ACTIVE, 255, 3, 8], 12, 8, 1, 0, 0),
-          (7, [-18, 20, K_MINE, 0, DS_ACTIVE, 255, 2, 29], 30, 29, 1, 1, 1),
-          (8, [-12, 20, K_MINE, 0, DS_ACTIVE, 255, BIT, 15], 15, 15, 0, 0, 1),
-          (9, [-6, 20, K_MINE, 0, DS_ACTIVE, 255, BIT | 1, 30], 30, 30, 0, 0, 1),
+          (6, [-24, 20, K_MINE, 0, DS_ACTIVE, 255, 3, 1], 5, 1, 0, 0, 0),
+          (7, [-18, 20, K_MINE, 0, DS_ACTIVE, 255, 2, 5], 6, 5, 1, 0, 1),
+          (8, [-12, 20, K_MINE, 0, DS_ACTIVE, 255, BIT, 6], 6, 6, 0, 0, 1),
+          (9, [-6, 20, K_MINE, 0, DS_ACTIVE, 255, BIT | 1, 6], 6, 6, 0, 0, 1),
           (10, [0, 30, K_MINE, 0, DS_BUILDING, 0, 0, 0x21], 0x21, 0x21, 0, 0, 0),
           # ΕΚΤΟΣ ΦΛΕΒΑΣ (βήμα 123): τα μισά, προς τα πάνω — 1, 2, 2. Το ST_FREE
           # δεν αλλάζει τίποτα, και η Drill δεν βλέπει κανένα από τα δύο bits.
           (11, [6, 20, K_MINE, 0, DS_ACTIVE, 255, HALF | 1, 0], 1, 0, 0, 0, 1),
-          (12, [12, 20, K_MINE, 0, DS_ACTIVE, 255, HALF | 2, 9], 11, 9, 1, 0, 1),
-          (13, [18, 20, K_MINE, 0, DS_ACTIVE, 255, HALF | FREE | 3, 28], 30, 28, 1, 1, 0)]
+          (12, [12, 20, K_MINE, 0, DS_ACTIVE, 255, HALF | 2, 4], 6, 4, 1, 0, 1),
+          (13, [18, 20, K_MINE, 0, DS_ACTIVE, 255, HALF | FREE | 3, 6], 6, 6, 1, 1, 0)]
 
 
 def piles(sym, patch=(), patch6=(), quiet=False):
-    """ΣΩΡΟΙ. Η πρώτη διαφορά, ή None."""
-    for power in (True, False):
+    """ΣΩΡΟΙ. Η πρώτη διαφορά, ή None. Με ρεύμα, χωρίς, και με ρεύμα και
+    γεμάτη αποθήκη (βήμα 184): οι σωροί όπως με ρεύμα, καμία Haul."""
+    for power, full in ((True, False), (False, False), (True, True)):
         G = Game(sym, patch, patch6)
         for k, v, *_ in PSCENE:
             G.put_rec(k, [b & 255 for b in v])
         G.m.poke(G.g + 46, EC.POWER_ALL if power else EC.POWER_NONE)   # EC_POK
         G.s16(G.g + 28, 30000 if power else 0)
+        if full:                            # όπλα πάνω από κάθε χωρητικότητα της αποικίας
+            G.s16(G.g + 2 * EC.S_GUN, 5000)
         ore0, jobs0 = G.ore(), G.jobs()
         (want_ore, want_mines, want_jobs), want_st = TD.ref_flow(G)
         if TD.cycle(G) is None:
@@ -149,19 +160,20 @@ def piles(sym, patch=(), patch6=(), quiet=False):
         posts = []
         for k, v, _, _, hp, hn, d in PSCENE:
             posts += [(J_DRILL, 64 + k, 2 if v[6] & 3 else 4)] if d else []
-            posts += [(J_HAUL, 64 + k, 5)] if (hp if power else hn) else []
+            posts += [(J_HAUL, 64 + k, 5)] if (hp if power else hn) and not full else []
         free = [j for j in range(32) if jobs0[5 * j] == 255]
         prose = bytearray(jobs0)
         for j, (kind, node, pr) in zip(free, posts):
             prose[5 * j:5 * j + 5] = bytes([kind, node, 255, pr, node])
         want_piles = [(wp if power else wn) for _, _, wp, wn, *_ in PSCENE]
         want_ops = [(v[6] | (0x80 if d else 0) | (EC.ST_DLOW if d and v[6] & 3 else 0)
-                     | (BIT if (hp if power else hn) else 0))
+                     | (BIT if (hp if power else hn) and not full else 0))
                     for _, v, _, _, hp, hn, d in PSCENE]
         got_piles = [G.rec(k)[ST_OWED] for k, *_ in PSCENE]
         got_ops = [G.rec(k)[ST_OPS] for k, *_ in PSCENE]
         if (G.ore(), G.jobs(), got_piles, got_ops) != (ore0, bytes(prose), want_piles, want_ops):
-            return (f"ΣΩΡΟΙ ({'με' if power else 'χωρίς'} ρεύμα): σωροί {got_piles}, ST_OPS "
+            return (f"ΣΩΡΟΙ ({'με' if power else 'χωρίς'} ρεύμα{', γεμάτη' if full else ''}): "
+                    f"σωροί {got_piles}, ST_OPS "
                     f"{[hex(v) for v in got_ops]}, μετάλλευμα {ore0} -> {G.ore()}, νέες εργασίες "
                     f"{[list(G.jobs()[5 * j:5 * j + 5]) for j in range(32) if G.jobs()[5 * j:5 * j + 5] != jobs0[5 * j:5 * j + 5]]}"
                     f" — η πρόζα λέει σωροί {want_piles}, ST_OPS {[hex(v) for v in want_ops]}, "
@@ -169,11 +181,20 @@ def piles(sym, patch=(), patch6=(), quiet=False):
         if (G.ore(), G.mines(), G.jobs()) != (want_ore, want_mines, want_jobs) \
                 or bytes(G.b6[G.st:G.st + EC.MAX_STRUCT * EC.STRUCT_REC]) != want_st:
             return "ΣΩΡΟΙ: ο Z80 διαφέρει από την αναφορά (tools/econ.py, flow_cycle και haul_pile)"
-        # ένας δεύτερος κύκλος: καμία διπλή
-        jobs1 = G.jobs()
+        # ένας δεύτερος κύκλος: καμία διπλή, και όπως η αναφορά. Με ταβάνι 6 ο σωρός
+        # 5 της δομής 6 φτάνει τα 6 και παίρνει τη Haul του τώρα (βήμα 184)
+        (want_ore, want_mines, want_jobs), want_st = TD.ref_flow(G)
         TD.cycle(G)
-        if G.jobs() != jobs1:
+        js = G.jobs()
+        mine_jobs = [tuple(js[5 * j:5 * j + 2]) for j in range(32) if js[5 * j] in (J_HAUL, J_DRILL)]
+        if len(mine_jobs) != len(set(mine_jobs)):
             return "ΣΩΡΟΙ: ο δεύτερος κύκλος ξαναδημοσίευσε"
+        if (G.ore(), G.mines(), js) != (want_ore, want_mines, want_jobs) \
+                or bytes(G.b6[G.st:G.st + EC.MAX_STRUCT * EC.STRUCT_REC]) != want_st:
+            return (f"ΣΩΡΟΙ ({'με' if power else 'χωρίς'} ρεύμα{', γεμάτη' if full else ''}): "
+                    f"ο δεύτερος κύκλος διαφέρει από την αναφορά")
+        if full and any(k == J_HAUL for k, _ in mine_jobs):
+            return "ΣΩΡΟΙ: Haul με γεμάτη αποθήκη στον δεύτερο κύκλο"
     # ο πίνακας γεμάτος: τίποτα, ούτε το bit
     G = Game(sym, patch, patch6)
     for k, v, *_ in PSCENE:
@@ -185,11 +206,13 @@ def piles(sym, patch=(), patch6=(), quiet=False):
     if G.jobs() != full or [G.rec(k)[ST_OPS] & BIT for k in (6, 7)] != [0, 0]:
         return "ΣΩΡΟΙ: με τον πίνακα γεμάτο κάτι γράφτηκε, ή μπήκε το bit 6"
     if not quiet:
-        print("    ΣΩΡΟΙ: 0+2, 8+4 = 12 και Haul, 29+3 = 30 (ταβάνι) και Haul, 15 με το bit "
-              "χωρίς δεύτερη, 30 γεμάτος, το εργοτάξιο ανέγγιχτο· εκτός φλέβας (βήμα 123) "
-              "0+1, 9+2 = 11 και Haul, 28+2 = 30 και Haul· χωρίς ρεύμα κανένας δεν "
-              "μεγαλώνει και Haul μόνο για το 29 και το 28· οι Drill όπως στο 94 και με τα "
-              "bits 2, 3 και 6· τίποτα με τον πίνακα γεμάτο· όπως η αναφορά")
+        print("    ΣΩΡΟΙ: 0+2, 1+4 = 5, 5+3 = 6 (ταβάνι) και Haul, 6 με το bit χωρίς "
+              "δεύτερη, 6 γεμάτος, το εργοτάξιο ανέγγιχτο· εκτός φλέβας (βήμα 123) 0+1, "
+              "4+2 = 6 και Haul, 6 και Haul· χωρίς ρεύμα κανένας δεν μεγαλώνει και Haul "
+              "μόνο για το 6 της δομής 13· με γεμάτη αποθήκη (βήμα 184) όπως με ρεύμα, "
+              "χωρίς καμία Haul· οι Drill όπως στο 94 και με τα bits 2, 3 και 6· τίποτα "
+              "με τον πίνακα γεμάτο· όπως η αναφορά, και στον δεύτερο κύκλο, όπου το 5 "
+              "γίνεται 6 και παίρνει τη Haul του, χωρίς δεύτερη σε καμία δομή")
     return None
 
 
@@ -203,7 +226,7 @@ def piles(sym, patch=(), patch6=(), quiet=False):
 MINE, SHIP, WHO = 65, 64, 1
 
 
-def scene(sym, patch=(), ship=True, pile=20, at=MINE, loaded=False, alive=True):
+def scene(sym, patch=(), ship=True, pile=MINE_CAP, at=MINE, loaded=False, alive=True):
     G = Game(sym, patch)
     rec = G.rec(1)
     G.put_rec(1, rec[:2] + [K_MINE, 0, DS_ACTIVE, 255, BIT | 1, pile])
@@ -225,18 +248,18 @@ def arrive(sym, patch=(), quiet=False):
     G.call("JOBS_TICK")
     got = (G.job(j), G.rec(1)[ST_OWED], G.rec(1)[ST_OPS], G.ag_get(WHO, "dest"),
            G.ag_get(WHO, "spare"), G.ag_get(WHO, "task"), G.ore())
-    want = ([J_HAUL, SHIP, WHO, 5, MINE], 10, 1, SHIP, S_ORE, j, 100)
+    want = ([J_HAUL, SHIP, WHO, 5, MINE], MINE_CAP - MINE_LOAD, 1, SHIP, S_ORE, j, 100)
     if got != want:
         return (f"ΦΟΡΤΙΟ: εργασία {got[0]}, σωρός {got[1]}, ST_OPS {got[2]:#x}, dest {got[3]}, "
                 f"spare {got[4]}, task {got[5]}, μετάλλευμα {got[6]} — η πρόζα λέει {want}")
-    say(f"ΦΟΡΤΙΟ: στο ορυχείο (κόμβος {MINE}) ο σωρός 20 -> 10, το bit σβήνει, κουβαλά "
+    say(f"ΦΟΡΤΙΟ: στο ορυχείο (κόμβος {MINE}) ο σωρός {MINE_CAP} -> {MINE_CAP - MINE_LOAD}, το bit σβήνει, κουβαλά "
         f"μετάλλευμα προς το σκάφος ({SHIP}), η εργασία δική του")
     # (ii) στο ορυχείο, χωρίς σκάφος και αποθήκη: παραδίδει εκεί
     G, j = scene(sym, patch, ship=False)
     G.call("JOBS_TICK")
     got = (G.job(j)[0], G.rec(1)[ST_OWED], G.rec(1)[ST_OPS], G.ag_get(WHO, "spare"),
            G.ag_get(WHO, "task"), G.ore(), G.m.peek(G.g + PRODM) & (1 << S_ORE))
-    want = (255, 10, 1, 0, 255, 110, 1 << S_ORE)
+    want = (255, MINE_CAP - MINE_LOAD, 1, 0, 255, 100 + MINE_LOAD, 1 << S_ORE)
     if got != want:
         return f"ΦΟΡΤΙΟ ΧΩΡΙΣ ΠΡΟΟΡΙΣΜΟ: {got} — η πρόζα λέει {want}"
     # (iii) σωρός κάτω από φορτίο
@@ -245,17 +268,17 @@ def arrive(sym, patch=(), quiet=False):
     got = (G.job(j)[0], G.rec(1)[ST_OWED], G.rec(1)[ST_OPS], G.ag_get(WHO, "spare"), G.ore())
     if got != (255, 5, 1, 0, 100):
         return f"ΣΩΡΟΣ ΚΑΤΩ ΑΠΟ ΦΟΡΤΙΟ: {got} — η πρόζα λέει (255, 5, 1, 0, 100)"
-    say("ΧΩΡΙΣ ΠΡΟΟΡΙΣΜΟ: το φορτίο παραδίδεται στο ορυχείο (+10, «φτιάχτηκε εδώ»)· με "
-        "σωρό 5 δεν παίρνει τίποτα και η εργασία κλείνει")
+    say(f"ΧΩΡΙΣ ΠΡΟΟΡΙΣΜΟ: το φορτίο παραδίδεται στο ορυχείο (+{MINE_LOAD}, «φτιάχτηκε εδώ»)· "
+        f"με σωρό 5 δεν παίρνει τίποτα και η εργασία κλείνει")
     # (iv) στον προορισμό
     G, j = scene(sym, patch, at=SHIP, loaded=True)
     G.call("JOBS_TICK")
     got = (G.job(j)[0], G.ag_get(WHO, "spare"), G.ag_get(WHO, "task"), G.ore(),
            G.m.peek(G.g + PRODM) & (1 << S_ORE), G.rec(1)[ST_OWED])
-    want = (255, 0, 255, 110, 1 << S_ORE, 20)
+    want = (255, 0, 255, 100 + MINE_LOAD, 1 << S_ORE, MINE_CAP)
     if got != want:
         return f"ΠΑΡΑΔΟΣΗ: {got} — η πρόζα λέει {want}"
-    say("ΠΑΡΑΔΟΣΗ: στο σκάφος +10 μετάλλευμα, «φτιάχτηκε εδώ», spare 0, η εργασία κλείνει")
+    say(f"ΠΑΡΑΔΟΣΗ: στο σκάφος +{MINE_LOAD} μετάλλευμα, «φτιάχτηκε εδώ», spare 0, η εργασία κλείνει")
     # (v) το μάζεμα: φορτωμένος νεκρός — η Haul ανοιχτή προς τον προορισμό
     G, j = scene(sym, patch, at=SHIP, loaded=True, alive=False)
     G.ag_set(WHO, node=100)                         # μακριά: να μην την ξαναπάρει
@@ -287,7 +310,7 @@ def arrive(sym, patch=(), quiet=False):
     G.m.write_ram(G.L["G_room_list"] + EC.R_STORAGE * EC.ROOM_MAX, bytes([far, near]))
     G.call("JOBS_TICK")
     got = (G.job(j)[1], G.ag_get(WHO, "dest"), G.ag_get(WHO, "spare"), G.rec(1)[ST_OWED])
-    want = (near, near, S_ORE, 10)
+    want = (near, near, S_ORE, MINE_CAP - MINE_LOAD)
     if got != want:
         return (f"ΑΠΟ ΔΟΜΗ ΣΤΗΝ ΑΠΟΘΗΚΗ: J_NODE {got[0]}, dest {got[1]}, spare {got[2]}, "
                 f"σωρός {got[3]} — η πρόζα λέει η αποθήκη {near} (απόσταση {dn}), όχι η "
@@ -298,7 +321,7 @@ def arrive(sym, patch=(), quiet=False):
     # (vi) Haul και Drill ανοιχτές στο ίδιο ορυχείο, ένας εργάτης ελεύθερος
     G = Game(sym, patch)
     rec = G.rec(1)
-    G.put_rec(1, rec[:2] + [K_MINE, 0, DS_ACTIVE, 255, 0xC0, 20])
+    G.put_rec(1, rec[:2] + [K_MINE, 0, DS_ACTIVE, 255, 0xC0, MINE_CAP])
     # οι προτεραιότητες από τον πίνακα του Z80, όπως τις γράφει το jp_have
     pr = lambda kind: G.m.peek(G.sym["JOB_PRIO"] + kind)
     jd = G.free_job()
@@ -366,7 +389,7 @@ def chain(sym, g, patch=(), patch6=(), quiet=False):
         pile = G.rec(k)[ST_OWED]
         ore = G.ore()
         t2 = run(lambda: G.job(j)[0] != J_HAUL, 30000, 5)
-        if G.job(j)[0] == J_HAUL or G.ore() - ore != HAUL_LOAD or G.ag_get(a, "spare"):
+        if G.job(j)[0] == J_HAUL or G.ore() - ore != MINE_LOAD or G.ag_get(a, "spare"):
             return (f"{what}: η παράδοση — εργασία {G.job(j)}, μετάλλευμα {ore} -> {G.ore()}, "
                     f"spare {G.ag_get(a, 'spare')}")
         say(f"{what}: ο {a} φόρτωσε στο ορυχείο (κόμβος {node}, σωρός ως {pile} μετά), "
@@ -456,8 +479,12 @@ def negatives(sym, g):
     # άδειου ορυχείου του βήματος 126)
     at0("βγάζει και χωρίς ρεύμα", "HL_PILE", 16, [0xFE, EC.POWER_ALL, 0x20], [(2, 0), (3, 0)],
         "piles")
-    # hl_pile: cp HAUL_CAP + 1 -> cp 255
-    at0("χωρίς ταβάνι", "HL_PILE", 40, [0xFE, HAUL_CAP + 1], [(1, 255)], "piles")
+    # hl_pile: cp MINE_CAP + 1 -> cp 255
+    at0("χωρίς ταβάνι", "HL_PILE", 40, [0xFE, MINE_CAP + 1], [(1, 255)], "piles")
+    # hl_pile (βήμα 184): ld a,(ec_full) · or a · ret nz -> το ret nz nop
+    f = sym["EC_FULL"]
+    at0("Haul και με γεμάτη αποθήκη", "HL_PILE", 90, [0x3A, f & 255, f >> 8, 0xB7, 0xC0],
+        [(4, 0)], "piles")
     # hl_pile: bit ST_HALF,(ix+ST_OPS) · jr z -> jr: ολόκληρη απόδοση και εκτός φλέβας
     at0("εκτός φλέβας ολόκληρο", "HL_PILE", 40, [0xDD, 0xCB, ST_OPS, 0x56, 0x28],
         [(4, 0x18)], "piles")
@@ -467,9 +494,12 @@ def negatives(sym, g):
     at6("η Drill βλέπει το bit 6", "ECON_FLOW", 200, [0xE6, 0x93, 0xFE], [(0, 0), (1, 0)], "piles")
     # hl_arrive: res ST_HAUL,(hl) -> nop nop
     at0("το bit μένει στο φόρτωμα", "HL_ARRIVE", 40, [0xCB, 0xB6], [(0, 0), (1, 0)], "arrive")
-    # hl_arrive: sub HAUL_LOAD · jr c · ld (hl),a -> το ld nop
-    at0("το φόρτωμα δεν παίρνει από τον σωρό", "HL_ARRIVE", 40, [0xD6, HAUL_LOAD, 0x38],
+    # hl_arrive: sub MINE_LOAD · jr c · ld (hl),a -> το ld nop
+    at0("το φόρτωμα δεν παίρνει από τον σωρό", "HL_ARRIVE", 40, [0xD6, MINE_LOAD, 0x38],
         [(4, 0)], "arrive")
+    # hla_drop (βήμα 184): ld de,MINE_LOAD -> ld de,10, το φορτίο των κιβωτίων
+    at0("παράδοση των 10", "HL_ARRIVE", 120, [0x11, MINE_LOAD, 0, 0xCD], [(1, HAUL_LOAD)],
+        "arrive")
     # hla_drop: call ec_make -> nop
     at0("η παράδοση δεν φτιάχνει μετάλλευμα", "HL_ARRIVE", 100, [0xCD] + w(sym["EC_MAKE"]),
         [(0, 0), (1, 0), (2, 0)], "arrive")
@@ -496,7 +526,7 @@ def main():
 
     why = tables(sym)
     check(why is None, why or "πίνακες: Haul για εργάτη και ρομπότ μεταφοράς, προτεραιότητα 5 "
-          "πάνω από τη Drill, φορτίο 10, ταβάνι 30, bit 6")
+          "πάνω από τη Drill, φορτίο 6, ταβάνι 6 (βήμα 184· 10 και 30 ως τότε), bit 6")
 
     why = piles(sym)
     check(why is None, why or "σωροί: ρυθμός, ταβάνι, Haul και Drill όπως η πρόζα και η αναφορά")

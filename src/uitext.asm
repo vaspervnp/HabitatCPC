@@ -83,7 +83,8 @@ x_t_far:      db "TOO FAR",0       ; >= 64 tiles (βήμα 81)· ή > 12 (βήμ
 x_t_path:     db "PATH BLOCKED",0       ; βήμα 85, src/link.asm
 x_t_nofit:    db "NO CORRIDOR FITS",0       ; βήμα 86: η ζώνη «σχεδόν διαγώνιο»
 x_t_nowat:    db "NEEDS WATER NEARBY",0
-x_t_half:     db "NO VEIN  HALF ORE",0  ; ως το βήμα 122 «NEEDS AN ORE VEIN»
+x_t_half:     db "NO VEIN  HALF "       ; ως το βήμα 122 «NEEDS AN ORE VEIN»
+x_t_i_pile:   db "ORE",0                ; και ο σωρός του ορυχείου στο I (βήμα 184)
 x_t_fe:       db "FE",0
 x_t_bi:       db "BI",0
 
@@ -194,6 +195,9 @@ x_t_dm_ship:  db "LEAVES 150 FE + 100 BI FOR 10 SOLS",0
 x_t_dm_sto:   db "NEEDS STORAGE",0
 x_t_dm_lock:  db "NEEDS AIRLOCK",0
 x_t_dm_both:  db "NEEDS AIRLOCK + STORAGE",0
+; Ο σωρός του ορυχείου στο I (βήμα 184, src/panel7.asm): «ORE 4/6», με το
+; «ORE» του x_t_half.
+x_t_i_cap:    db "/6",0                 ; το MINE_CAP (assert στο src/panel7.asm)
 zz_text_end:
         ; ΚΑΙ Ο ΚΩΔΙΚΑΣ ΤΗΣ 7 (βήμα 170, src/st7.asm), αμέσως μετά και στο ίδιο
         ; αρχείο του δίσκου: οι ετικέτες του στο παράθυρο (#4000-#7FFF), τα bytes
@@ -301,6 +305,8 @@ t_dm_ship equ x_t_dm_ship - TEXT_IMG + G_text
 t_dm_sto  equ x_t_dm_sto - TEXT_IMG + G_text
 t_dm_lock equ x_t_dm_lock - TEXT_IMG + G_text
 t_dm_both equ x_t_dm_both - TEXT_IMG + G_text
+t_i_pile  equ x_t_i_pile - TEXT_IMG + G_text
+t_i_cap   equ x_t_i_cap - TEXT_IMG + G_text
 
         ; Το κενό είναι 1.280 bytes και τελειώνει εκεί που αρχίζει το επόμενο
         ; πράγμα της τράπεζας 7. Χωρίς αυτόν τον έλεγχο, ένα κείμενο παραπάνω θα

@@ -201,10 +201,17 @@ def flow(sym, patch=(), patch6=(), quiet=False):
                     f"Drill για τους 69 (4), 70 και 71 (2)")
         if got != (want_ore, want_mines, want_jobs) or bytes(G.b6[G.st:G.st + EC.MAX_STRUCT * EC.STRUCT_REC]) != want_st:
             return "ΡΟΗ: ο Z80 διαφέρει από την αναφορά (tools/econ.py, flow_cycle)"
-        # ένας δεύτερος κύκλος: καμία διπλή, και φτηνός (το bit 7)
+        # ένας δεύτερος κύκλος: καμία διπλή Drill, και φτηνός (το bit 7). Οι
+        # σωροί διπλάσιοι ως το MINE_CAP, και όσοι φτάνουν το φορτίο παίρνουν
+        # Haul (βήμα 184: 0, 4, 6, 6· ως τότε 0, 4, 6, 8 με ταβάνι 30 και καμία)
         jobs1 = G.jobs()
+        (want_ore, want_mines, want_jobs), want_st = ref_flow(G)
         cycle(G)
-        if G.jobs() != jobs1 or [G.rec(k)[ST_OWED] for k, _ in SCENE] != [2 * v for v in want_piles]:
+        drills = lambda jb: [jb[5 * j:5 * j + 5] for j in range(32) if jb[5 * j] == J_DRILL]
+        if drills(G.jobs()) != drills(jobs1) \
+                or [G.rec(k)[ST_OWED] for k, _ in SCENE] != [min(2 * v, EC.MINE_CAP) for v in want_piles] \
+                or (G.ore(), G.mines(), G.jobs()) != (want_ore, want_mines, want_jobs) \
+                or bytes(G.b6[G.st:G.st + EC.MAX_STRUCT * EC.STRUCT_REC]) != want_st:
             return "ΡΟΗ: ο δεύτερος κύκλος ξαναδημοσίευσε Drill, ή δεν έβγαλε τα ίδια"
     # ο πίνακας γεμάτος: τίποτα, και τίποτα δεν χαλάει
     G = Game(sym, patch, patch6)
