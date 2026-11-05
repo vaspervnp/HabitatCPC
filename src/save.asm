@@ -75,6 +75,9 @@ SV_HDR      equ GH_BUF + GH_LOG - 512   ; 512 δανεικά bytes από το �
                                     ; LOOK, όπου δεν υπάρχει φάντασμα. Στο ΤΕΛΟΣ
                                     ; του μετά το βήμα 174: ως τότε στην αρχή του
         assert  512 <= GH_LOG       ; το αρχείο μίκρυνε στο βήμα 41
+        ; Ο ΚΩΔΙΚΑΣ ΤΟΥ b6x στην ουρά της όσο φορτώνεται (βήμα 187, src/keep6.asm):
+        ; μετά τα bytes 7-12, που διαβάζει το sv_after.
+        assert  SVX_AT >= SV_HDR + 13 && SVX_AT + G_dome_tbl - G_b6x <= SV_HDR + 512
         ; ΚΑΙ Ο ΚΩΔΙΚΑΣ ΠΡΙΝ ΑΠΟ ΑΥΤΗΝ (βήμα 103· μετά από αυτήν ως το 174): αυτό
         ; το αρχείο και το src/fdc.asm τρέχουν από το SV_ORG, την αρχή του
         ; GH_BUF, όπου τα φέρνει από τις τρύπες του DIST το sv_ovl
@@ -119,7 +122,7 @@ svo_load:
         jr      nz,sv_stop
         call    sv_hdr_ok
         jr      nz,sv_stop
-        call    sv_body
+        call    sv_bodyx                ; το sv_body, με τον κώδικα του b6x στην άκρη (βήμα 187)
         jr      nz,sv_stop
         call    fdc_off
         ; fall through: sv_after

@@ -312,9 +312,12 @@ def check(sym, patch=(), n=8, timing=False, colony=False):
         G.restore()
         if case:
             # το μπλοκ της τράπεζας 6 από το worldinfo ως το τέλος (βήμα 172·
-            # ως τότε #6C00-#7FFF, με το worldinfo στο #7D00)
-            w6 = L["G_worldinfo"] - 0x4000
-            G.put(6, w6, bytes(rnd.randrange(256) for _ in range(0x4000 - w6)))
+            # ως τότε #6C00-#7FFF, με το worldinfo στο #7D00) — έξω από τον
+            # κώδικα του b6x (βήμα 187, src/need6.asm), που δεν είναι κατάσταση:
+            # τα έξι bytes ως εκεί, και από τους θόλους
+            w6, x6, d6 = (L[k] - 0x4000 for k in ("G_worldinfo", "G_b6x", "G_dome_tbl"))
+            G.put(6, w6, bytes(rnd.randrange(256) for _ in range(x6 - w6)))
+            G.put(6, d6, bytes(rnd.randrange(256) for _ in range(0x4000 - d6)))
             G.put(5, L["G_corr_tbl"] - 0x4000, bytes(rnd.randrange(256) for _ in range((codeat.MAX_CORR + 1) * 4)))
             G.put(2, L["G_econ_state"] - 0x8000,
                   bytes(rnd.randrange(256) for _ in range(L["G_hud_shadow"] - L["G_econ_state"])))

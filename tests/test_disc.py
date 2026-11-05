@@ -621,6 +621,10 @@ def main():
     # αντλιών)· σε άδεια αποικία μένει 0, αλλά δεν είναι του build.
     live = {sym["ND_I"], sym["ENS_CALL"] + 1, sym["ENS_CALL"] + 2,
             sym["EF_PMP"], sym["EF_PMP"] + 1}
+    # ΚΑΙ ΤΟ b6x (βήμα 187): το B6CODE.BIN φτάνει ως το τέλος του δεύτερου
+    # κομματιού (src/need6.asm), με τα έξι bytes ανάμεσα — το worldinfo, που το
+    # γράφει η γεννήτρια, και τα EC_PEAK, EC_MSEEN, που τα γράφει το παιχνίδι.
+    live |= set(range(lay["G_worldinfo"], lay["G_b6x"]))
     labs = sorted((v, k) for k, v in sym.items() if at <= v < at + len(code))
     bad = [at + i for i, (x, y) in enumerate(zip(got, code)) if x != y and at + i not in live]
     where = [next(k for v, k in reversed(labs) if v <= a) + f"+{a - next(v for v, k in reversed(labs) if v <= a)}"
@@ -639,6 +643,7 @@ def main():
     import re
     main_src = open(os.path.join(ROOT, "src", "main.asm"), encoding="utf-8").read()
     block = main_src[main_src.index("org     G_b6code"):main_src.index("zz_b6code_end:")]
+    block += main_src[main_src.index("org     G_b6x"):main_src.index("zz_b6x_end:")]   # βήμα 187
     b6files = re.findall(r'^\s+include\s+"([^"]+)"', block, re.M)
 
     def pages(text):

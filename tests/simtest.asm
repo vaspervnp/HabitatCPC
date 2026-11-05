@@ -207,6 +207,7 @@ ng_dup:
         include "../src/reserve.asm"        ; βήμα 184: το αποθεματικό των μηχανών (σελίδα 2)
         include "../src/stock.asm"
         include "../src/needs.asm"
+        include "../src/need6.asm"          ; βήμα 187: το τέλος του st_check (στο παιχνίδι στο b6x της 6)
         include "../src/ship.asm"
         include "../src/visit.asm"          ; βήμα 136: οι επισκέπτες που περπατούν
         include "../src/visit0.asm"         ; ...και ό,τι στο παιχνίδι είναι στην τράπεζα 0

@@ -885,6 +885,12 @@ def build_runs(smap, blob):
     # game_new.
     bank6.append(Run("worldinfo", 4, None, at=0x6600,
                      note="ΔΕΣΜΕΥΣΗ — seed, πλανήτης, έκδοση γεννήτριας"))
+    # ΚΑΙ ΚΩΔΙΚΑΣ ΤΟΥ ΤΡΟΧΟΥ ΜΕΤΑ ΑΠΟ ΑΥΤΟ (βήμα 187): τα 122 bytes ως τους θόλους,
+    # μετά τα EC_PEAK και EC_MSEEN (src/const.asm). Είναι μέσα στο μπλοκ που
+    # σώζεται, και το φόρτωμα τα κρατά στην άκρη όσο διαβάζει (src/save.asm).
+    # Τα φέρνει η B6CODE.BIN, μαζί με τον κώδικα από κάτω (src/main.asm).
+    bank6.append(Run("b6x", 0x6680 - 0x6606, None, at=0x6606,
+                     note="ΔΕΣΜΕΥΣΗ — κώδικας του τροχού, δεύτερο κομμάτι (src/need6.asm)"))
     # ΘΟΛΟΙ ΚΑΙ ΔΟΜΕΣ, συνεχόμενοι (το mt_scan περνά από τον έναν στον άλλο).
     # Η εγγραφή μιας δομής βγαίνει από τον κόμβο με add a,a / add a,a / add a,64
     # / ld l,a / ld h,STB_H / add hl,hl (src/const.asm, STB_H, STB_C): το #6C80

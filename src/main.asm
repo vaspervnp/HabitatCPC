@@ -241,6 +241,7 @@ mla_pok:
         include "visit0.asm"                ; βήμα 136: οι επισκέπτες, ό,τι δεν θέλει την 6
         include "fight0.asm"                ; βήμα 150: ο φρουρός αφήνει την ανάγκη για τη μάχη
         include "b6out.asm"                 ; βήμα 110: ό,τι του b6code θέλει άλλη τράπεζα (στην 0 από το 152)
+        include "keep6.asm"                 ; βήμα 187: ο κώδικας του b6x στην άκρη όσο φορτώνεται
 zz_bank0_end:
         ; ΤΟ ΠΑΤΩΜΑ ΤΩΝ TESTS. Πάνω από τον κώδικα στήνουν stubs, ημερολόγια και
         ; probes: τα probes στο #3E80, το test_loop τα stubs του από το
@@ -539,9 +540,21 @@ zz_b6code_end:
         assert  G_b6code + B6C_MAX == G_worldinfo     ; = η δέσμευση του pack.py (βήμα 172:
                                                       ; ως τότε οι πράκτορες, με τον χάρτη
                                                       ; των εισβολέων στην κορυφή)
-        save    "../build/b6code.bin", #8000 + G_b6code - #4000, zz_b6code_end - G_b6code
+        ; ΚΑΙ ΤΟ ΔΕΥΤΕΡΟ ΚΟΜΜΑΤΙ (βήμα 187, src/need6.asm): μετά το worldinfo και
+        ; τα EC_PEAK, EC_MSEEN, ως τους θόλους. Η B6CODE.BIN τα παίρνει όλα μαζί,
+        ; με τα μηδενικά ανάμεσα: το worldinfo το γράφει η γεννήτρια μετά από
+        ; αυτήν (src/boot.asm), και τα δύο bytes της σελίδας του τέλους είναι
+        ; μηδέν σε κάθε εκκίνηση, όπως ως τώρα.
         org     #8000 + G_b6code + B6C_MAX - #4000
-        incbin  "../build/bank6.bin", G_b6code + B6C_MAX - #4000
+        incbin  "../build/bank6.bin", G_b6code + B6C_MAX - #4000, G_b6x - G_worldinfo
+        assert  G_b6x == EC_MSEEN + 1
+        org     G_b6x, #8000 + G_b6x - #4000
+        include "need6.asm"             ; το τέλος του st_check, από την τράπεζα 0
+zz_b6x_end:
+        assert  zz_b6x_end <= G_dome_tbl
+        save    "../build/b6code.bin", #8000 + G_b6code - #4000, zz_b6x_end - G_b6code
+        org     #8000 + G_dome_tbl - #4000
+        incbin  "../build/bank6.bin", G_dome_tbl - #4000
         ; Η τράπεζα 7 έρχεται σε ΔΥΟ κομμάτια, με τα κείμενα στη μέση: ο rasm
         ; δεν δέχεται org μέσα σε περιοχή που έχει ήδη γεμίσει, και το
         ; δεσμευμένο κενό «text» του pack.py (§4.2) είναι ακριβώς εκεί.

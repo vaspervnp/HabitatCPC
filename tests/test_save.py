@@ -655,6 +655,48 @@ def main():
           "κατεδάφιση από τις τρύπες")
     ov_write(sa + k + 1, b"\x6F")
 
+    # --- 9. ο κώδικας του b6x μένει (βήμα 187) ------------------------------
+    # Το μπλοκ της τράπεζας 6 γράφει από το #6600, και το b6x (#6606-#667F,
+    # src/need6.asm) είναι μέσα του: κάθε σώσιμο έχει εκεί τον κώδικα του
+    # παιχνιδιού που το έγραψε, και ένα του βήματος 186 μηδενικά. Ενα τέτοιο
+    # εδώ: το b6x μηδέν στη μνήμη μόνο όσο σώζει, με τον τροχό σταματημένο,
+    # ώστε κανένας κύκλος ροής να μην τρέξει το st_need στο μεταξύ.
+    lay = {p[0]: int(p[2].lstrip("#"), 16) for p in (
+        line.split() for line in open(os.path.join(ROOT, "build", "layout.asm"),
+                                      encoding="utf-8")) if len(p) >= 3 and p[1] == "equ"}
+    b6 = cpc._lib.cpcemu_ram_ptr(m._h, 6)
+    x6, d6 = lay["G_b6x"] - 0x4000, lay["G_dome_tbl"] - 0x4000
+
+    def b6x(data=None):
+        if data is not None:
+            for i, v in enumerate(data):
+                b6[x6 + i] = v
+        return bytes(b6[x6 + i] for i in range(d6 - x6))
+    code_x = b6x()
+    n_x = sym["ZZ_B6X_END"] - lay["G_b6x"]
+    freeze(True)
+    b6x(bytes(d6 - x6))
+    disc_op("S", 1)
+    b6x(code_x)
+    freeze(False)
+    disc_op("L", 1)
+    check("LOADED FROM SLOT 2" in LAST_MSG and b6x() == code_x and any(code_x[:n_x]),
+          f"σώσιμο με το b6x μηδέν, όπως του βήματος 186: φορτώνεται (|{LAST_MSG}|), και "
+          f"οι {n_x} bytes του κώδικα μένουν ({sum(1 for a, b in zip(b6x(), code_x) if a != b)} άλλαξαν)")
+    # ΑΡΝΗΤΙΚΟ: το sv_bodyx χωρίς το svx_in (call -> nop): ο κώδικας μένει μηδέν.
+    sb, si = sym["SV_BODYX"], sym["SVX_IN"]
+    k = next(k for k in range(16) if list(m.read_ram(sb + k, 3)) == [0xCD, si & 255, si >> 8])
+    m.write_ram(sb + k, b"\0\0\0")
+    freeze(True)                         # ό,τι φορτωθεί δεν τρέχει
+    disc_op("L", 1)
+    got_x = b6x()
+    b6x(code_x)
+    m.write_ram(sb + k, bytes([0xCD, si & 255, si >> 8]))
+    freeze(False)
+    check(not any(got_x[:n_x]),
+          f"ΑΡΝΗΤΙΚΟ: χωρίς το svx_in το φόρτωμα αφήνει το b6x όπως το σώσιμο: "
+          f"{sum(1 for x in got_x if x)} μη μηδενικά")
+
     # ΑΡΝΗΤΙΚΟ (μετά το βήμα 174): το sv_ovl με τον κώδικα εκεί που ήταν, μετά
     # τα 512 της κεφαλίδας (ld de,GH_BUF + 512): οι γραμμές του γράφουν πάνω
     # στο bd_select. Μόνο η αντιγραφή, από ένα probe: ένα S θα έτρεχε τον

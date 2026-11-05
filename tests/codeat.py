@@ -26,10 +26,12 @@ def _layout(name):
 
 B6_START = _layout("G_b6code")
 B6_END = _layout("G_worldinfo")         # εκεί τελειώνει το b6code (βήμα 172· ως τότε το G_agent_fields, #6C00)
+B6X_START = _layout("G_b6x")            # και το δεύτερο κομμάτι, ως τους θόλους (βήμα 187, src/need6.asm)
+B6X_END = _layout("G_dome_tbl")
 
 
 def in_b6(addr):
-    return B6_START <= addr < B6_END
+    return B6_START <= addr < B6_END or B6X_START <= addr < B6X_END
 
 
 def _b6(m):
