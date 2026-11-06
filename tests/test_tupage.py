@@ -11,8 +11,10 @@
             σελίδες), το build/tutor.txt είναι η εικόνα του, και κάθε αρχή του
             tp_idx είναι μετά από ένα «@». Αρνητικά: μια σελίδα από κάθε παράβαση.
   ΔΙΣΚΟΣ    το TUTOR.TXT στον κατάλογο (χρήστης 0, έκταση 0), τα blocks του ίσα
-            με το build/tutor.txt, η BANK6.BIN χωρίς τα μηδενικά του τέλους της,
-            και κανένα αρχείο ως τα slots του §11.
+            με το build/tutor.txt, η BANK6.BIN μικρότερη από ό,τι θα ήταν χωρίς
+            τα μηδενικά του τέλους της (από το βήμα 193 ροή ZX0 ολόκληρης της
+            τράπεζας: ως το 192 κομμένη, με τον φορτωτή να μηδενίζει), και
+            κανένα αρχείο ως τα slots του §11.
   ΣΕΛΙΔΕΣ   από τη δισκέτα, TUTORIAL: η εισαγωγή και το βήμα 1 πριν από
             οτιδήποτε άλλο, ένα ένα, ΔΙΑΒΑΣΜΕΝΑ ΑΠΟ ΤΗΝ ΟΘΟΝΗ γράμμα γράμμα και
             χρώμα χρώμα απέναντι στο αρχείο· μετά το παιχνίδι. Ο ηλιακός με τα
@@ -38,6 +40,8 @@ import tupages as TP                                     # noqa: E402
 import menuread as MR                                    # noqa: E402
 import hudread as HR                                     # noqa: E402
 from dsk import Dsk                                      # noqa: E402
+import mkdsk                                             # noqa: E402
+import zx0                                               # noqa: E402
 
 DSK = os.path.join(ROOT, "build", "habitat.dsk")
 FAIL = []
@@ -129,21 +133,31 @@ def disc(data):
             got += d.sector(s // 9, 0xC1 + s % 9)
     check(ent is not None and got[:len(data)] == data,
           f"ΔΙΣΚΟΣ: το TUTOR.TXT στον κατάλογο, blocks {blocks}, ίσο με το build/tutor.txt")
-    b6 = open(os.path.join(ROOT, "build", "bank6.bin"), "rb").read()
-    trim = len(b6.rstrip(b"\0"))
+    # Η ΤΡΑΠΕΖΑ 6 (βήμα 175, από το 193 συμπιεσμένη): η ροή στον δίσκο, από
+    # τα blocks του καταλόγου, ξεδιπλώνεται σε όλη την τράπεζα του build, και
+    # είναι μικρότερη από ό,τι η ίδια τράπεζα κομμένη όπως στο βήμα 175, ως
+    # το τελευταίο μη μηδενικό της byte.
+    trim = len(mkdsk.banks()[0].rstrip(b"\0"))
     b6e = None
     for si in range(4):
         sec = d.sector(0, 0xC1 + si)
         for e in range(0, len(sec), 32):
             if sec[e:e + 13] == b"\0BANK6   BIN\0":
                 b6e = sec[e:e + 32]
-    b6len = None
+    b6len, raw = None, b""
     if b6e:
-        s = 2 * b6e[16]
-        hdr = d.sector(s // 9, 0xC1 + s % 9)
-        b6len = hdr[64] | hdr[65] << 8 | hdr[66] << 16   # το μήκος της κεφαλίδας AMSDOS
-    check(b6len == trim and trim < len(b6) - 8192,
-          f"ΔΙΣΚΟΣ: η BANK6.BIN {b6len} bytes, χωρίς τα {len(b6) - trim} μηδενικά του τέλους")
+        for b in (x for x in b6e[16:32] if x):
+            for s in (2 * b, 2 * b + 1):
+                raw += d.sector(s // 9, 0xC1 + s % 9)
+        b6len = raw[64] | raw[65] << 8 | raw[66] << 16   # το μήκος της κεφαλίδας AMSDOS
+    try:
+        out, _ = zx0.unpack(raw[128:128 + b6len]) if b6len else (b"", 0)
+    except (ValueError, IndexError):
+        out = b""
+    check(b6len is not None and out == mkdsk.banks()[0] and b6len < trim,
+          f"ΔΙΣΚΟΣ: η BANK6.BIN {b6len} bytes, ροή ZX0 όλης της τράπεζας 6 "
+          f"({len(out)} bytes, ίσα με του build) — κομμένη όπως στο βήμα 175 "
+          f"θα ήταν {trim}")
     last = 2 * top + 1
     free = SAVE_T0 * 9 - 1 - last
     check(last // 9 < SAVE_T0,
@@ -172,25 +186,24 @@ def boot6(dsk, garbage):
 
 
 def zero6():
-    """Ο ΦΟΡΤΩΤΗΣ ΜΗΔΕΝΙΖΕΙ ΤΗΝ ΤΡΑΠΕΖΑ 6 (src/boot.asm), αφού η BANK6.BIN δεν
-    φέρνει πια τα 12 KB μηδενικά της. Με σκουπίδια πριν από την εκκίνηση η 6
-    είναι ίδια με μιας καθαρής· το αρνητικό είναι ο ίδιος δίσκος με το ldir
-    του φορτωτή σβηστό (ld (hl),l / ldir -> ld (hl),l / nop nop)."""
+    """ΟΛΗ Η ΤΡΑΠΕΖΑ 6 ΕΡΧΕΤΑΙ ΑΠΟ ΤΟΝ ΔΙΣΚΟ. Από το βήμα 175 ως το 192 ο
+    φορτωτής τη μηδένιζε, γιατί η BANK6.BIN δεν έφερνε πια τα 12 KB μηδενικά
+    της· από το 193 τα φέρνει ξανά, συμπιεσμένα (tools/mkdsk.py). Με σκουπίδια
+    πριν από την εκκίνηση η 6 είναι ίδια με μιας καθαρής· το αρνητικό είναι
+    ένας δίσκος με την τράπεζα κομμένη στο τελευταίο μη μηδενικό της, όπως ως
+    το 192, χωρίς πια κανέναν να μηδενίσει τα υπόλοιπα (mkdsk.variant)."""
     clean, dirty = boot6(DSK, False), boot6(DSK, True)
-    raw = bytearray(open(DSK, "rb").read())
-    k = raw.find(bytes([0x01, 0xFF, 0x3F, 0x75, 0xED, 0xB0]))
-    bad = None
-    if k >= 0 and raw.find(bytes([0x01, 0xFF, 0x3F, 0x75, 0xED, 0xB0]), k + 1) < 0:
-        raw[k + 4:k + 6] = b"\0\0"
-        path = os.path.join(ROOT, "build", "nozero6.dsk")
-        open(path, "wb").write(raw)
-        bad = boot6(path, True)
-        os.unlink(path)
+    full = mkdsk.banks()[0]
+    path = mkdsk.variant(os.path.join(ROOT, "build", "nozero6.dsk"), "BANK6.BIN",
+                         full.rstrip(b"\0"))
+    bad = boot6(path, True)
+    os.unlink(path)
     nd = sum(1 for x, y in zip(clean, dirty) if x != y)
     check(nd == 0, f"ΔΙΣΚΟΣ: με σκουπίδια στην τράπεζα 6 πριν από το RUN, η 6 του "
                    f"παιχνιδιού ίδια με μιας καθαρής εκκίνησης ({nd} bytes διαφορά)")
-    nb = sum(1 for x, y in zip(clean, bad) if x != y) if bad else None
-    check(nb, f"ΑΡΝΗΤΙΚΟ: χωρίς το ldir του φορτωτή, {nb} bytes της 6 μένουν σκουπίδια")
+    nb = sum(1 for x, y in zip(clean, bad) if x != y)
+    check(nb, f"ΑΡΝΗΤΙΚΟ: η τράπεζα 6 χωρίς τα {len(full) - len(full.rstrip(bytes(1)))} "
+              f"μηδενικά του τέλους της, {nb} bytes της μένουν σκουπίδια")
 
 
 # --------------------------------------------------------------------------

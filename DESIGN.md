@@ -16665,6 +16665,8 @@ owes it until the site's rows are out, `ui_redo` shows it, and so do `ui_ship` a
   simulation's tables before `game_new`. It is 4,095 bytes, twelve blocks fewer.
   `tools/mkdsk.py` cuts them (`TRIM`). The loader zeroes bank 6 before loading it
   (`src/boot.asm`, 17 bytes), because a 6128 does not start with its memory at zero.
+  Since milestone 193 the whole bank comes from the disc again, packed with ZX0, and
+  the loader no longer zeroes it ([§13.5](#135-a-compressed-disc-at-milestone-193)).
 - **`game_new` does lean on those zeros.** Booted with `&A5` in all of bank 6 and the
   loader's `ldir` taken out, 215 bytes of bank 6 still differ from a clean start a second
   into the game.
@@ -19273,7 +19275,8 @@ frame, with code that `bk_gen` writes when the bar changes ([§9.3](#graphical-b
 **The request comes from the sol's pass** (slot 15, `src/ship.asm`).
 - The new milestones are `EC_MILE` without `EC_MSEEN`. `EC_MSEEN` is a byte after the
   `worldinfo` in bank 6, inside the block the save keeps ([§11](#11-save-and-load)), and zero
-  in a new game: the loader zeroes bank 6 ([§9.6](#pages-at-milestone-175)).
+  in a new game: the loader zeroes bank 6 ([§9.6](#pages-at-milestone-175)); since
+  milestone 193 the packed bank brings its zeros ([§13.5](#135-a-compressed-disc-at-milestone-193)).
 - The new bits go into bits 1–5 of `ms_req`, and are marked seen at once.
 - `ms_raise` also breaks the bar's signature (the first bytes of `bsg_was` and `bs_id`). The
   next `bar_sync`, on the HUD's clock every sixteen frames, then runs `bar_want` and
@@ -19863,18 +19866,18 @@ order of this table: its own sector reader goes track by track
 | File | Goes to | Bytes | |
 |---|---|---|---|
 | `HABITAT.BAS` | — | 3 lines | `MEMORY &8FFF` · `LOAD"LOADER.BIN",&9000` · `CALL &9000` |
-| `LOADER.BIN` | `&9000` | 1,231 since milestone 177, which keeps the jumpblock's word for a new colony ([§10.3](#the-end-at-milestone-177)); 1,205 from milestone 175, which zeroes bank 6 (1,188 until then, 1,677 at milestones 128–129, 1,228 until 128, 589 until 113) | the loader with its own sector reader and the bar's files part, plus the 53-byte endgame it copies to `&3FC0`. The planet menu's code was here at 128–129 |
+| `LOADER.BIN` | `&9000` | 1,294 since milestone 193, with the ZX0 decompressor and without bank 6's zeroing and three files ([§13.5](#135-a-compressed-disc-at-milestone-193)); 1,231 since milestone 177, which keeps the jumpblock's word for a new colony ([§10.3](#the-end-at-milestone-177)); 1,205 from milestone 175, which zeroes bank 6 (1,188 until then, 1,677 at milestones 128–129, 1,228 until 128, 589 until 113) | the loader with its own sector reader and the bar's files part, plus the 53-byte endgame it copies to `&3FC0`. The planet menu's code was here at 128–129 |
 | `MENU.BIN` | `&4000` | 8,674 since milestone 192's signature, the same nine blocks (8,530 at 191, 8,457 at 130) | the menu over a world (milestone 130): 32 worlds, their tiles, the game's font and the code ([§13.2](#the-menu-over-a-world-at-milestone-130)). Read first, then overwritten by `PAGE2.BIN` and `BANK1.BIN` |
-| `BANK6.BIN` | bank 6 | 4,095 since milestone 175 (16,384 until then) | quadrants, figures, entity tables. Without its last 12,289 bytes, which were zeros: the loader zeroes bank 6 before reading it ([§9.6](#pages-at-milestone-175)) |
-| `BANK7.BIN` | bank 7 | 16,384 | structures, plants, and the reserved holes |
-| `TEXT.BIN` | bank 7, over the hole | 3,707 since milestone 177's milestones and end ([§10.2](#seen-at-milestone-177)), the same four blocks; 3,132 from milestone 175, with the tutorial's page code (2,488 until then, 2,400 at milestone 170, 2,070 at 169) | every string the game prints ([§4.2](#42-the-eight-banks)), and since milestone 170 the structures' drawing code after them ([§8.4](#the-structures-without-their-masks-at-milestone-170)) |
-| `B6CODE.BIN` | bank 6, over `b6code` | 5,720 since milestone 187's `b6x`, with the six bytes of `worldinfo` before it ([§4.2](#a-second-piece-of-bank-6s-code-at-milestone-187)), the same eleven sectors (5,623 at 177; 5,577 at 176; 5,544 at 175; 5,115 earlier, 4,564 until milestone 129, 3,481 at 92) | the code that lives in bank 6 (milestone 92): the wheel's, and since milestone 129 the short bends' and the corridors' corners' |
-| `B6TAIL.BIN` | bank 6, `&70BC` | 836 since milestone 188, one block | the code in the tails of the first four agent fields' pages, from the first tail to the end of the fourth, the fields between them zeros ([§4.2](#code-in-the-agents-field-tails-at-milestone-188)) |
+| `BANK6.BIN` | bank 6 | 16,384 since milestone 193, the whole bank with `B6CODE.BIN` and `B6TAIL.BIN` in it, packed to 6,179 ([§13.5](#135-a-compressed-disc-at-milestone-193)); 4,095 from milestone 175 (16,384 until then) | quadrants, figures, entity tables. From milestone 175 to 192 without its last 12,289 bytes, which were zeros: the loader zeroed bank 6 before reading it ([§9.6](#pages-at-milestone-175)) |
+| `BANK7.BIN` | bank 7 | 16,384, since milestone 193 with `TEXT.BIN` in it, packed to 6,332 | structures, plants, and the reserved holes |
+| `TEXT.BIN` (until milestone 192; since 193 inside `BANK7.BIN`) | bank 7, over the hole | 3,707 since milestone 177's milestones and end ([§10.2](#seen-at-milestone-177)), the same four blocks; 3,132 from milestone 175, with the tutorial's page code (2,488 until then, 2,400 at milestone 170, 2,070 at 169) | every string the game prints ([§4.2](#42-the-eight-banks)), and since milestone 170 the structures' drawing code after them ([§8.4](#the-structures-without-their-masks-at-milestone-170)) |
+| `B6CODE.BIN` (until milestone 192; since 193 inside `BANK6.BIN`) | bank 6, over `b6code` | 5,720 since milestone 187's `b6x`, with the six bytes of `worldinfo` before it ([§4.2](#a-second-piece-of-bank-6s-code-at-milestone-187)), the same eleven sectors (5,623 at 177; 5,577 at 176; 5,544 at 175; 5,115 earlier, 4,564 until milestone 129, 3,481 at 92) | the code that lives in bank 6 (milestone 92): the wheel's, and since milestone 129 the short bends' and the corridors' corners' |
+| `B6TAIL.BIN` (until milestone 192; since 193 inside `BANK6.BIN`) | bank 6, `&70BC` | 836 since milestone 188, one block | the code in the tails of the first four agent fields' pages, from the first tail to the end of the fourth, the fields between them zeros ([§4.2](#code-in-the-agents-field-tails-at-milestone-188)) |
 | `BANK1.BIN` | `OV_LOAD`, `&6000` since milestone 186 (`&6400` from 148) | 8,192 since milestone 186 (7,168 at 148–185, 6,144 at milestones 103–147, 4,096 until 101) | `OV_R1` at its own place since milestone 186 ([§9.3](#the-world-map-at-milestone-186)), then the holes' code, which `ov_install` spreads into the distance matrix's unused columns (milestones 101–102, all 96 rows since 148, [§4.2](#all-of-the-holes-come-in-at-milestone-148); since 155 in `DIST`'s and `NEXTHOP`'s columns 112–127), then the room icons and the placement's code (`b1code`) |
 | `PAGE2.BIN` | base bank 1 at `&4000` (bank 5 until milestone 86), then `&8000` | 7,288 (8,056 until milestone 87) | bank 2's graphics and tables |
 | `BANK5.BIN` | `&7400` in bank 5 | 2,448 | the twelve machine sprites (milestone 85) and, since milestone 87, the small room icons: straight into place since milestone 86; at 85 they waited in bank 5's scratch between the data and the code ([§4.3](#43-bank-2-flat-again)) |
 | `GAME2.BIN` | bank 5 at `&4000`, then `PAGE2_CODE` | 7,329 | bank 2's code — the address comes from the symbol table, not from a constant in the build script, because it moved once and the script did not |
-| `GAME.BIN` | `&0100` | 15,330 | the game (sizes as of milestone 45 — `ls build/`, not this table, is the authority). Before the generator since milestone 113 |
+| `GAME.BIN` | `&0100` (through bank 4 since milestone 193) | 15,330 | the game (sizes as of milestone 45 — `ls build/`, not this table, is the authority). Before the generator since milestone 113 |
 | `GEN.BIN` | `&8000` | 3,584 | the world generator: runs once, last, and returns. Its working page is `GEN_WORK`, outside the file: `&9400` at milestone 112, `&A200` since 113 ([§5.9](#five-seconds-at-milestone-112)) |
 | `TUTOR.TXT` | — | 9,599 since milestone 177, ten blocks (6,256 and seven until then) | the tutorial's sixteen pages (milestone 175), and since 177 the five milestones', the `G`'s and the end's ([§10.2](#seen-at-milestone-177)), ASCII with no header, from `src/tupages.txt` by `tools/tupages.py`. The loader does not read it; the game finds it in the catalogue and reads one page at a time ([§9.6](#pages-at-milestone-175)) |
 
@@ -19887,7 +19890,10 @@ drive the files will take longer: 167 sectors on 18.6 tracks, two revolutions a
 track, is about 8 s by arithmetic — not measured
 ([§13.3](#133-the-loader-reads-the-disc-itself-at-milestone-113)). Since milestone 130
 the menu's 17 sectors come first, before the question: 189 sectors after the loader,
-on tracks 0–22. Until milestone 130 the border changed colour at each file, the only
+on tracks 0–22. Since milestone 193 they are ZX0 streams: 95 sectors after the loader,
+on tracks 0–14, unpacked in 1.83 s, and the menu after 205 frames, the colony 410 after
+the choice (201 and 390 before; [§13.5](#135-a-compressed-disc-at-milestone-193)).
+Until milestone 130 the border changed colour at each file, the only
 progress indicator there could be while the firmware owned the screen; since then
 the files fill the first part of the menu's bar, and the border turns red only on a
 failure.
@@ -19896,6 +19902,7 @@ failure.
 |---|---|---|
 | `rasm` | `~/rasm/rasm.exe` | assembler; handles banking directives and `align 256` |
 | `iDSK` | `~/idsk/iDSK` | builds the `.dsk` image, a standard one, which `tools/dsk.py` rewrites as EXTENDED since milestone 183 ([§13.4](#134-an-extended-disc-at-milestone-183)) |
+| `tools/zx0.py` | — | since milestone 193: packs a file with rasm's `LZX0`, and unpacks it in Python, to check it and to count the margin it needs to unpack in place ([§13.5](#135-a-compressed-disc-at-milestone-193)) |
 | `tools/mapsize.py` | — | per-file byte counts for bank 0 and bank 2's code, by assembling a copy of `main.asm` with a label before every `include` — and, since milestone 66, one after it, so that `main.asm`'s own code is counted as `main.asm` wherever it sits. `tools/mkdsk.py` says how many bytes are left; this says who took them, which is the half that tells you what to move |
 | `tools/agents.py` | — | reads the colonists' own fields out of bank 6 while the game runs: what each one is doing, where, and how full their bars are. [§6.6](#66-needs)'s oscillation is invisible in stocks and in the HUD; it is obvious in one colonist's `dest` sampled every 25 frames. It steals the CPU **only in the vsync wait at the top of the loop**, where the stack is at its base and only `BC` is live — taken anywhere else, the scaffolding leaves a nail on the stack per sample and the colony ends up with 217 living |
 | `cpcemu` | `~/cpcemu/cpc.py` | **headless** CPC 6128 — Z80 + gate array + CRTC + PPI + FDC + PSG, renders to a framebuffer, dumps PNG. **Extended for milestone 20**: `cpcemu_psg_reg` / `cpcemu_psg_addr` in `cpcheadless.c` expose the AY's registers, because sound is otherwise invisible to every check — the emulator ran with `audio.volume = 0` and nothing outside the chip could say whether a write arrived. Additive; the old `.so` is kept beside the new one |
@@ -19998,7 +20005,7 @@ tests in this document runnable rather than aspirational:
 | Needs beat the board | the food colony of [§6.6](#66-needs) run for 9,000 frames, watching the *bars* rather than the corpses, plus the player's canteen getting an operator (`test_needs.py`) |
 | Who stops first | the reserve rule on the reference implementation — one unit either side of the threshold, and a storm-length night with the reserve knocked out beside it; since milestone 176 the three steps with one large pump, everything at 60, oxygen and pump at 59 and 42, the pump stopped at 41, oxygen alone at 4, blackout at 3 ([§6.5](#the-pumps-stop-last-but-one-at-milestone-176)) — then the two-pump colony in the real binary: load shed, oxygen never zero, pumps really stopped (the night reaches the reserve; with the pumps on at every level, the negative since milestone 176, 2 shed intervals gain water) (the level and the Water read at the same moment since milestone 124: an agent sample between them let a flow cycle fall in between, and an interval looked shed while it pumped; checked once with the pumps left on under shed, and caught), `LOW POWER` on the screen; since milestone 132 the battery set to 80 at the first dusk, as the colony reached it until then — with the wider plateau its collector was built sooner, it came with 158, and the night shed nothing (`test_power.py`) |
 | The map is a constraint | the pump refused on dry ground **with the reason on screen**, accepted at the shore and actually built; the mine likewise at a vein — and since milestone 123 accepted away from one, the panel saying `NO VEIN  HALF ORE`; the first built for nothing with `ST_FREE`, a second off the vein for 30 with `ST_HALF`; and a dome and a solar panel accepted on the same dry ground, which is what separates "this rule" from "this patch of dirt". Since milestone 132 the second mine's dry ground is six tiles from the dome's, and `tools/balance.py`'s `live_spot` asks a mine for ore only when it was asked for beside ore: until then it moved the dry mine to the nearest vein, and the vein `colony.sna` lays was nearest (`test_map.py`) |
-| The disc | `RUN"HABITAT` from a cold BASIC prompt: the game arrives, the start state is there, the HUD is drawn, the wheel's code is in bank 6 byte for byte (milestone 92; 1,219 bytes since 93, 1,282 since 94), the icons and the placement's code in bank 1 (milestone 94), the demolition's code in the routing matrix's holes, 1,086 bytes byte for byte (milestone 102), and the save's 630 in the rows after it (milestone 103), and the help screen's 211 after that (milestone 108), and since milestone 149 the tutorial's code and its sixteen lines after those, to row 87, inside the image of milestone 148, and since milestone 186 the world map's 688 after the demolition, from a `BANK1.BIN` that starts at `&6000` ([§9.3](#the-world-map-at-milestone-186)), and the world is **generated** rather than loaded. Since milestone 113: no file went to AMSDOS, the boot is at most 600 frames, and at the handover banks 6 and 7 and the game's code are the build's to the byte, with two planted faults in the reader; a disc whose `PAGE2.BIN` is type 0 boots the same through AMSDOS, and without the head's return to track 0 it does not (since milestone 128 with AMSDOS made to believe track 0); and `fl_ok` and `fd_ok` judge nine controller results right. Since milestone 128 the planet menu: its lines read off the screen with the ROM's font (six since milestone 149), the inverted one following arrows and joystick both ways round, a `RETURN` held from the `RUN` not picking (negative: the previous keys starting at none), every choice reaching `worldinfo` and two random ones apart, and since milestone 149 `TUTORIAL` reaching `TU_SEED` with bit 7 of the fourth byte and no other choice with it, the seed's code alone in 180 cases (`TUTORIAL` among them) with four negatives, and the boot timed from the choice, at most 450 frames. Since milestone 180 no `out (c),c` and no `hud_text7` or `hud_page1` in bank 7's code, the structures', the pages' and the panels' (negative: the I's `hud_text7` of milestone 179), as in `b6code`'s since milestone 110, and since milestone 187 in `b6x`'s, whose six bytes before it are the generator's and the game's, not the build's ([§4.2](#a-second-piece-of-bank-6s-code-at-milestone-187)), and since milestone 188 the four tails of `B6TAIL.BIN` as the build made them, `src/full6.asm` without paging, and the handover's bank 6 with the file in it ([§4.2](#code-in-the-agents-field-tails-at-milestone-188)) (`test_disc.py`, [§13.3](#133-the-loader-reads-the-disc-itself-at-milestone-113), [§13.2](#132-the-loading-screen)) |
+| The disc | `RUN"HABITAT` from a cold BASIC prompt: the game arrives, the start state is there, the HUD is drawn, the wheel's code is in bank 6 byte for byte (milestone 92; 1,219 bytes since 93, 1,282 since 94), the icons and the placement's code in bank 1 (milestone 94), the demolition's code in the routing matrix's holes, 1,086 bytes byte for byte (milestone 102), and the save's 630 in the rows after it (milestone 103), and the help screen's 211 after that (milestone 108), and since milestone 149 the tutorial's code and its sixteen lines after those, to row 87, inside the image of milestone 148, and since milestone 186 the world map's 688 after the demolition, from a `BANK1.BIN` that starts at `&6000` ([§9.3](#the-world-map-at-milestone-186)), and the world is **generated** rather than loaded. Since milestone 113: no file went to AMSDOS, the boot is at most 600 frames, and at the handover banks 6 and 7 and the game's code are the build's to the byte, with two planted faults in the reader; a disc whose `PAGE2.BIN` is type 0 boots the same through AMSDOS, and without the head's return to track 0 it does not (since milestone 128 with AMSDOS made to believe track 0); and `fl_ok` and `fd_ok` judge nine controller results right. Since milestone 128 the planet menu: its lines read off the screen with the ROM's font (six since milestone 149), the inverted one following arrows and joystick both ways round, a `RETURN` held from the `RUN` not picking (negative: the previous keys starting at none), every choice reaching `worldinfo` and two random ones apart, and since milestone 149 `TUTORIAL` reaching `TU_SEED` with bit 7 of the fourth byte and no other choice with it, the seed's code alone in 180 cases (`TUTORIAL` among them) with four negatives, and the boot timed from the choice, at most 450 frames. Since milestone 180 no `out (c),c` and no `hud_text7` or `hud_page1` in bank 7's code, the structures', the pages' and the panels' (negative: the I's `hud_text7` of milestone 179), as in `b6code`'s since milestone 110, and since milestone 187 in `b6x`'s, whose six bytes before it are the generator's and the game's, not the build's ([§4.2](#a-second-piece-of-bank-6s-code-at-milestone-187)), and since milestone 188 the four tails of `B6TAIL.BIN` as the build made them, `src/full6.asm` without paging, and the handover's bank 6 with the file in it ([§4.2](#code-in-the-agents-field-tails-at-milestone-188)). Since milestone 193 the files are ZX0 streams unpacked in place, with the same memory at the handover; bank 7's stream without its margin does not boot, `mn_prev`'s negative runs on a repacked `MENU.BIN`, and the reader is tested alone on a file of two extents, with the second-extent negative ([§13.5](#135-a-compressed-disc-at-milestone-193)) (`test_disc.py`, [§13.3](#133-the-loader-reads-the-disc-itself-at-milestone-113), [§13.2](#132-the-loading-screen)) |
 | Disc driver | the μPD765 without AMSDOS: reads the disc's own **catalogue** and compares it with the host's `.dsk` byte for byte, then writes three sectors, reads them back, and checks the neighbouring sector is untouched (`test_fdc.py`) |
 | Save and load | a small dome placed beside the ship first (since milestone 87 the empty start never moves by itself), freeze the wheel, photograph the state, `S`, run 18,000 frames until it has moved, `L`, and assert the economy, the world plane and the **picture** are back, the ships' shares and the merchant's cargo too, changed in between — plus a load from an empty slot that must be refused; since milestone 103 the save's code comes in from the routing matrix's holes on every `S` and `L`, so the first save runs with `rst 0` written over all of it, and a last negative without the copy does not save; since milestone 115 `jb_lost`, cleared before the load, is `#80` after it; since milestone 154 version 10, with the corridors from bank 5 in a sector of their own; since milestone 159 version 11, with record 127 and the corridors' limit of 128 saved, cleared in between, and back after the load ([§4.2](#128-corridors-and-their-scan-limit-at-milestone-159)); since milestone 172 version 12, bank 6's `&6600–&7FFF` in 13 sectors, 51 in a slot ([§6.1](#one-field-to-a-page-at-milestone-172)); since milestone 187 a save with `b6x` zeroed, as milestone 186 wrote them, loads and the code stays (negative: without `svx_in` it is the save's zeros, [§4.2](#a-second-piece-of-bank-6s-code-at-milestone-187)), and since milestone 188 the agents' field tails with it (negative: without the second swap, and without `wheel_reset`'s `ec_setfull`, which would run the zeros, [§4.2](#code-in-the-agents-field-tails-at-milestone-188)) (`test_save.py`) |
 | The ids (milestone 173) | `tests/test_sim.py`'s colony at ids 0–39 and 120–159 with the bots at 160–175 (`E.pop_id`), the same 96 agents byte for byte, and `EC_ALIVE` set by `E.populate`; the pinned wheel and the settled revolution with 80 and 160 colonists (`m173/measure.py` in the cache); slot 12's count stopping at `EC_ALIVE`, with the exit removed as a negative (`test_drill.py`, `test_bots.py`); the needs not reaching the bots, the cap at 160 and milestone 172's 80 as negatives (`test_bots.py`); `cw_count`'s bound at 160 and a landing with 156 alive (`test_crew.py`); `lk_air_out`'s pairs without the `and` (`test_suit.py`); ten colonists a needs slot (`test_noroom.py`); the HUD's row 2 without `POP` (`tests/hudread.py`); version 13 (`test_save.py`); `game_new`'s 188 ids (`test_newgame.py`) ([§6.1](#the-ids-at-milestone-173)) |
@@ -20470,6 +20477,117 @@ of the standard image. No code changed, and neither did a file or a sector.
 and the fix is in [§11](#the-save-that-hung-at-milestone-183). With both, the player's
 save in Retro Virtual Machine works, and the disc it wrote back keeps all 42 tracks.
 
+### 13.5 A compressed disc, at milestone 193
+
+The user asked whether compression could win space on the disc. They then asked for
+two screens before the menu, REVIVE8BIT's and one of Habitat's (milestone 194). At
+milestone 192 one block was free before the save slots at track 24.
+
+**Every file the loader reads is a ZX0 stream.**
+
+- **The compressor** is rasm's own `LZX0` (Emmanuel Marty's salvador), called by
+  `tools/zx0.py`. It is the same tool that assembles the game, so there is nothing new
+  to install. Exomizer and aPLib packed these files within 1 % of it, LZSA2 5 % and
+  LZ4 20 % worse.
+- **The decompressor** is Einar Saukas's and Urusergi's `dzx0_standard`, 68 bytes, in
+  `src/dzx0.asm` with its BSD licence.
+  - The fast version (187 bytes, spke's) unpacks everything in 1.36 s instead of
+    1.83 s. It would not leave the loader inside track 0 (1,408 bytes after the
+    header).
+- **Two files are left alone:** `LOADER.BIN`, which BASIC loads, and `TUTOR.TXT`,
+  which the game reads one page at a time.
+
+**Banks 6 and 7 are one file each.** Until milestone 192 the loader zeroed bank 6 and
+brought `BANK6.BIN`, `B6CODE.BIN` and `B6TAIL.BIN`, then `BANK7.BIN` and `TEXT.BIN`.
+`tools/mkdsk.py` now lays them out in the same order (`banks()`) and packs the whole
+16 KB: the zeros cost almost nothing. The loader lost the zeroing and three files.
+`build/b6code.bin`, `b6tail.bin` and `text.bin` stay as they were, and the tests still
+compare memory against them.
+
+| File | Unpacked | On the disc | Blocks, 192 → 193 |
+|---|---|---|---|
+| `MENU.BIN` | 8,674 | 5,982 | 9 → 6 |
+| `BANK6.BIN` (+ `B6CODE`, `B6TAIL`) | 16,384 | 6,179 | 12 → 7 |
+| `BANK7.BIN` (+ `TEXT`) | 16,384 | 6,332 | 22 → 7 |
+| `BANK1.BIN` | 8,192 | 4,088 | 9 → 5 |
+| `PAGE2.BIN` | 6,026 | 1,164 | 7 → 2 |
+| `BANK5.BIN` | 2,048 | 109 | 3 → 1 |
+| `GAME2.BIN` | 9,658 | 7,832 | 10 → 8 |
+| `GAME.BIN` | 15,690 | 11,899 | 16 → 12 |
+| `GEN.BIN` | 3,584 | 1,852 | 4 → 2 |
+| **All files with `HABITAT.BAS`, `LOADER.BIN`, `TUTOR.TXT`** | | | **105 → 63** |
+
+**43 of the 106 blocks before the slots are free (1 until now).** The files end on
+track 14 instead of 23. The code and the art compress least (`GAME.BIN` 76 %,
+`GAME2.BIN` 81 %); tables, sprites and zeros compress most (`BANK5.BIN` 5 %,
+`PAGE2.BIN` 19 %).
+
+**In place.** A file unpacks where it lives, with no buffer:
+
+- The stream loads at the end of the destination. The AMSDOS header's load address
+  says where, and the loader now reads it (`fl_raw` from `SECT_BUF + 21`; the AMSDOS
+  fallback from `CAS IN OPEN`'s `DE`).
+- `dzx0` then writes from the start of the destination, while it reads ahead of
+  itself.
+- This works only while the write never catches up with the read. The stream
+  therefore ends a margin past the destination's end: the smallest that keeps every
+  byte written before the first byte not yet read. `zx0.unpack` counts it on the
+  decoding itself. It is 2–3 bytes for every file, and those bytes fall on things not
+  yet loaded:
+  - `#8000–#8003` for the four that end at `&8000` (that is the generator's space);
+  - free scratch under `BANK1.BIN` for `PAGE2.BIN`, and under the machines for
+    `GAME2.BIN`;
+  - the class window for `MENU.BIN`;
+  - `#8E00–#8E01`, under BASIC's stack, for `GEN.BIN`.
+- `tools/mkdsk.py` stops the build if a stream starts before its destination or ends
+  past its ceiling (the fourth column of `FILES`).
+
+**`GAME.BIN` goes through bank 4.** The decompressor reads what it has already
+written. At `&0100`, while the firmware lives, a read returns the lower ROM, and only
+writes reach RAM. So the file unpacks at `&4000` of bank 4, the world plane, and an
+`ldir` copies it down. The generator then fills all of bank 4: `test_disc` checks the
+whole plane after a boot, as before.
+
+**Cost:**
+
+- **The loader:** 1,294 bytes (1,254). It is still inside track 0.
+- **Unpacking:** 1.83 s for all ten files, with interrupts off as for the disc, so
+  AMSDOS's motor clock stays stopped as before.
+- **In the emulator** the whole boot is a little slower, because its controller has no
+  rotation and a sector costs only its 16 ms of transfer:
+  - the menu appears after 205 frames instead of 201;
+  - from the choice to the colony takes 410 frames instead of 390 (ceiling 450).
+- **On a real drive** reading is about 44 ms a sector (two turns a track). The 80
+  fewer sectors save about 3.5 s against 1.8 s of unpacking. That is by arithmetic,
+  not measured ([§15](#15-open-risks)).
+- **The game:** nothing. At the handover, memory is byte for byte what milestone 192
+  left.
+
+**Tests.** Of the 97 tests, 96 passed the first time. `test_tupage` checked milestone
+175's cut `BANK6.BIN` and the loader's zeroing, and it was rewritten (below).
+
+- **`tests/test_disc.py`: all of its checks pass as before:** the memory at the handover, the bar, the
+  scratch, the AMSDOS fallback (`PAGE2.BIN` of type 0, which loads at the header's
+  address and unpacks the same), and five boots.
+- **New negative:** bank 7's stream without its margin (2 bytes). The boot does not
+  reach the handover.
+- **`mn_prev` from 0**, the menu's negative, used to patch a byte in the disc. A byte
+  inside a stream is not a byte of the file, so it now patches `build/menu.bin`,
+  packs it again and writes a variant disc (`variant()`, with `mkdsk.entries()` and
+  `mkdsk.write_disc()`).
+- **`tests/test_tupage.py`** checks that `BANK6.BIN` on the disc is the stream of the
+  whole bank, 6,179 bytes, shorter than the bank cut at its last non-zero byte as at
+  milestone 175 (13,286). Its negative used to be the loader's zeroing taken out; it is
+  now a disc whose bank 6 is cut that way, with nobody left to zero the rest. Booted
+  with `&A5` in all of bank 6, 28 bytes of it are still garbage a second into the game.
+- **The second extent.** No file the loader reads reaches the 16 KB of a catalogue
+  entry any more. The reader is therefore tested alone, on a disc with one file of
+  20,000 bytes:
+  - `fl_init`, `fl_mkname` and `fl_raw` from `boot.bin` in the emulator bring it byte
+    for byte;
+  - with the second extent read from the first entry, 3,743 bytes differ, all after
+    the first 16,256.
+
 ---
 
 ## 14. Delivery plan
@@ -20526,7 +20644,7 @@ gap.
 
 | Risk | Severity | Mitigation |
 |---|---|---|
-| **The disc is nearly full** (milestone 175) | Medium | **Two sectors, 1 KB, are free** between the last file and the save slots at track 24 since milestone 188's `B6TAIL.BIN`, one block ([§4.2](#code-in-the-agents-field-tails-at-milestone-188)). Milestone 191's resources page, 588 bytes, went into the 650 that `TUTOR.TXT`'s last block had: 62 are left there ([§9.7](#97-the-resources-page-at-milestone-191)). Four from milestone 186's `BANK1.BIN` of 8 KB, one block more ([§9.3](#the-world-map-at-milestone-186)). Milestone 185's disc had six, counted from the catalogue's blocks: this row went on saying ten, from milestone 177's seven pages ([§10.2](#seen-at-milestone-177)), while the files grew. Sixteen, 8 KB, from milestone 175, after `BANK6.BIN` lost its zeros to make room for `TUTOR.TXT` ([§9.6](#pages-at-milestone-175)). `tools/mkdsk.py` stops the build if a file reaches the slots (`check_saves`). Levers, each to be checked first: other files' last zeros with the same zeroing in the loader (`page2.bin` 1,538, `gen.bin` 1,217, `bank7.bin` 1,560), and the three sectors each slot leaves unused. |
+| ~~**The disc is nearly full** (milestone 175)~~ | ~~Medium~~ | **Resolved at milestone 193: 43 blocks, 43 KB, are free**, with every file the loader reads packed with ZX0 ([§13.5](#135-a-compressed-disc-at-milestone-193)). Until then: **two sectors, 1 KB, were free** between the last file and the save slots at track 24 since milestone 188's `B6TAIL.BIN`, one block ([§4.2](#code-in-the-agents-field-tails-at-milestone-188)). Milestone 191's resources page, 588 bytes, went into the 650 that `TUTOR.TXT`'s last block had: 62 are left there ([§9.7](#97-the-resources-page-at-milestone-191)). Four from milestone 186's `BANK1.BIN` of 8 KB, one block more ([§9.3](#the-world-map-at-milestone-186)). Milestone 185's disc had six, counted from the catalogue's blocks: this row went on saying ten, from milestone 177's seven pages ([§10.2](#seen-at-milestone-177)), while the files grew. Sixteen, 8 KB, from milestone 175, after `BANK6.BIN` lost its zeros to make room for `TUTOR.TXT` ([§9.6](#pages-at-milestone-175)). `tools/mkdsk.py` stops the build if a file reaches the slots (`check_saves`). Levers, each to be checked first: other files' last zeros with the same zeroing in the loader (`page2.bin` 1,538, `gen.bin` 1,217, `bank7.bin` 1,560), and the three sectors each slot leaves unused. |
 | ~~Every save and every load broke the choice of a building, from milestone 155~~ | ~~High~~ | **Found and resolved after milestone 174** ([§11](#the-save-wrote-past-the-ghosts-log-found-after-milestone-174)). The save's overlay was copied in whole rows of 16, and the last one wrote 8 zeros over `bd_select`. The code now runs at the start of the ghost's log with its header at the end, and `assert`s check the rows, not only the code. `tests/test_save.py` checks bank 2's first bytes after `S` and `L`. |
 | ~~CRTC offset scrolling with a two-page raster split~~ | ~~High~~ | **Resolved at milestone 5, and split in two.** Offset scrolling works to the pixel ([§8.2](#82-camera)). The mid-frame page change does **not** — the CRTC latches the start address once per frame — so the HUD moved into the play page and bank 2 went flat ([§8.1](#81-screen-layout), [§4.3](#43-bank-2-flat-again)). |
 | ~~HUD re-render on every scroll step, ≈ 0.4 frames, estimated not measured~~ | ~~Medium~~ | **Measured at 2.55 frames**, six times the estimate, and then cut ([§8.1](#81-screen-layout)). The cell cache of [§9.2](#92-hud) took an ordinary tick to 1.15, and milestone 52's smaller HUD to **0.65**; a camera step, which moves every cell, still pays **1.75** (2.30 before milestone 52, 2.20 before the font moved to bank 7 at milestone 33). The escape hatch for that one — *move* the HUD block inside the ring instead of re-rendering it — **was taken at milestone 83**: 0.89–0.94 frames per step, cheaper than what it replaced, and the HUD is never rubble after a scroll, paused or not ([§8.1](#81-screen-layout)). |
@@ -20534,7 +20652,7 @@ gap.
 | **The raster splits of milestone 83 are timed on the emulator** | Medium | Mode and palette writes, not addresses, and timed from the Gate Array's own interrupt, which every CPC has. Each write has ≥ 10 µs of margin against a late interrupt (`tests/test_split.py` breaks it at 20 µs). Real hardware is the check still owed, and a different Gate Array (the Plus) would want its own measurement. |
 | **No test presses `TAB`** (milestone 186) | Low | The emulator's keyboard (`chips`' `cpc.h`) has no `TAB`, so `tests/test_worldmap.py` patches the two masks of `bk_more` and `ms_key` to Q's, `&08` on the same row 8, and drives the map with Q. The real key is row 8, bit 4 (`&10`) of the CPC's matrix, the bit between Q and A; the test reads that the code holds it before it patches. If the bit were wrong, `TAB` would open nothing and nothing else would change. The player can check it on a real machine or in Retro Virtual Machine with one press in `LOOK`. |
 | ~~A save destroyed the disc in Retro Virtual Machine, and hung~~ (found at milestone 183) | ~~High~~ | **Resolved at milestone 183, verified by the player in Retro Virtual Machine 2.1.20** ([§13.4](#134-an-extended-disc-at-milestone-183), [§11](#the-save-that-hung-at-milestone-183)). With `iDSK`'s standard `.dsk`, the file the emulator wrote back held only track 24, 5,120 bytes. The disc is EXTENDED since then, and `tests/test_fdc.py` rejects the emulator's file. The hang was the driver's: a fixed seven-byte result, no `SENSE INTERRUPT` between commands, and transfers without a limit. All three are fixed, and the old driver hangs where Retro Virtual Machine did in a copy of `cpcemu` with those controllers' habits. The player's save there now writes all 51 sectors of slot 1. |
-| **The disc's timing is the emulator's** (milestone 113) | Medium | The emulator's µPD765 has no rotation and no spin-up, moves the head at once, and ends a read with IC = 00. The loader ([§13.3](#133-the-loader-reads-the-disc-itself-at-milestone-113)) and the save's driver ([§11](#on-a-real-drive-at-milestone-113)) were written for the real one: IC = 01 + EN accepted (tested with the bytes themselves), the seek waited for, 15 ms settle, 0.46 s for the motor on a save, sixteen retries of 100 ms on the loader. None of the timings has run on a 6128. The loader falls back to AMSDOS on any failure; the save has no fallback and reports `DISC ERROR`. Since milestone 128 the player may wait in the planet menu for longer than AMSDOS keeps the motor on; the emulator has no spin-up, so the sixteen retries are what a real drive would lean on there. |
+| **The disc's timing is the emulator's** (milestone 113) | Medium | Since milestone 193 the boot reads 80 fewer sectors and unpacks for 1.83 s: in the emulator, which has no rotation, it is 20 frames slower from the menu's choice; on a real drive it should be about 1.7 s faster, which is by arithmetic and not measured ([§13.5](#135-a-compressed-disc-at-milestone-193)). The emulator's µPD765 has no rotation and no spin-up, moves the head at once, and ends a read with IC = 00. The loader ([§13.3](#133-the-loader-reads-the-disc-itself-at-milestone-113)) and the save's driver ([§11](#on-a-real-drive-at-milestone-113)) were written for the real one: IC = 01 + EN accepted (tested with the bytes themselves), the seek waited for, 15 ms settle, 0.46 s for the motor on a save, sixteen retries of 100 ms on the loader. None of the timings has run on a 6128. The loader falls back to AMSDOS on any failure; the save has no fallback and reports `DISC ERROR`. Since milestone 128 the player may wait in the planet menu for longer than AMSDOS keeps the motor on; the emulator has no spin-up, so the sixteen retries are what a real drive would lean on there. |
 | **The icons were drawn against Sky blue** (milestone 178) | Low | Since the white-metal style the dome's floor is Pastel cyan, and the yellow and white details of the room icons, machines and plants stand on it at 1.1 and 1.2 to 1 instead of 3.5 and 3.8 ([§8.6](#white-metal-lit-from-above-at-milestone-178)). They read by their dark edges in the screenshots of the manual's colony; the canteen's yellow table is the weakest. A redraw of the weak ones is `CPCArt` work (`tools/icons.py`), with no bytes. |
 | **A new colony is the ROM's restart** (milestone 177) | Medium | The end page's "any other key" turns the lower ROM on and calls `MC START PROGRAM`, then wakes AMSDOS with `KL ROM WALK` (`HL` `&ABFF`, as BASIC 1.1 is taken to do) and reads `LOADER.BIN` ([§10.3](#the-end-at-milestone-177)). Measured in the emulator, with the 6128's ROMs: 187 frames to the menu, and a new colony from it. The ROM's address is read by the loader from the jumpblock, so another ROM's is used; the RAM and the screen the firmware initialises are what it expects after a reset. Not run on a real 6128, nor on a Plus, whose firmware is another; without `RST 1` at `&BD16` the loader writes 0 and the key resets to BASIC. |
 | **A milestone is marked seen at the sol, not at its page** (milestone 177) | Low | The sol's pass writes `EC_MSEEN` and puts the new milestones in `ms_req`, which the save does not keep ([§10.2](#seen-at-milestone-177)). A save made while the page still waits (the player in `PLACE` or in the `MANAGE` group across the sol, then `M` `S`) and loaded later loses the page; `G` still shows `DONE`. A request waiting at a load stays, and shows only those of its milestones the loaded colony has too (`ms_go` ands it with `EC_MILE`). |

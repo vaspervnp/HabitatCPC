@@ -104,7 +104,7 @@ game saves onto its own disc, so use a copy that is not write-protected.
 
 | Tool | Path | Role |
 |---|---|---|
-| `rasm` | `~/rasm/rasm.exe` | assembler |
+| `rasm` | `~/rasm/rasm.exe` | assembler, and the ZX0 compressor for the disc's files |
 | `iDSK` | `~/idsk/iDSK` | disc image tool |
 | `cpcemu` | `~/cpcemu/cpc.py` | headless CPC 6128 emulator, renders to PNG |
 | Python 3 | with Pillow | the tools and the tests |
@@ -114,7 +114,7 @@ From a fresh clone:
 ```bash
 ./tools/build.sh --gen          # tables and bank images from the assets
 python3 tools/mkgentables.py    # the world generator's tables
-python3 tools/mkdsk.py          # assembles everything, writes build/habitat.dsk (EXTENDED)
+python3 tools/mkdsk.py          # assembles everything, packs it (ZX0), writes build/habitat.dsk (EXTENDED)
 ```
 
 `./tools/build.sh` without `--gen` also runs the test suite. Everything it makes goes

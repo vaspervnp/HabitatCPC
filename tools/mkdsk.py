@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """build/habitat.dsk — ο δίσκος (DESIGN §13).
 
-Το παιχνίδι δεν είναι ένα αρχείο. Είναι επτά: ο φορτωτής, ο κώδικας της
-τράπεζας 0, ο κώδικας της τράπεζας 2, η γεννήτρια, και οι τέσσερις εικόνες
-δεδομένων. Το AMSDOS δίνει ΜΙΑ διεύθυνση φόρτωσης ανά αρχείο και δεν ξέρει από
+Το παιχνίδι δεν είναι ένα αρχείο. Είναι δέκα: ο φορτωτής, το μενού, ο κώδικας
+της τράπεζας 0, ο κώδικας της τράπεζας 2, η γεννήτρια, οι πέντε εικόνες
+δεδομένων (οι τράπεζες 6 και 7 ολόκληρες από το βήμα 193), και οι σελίδες. Το AMSDOS δίνει ΜΙΑ διεύθυνση φόρτωσης ανά αρχείο και δεν ξέρει από
 τράπεζες, οπότε ποιο πάει πού το αποφασίζει ο φορτωτής — εδώ απλώς μπαίνουν
 στον δίσκο με τα ονόματα που περιμένει το src/boot.asm.
 
@@ -19,11 +19,13 @@
 μετρήθηκε. Είναι και ο κλασικός τρόπος του CPC.
 
 Η επικεφαλίδα AMSDOS (-t 1 -c -e) χρειάζεται για το LOAD: το BASIC διαβάζει
-από εκεί πόσα bytes να φέρει. Για τα υπόλοιπα η διεύθυνση της επικεφαλίδας
-αγνοείται — το CAS IN DIRECT φορτώνει όπου του πει ο φορτωτής στο HL — αλλά
-γράφεται σωστή ούτως ή άλλως, για να λέει το cat την αλήθεια.
+από εκεί πόσα bytes να φέρει. Ως το βήμα 192 για τα υπόλοιπα η διεύθυνση της
+επικεφαλίδας αγνοούνταν (ο φορτωτής φόρτωνε όπου ήθελε) και γραφόταν σωστή
+για να λέει το cat την αλήθεια. ΑΠΟ ΤΟ ΒΗΜΑ 193 ΤΗ ΔΙΑΒΑΖΕΙ: τα αρχεία είναι
+ροές ZX0 (tools/zx0.py), και η διεύθυνση είναι πού φορτώνεται η ροή — στο
+τέλος του προορισμού, όπου ο φορτωτής την ξεδιπλώνει πάνω στη θέση της.
 """
-import os
+import functools, os
 import re, shutil, subprocess, sys
 
 from dsk import Dsk, to_extended
@@ -45,42 +47,123 @@ STUB = ('10 MEMORY &8FFF\r\n'
 
 # ΜΕ ΤΗ ΣΕΙΡΑ ΠΟΥ ΤΑ ΦΟΡΤΩΝΕΙ Ο ΦΟΡΤΩΤΗΣ (βήμα 113): ο δικός του αναγνώστης
 # τομέων προχωρά track προς track, και η κεφαλή δεν πηγαινοέρχεται.
+#
+# ΣΥΜΠΙΕΣΜΕΝΑ ΑΠΟ ΤΟ ΒΗΜΑ 193 (tools/zx0.py, DESIGN §13.5): όλα εκτός από τον
+# φορτωτή, που τον φορτώνει το BASIC, και τις σελίδες, που τις διαβάζει το
+# παιχνίδι μία μία. Η τρίτη στήλη είναι πού ΞΕΔΙΠΛΩΝΕΙ ο φορτωτής το αρχείο —
+# ένα όνομα του src/boot.asm, του build/layout.asm ή του src/const.asm, ή
+# αριθμός — και η κεφαλίδα AMSDOS λέει πού φορτώνεται η ροή: στο τέλος του
+# προορισμού, με το περιθώριό της (zx0.unpack), ώστε να ξεδιπλωθεί πάνω του.
+# Η τέταρτη είναι πού σταματά το περιθώριο: η ροή δεν φτάνει εκεί.
+#
+# ΟΙ ΤΡΑΠΕΖΕΣ 6 ΚΑΙ 7 ΕΝΑ ΑΡΧΕΙΟ Η ΚΑΘΕΜΙΑ: ως το βήμα 192 ο φορτωτής μηδένιζε
+# την 6 και έφερνε τρία αρχεία (BANK6, B6CODE, B6TAIL), και στην 7 δύο (BANK7,
+# TEXT). Τώρα τα ενώνει το banks() με την ίδια σειρά, και ο φορτωτής φέρνει
+# ολόκληρη την τράπεζα: τα μηδενικά δεν κοστίζουν σχεδόν τίποτα συμπιεσμένα.
 FILES = [
-    ("LOADER.BIN",  "boot.bin",  0x9000, 0x9000),
-    ("MENU.BIN",    "menu.bin",  0x4000, 0x0000),   # το μενού πάνω σε κόσμο (βήμα 130)
-    ("BANK6.BIN",   "bank6.bin", 0x4000, 0x0000),
-    ("BANK7.BIN",   "bank7.bin", 0x4000, 0x0000),
-    ("TEXT.BIN",    "text.bin",  0,      0x0000),   # από το layout: G_text
-    ("B6CODE.BIN",  "b6code.bin", 0,     0x0000),   # από το layout: G_b6code (βήμα 92)
-    ("B6TAIL.BIN",  "b6tail.bin", 0,     0x0000),   # από το const: B6T_0, οι ουρές των πεδίων (βήμα 188)
-    ("BANK1.BIN",   "bank1c.bin", 0,      0x0000),  # από το OV_LOAD: ο κώδικας των τρυπών (βήμα 102),
-                                                    # τα εικονίδια, ο κώδικας του b1code (βήμα 94)
-    ("PAGE2.BIN",   "page2.bin", 0x8000, 0x0000),
-    ("BANK5.BIN",   "bank5c.bin", 0,      0x0000),  # από το layout: B5_BASE (βήμα 155· ως τότε #7400 γραμμένο εδώ),
-                                                    # οι διάδρομοι, το ευρετήριο, οι αρμοί, ο κώδικας του b5code (βήμα 97)
-    ("GAME2.BIN",   "game2.bin", 0,      0x0000),   # από το σύμβολο
-    ("GAME.BIN",    "game.bin",  0x0100, 0x0000),
-    ("GEN.BIN",     "gen.bin",   0x8000, 0x8000),
+    ("LOADER.BIN",  "boot.bin",   0x9000,       None),
+    ("MENU.BIN",    "menu.bin",   "MW_ORG",     0x8000),    # το μενού πάνω σε κόσμο (βήμα 130)
+    ("BANK6.BIN",   "bank6",      0x4000,       "GEN_END"), # όλη η 6: + b6code (βήμα 92) + ουρές (188)
+    ("BANK7.BIN",   "bank7",      0x4000,       "GEN_END"), # όλη η 7: + τα κείμενα στο G_text
+    ("BANK1.BIN",   "bank1c.bin", "OV_LOAD",    "GEN_END"), # ο κώδικας των τρυπών (βήμα 102),
+                                                            # τα εικονίδια, ο κώδικας του b1code (βήμα 94)
+    ("PAGE2.BIN",   "page2.bin",  "SCRATCH",    "OV_LOAD"), # ως την BANK1.BIN, που ήρθε πριν
+    ("BANK5.BIN",   "bank5c.bin", "B5_BASE",    "GEN_END"), # οι διάδρομοι, το ευρετήριο, οι αρμοί,
+                                                            # ο κώδικας του b5code (βήμα 97)
+    ("GAME2.BIN",   "game2.bin",  "SCRATCH_G2", "B5_BASE"), # ως την BANK5.BIN, που ήρθε πριν
+    ("GAME.BIN",    "game.bin",   "GAME_TMP",   0x8000),    # στην τράπεζα 4, και από εκεί στο #0100
+    ("GEN.BIN",     "gen.bin",    "GEN_ORG",    "GEN_END"),
     # ΟΙ ΣΕΛΙΔΕΣ ΤΟΥ TUTORIAL (βήμα 175, tools/tupages.py): ASCII, χωρίς
     # κεφαλίδα, και δεν τις φορτώνει ο φορτωτής. Τις διαβάζει το παιχνίδι μία
     # μία, βρίσκοντας το αρχείο στον κατάλογο (src/tpage.asm).
-    ("TUTOR.TXT",   "tutor.txt", None,   None),
+    ("TUTOR.TXT",   "tutor.txt",  None,         None),
 ]
+PLAIN = {"LOADER.BIN", "TUTOR.TXT"}                     # χωρίς συμπίεση
 
-# ΧΩΡΙΣ ΤΑ ΜΗΔΕΝΙΚΑ ΤΟΥ ΤΕΛΟΥΣ (βήμα 175): η BANK6.BIN είχε 12 KB μηδενικά, τους
-# πίνακες της προσομοίωσης πριν από το game_new, και ο δίσκος δεν είχε χώρο για
-# το TUTOR.TXT — τα αρχεία έφταναν στον πρώτο τομέα του track 23 και τα slots
-# του §11 ξεκινούν στο 24. Ο φορτωτής μηδενίζει την τράπεζα 6 πριν τη φορτώσει
-# (src/boot.asm), άρα η μνήμη είναι ίδια.
-TRIM = {"BANK6.BIN"}
+
+@functools.lru_cache(maxsize=None)
+def equs():
+    """Τα equ του src/const.asm και του build/layout.asm, όπως τα βλέπει ο
+    φορτωτής που τα κάνει include (rasm -sq σε ένα αρχείο μόνο με τα δύο)."""
+    work = os.path.join(BUILD, "zx0")
+    os.makedirs(work, exist_ok=True)
+    probe = os.path.join(work, "equ.asm")
+    open(probe, "w").write('        include "../../src/const.asm"\n'
+                           '        include "../layout.asm"\n')
+    r = subprocess.run([RASM, "equ.asm", "-s", "-sq", "-os", "equ.sym", "-o", "equ"],
+                       cwd=work, capture_output=True, text=True)
+    if r.returncode:
+        sys.exit(f"το equ.asm απέτυχε:\n{r.stdout}{r.stderr}")
+    out = {}
+    for line in open(os.path.join(work, "equ.sym"), encoding="utf-8", errors="replace"):
+        p = line.split()
+        if len(p) >= 2 and p[1].startswith("#"):
+            out[p[0].upper()] = int(p[1][1:], 16)
+    return out
+
+
+def addr(v):
+    """Ενας αριθμός, ή το όνομά του: του φορτωτή, του μενού, ή των equ."""
+    if isinstance(v, int):
+        return v
+    if v == "MW_ORG":
+        import menuworld
+        return menuworld.geom()["MW_ORG"]
+    if v in ("SCRATCH", "SCRATCH_G2", "OV_LOAD", "GAME_TMP", "GEN_ORG"):
+        return boot_equ(v)
+    if v == "GEN_END":
+        return GEN_END
+    return equs()[v]
+
+
+@functools.lru_cache(maxsize=None)
+def banks():
+    """Οι τράπεζες 6 και 7 ολόκληρες, όπως τις άφηνε ο φορτωτής ως το βήμα
+    192: η 6 μηδέν, η BANK6.BIN του pack.py, ο κώδικας του τροχού στο
+    G_b6code και οι ουρές στο B6T_0· η 7 του pack.py με τα κείμενα στο
+    G_text."""
+    e = equs()
+
+    def put(img, at, piece, what):
+        off = at - 0x4000
+        if off < 0 or off + len(piece) > 0x4000:
+            sys.exit(f"το {what} ({len(piece)} bytes στο #{at:04X}) βγαίνει από την τράπεζα")
+        img[off:off + len(piece)] = piece
+
+    def raw(name):
+        return open(os.path.join(BUILD, name), "rb").read()
+
+    b6 = bytearray(0x4000)
+    put(b6, 0x4000, raw("bank6.bin"), "bank6.bin")
+    put(b6, e["G_B6CODE"], raw("b6code.bin"), "b6code.bin")
+    put(b6, e["B6T_0"], raw("b6tail.bin"), "b6tail.bin")
+    b7 = bytearray(raw("bank7.bin"))
+    put(b7, e["G_TEXT"], raw("text.bin"), "text.bin")
+    return bytes(b6), bytes(b7)
 
 
 def staged(name, src):
-    """Τα bytes του αρχείου όπως μπαίνουν στον δίσκο."""
-    data = open(os.path.join(BUILD, src), "rb").read()
-    if name in TRIM:
-        data = data.rstrip(b"\0")
-    return data
+    """Τα bytes του αρχείου ΟΠΩΣ ΞΕΔΙΠΛΩΝΟΝΤΑΙ: ό,τι θα βρει ο φορτωτής."""
+    if src == "bank6":
+        return banks()[0]
+    if src == "bank7":
+        return banks()[1]
+    return open(os.path.join(BUILD, src), "rb").read()
+
+
+@functools.lru_cache(maxsize=None)
+def packed(name, src):
+    """(τα bytes στον δίσκο, πού φορτώνονται, πού σταματά η ροή). Για τα
+    συμπιεσμένα: η ροή ZX0 στο τέλος του προορισμού με το περιθώριό της."""
+    import zx0
+    data = staged(name, src)
+    if name in PLAIN:
+        return data, None, None
+    z = zx0.pack(data, name)
+    _, margin = zx0.unpack(z)
+    dest = addr(dict((f[0], f[2]) for f in FILES)[name])
+    end = dest + len(data) + margin
+    return z, end - len(z), end
 
 
 def run(cmd, cwd=None):
@@ -117,14 +200,15 @@ def write_disc_tab():
     BAR_K σε ένα 8.8, και το πάνω byte είναι ως πού γεμίζει. Οι τομείς ενός
     αρχείου: η κεφαλίδα AMSDOS και το μήκος του, ανά 512 — όπως τους μετρά ο
     φορτωτής από το lf_len. Μετριούνται τα αρχεία του ΠΑΙΧΝΙΔΙΟΥ: όχι ο
-    φορτωτής (τον φορτώνει το BASIC) και όχι το μενού (πριν από τη μπάρα)."""
+    φορτωτής (τον φορτώνει το BASIC) και όχι το μενού (πριν από τη μπάρα).
+    Από το βήμα 193 οι τομείς των ροών ZX0, όσοι διαβάζονται."""
     import menuworld
     files = menuworld.geom()["BAR_FILES"]
     sect = 0
     for name, src, load, _ in FILES:
         if name in ("LOADER.BIN", "MENU.BIN") or load is None:
             continue
-        sect += (len(staged(name, src)) + 128 + 511) // 512
+        sect += (len(packed(name, src)[0]) + 128 + 511) // 512
     k = files * 256 // sect
     assert 0 < k < 256 and k * sect <= files * 256
     with open(os.path.join(BUILD, "disc_tab.asm"), "w", encoding="utf-8") as f:
@@ -192,15 +276,6 @@ PAGE2_END = 0xC000
 # BASIC (#8F00-#8FFF, από το MEMORY &8FFF του stub) ούτε στον φορτωτή (#9000).
 # Το AMSDOS είναι ακόμη ζωντανό όταν τρέχει, και το BASIC περιμένει να γυρίσει.
 GEN_END = 0x8F00
-
-
-def g_text(name="G_text"):
-    """Πού κάθεται ένα δεσμευμένο κενό: τα κείμενα στην τράπεζα 7, ή ο κώδικας
-    του τροχού στην 6 (G_b6code, βήμα 92)."""
-    for line in open(os.path.join(BUILD, "layout.asm"), encoding="utf-8"):
-        if line.split()[:1] == [name]:
-            return int(line.split("#")[1].split()[0], 16)
-    sys.exit(f"δεν βρέθηκε το {name} στο layout.asm")
 
 
 def symbols():
@@ -336,51 +411,89 @@ def build():
     if gen_top > GEN_END:
         sys.exit(f"η γεννήτρια φτάνει στο #{gen_top:04X} και πατά τη στοίβα του "
                  f"BASIC στο #{GEN_END:04X} ({gen_top - GEN_END} bytes πάνω)")
-    # Η διεύθυνση φόρτωσης του GAME2.BIN ΔΕΝ γράφεται με το χέρι: το PAGE2_CODE
-    # κουνήθηκε στο βήμα 19 (120 bytes για την κρυφή μνήμη του HUD) και ο
-    # πίνακας εδώ έμεινε πίσω. Τον φορτωτή δεν τον ένοιαξε — φορτώνει σε δικό
-    # του scratch και αντιγράφει στο σύμβολο — αλλά η κεφαλίδα AMSDOS έλεγε
-    # ψέματα σε όποιον φόρτωνε το αρχείο μόνο του.
-    for i, f in enumerate(FILES):
-        if f[0] == "GAME2.BIN":
-            FILES[i] = (f[0], f[1], lo, f[3])
-        elif f[0] == "TEXT.BIN":
-            FILES[i] = (f[0], f[1], g_text(), f[3])
-        elif f[0] == "B6CODE.BIN":
-            FILES[i] = (f[0], f[1], g_text("G_b6code"), f[3])
-        elif f[0] == "BANK1.BIN":
-            FILES[i] = (f[0], f[1], OV_LOAD, f[3])
-        elif f[0] == "BANK5.BIN":
-            FILES[i] = (f[0], f[1], b5_base(), f[3])
+    # ΚΑΘΕ ΡΟΗ ΧΩΡΑ ΕΚΕΙ ΠΟΥ ΦΟΡΤΩΝΕΤΑΙ (βήμα 193): από την αρχή του
+    # προορισμού ως το τέλος του με το περιθώριο, και όχι ως το επόμενο
+    # πράγμα που ήδη κάθεται εκεί — την BANK1.BIN κάτω από την PAGE2.BIN, τις
+    # μηχανές κάτω από το GAME2.BIN, τη στοίβα του BASIC κάτω από τη γεννήτρια.
+    for name, src, dest, ceil in FILES:
+        if name in PLAIN:
+            continue
+        z, at, end = packed(name, src)
+        if at < addr(dest):
+            sys.exit(f"η ροή του {name} ({len(z)} bytes) είναι μεγαλύτερη από τα "
+                     f"bytes της και αρχίζει στο #{at:04X}, πριν από τον "
+                     f"προορισμό της (#{addr(dest):04X})")
+        if end > addr(ceil):
+            sys.exit(f"η ροή του {name} φτάνει ως το #{end:04X}, πάνω από το "
+                     f"{ceil} (#{addr(ceil):04X})")
     print(f"τράπεζα 0: {slack} bytes ως τη σκαλωσιά των δοκιμών· "
           f"τράπεζα 2: κώδικας στο #{lo:04X}, {slack2} bytes ως το #C000· "
           f"γεννήτρια ως το #{gen_top:04X}, {GEN_END - gen_top} bytes ως τη "
           f"στοίβα του BASIC")
-    stage = os.path.join(BUILD, "dsk")
+    ents = entries()
+    write_disc(DSK, ents)
+    total = sum(len(e[1]) for e in ents)
+    raw = len(STUB) + sum(len(staged(n, s)) for n, s, _, _ in FILES)
+    print(f"στον δίσκο {total} bytes, {raw} ξεδιπλωμένα (ZX0, βήμα 193)")
+    return total
+
+
+def entries():
+    """Τα αρχεία του δίσκου με τη σειρά τους: (όνομα, bytes, load, exec), με
+    load None για ASCII. Η κεφαλίδα των συμπιεσμένων λέει πού φορτώνεται η
+    ροή (ο φορτωτής φορτώνει εκεί, και το AMSDOS της εφεδρείας επίσης)· του
+    φορτωτή, πού φορτώνεται και τρέχει."""
+    out = [("HABITAT.BAS", STUB.encode("ascii"), None, None)]
+    for name, src, dest, _ in FILES:
+        data, at, _ = packed(name, src)
+        if dest is None:                        # ASCII (βήμα 175)
+            out.append((name, data, None, None))
+        elif name in PLAIN:
+            out.append((name, data, dest, dest))
+        else:
+            out.append((name, data, at, 0))
+    return out
+
+
+def variant(path, name, data, margin=None):
+    """Ο δίσκος του build με το αρχείο name ξανά από τα ξεδιπλωμένα bytes data,
+    για τις δοκιμές (βήμα 193): ένα byte αλλαγμένο μέσα σε μια ροή ZX0 δεν
+    είναι ένα byte αλλαγμένο στο αρχείο. Η ροή μπαίνει όπως παντού, στο τέλος
+    του προορισμού με το περιθώριό της — ή με όποιο περιθώριο δοθεί."""
+    import zx0
+    dest = addr(dict((f[0], f[2]) for f in FILES)[name])
+    ents = []
+    for e in entries():
+        if e[0] == name:
+            z = zx0.pack(data, "variant")
+            if margin is None:
+                _, margin = zx0.unpack(z)
+            e = (name, z, dest + len(data) + margin - len(z), 0)
+        ents.append(e)
+    write_disc(path, ents)
+    return path
+
+
+def write_disc(path, ents):
+    """Ενας δίσκος με αυτά τα αρχεία, EXTENDED. Το καλούν και οι δοκιμές
+    (tests/test_disc.py), για δίσκους με ένα αρχείο αλλαγμένο."""
+    stage = path + ".d"
     shutil.rmtree(stage, ignore_errors=True)
     os.makedirs(stage)
-    if os.path.exists(DSK):
-        os.remove(DSK)
-    run([IDSK, DSK, "-n"])
-    bas = os.path.join(stage, "HABITAT.BAS")
-    open(bas, "w", newline="", encoding="ascii").write(STUB)
-    run([IDSK, DSK, "-i", bas, "-t", "0"])
-    total = os.path.getsize(bas)
-    for name, src, load, exe in FILES:
-        data = staged(name, src)
-        total += len(data)
-        with open(os.path.join(stage, name), "wb") as f:
-            f.write(data)
-        if load is None:                        # ASCII (βήμα 175)
-            run([IDSK, DSK, "-i", os.path.join(stage, name), "-t", "0"])
-            continue
-        run([IDSK, DSK, "-i", os.path.join(stage, name),
-             "-t", "1", "-c", f"{load:04X}", "-e", f"{exe:04X}"])
+    if os.path.exists(path):
+        os.remove(path)
+    run([IDSK, path, "-n"])
+    for name, data, load, exe in ents:
+        f = os.path.join(stage, name)
+        open(f, "wb").write(data)
+        if load is None:
+            run([IDSK, path, "-i", f, "-t", "0"])
+        else:
+            run([IDSK, path, "-i", f, "-t", "1", "-c", f"{load:04X}", "-e", f"{exe:04X}"])
     # EXTENDED (βήμα 183, tools/dsk.py): το τυπικό του iDSK το χαλούσε ο Retro
     # Virtual Machine στο πρώτο σώσιμο, κρατώντας μόνο το track του.
-    data = to_extended(open(DSK, "rb").read())
-    open(DSK, "wb").write(data)
-    return total
+    data = to_extended(open(path, "rb").read())
+    open(path, "wb").write(data)
 
 
 if __name__ == "__main__":

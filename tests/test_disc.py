@@ -37,11 +37,12 @@
   2. Η κατάσταση εκκίνησης του §10.1 είναι εκεί — δηλαδή έτρεξε το game_new
      ΚΑΙ τα δεδομένα της τράπεζας 2 μεταφέρθηκαν σωστά από το πρόχειρο.
   3. Το HUD γράφτηκε, άρα ο renderer βρήκε τα γραφικά του σε 6 και 7.
-  3β. Ο κώδικας του τροχού (βήμα 92): το B6CODE.BIN κάθεται στη δέσμευση
+  3β. Ο κώδικας του τροχού (βήμα 92): το b6code.bin κάθεται στη δέσμευση
      b6code της τράπεζας 6, byte προς byte όπως βγήκε από το build. Το
-     BANK6.BIN την έχει άδεια, οπότε ένας φορτωτής που ξεχνά το αρχείο αφήνει
-     μηδενικά εκεί που πηδά το πρώτο ρομπότ. Από το βήμα 110 εκτός από τα
-     τέσσερα bytes που γράφουν οι ανάγκες όσο τρέχει το παιχνίδι.
+     bank6.bin την έχει άδεια, οπότε ένας φορτωτής (ή, από το βήμα 193, ένα
+     tools/mkdsk.py) που ξεχνά τον κώδικα αφήνει μηδενικά εκεί που πηδά το
+     πρώτο ρομπότ. Από το βήμα 110 εκτός από τα τέσσερα bytes που γράφουν οι
+     ανάγκες όσο τρέχει το παιχνίδι.
   3δ. Κανένα out (c),c στα αρχεία του b6code (βήμα 110): τρέχουν από το
      παράθυρο, και μια άλλη τράπεζα εκεί θα έφερνε την επόμενη εντολή από
      αυτήν. Αρνητικό: το mt_ground του βήματος 109.
@@ -66,10 +67,15 @@
      τους τομείς με τον ελεγκτή, όχι με το AMSDOS: κανένα αρχείο δεν πήγε στο
      AMSDOS (fl_off), η εκκίνηση κρατά ως 450 frames από την επιλογή του
      μενού (600 από το ENTER ως το βήμα 127), και τη στιγμή της
-     παράδοσης ΟΛΑ τα αρχεία είναι στη θέση τους byte προς byte — και οι δύο
-     εκτάσεις της BANK7.BIN (και της BANK6.BIN ως το βήμα 175, που την έκοψε
-     στα 4 KB). Αρνητικά: η κεφαλίδα ένα byte λάθος, η δεύτερη έκταση από την
-     πρώτη εγγραφή.
+     παράδοσης ΟΛΑ τα αρχεία είναι στη θέση τους byte προς byte. Αρνητικό: η
+     κεφαλίδα ένα byte λάθος.
+  6β. ΣΥΜΠΙΕΣΜΕΝΑ (βήμα 193, ZX0): τα αρχεία είναι ροές που ξεδιπλώνονται
+     πάνω στη θέση τους, και το παραπάνω «byte προς byte» είναι μετά την
+     αποσυμπίεση. Αρνητικά: η ροή της τράπεζας 7 χωρίς το περιθώριό της, και
+     το mn_prev του 0 σε ένα MENU.BIN ξανασυμπιεσμένο (variant). Και ο
+     αναγνώστης μόνος του σε ένα αρχείο δύο εκτάσεων (20.000 bytes), αφού
+     κανένα αρχείο του φορτωτή δεν φτάνει πια τα 16 KB μιας εγγραφής: byte
+     προς byte, και αρνητικό η δεύτερη έκταση από την πρώτη εγγραφή.
   7. Η ΕΦΕΔΡΕΙΑ. Ενας δίσκος όπου η PAGE2.BIN είναι τύπου 0 (BASIC, με σωστό
      άθροισμα): ο αναγνώστης την αρνείται, το AMSDOS τη φορτώνει, και η
      εκκίνηση φτάνει ίδια — με το AMSDOS να πιστεύει ότι η κεφαλή είναι στο
@@ -92,6 +98,8 @@ import dsk as DK                                                        # noqa: 
 sys.path.insert(0, HERE)
 import menuread as MR                                                   # noqa: E402
 import menuworld as MW                                                  # noqa: E402
+import mkdsk                                                            # noqa: E402
+import zx0                                                              # noqa: E402
 
 RASM = os.path.expanduser("~/rasm/rasm.exe")
 DSK = os.path.join(ROOT, "build", "habitat.dsk")
@@ -161,6 +169,13 @@ def file_sector(dsk, name, k=0):
                 s = 2 * dsk[e + 16 + (k % 32) // 2] + (k & 1)
                 return sector_at(dsk, s // 9, 0xC1 + s % 9)
     return None
+
+
+def variant(name, data, margin=None):
+    """Ο δίσκος του build με το αρχείο name ξανά από τα ξεδιπλωμένα bytes data
+    (βήμα 193, mkdsk.variant), διαβασμένος."""
+    path = os.path.join(ROOT, "build", "variant.dsk")
+    return open(mkdsk.variant(path, name, data, margin), "rb").read()
 
 
 def patch(dsk, pat, new):
@@ -407,11 +422,12 @@ def main():
           f"με το RANDOM διαλεγμένο, {nd} bytes διαφορετικά από το "
           f"tools/menuworld.py, mn_prev #{m.peek(bs['MN_PREV']):02X}")
     # Μετά το #FF του mn_ktab: mn_sel 0, mn_prev #FF, mf_y 0 (src/menu.asm).
-    dsk = bytearray(open(DSK, "rb").read())
-    n = patch(dsk, bytes([76, 4, 77, 4, 0xFF, 0, 0xFF, 0]),
+    # Στο MENU.BIN πριν από τη συμπίεση, και ένας δίσκος με αυτό (βήμα 193).
+    menu = bytearray(open(os.path.join(ROOT, "build", "menu.bin"), "rb").read())
+    n = patch(menu, bytes([76, 4, 77, 4, 0xFF, 0, 0xFF, 0]),
               bytes([76, 4, 77, 4, 0xFF, 0, 0, 0]))
     k = CPC()
-    bad = held(k, bytes(dsk)) if n == 1 else None
+    bad = held(k, variant("MENU.BIN", bytes(menu))) if n == 1 else None
     # Το mw_k ζει στο MENU.BIN (&4000), που τα αρχεία του παιχνιδιού το έχουν
     # ήδη σκεπάσει όταν το μενού έφυγε: ως το βήμα 130 εκεί έτυχε αριθμός
     # κάτω από 32. Η οθόνη συγκρίνεται με το μενού ΚΑΘΕ κόσμου.
@@ -1029,16 +1045,66 @@ def main():
           f"ΑΡΝΗΤΙΚΟ: η κεφαλίδα 127 bytes αντί για 128 ({n} σημείο) — "
           + (f"τράπεζα 6 {st[6]} διαφορετικά, κώδικας {st[8]}" if st else
              "η εκκίνηση δεν φτάνει στην παράδοση"))
-    # η δεύτερη έκταση από την εγγραφή της πρώτης: μόνο η BANK7.BIN έχει δύο
-    # από το βήμα 175 (η BANK6.BIN είναι 4 KB χωρίς τα μηδενικά της, και η 6
-    # έμενε ίδια)
-    ff = bs["FL_FIND"]
-    st, n = planted(bytes([0x07, 0x07, 0x07, 0xE6, 0x07, 0xCD, ff & 0xFF, ff >> 8]),
-                    bytes([0x07, 0x07, 0x07, 0xE6, 0x00]))
-    check(n == 1 and (st is None or st[7] > 0),
-          f"ΑΡΝΗΤΙΚΟ: η δεύτερη έκταση από την πρώτη εγγραφή ({n} σημείο) — "
-          + (f"τράπεζα 7 {st[7]} διαφορετικά (η 6, με μία έκταση, {st[6]})" if st else
+    # --- 6δ. το περιθώριο της ροής (βήμα 193) -----------------------------
+    # Η ροή ξεδιπλώνεται πάνω στη θέση της, και τελειώνει τόσα bytes μετά τον
+    # προορισμό όσα μέτρησε το zx0.unpack. Χωρίς αυτά, το γράψιμο προλαβαίνει
+    # το διάβασμα: η τράπεζα 7 με τη ροή της να τελειώνει ακριβώς στο #8000.
+    _, m7 = zx0.unpack(mkdsk.packed("BANK7.BIN", "bank7")[0])
+    st = scratch_state(variant("BANK7.BIN", mkdsk.banks()[1], margin=0), eg)
+    check(m7 > 0 and (st is None or st[7] > 0),
+          f"ΑΡΝΗΤΙΚΟ: η ροή της τράπεζας 7 χωρίς το περιθώριό της ({m7} bytes) — "
+          + (f"{st[7]} bytes της 7 διαφορετικά" if st else
              "η εκκίνηση δεν φτάνει στην παράδοση"))
+
+    # --- 6γ. δύο εκτάσεις, ο αναγνώστης μόνος του (βήμα 193) -------------
+    # Μια εγγραφή του καταλόγου κρατά 16 KB. Ως το βήμα 192 η BANK7.BIN είχε
+    # δύο· συμπιεσμένο κανένα αρχείο του φορτωτή δεν φτάνει πια εκεί, οπότε ο
+    # δρόμος της δεύτερης έκτασης δοκιμάζεται χωρίς το παιχνίδι: ένας δίσκος με
+    # ένα αρχείο 20.000 bytes (20 blocks, 16 + 4), και τα fl_init, fl_mkname,
+    # fl_raw του φορτωτή στον εξομοιωτή. Το αρχείο πάει στο #1000 της βασικής
+    # RAM, όπου γράφουν όλες οι εγγραφές.
+    ff = bs["FL_FIND"]
+    big = bytes((i * 7 + (i >> 8)) & 255 for i in range(20000))
+    bigdsk = os.path.join(ROOT, "build", "big.dsk")
+    mkdsk.write_disc(bigdsk, [("BIG.BIN", big, 0x1000, 0)])
+    boot = open(os.path.join(ROOT, "build", "boot.bin"), "rb").read()
+
+    def reader(code):
+        r = CPC()
+        r.run_frames(300)
+        r.insert_disc(bigdsk)
+        r.write_ram(0x9000, code)
+        r.write_ram(0x8C00, b"BIG.BIN")
+        fi, mk, fr = bs["FL_INIT"], bs["FL_MKNAME"], bs["FL_RAW"]
+        probe = bytes([0xF3, 0x31, 0x00, 0x8F,              # di · ld sp,#8F00
+                       0xCD, fi & 255, fi >> 8,             # call fl_init
+                       0x21, 0x00, 0x8C, 0x06, 7,           # ld hl,#8C00 · ld b,7
+                       0xCD, mk & 255, mk >> 8,             # call fl_mkname
+                       0xF3, 0xCD, fr & 255, fr >> 8,       # di · call fl_raw
+                       0x9F, 0x32, 0x00, 0x8B,              # sbc a,a · ld (#8B00),a
+                       0x18, 0xFE])                         # jr $
+        r.write_ram(0x8D00, probe)
+        r.set_pc(0x8D00)
+        end, t = 0x8D00 + len(probe) - 2, 0
+        while r.pc != end and t < 5000:
+            r.run_us(1000)
+            t += 1
+        got = (r.pc == end and r.peek(0x8B00) == 0, r.read_ram(0x1000, len(big)))
+        del r
+        return got
+
+    ok, got = reader(boot)
+    check(ok and got == big,
+          f"ο αναγνώστης φέρνει ένα αρχείο δύο εκτάσεων (20.000 bytes) byte προς "
+          f"byte ({sum(1 for a, b in zip(got, big) if a != b)} διαφορετικά)")
+    bad = bytearray(boot)
+    n = patch(bad, bytes([0x07, 0x07, 0x07, 0xE6, 0x07, 0xCD, ff & 0xFF, ff >> 8]),
+              bytes([0x07, 0x07, 0x07, 0xE6, 0x00]))
+    ok, got = reader(bytes(bad)) if n == 1 else (False, big)
+    nb = sum(1 for a, b in zip(got, big) if a != b)
+    check(n == 1 and nb > 0 and all(a == b for a, b in zip(got[:16256], big)),
+          f"ΑΡΝΗΤΙΚΟ: η δεύτερη έκταση από την πρώτη εγγραφή ({n} σημείο) — "
+          f"{nb} bytes διαφορετικά, όλα μετά τα πρώτα 16.256")
 
     # --- 7. η εφεδρεία: το AMSDOS (βήμα 113) ----------------------------
     # Η PAGE2.BIN γίνεται τύπου 0 (BASIC), με σωστό άθροισμα. Για το AMSDOS
