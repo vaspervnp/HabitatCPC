@@ -35,6 +35,11 @@ fit in a Z80 and 128 KB.
   goods are water, food, ore, metal, bioplastic, processors, spares, medicine, guns,
   bots, starch, vegetables, medicinal plants and meat. It runs through mines,
   factories, labs, greenhouses and canteens.
+- **Power and water are balances, as in Planetbase** (since milestone 189):
+  - the HUD shows what is stored and a sign for which way it is going;
+  - Storage domes make room for water too;
+  - when water runs short, the greenhouses and the meat printer stop first, then
+    drinking, and the oxygen machines drink last.
 - **Ships:**
   - colonist ships that you call, with the specialties' shares chosen in steps of 10%;
   - visitors who pay coins, coming more often with the colony's prestige;

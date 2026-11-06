@@ -568,6 +568,7 @@ macro   B6T_PIECE n
 mend
         org     B6T_0, #8000 + B6T_0 - #4000
         include "full6.asm"             ; το ec_setfull, από την τράπεζα 0
+        include "water.asm"             ; βήμα 189: το ισοζύγιο του ρεύματος και του νερού
 zz_b6t_end:
         assert  zz_b6t_end <= B6T_0 + (B6T_N - 1) * 256 + B6T_LEN && ((zz_b6t_end - 1) & 255) >= N_AGENT
 B6T_END     equ B6T_0 + (B6T_N - 1) * 256 + B6T_LEN

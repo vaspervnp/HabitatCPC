@@ -99,12 +99,20 @@ about ten minutes of air, so the first domes are urgent.
 **The top rows** (the HUD):
 
 ```
-O2 ██████ PWR ██████ H2O ████·· FOD ██····  FE189 BI137 PR  0 SP 12 ME  0 BO  0 $  0
+O2 ██████ PWR+█████ H2O-███·· FOD ██····  FE189 BI137 PR  0 SP 12 ME  0 BO  0 $  0
 6/6 SOL  0 DAY ALL SYSTEMS OK
 ```
 
 - **Four bars:** oxygen (`O2`), power (`PWR`), water (`H2O`) and food (`FOD`). A bar
-  turns **red below one third**.
+  turns **red below one quarter**.
+- **Power and water are balances, as in Planetbase.** Their five cells are what is
+  stored: the collectors' charge, and the water against the room there is for it. The
+  sign before them says which way it is going, updated about every 20 seconds at
+  normal speed:
+  - `PWR+` while the colony makes at least the power it asks for, `PWR-` when it asks
+    for more and the collectors run down;
+  - `H2O-` when the water fell since the last update, or is running short (see
+    [section 11](#11-power-air-water-food-storage)).
 - **Six stocks:**
   - `FE` Metal;
   - `BI` Bioplastic;
@@ -385,6 +393,12 @@ the full 160 with four.
     battery feeds the machines and the extractors only while it keeps enough for
     the oxygen through a night. The line says `LOW POWER` while load is shed.
   - With no power at all it says `NO POWER`: the machines stop, then the oxygen.
+- **Water.** The extractors fill it up to 600, and each Storage dome adds room for
+  water too, 100, 300 or 600 by size. This is apart from the goods' store below.
+  - When water runs short it is kept for the air. Below one and a half units per
+    colonist the greenhouses and the meat printer (`MEAT`) stop.
+  - Below one unit per colonist nobody drinks at the canteen, and visitors get no meal.
+  - The oxygen machines drink to the last unit.
 - **Air.** Without enough oxygen machines, or without power or water for them, the
   line says `NO OXYGEN` and health drains fast.
 - **Food.** A canteen's `MEALS` machine feeds about six colonists, and it needs

@@ -220,7 +220,7 @@ ef_blackout:
         ld      (EC_PSTORE),hl
 ef_setp:
         ld      (EC_POK),a              ; χωρίς τις αντλίες
-        jr      ef_o2
+        jr      ef_wdone
 
 ef_pump_on:
         ld      (EC_POK),a              ; P_ALL ή P_ESS, με τις αντλίες
@@ -236,7 +236,9 @@ ef_pump_on:
         ld      a,d
         or      e
         ld      a,S_WATER
-        call    nz,ec_make
+        call    nz,ef_water             ; ως το ec_wcap (βήμα 189, src/need6.asm)
+ef_wdone:
+        call    ew_cycle                ; τα πρόσημα και η σειρά του νερού (βήμα 189, src/water.asm)
 
 ef_o2:
         ; ΑΝΑΠΝΕΟΥΝ ΜΟΝΟ ΟΣΟΙ ΕΙΝΑΙ ΜΕΣΑ (βήμα 87): ο E μετρά τους ζωντανούς με

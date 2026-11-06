@@ -41,7 +41,7 @@ HUD_BOT     equ 1600                ; η κάτω λωρίδα, μετά το ca
 HUD_BOTB    equ 240
 
         assert  (G_hud_shadow & 255) == 0       ; σειρά*40 + στήλη στο L
-        assert  BAR_CELLS == 6                  ; hud_bar: 6v = 2v + 4v
+        assert  BAR_CELLS == 6                  ; hud_bar: 6v = 4v + v + v, το 5 μονό (βήμα 189)
         assert  (G_font_m1 & 7) == 0            ; hc_line: inc e
 
 ; ---------------------------------------------------------------------------
@@ -500,10 +500,24 @@ hnd_lp: inc     a
 ; Το «μέγιστο» του οξυγόνου είναι η ΚΑΤΑΝΑΛΩΣΗ και μπορεί να είναι μηδέν.
 ; Μηδενική κατανάλωση σημαίνει γεμάτη μπάρα, όχι διαίρεση με μηδέν.
 ; ---------------------------------------------------------------------------
+; hd_sflow — όπως το hd_flow, με το κείμενο στην τράπεζα 0 (hu_pwr, hu_h2o,
+; src/stock.asm) και πέντε κελιά (βήμα 189): το ισοζύγιο του Planetbase, ένα
+; πρόσημο και ό,τι είναι αποθηκευμένο.
+hd_sflow:
+        ld      a,BAR_CELLS - 1
+        push    af
+        push    de
+        push    bc
+        call    hud_text
+        jr      hdf_tail
+
 hd_flow:
+        ld      a,BAR_CELLS
+        push    af
         push    de
         push    bc
         call    hud_text7
+hdf_tail:
         pop     hl
         pop     de
         ld      a,d
@@ -513,12 +527,13 @@ hd_flow:
         ld      h,d
         ld      l,e                     ; 1 από 1: γεμάτη
 hud_bar:
-        ; Κελί i γεμάτο όταν τιμή*6 >= i*μέγιστο. Το v μικραίνει κατά ένα
+        ; Κελί i γεμάτο όταν τιμή*n >= i*μέγιστο. Το v μικραίνει κατά ένα
         ; μέγιστο ανά κελί· στο πρώτο άδειο ξαναπαίρνει ό,τι έχασε, και αφού
         ; τότε είναι κάτω από ένα μέγιστο, μένουν άδεια και όσα ακολουθούν.
-        add     hl,hl                   ; 2v
+        ; Τα n κελιά (6, ή 5 μετά από πρόσημο, βήμα 189) στη στοίβα, στο A.
         ld      b,h
-        ld      c,l
+        ld      c,l                     ; v
+        add     hl,hl
         add     hl,hl                   ; 4v
         or      a
         sbc     hl,de                   ; κάτω από το ένα τέταρτο: κόκκινη
@@ -527,8 +542,16 @@ hud_bar:
         ld      a,PEN_LOW
 hb_pen:
         add     hl,de                   ; 4v ξανά
+        add     hl,bc                   ; 5v
+        ex      (sp),hl                 ; H = n
+        bit     0,h
+        jr      nz,hb_five
+        ex      (sp),hl
         add     hl,bc                   ; 6v
-        ld      b,BAR_CELLS
+        ex      (sp),hl
+hb_five:
+        ld      b,h
+        pop     hl                      ; n*v
 hb_cell:
         push    af
         or      a
@@ -699,14 +722,19 @@ hud_draw:
         ld      bc,(EC_O2PROD)
         ld      de,(EC_O2USE)
         call    hd_flow
-        ld      hl,txt_pwr
+        ld      hl,hu_pwr
         ld      bc,(EC_PSTORE)
         ld      de,(EC_PCAP)
-        call    hd_flow
-        ld      hl,txt_h2o
+        ld      a,d
+        or      e
+        jr      nz,hdd_cap
+        inc     de                      ; χωρίς collector: άδεια, όχι γεμάτη
+hdd_cap:
+        call    hd_sflow
+        ld      hl,hu_h2o
         ld      bc,(EC_STOCK + S_WATER*2)
-        ld      de,EC_CAP
-        call    hd_flow
+        ld      de,(ec_wcap)
+        call    hd_sflow
         ld      hl,txt_fod
         ld      bc,(EC_STOCK + S_FOOD*2)
         ld      de,EC_CAP

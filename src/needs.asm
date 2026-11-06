@@ -445,6 +445,7 @@ nds_water:
         ld      a,(hl)                  ; νερό
         cp      NEED_LOW
         ret     nc
+nds_wld:                                ; ret όταν το νερό φτάνει μόνο για το οξυγόνο (ew_cycle, βήμα 189)
         ld      a,S_WATER
         ld      c,255
         ; πέφτει μέσα
@@ -586,6 +587,7 @@ stc_k = stc_k + 1
         ex      de,hl                   ; DE = σύνολο
         push    ix
         pop     hl                      ; HL = η χωρητικότητα
+        call    stc_wcap                ; ΚΑΙ ΤΟΥ ΝΕΡΟΥ (βήμα 189, src/need6.asm)
         or      a
         sbc     hl,de                   ; CY, ή μηδέν: δεν χωρά άλλο
         ld      a,0

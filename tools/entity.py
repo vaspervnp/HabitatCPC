@@ -319,7 +319,8 @@ def satisfy(a, e, i, d):
         if a.food[i] < NEED_LOW and e.stock[EC.S_FOOD] > 0:
             e.stock[EC.S_FOOD] -= 1
             a.food[i] = 255
-        if a.water[i] < NEED_LOW and e.stock[EC.S_WATER] > 0:
+        # ΟΧΙ ΟΤΑΝ ΤΟ ΝΕΡΟ ΦΤΑΝΕΙ ΜΟΝΟ ΓΙΑ ΤΟ ΟΞΥΓΟΝΟ (βήμα 189, nds_wld)
+        if a.water[i] < NEED_LOW and e.stock[EC.S_WATER] > 0 and e.drink:
             e.stock[EC.S_WATER] -= 1
             a.water[i] = 255
     elif room == EC.R_MEDBAY:
@@ -548,7 +549,7 @@ def visit_at(e, a, occ, i):
         r = go(EC.R_CANTEEN)
         if r == "πάει":
             return
-        if r == "εδώ" and e.stock[EC.S_FOOD] and e.stock[EC.S_WATER]:
+        if r == "εδώ" and e.stock[EC.S_FOOD] and e.stock[EC.S_WATER] and e.drink:   # βήμα 189: vie_w
             e.stock[EC.S_FOOD] -= 1
             e.stock[EC.S_WATER] -= 1
             e.goodwill = min(EC.GOOD_MAX, e.goodwill + EC.GOOD_UP)

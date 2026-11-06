@@ -107,6 +107,11 @@ RECIPE = [r[:9] + (r[9] | (MF_ADDS if _adds(r) else 0),) for r in RECIPE]
 RSV_MAX, RSV_Q = 3, 2
 assert [r[6:8] for r in RECIPE if r[9] & MF_ADDS] == [(S_MEAT, RSV_Q)], \
     "αποθεματικό όχι μόνο του VITROMEAT, ή όχι RSV_Q τον γύρο (src/const.asm)"
+# ΤΟ ΝΕΡΟ ΤΟΥ VITROMEAT (βήμα 189, src/water.asm): με λίγο νερό το ew_cycle
+# γράφει 255 στη δεύτερη θέση της συνταγής MT_VITRO, και VW_Q με αρκετό.
+MT_VITRO, VW_Q = 9, 2
+assert RECIPE[MT_VITRO][:2] == (S_WATER, VW_Q) and RECIPE[MT_VITRO][6] == S_MEAT, \
+    "το VITROMEAT δεν είναι η συνταγή MT_VITRO με VW_Q νερό πρώτο (src/const.asm)"
 
 # ΤΟ ΑΠΟΘΕΜΑ ΜΕΤΑΛΛΟΥ (βήμα 127, src/econ.asm, erm_ink): όσες τρώνε μέταλλο
 # σταματούν όταν πέσει κάτω από KEEP_METAL. Ο Z80 κοιτάζει μόνο την ΠΡΩΤΗ
@@ -288,6 +293,14 @@ class Econ:
         # st_need: ο κύκλος ροής που τα αδειάζει (ec_dr1 στο erd_call).
         self.rsv = 0
         self.drain = False
+        # ΤΟ ΝΕΡΟ ΟΠΩΣ ΣΤΟ PLANETBASE (βήμα 189, src/water.asm): πόσο χωρά (το
+        # ec_wcap, EC_CAP και οι Storage), και ό,τι γράφει το ew_cycle σε κάθε
+        # κύκλο ροής — το νερό του κήπου και του VITROMEAT (255: σταματούν), και
+        # αν πίνει κανείς στο κυλικείο. Ως τον πρώτο κύκλο, όλα (ew_reset).
+        self.wcap = 600
+        self.plant_water = 1
+        self.vw_q = VW_Q
+        self.drink = True
         self.amenity = 0            # δέντρα και σαλόνια — παρηγοριά (§6.6)
         # Το μήκος του sol είναι ΔΕΔΟΜΕΝΟ και όχι σταθερά: μια δοκιμή που
         # θέλει να δει πέντε sols δεν μπορεί να περιμένει 60.000 frames.
@@ -380,13 +393,14 @@ PLANT_POWER = 1
 
 
 def run_plant(e, base, s, plant, plant_class):
-    """Μία υποδοχή θερμοκηπίου. Νερό και ρεύμα μέσα, χλωρίδα έξω."""
-    if e.stock[S_WATER] < PLANT_WATER:
+    """Μία υποδοχή θερμοκηπίου. Νερό και ρεύμα μέσα, χλωρίδα έξω. Το νερό
+    είναι το PLANT_WATER, ή 255 όταν λείπει (βήμα 189, water_rules)."""
+    if e.stock[S_WATER] < e.plant_water:
         return
     e.acc_power += PLANT_POWER          # ζητάει, είτε το πάρει είτε όχι
     if e.power_ok != POWER_ALL:         # ο κήπος δεν είναι υποστήριξη ζωής
         return
-    e.stock[S_WATER] -= PLANT_WATER
+    e.stock[S_WATER] -= e.plant_water
     out, qty = PLANT_OUT[plant_class[plant] & 3]
     if out is not None:
         add_stock(e, out, qty)
@@ -434,6 +448,8 @@ def run_dome(e, d, plant_class=None):
         if e.keep & 4 and r[2] == S_BIOPL:          # βήμα 144: τα ανταλλακτικά στο
             continue                                # SPARES_MAX, η SPARES σταματά
         ins = ((r[0], r[1]), (r[2], r[3]), (r[4], r[5]))
+        if m == MT_VITRO:                           # βήμα 189: το νερό της
+            ins = ((r[0], e.vw_q),) + ins[1:]       # συνταγής, VW_Q ή 255
         if any(st != NO_STOCK and e.stock[st] < q for st, q in ins):
             continue                                # λείπει είσοδος: δεν καίει
         rsv = None
@@ -603,10 +619,25 @@ def flow_cycle(e):
             e.power_ok = POWER_NONE
 
     if water:                               # 0 αν σταμάτησαν και οι αντλίες
-        add_stock(e, S_WATER, water)
+        # ως το ec_wcap, όχι το ταβάνι των άλλων (βήμα 189, ef_water)
+        e.stock[S_WATER] = min(e.stock[S_WATER] + water, e.wcap)
         # Το νερό βγαίνει από ΔΟΜΕΣ, όχι από μηχανές θόλου, αλλά βγαίνει εδώ —
         # και το §10.2 το θέλει. Το μετάλλευμα από το βήμα 95 στην παράδοση.
         e.prod_mask |= 1 << S_WATER
+    water_rules(e)
+
+
+def water_rules(e):
+    """ew_cycle (βήμα 189, src/water.asm), στο τέλος κάθε κύκλου ροής, με
+    τους ζωντανούς του προηγούμενου: κάτω από 1,5 x ζωντανούς σταματούν οι κήποι
+    και το VITROMEAT, κάτω από τους ζωντανούς και το ποτό (και το γεύμα των
+    επισκεπτών)· το οξυγόνο πίνει ως την τελευταία μονάδα. Ο Z80 κοιτάζει το
+    νερό ως 255: πάνω από αυτό, πάνω από κάθε όριο (το R1 είναι ως 240)."""
+    w = min(e.stock[S_WATER], 255)
+    low = w < e.alive + (e.alive >> 1)
+    e.plant_water = 255 if low else PLANT_WATER
+    e.vw_q = 255 if low else VW_Q
+    e.drink = w >= e.alive
 
 
 def mine_rate(n, half=False):
@@ -654,6 +685,7 @@ def store_check(e):
     for k in range(e.room_n[R_STORAGE]):
         d = e.room_list[R_STORAGE * ROOM_MAX + k]
         cap += STORE_SIZE[e.dome[d * DOME_REC + D_SIZE]]
+    e.wcap = e.cap + cap - STORE_BASE                       # βήμα 189: stc_wcap
     e.full = 1 if sum(e.stock[1:]) >= cap else 0
     e.keep = (2 if e.stock[S_METAL] < KEEP_METAL else 0) \
         | (1 if e.stock[S_BIOPL] >= BIO_MAX else 0) \

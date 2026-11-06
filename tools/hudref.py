@@ -92,24 +92,30 @@ class Hud:
         self.cells[self.row][self.col] = ("p", pen)
         self.col += 1
 
-    def bar(self, val, mx):
+    def bar(self, val, mx, n=BAR_CELLS):
         if mx == 0:
             val, mx = 1, 1
         full = PEN_LOW if 4 * val < mx else PEN_FULL
         acc = 0
-        for _ in range(BAR_CELLS):
+        for _ in range(n):
             acc += mx
-            self.cell(full if val * BAR_CELLS >= acc else PEN_EMPTY)
+            self.cell(full if val * n >= acc else PEN_EMPTY)
 
     # --- η διάταξη ---------------------------------------------------
     def draw(self, e):
         self.row, self.col = 0, 0
-        for label, val, mx in (("O2 ", e["o2prod"], e["o2use"]),
-                               ("PWR", e["pstore"], e["pcap"]),
-                               ("H2O", e["stock"][0], CAP),
-                               ("FOD", e["stock"][1], CAP)):
+        # ΤΟ ΙΣΟΖΥΓΙΟ ΤΟΥ PLANETBASE (βήμα 189): ρεύμα και νερό με ένα πρόσημο
+        # (hu_pwr, hu_h2o, src/stock.asm, που τα γράφει το ew_cycle) και πέντε
+        # κελιά. Το νερό ως το ec_wcap (EC_CAP και οι Storage), και το ρεύμα
+        # χωρίς collector άδειο: το μέγιστο γίνεται 1, όχι «γεμάτη».
+        for label, val, mx, n in (("O2 ", e["o2prod"], e["o2use"], BAR_CELLS),
+                                  ("PWR" + e.get("psign", "+"), e["pstore"],
+                                   e["pcap"] or 1, BAR_CELLS - 1),
+                                  ("H2O" + e.get("wsign", "+"), e["stock"][0],
+                                   e.get("wcap", CAP), BAR_CELLS - 1),
+                                  ("FOD", e["stock"][1], CAP, BAR_CELLS)):
             self.text(label)
-            self.bar(val, mx)
+            self.bar(val, mx, n)
             self.put(" ")
 
         self.row, self.col = 1, 0

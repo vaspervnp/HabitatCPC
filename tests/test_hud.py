@@ -66,6 +66,13 @@ STATE5 = dict(STATE4, meteor=3)
 # Εκτη και έβδομη (βήμα 122): η αποθήκη γέμισε — και η θύελλα μπαίνει μπροστά της.
 STATE6 = dict(STATE, full=1)
 STATE7 = dict(STATE, full=1, storm=1)
+# Ογδοη και ένατη (βήμα 189): το ισοζύγιο του Planetbase — τα δύο πρόσημα «-»,
+# και το νερό ως το ec_wcap των Storage: 1.200 από 1.500 είναι τέσσερα κελιά
+# από πέντε, 300 ένα κόκκινο (κάτω από το ένα τέταρτο). Με το ec_wcap του
+# EC_CAP τα 1.200 θα ήταν πέντε γεμάτα.
+STATE8 = dict(STATE, psign="-", wsign="-", wcap=1500,
+              stock=[1200] + STATE["stock"][1:])
+STATE9 = dict(STATE, wsign="-", wcap=1500, stock=[300] + STATE["stock"][1:])
 
 
 def econ_base():
@@ -97,6 +104,9 @@ def load(sym, g, st, tx=-21, ty=-13, hud=True):
               "meteor"):
         m.poke(g + EC[k.upper()], st.get(k, 0))
     m.poke(sym["EC_FULL"], st.get("full", 0))       # τράπεζα 0 (βήμα 122)
+    m.poke(sym["HU_PWR"] + 3, ord(st.get("psign", "+")))    # βήμα 189, src/stock.asm
+    m.poke(sym["HU_H2O"] + 3, ord(st.get("wsign", "+")))
+    w16(sym["EC_WCAP"], st.get("wcap", hudref.CAP))
     w16(sym["OT_COINS"], st.get("coins", 0))        # βήμα 134: εδώ από μεταβλητή
     return m
 
@@ -155,7 +165,9 @@ def main():
     for name, st in (("κανονική", STATE), ("μηδενικά + συναγερμός", STATE2),
                      ("υπερχείλιση + LOW POWER", STATE3), ("λίγο φαγητό", STATE4),
                      ("μετεωρίτες", STATE5), ("γεμάτη αποθήκη", STATE6),
-                     ("θύελλα και γεμάτη αποθήκη", STATE7)):
+                     ("θύελλα και γεμάτη αποθήκη", STATE7),
+                     ("πρόσημα και νερό των Storage", STATE8),
+                     ("λίγο νερό των Storage", STATE9)):
         m = load(sym, g, st)
         m.poke(sym["REP_N"], 1)
         run(m, sym, "START")

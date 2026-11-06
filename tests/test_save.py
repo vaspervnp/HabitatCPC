@@ -691,11 +691,12 @@ def main():
           f"(|{LAST_MSG}|), και οι {n_x} + {n_t} bytes του κώδικα μένουν "
           f"({sum(1 for a, b in zip(code6(), code_x) if a != b)} άλλαξαν)")
     # ΑΡΝΗΤΙΚΟ: το sv_bodyx χωρίς τη δεύτερη ανταλλαγή (call -> nop): ο κώδικας
-    # μένει όπως το σώσιμο, μηδέν. Και χωρίς το ec_setfull του wheel_reset, που
-    # τρέχει από τις ουρές (σε μηδενικά θα έπεφτε στα πεδία των πρακτόρων).
+    # μένει όπως το σώσιμο, μηδέν. Και χωρίς το ew_reset του wheel_reset (το
+    # ec_setfull ως το βήμα 188), που τρέχει από τις ουρές (σε μηδενικά θα
+    # έπεφτε στα πεδία των πρακτόρων).
     sb, sw = sym["SV_BODYX"], sym["SVX_SWAP"]
     ks = [k for k in range(16) if list(m.read_ram(sb + k, 3)) == [0xCD, sw & 255, sw >> 8]]
-    wr, sf = sym["WHEEL_RESET"], sym["EC_SETFULL"]
+    wr, sf = sym["WHEEL_RESET"], sym["EW_RESET"]
     kw = next(k for k in range(32) if list(m.read_ram(wr + k, 3)) == [0xCD, sf & 255, sf >> 8])
     m.write_ram(sb + ks[1], b"\0\0\0")
     m.write_ram(wr + kw, b"\0\0\0")

@@ -90,10 +90,30 @@ def z80_read(m, sym, frames):
                    m.peek(sym["ERM_NEED"] + 1),         # το ec_need (βήμα 142)
                    m.peek(STAGE_OCC + EC.RSV_OFF),      # τα αποθεματικά (βήμα 184)
                    (m.peek(sym["ERD_CALL"] + 1) | m.peek(sym["ERD_CALL"] + 2) << 8)
-                   == sym["EC_DR1"]]),
+                   == sym["EC_DR1"]]) + water_read(m, sym),
             m.read_ram(sym["G_JOB_TBL"], EC.MAX_JOB * EC.JOB_REC),
             m.read_ram(sym["G_ROOM_N"], 12) +
             m.read_ram(sym["G_ROOM_LIST"], 96))
+
+
+def water_read(m, sym):
+    """Το νερό του Planetbase (βήμα 189, src/water.asm): το ec_wcap, και ό,τι
+    γράφει το ew_cycle — το νερό του κήπου και του VITROMEAT, και αν πίνουν
+    στο κυλικείο οι άποικοι (nds_wld) και οι επισκέπτες (vie_w)."""
+    return bytes([m.peek(sym["EC_WCAP"]), m.peek(sym["EC_WCAP"] + 1),
+                  m.peek(sym["ERP_GO"] + 1),
+                  m.peek(sym["G_RECIPES"] + 10 * EC.MT_VITRO + 1),
+                  m.peek(sym["NDS_WLD"]) == 0xC9, m.peek(sym["VIE_W"]) == 0x18])
+
+
+def water_load(m, sym, e):
+    """Το ανάποδο του water_read: η κατάσταση της αναφοράς στον κώδικα."""
+    m.poke(sym["EC_WCAP"], e.wcap & 255)
+    m.poke(sym["EC_WCAP"] + 1, e.wcap >> 8)
+    m.poke(sym["ERP_GO"] + 1, e.plant_water)
+    m.poke(sym["G_RECIPES"] + 10 * EC.MT_VITRO + 1, e.vw_q)
+    m.poke(sym["NDS_WLD"], 0x3E if e.drink else 0xC9)
+    m.poke(sym["VIE_W"], 0x28 if e.drink else 0x18)
 
 
 def tick_us(m, sym):
@@ -164,6 +184,7 @@ def z80_load(sym, g, sim, rt_n=None, patch=()):
     dr = sym["EC_DR1" if sim.e.drain else "EC_RUN_ONE"]
     m.poke(sym["ERD_CALL"] + 1, dr & 255)
     m.poke(sym["ERD_CALL"] + 2, dr >> 8)
+    water_load(m, sym, sim.e)               # το νερό του Planetbase (βήμα 189)
     enter(m, sym, "LOAD_STATE")
 
     for at, v in patch:                     # τα αρνητικά: κώδικας αλλαγμένος
@@ -209,7 +230,10 @@ def econ_bytes(e):
     το ec_full της τράπεζας 0, από το 127 και το ec_keep, από το 142 και το
     ec_need."""
     return EC.to_bytes(e) + EC.x_bytes(e) + bytes([e.full, e.keep, e.vin, e.need,
-                                                   e.rsv, e.drain])   # βήμα 184
+                                                   e.rsv, e.drain,    # βήμα 184
+                                                   e.wcap & 255, e.wcap >> 8,  # βήμα 189
+                                                   e.plant_water, e.vw_q,
+                                                   not e.drink, not e.drink])
 
 
 def fresh(g, nexthop, src):
@@ -238,7 +262,8 @@ def fresh(g, nexthop, src):
               "coins", "prestige", "goodwill", "visacc",     # βήμα 134
               "mcoins",                                     # βήμα 135
               "vin",                                        # βήμα 136
-              "rsv", "drain"):                              # βήμα 184
+              "rsv", "drain",                               # βήμα 184
+              "wcap", "plant_water", "vw_q", "drink"):      # βήμα 189
         setattr(s.e, f, getattr(src.e, f))
     return s
 
@@ -806,6 +831,13 @@ def flow_branches(sym, g, nexthop, sim0, patch=(), quiet=False):
         m.write_ram(STAGE_DOME, bytes(e.dome))
         m.write_ram(STAGE_STR, bytes(e.struct).ljust(STR_BYTES, b"\0"))
         m.write_ram(sym["G_ECON_STATE"], EC.to_bytes(e))
+        # ΚΑΙ ΤΟ ΕΥΡΕΤΗΡΙΟ (βήμα 189): το st_check του κύκλου μετρά τους θόλους
+        # Storage, και από το 189 χωρά και νερό σε αυτούς (ec_wcap). Ως τότε ο
+        # Z80 έβλεπε εδώ το ευρετήριο του snapshot, άδειο, και η αναφορά τον
+        # Storage M της αποικίας: το ec_full δεν ήταν στη σύγκριση.
+        m.write_ram(sym["G_ROOM_N"], bytes(e.room_n))
+        m.write_ram(sym["G_ROOM_LIST"], bytes(e.room_list))
+        water_load(m, sym, e)
         enter(m, sym, "LOAD_STATE")
         for at, v in patch:
             m.poke(at, v)
@@ -1174,7 +1206,11 @@ def calm_branches(sym, g, nexthop, sim0):
 # 159 (E.pop_id): το en_count δεν σταματά νωρίς, και περνά 80 θέσεις ακόμη και 20
 # συγκρίσεις: 8.710 -> 9.390, 9.090 -> 9.770 (+680). Σε αποικία χωρίς κενά σταματά
 # στον τελευταίο ζωντανό (tests/test_drill.py: 1.217 -> 682). Ως το 172 8.790 και 9.170.
-STORE_FLOW_US, STORE_FLOW8_US = 9470, 9850
+# Βήμα 189: το ισοζύγιο του νερού (src/water.asm) — το ew_cycle μετά τις αντλίες
+# (~115 us: τα δύο πρόσημα και τα τέσσερα bytes του κώδικα που αλλάζουν), το
+# ef_water γύρω από το ec_make και το stc_wcap του st_check (~20 το καθένα):
+# 9.440 -> 9.620, 9.820 -> 10.000. Μία φορά ανά 64 περιστροφές. Ως το 188 9.470 και 9.850.
+STORE_FLOW_US, STORE_FLOW8_US = 9650, 10030
 # Οι βαριές επισκέψεις της θέσης 11 με το απόθεμα μετάλλου ενεργό (βήμα 127):
 # το erm_ink περνά 5 us σε κάθε μηχανή που δεν τρώει μέταλλο, και οι τέσσερις
 # που το τρώνε σταματούν. Εδώ 7.090 και 12.160 us, χωρίς το απόθεμα 8.390 και
@@ -3637,8 +3673,8 @@ def meteors(sym, g, nexthop, sim0):
     w_at = find(wt + 3, [0x01, 0xC0, 0x7F])                  # ld bc,GA_PORT + PAGE_B1
     o_at = find(wf + 10, [0xB7, 0xC8])                       # or a · ret z (wh_on)
     r_at = find(wr, [0xAF, 0x32], 4)                         # xor a · ld (wh_slot),a
-    sf = sym["EC_SETFULL"]
-    f_at = find(wr, [0xCD, sf & 255, sf >> 8], 16)           # call ec_setfull
+    sf = sym["EW_RESET"]                                     # το ec_setfull ως το βήμα 188,
+    f_at = find(wr, [0xCD, sf & 255, sf >> 8], 16)           # που το καλεί από το 189
     ek = sym["EC_KEEP"]
     k_at = find(wr, [0x32, ek & 255, ek >> 8], 16)           # ld (ec_keep),a (βήμα 127)
     for label, patch in (("προϋπολογισμός ένα λιγότερο", b_at and [(b_at + 1, WH_RT_B - 1)]),

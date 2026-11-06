@@ -48,7 +48,7 @@ vi_eat:
         ld      de,(EC_STOCK + 2*S_WATER)
         ld      a,d
         or      e
-        jr      z,vi_sad
+vie_w:  jr      z,vi_sad                ; «jr vi_sad» όταν το νερό φτάνει μόνο για το οξυγόνο (ew_cycle, βήμα 189)
         dec     hl
         ld      (EC_STOCK + 2*S_FOOD),hl
         dec     de

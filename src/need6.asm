@@ -10,7 +10,9 @@
 ;
 ; ΤΟ st_need ΕΡΧΕΤΑΙ ΑΠΟ ΤΗΝ ΤΡΑΠΕΖΑ 0, που είχε 7 bytes ως το πάτωμα των
 ; δοκιμών: το καλεί μόνο το st_check (src/needs.asm), με την 6 μέσα. Το
-; ec_setfull, που το συνεχίζει, μένει εκεί: το καλεί και το wheel_reset.
+; ec_setfull, που το συνεχίζει, έμεινε εκεί ως το βήμα 188, που το πήγε στις
+; ουρές των σελίδων πεδίων (src/full6.asm). ΚΑΙ ΑΠΟ ΤΟ ΒΗΜΑ 189 το ταβάνι του
+; νερού: το stc_wcap του st_check και το ef_water του κύκλου ροής.
 
 ; st_need — το τέλος του st_check (βήμα 142, src/needs.asm), A = 0 ή 1 όπως στο
 ; ec_setfull: με γεμάτη αποθήκη το ec_need, το σπανιότερο από άμυλο, λαχανικά
@@ -80,3 +82,26 @@ esn_one:
         ld      c,e
         ret
         assert  S_VEG == S_STARCH + 1 && S_MEDPLANT == S_STARCH + 2 && S_MEAT == S_STARCH + 3
+
+; stc_wcap — από το st_check (src/needs.asm), HL = η χωρητικότητα της αποθήκης,
+; STORE_BASE και οι Storage: το νερό χωρά EC_CAP και ό,τι δίνουν οι ίδιοι
+; θόλοι, χωριστά από τα αγαθά (βήμα 189, η επιλογή του παίκτη). Κρατά HL, DE.
+stc_wcap:
+        push    hl
+        ld      bc,EC_CAP - STORE_BASE
+        add     hl,bc
+        ld      (ec_wcap),hl
+        pop     hl
+        ret
+
+; ef_water — από τον κύκλο ροής (src/flow.asm), A = S_WATER, DE = ό,τι έβγαλαν
+; οι αντλίες: το ec_make με ταβάνι το ec_wcap, όχι το EC_CAP των άλλων (βήμα
+; 189). Το ταβάνι είναι το immediate του ec_add_stock (eas_cap, src/stock.asm),
+; και ξαναγίνεται EC_CAP αμέσως: κανείς άλλος δεν φτιάχνει νερό.
+ef_water:
+        ld      hl,(ec_wcap)
+        ld      (eas_cap + 1),hl
+        call    ec_make
+        ld      hl,EC_CAP
+        ld      (eas_cap + 1),hl
+        ret
