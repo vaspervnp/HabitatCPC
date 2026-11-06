@@ -221,6 +221,10 @@ def main():
     else:
         sys.exit("το παιχνίδι δεν ξεκίνησε από τον δίσκο")
     m.run_frames(200)
+    # Η ΜΟΥΣΙΚΗ ΚΛΕΙΣΤΗ (βήμα 195): από τον δίσκο παίζει, και ο κώδικάς της είναι
+    # εκεί που τρέχουν τα probes πιο κάτω (#3EA0, #3EC0, #3F00).
+    import codeat
+    codeat.music_off(m, sym)
 
     # ΤΟ ΣΩΣΙΜΟ ΖΕΙ ΣΤΙΣ ΤΡΥΠΕΣ ΤΟΥ DIST από το βήμα 103 (src/demolish.asm): οι
     # ετικέτες του δείχνουν στο SV_ORG του GH_BUF, όπου το φέρνει κάθε S και L.
@@ -526,6 +530,7 @@ def main():
     else:
         sys.exit("το παιχνίδι δεν ξαναξεκίνησε μετά το reset")
     m.run_frames(200)
+    codeat.music_off(m, sym)             # ο δίσκος την ξανάνοιξε (βήμα 195)
     freeze(True)
     m.run_frames(4)
     e_econ, e_plane, e_play = snap()

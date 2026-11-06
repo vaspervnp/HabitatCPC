@@ -436,14 +436,15 @@ def negatives(sym, data, idx):
     for what, fn in cases:
         fails = edges(sym, data, idx, patch=fn, quiet=True)
         check(len(fails) > 0, f"ΑΡΝΗΤΙΚΟ: {what} -> σενάρια που αποτυγχάνουν {fails}")
-    # το V έξω από τη μπάρα των ομάδων: το call bkm_id του OV_R1 (τράπεζα 1),
-    # και η μπάρα ξαναγραμμένη (M, ESC)
+    # το V έξω από τη μπάρα των ομάδων: το call bkm_vu του OV_R1 (τράπεζα 1· ως
+    # το βήμα 195 call bkm_id, και τώρα παίρνει μαζί και το U), και η μπάρα
+    # ξαναγραμμένη (M, ESC)
     from cpc import KEY_ESC
     R = Run(sym)
     R.game()
     import cpc
     b1 = cpc._lib.cpcemu_ram_ptr(R.m._h, 1)
-    a = sym["BKM_ID"]
+    a = sym["BKM_VU"]
     pat = bytes([0xCD, a & 255, a >> 8])
     base = sym["BK_MORE"] - 0x4000
     blob = bytes(b1[base:base + 64])

@@ -71,7 +71,8 @@
      κεφαλίδα ένα byte λάθος.
   6β. ΣΥΜΠΙΕΣΜΕΝΑ (βήμα 193, ZX0): τα αρχεία είναι ροές που ξεδιπλώνονται
      πάνω στη θέση τους, και το παραπάνω «byte προς byte» είναι μετά την
-     αποσυμπίεση. Αρνητικά: η ροή της τράπεζας 7 χωρίς το περιθώριό της, και
+     αποσυμπίεση. Αρνητικά: η ροή της τράπεζας 7 με ένα byte λιγότερο από το
+     περιθώριό της (χωρίς κανένα ως το βήμα 194), και
      το mn_prev του 0 σε ένα MENU.BIN ξανασυμπιεσμένο (variant). Και ο
      αναγνώστης μόνος του σε ένα αρχείο δύο εκτάσεων (20.000 bytes), αφού
      κανένα αρχείο του φορτωτή δεν φτάνει πια τα 16 KB μιας εγγραφής: byte
@@ -97,6 +98,7 @@ import world as W                                                       # noqa: 
 import dsk as DK                                                        # noqa: E402
 sys.path.insert(0, HERE)
 import menuread as MR                                                   # noqa: E402
+import codeat as CA                                                     # noqa: E402
 import menuworld as MW                                                  # noqa: E402
 import mkdsk                                                            # noqa: E402
 import zx0                                                              # noqa: E402
@@ -203,7 +205,7 @@ DUMP_B5 = bytes([0xF3,                      # di
                  0x01, 0xC0, 0x7F,          # ld bc,#7FC0
                  0xED, 0x49,                # out (c),c
                  0x18, 0xFE])               # jr $
-ENDGAME = 0x3FC0
+ENDGAME = 0x0040                    # βήμα 195: κάτω από τη στοίβα (#3FC0 ως τότε)
 
 
 def endgame(code):
@@ -229,9 +231,9 @@ def handover(m, disc, eg, amsdos=None):
 
     Ο εξομοιωτής δεν έχει σημεία διακοπής. Το επίμετρο κρατά ~210 ms (40 KB
     ldir), οπότε ένα δείγμα ανά frame το πιάνει σίγουρα — όταν ο PC είναι
-    μέσα του ΚΑΙ τα bytes του στο #3FC0 είναι τα δικά του (πριν αντιγραφεί
-    εκεί, ο PC στο #3FC0 είναι η κάτω ROM). Από εκεί βήματα των 10 µs ως να
-    βγει: λίγες εντολές του παιχνιδιού. ΟΧΙ «ο PC στην τράπεζα 0»: με βήματα
+    μέσα του ΚΑΙ τα bytes του στο ENDGAME είναι τα δικά του (πριν αντιγραφεί
+    εκεί, ο PC εκεί είναι η κάτω ROM· #3FC0 ως το βήμα 194, #0040 από το
+    195). Από εκεί βήματα των 10 µs ως να βγει: λίγες εντολές του παιχνιδιού. ΟΧΙ «ο PC στην τράπεζα 0»: με βήματα
     των 0,2 ms το παιχνίδι είχε ήδη μπει στο hw_clear της τράπεζας 2."""
     m.run_frames(300)
     m.insert_disc(disc)
@@ -545,6 +547,11 @@ def main():
         if started:
             running = True
             break
+    # Η ΜΟΥΣΙΚΗ ΤΟΥ ΠΑΙΧΝΙΔΙΟΥ (βήμα 195) κλειστή από εδώ: ο δίσκος την ανοίγει, η
+    # πρώτη της καμπάνα έρχεται στο tick 20, και το «σωπαίνει» πιο κάτω είναι
+    # για τη γεννήτρια. Και τα probes στο #3EC0 πατούν πάνω στον κώδικά της.
+    # Οτι παίζει από τον δίσκο το ελέγχει το tests/test_music.py.
+    CA.music_off(m, sym)
     check(running, f"το RUN\"HABITAT έφτασε στο game_new "
                    f"(PC=#{m.pc:04X}, τροφή {w16(g + 2)})")
 
@@ -758,6 +765,7 @@ def main():
                       for n, (h, w) in got.items()))
 
     # --- 4. ο κόσμος είναι παραγμένος ------------------------------------
+    CA.music_off(m, sym)                 # βήμα 195: ο κώδικάς της είναι στο #3E80-#3FFF
     m.run_code(0x3EC0, open(os.path.join(ROOT, "build", "plane.bin"), "rb").read())
     m.run_frames(2)
     sample = bytes(m.read_ram(0x3F00, 256))
@@ -953,7 +961,12 @@ def main():
     want6[t6:t6 + len(tail6)] = tail6
     want7[lay["G_text"] - 0x4000:lay["G_text"] - 0x4000 + len(text7)] = text7
     wi6 = lay["G_worldinfo"] - 0x4000
-    game = img("game.bin")
+    # Το game.bin με τη μουσική ανοιχτή, όπως το γράφει το mkdsk (βήμα 195): το
+    # main.sna έχει mu_off 1, ο δίσκος 0. Το mkdsk.staged το ελέγχει και το αλλάζει.
+    game = mkdsk.staged("GAME.BIN", "game.bin")
+    check(len(game) == len(img("game.bin")) and game[sym["MU_OFF"] - 0x100] == 0
+          and sum(x != y for x, y in zip(game, img("game.bin"))) == 1,
+          "στον δίσκο το game.bin διαφέρει μόνο στο mu_off, που είναι 0 (η μουσική ανοιχτή)")
 
     def scratch_state(disc, eg, amsdos=None):
         """(διαφορές τράπεζας 2, μηχανών, εικονιδίων, μη μηδενικά του DIST
@@ -1025,6 +1038,7 @@ def main():
     # το βήμα 21 το «run"habitat» φαινόταν γραμμένο μέσα στην αποικία μέχρι την
     # πρώτη πλήρη σχεδίαση. Εδώ ελέγχεται η ίδια η ρουτίνα, με σημάδι.
     m.write_ram(0xC000, bytes([0xAA]) * 0x4000)
+    CA.music_off(m, sym)
     m.run_code(0x3EC0, bytes([0xCD, sym["HW_CLEAR"] & 0xFF,
                               sym["HW_CLEAR"] >> 8, 0x18, 0xFE]))
     m.run_frames(10)                     # 16 KB ldir = 86 ms, δηλαδή 4,3 frames
@@ -1058,10 +1072,15 @@ def main():
     # Η ροή ξεδιπλώνεται πάνω στη θέση της, και τελειώνει τόσα bytes μετά τον
     # προορισμό όσα μέτρησε το zx0.unpack. Χωρίς αυτά, το γράψιμο προλαβαίνει
     # το διάβασμα: η τράπεζα 7 με τη ροή της να τελειώνει ακριβώς στο #8000.
+    # ΕΝΑ BYTE ΛΙΓΟΤΕΡΟ, όχι κανένα (βήμα 195): με περιθώριο 0 τα δύο τελευταία
+    # μηδενικά της τράπεζας 7 σβήνουν και τα δύο bytes του σημαδιού τέλους, ο
+    # αποσυμπιεστής συνεχίζει πέρα από το #8000, σε μνήμη που ξαναγράφουν τα
+    # επόμενα αρχεία, και η τράπεζα 7 βγαίνει ακέραια. Με ένα λιγότερο σβήνει
+    # μόνο το πρώτο: μετρημένο, καμία παράδοση.
     _, m7 = zx0.unpack(mkdsk.packed("BANK7.BIN", "bank7")[0])
-    st = scratch_state(variant("BANK7.BIN", mkdsk.banks()[1], margin=0), eg)
+    st = scratch_state(variant("BANK7.BIN", mkdsk.banks()[1], margin=m7 - 1), eg)
     check(m7 > 0 and (st is None or st[7] > 0),
-          f"ΑΡΝΗΤΙΚΟ: η ροή της τράπεζας 7 χωρίς το περιθώριό της ({m7} bytes) — "
+          f"ΑΡΝΗΤΙΚΟ: η ροή της τράπεζας 7 με ένα byte λιγότερο από το περιθώριό της ({m7} bytes) — "
           + (f"{st[7]} bytes της 7 διαφορετικά" if st else
              "η εκκίνηση δεν φτάνει στην παράδοση"))
 
@@ -1232,6 +1251,7 @@ def main():
         m.write_ram(sym["ZZ_OV2"], code)
         m.write_ram(res, bytes(st3))
         m.write_ram(0x3F00, b"\xEE")
+        CA.music_off(m, sym)
         m.run_code(0x3EC0, bytes([0xF3, 0xCD, at & 0xFF, at >> 8,
                                   0x32, 0x00, 0x3F, 0x18, 0xFE]))
         return m.read_ram(0x3F00, 1)[0]

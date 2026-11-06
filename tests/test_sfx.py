@@ -12,7 +12,8 @@ snd_play, snd_ping, snd_off, snd_init — ώστε να συναντηθούν �
             R1/R3/R5 — η ένταση πάει με το bit 7 του θορύβου μέσα)
   κανάλια   κάθε εγγραφή του sn_st: wait (τα frames που μένουν στο βήμα, 0 =
             σιωπή), δείκτης στο επόμενο βήμα, το byte FX του εφέ
-  μίκτης    sn_mix = R7, και τα bits 6-7 μηδέν (το πληκτρολόγιο)
+  μίκτης    sn_mix = R7, και τα bits 6-7 μηδέν (το πληκτρολόγιο)· #38 μετά το
+            snd_init, και στο τέλος ενός εφέ ο τόνος του ανοιχτός (βήμα 195)
   μνήμη     τίποτε άλλο σε καμία τράπεζα, εκτός από τη στοίβα
   καταχωρ.  το snd_ping κρατά BC, DE, HL· το snd_play κρατά το BC
 
@@ -95,6 +96,12 @@ def decode(peek, sym, k):
     return (h >> 2) & 3, h >> 4, out, e, h
 
 
+# Ο μίκτης μετά το snd_init: οι τρεις τόνοι ανοιχτοί, για τη μουσική του
+# src/music.asm, που γράφει μόνο περιόδους και εντάσεις (βήμα 195· ως τότε #3F
+# εδώ, και #FF στο τέλος ενός εφέ). Ένα κανάλι με ένταση 0 σωπαίνει πάντως.
+MIX0 = 0x38
+
+
 class Model:
     """Ο παίκτης όπως τον περιγράφουν το §9.5 και η κεφαλίδα του sound.asm."""
 
@@ -102,11 +109,11 @@ class Model:
         self.peek, self.sym = peek, sym
         self.reg = list(regs)
         self.rec = [[0, 0, 0] for _ in range(SND_CH)]   # wait, δείκτης, FX
-        self.mix = 0x3F
+        self.mix = MIX0
 
     def off(self):
         self.rec = [[0, 0, 0] for _ in range(SND_CH)]
-        self.mix = self.reg[7] = 0x3F
+        self.mix = self.reg[7] = MIX0
         self.reg[8:11] = [0, 0, 0]
 
     def play(self, k):
@@ -125,9 +132,9 @@ class Model:
                 continue
             p, v = r[1], pk(r[1])
             both = 9 << c
-            if v == 0:                                   # τέλος
-                self.reg[8 + c] = 0
-                self.mix |= both
+            if v == 0:                                   # τέλος: ο τόνος ανοιχτός
+                self.reg[8 + c] = 0                      # με ένταση 0 (βήμα 195)
+                self.mix = (self.mix | both) & ~(1 << c)
                 self.rec[c] = [0, 0, 0]
             else:
                 self.reg[8 + c] = v & 0x1F
@@ -271,7 +278,7 @@ def run(sym, patch=(), n=12, ops=110, times=None):
         M = Model(m.peek, sym, m.psg_regs()[:16])
         M.off()
         rec, mix, ay = R.state()
-        if rec != M.rec or mix != 0x3F or ay[7:11] != [0x3F, 0, 0, 0]:
+        if rec != M.rec or mix != MIX0 or ay[7:11] != [MIX0, 0, 0, 0]:
             return None, f"το snd_init δεν σώπασε: {rec}, #{mix:02X}, {ay[7:11]}"
         if times is not None:
             times["SND_INIT"] = max(times.get("SND_INIT", 0), t)

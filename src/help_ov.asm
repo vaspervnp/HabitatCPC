@@ -61,8 +61,9 @@ hp_same:
         ld      hl,(hp_at)
         add     hl,de
         ld      (hp_at),hl
-        cp      BT_N
-        jr      c,hp_lp
+        cp      BT_HELP                 ; 36 χωρούν (3 στήλες των HP_ROWS): το «?»
+        jr      c,hp_lp                 ; δεν δείχνει τον εαυτό του (βήμα 195)
+        assert  BT_HELP == BT_N - 1 && BT_HELP <= 3 * HP_ROWS
         pop     hl                      ; το push του τελευταίου
         ; --- η σειρά 24 ---
         ld      hl,-HUD_TOPB + 24 * 80

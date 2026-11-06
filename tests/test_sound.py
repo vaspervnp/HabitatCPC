@@ -104,7 +104,7 @@ class Ref:
         self.wait = [0, 0, 0]
         self.pri = [0, 0, 0]
         self.reg = [0] * 16
-        self.reg[7] = 0x3F
+        self.reg[7] = 0x38                 # οι τόνοι ανοιχτοί (βήμα 195· #3F ως τότε)
 
     def play(self, fx):
         ch, pri, addr = self.tab[fx]
@@ -122,10 +122,10 @@ class Ref:
             p = self.ptr[c]
             vol = self.mem[p]
             tbit, nbit = 1 << c, 8 << c
-            if vol == 0:
-                self.ptr[c] = self.pri[c] = 0
+            if vol == 0:                   # τέλος: ο τόνος ανοιχτός με ένταση 0,
+                self.ptr[c] = self.pri[c] = 0      # για τη μουσική (βήμα 195)
                 self.reg[8 + c] = 0
-                self.reg[7] |= tbit | nbit
+                self.reg[7] = (self.reg[7] | nbit) & ~tbit & 0xFF
                 continue
             self.reg[8 + c] = vol & 15
             self.reg[7] |= tbit | nbit
@@ -164,7 +164,7 @@ def main():
     # --- 1. το πρωτόκολλο ---------------------------------------------
     m = boot(sym)
     regs0 = m.psg_regs()
-    check(regs0[7] == 0x3F and regs0[8:11] == [0, 0, 0],
+    check(regs0[7] == 0x38 and regs0[8:11] == [0, 0, 0],
           f"το snd_init σώπασε τον AY: R7=#{regs0[7]:02X}, εντάσεις "
           f"{regs0[8:11]}")
 
@@ -228,8 +228,9 @@ def main():
     # το ίδιο κανάλι ξαναδέχεται μικρό εφέ ΜΟΛΙΣ τελειώσει το μεγάλο
     tick(m, sym, 40)
     r = m.psg_regs()
-    check(r[8] == 0 and r[7] & 0x09 == 0x09,
-          f"στο τέλος το κανάλι σιωπά: ένταση A={r[8]}, μίκτης #{r[7]:02X}")
+    check(r[8] == 0 and r[7] & 0x09 == 0x08,
+          f"στο τέλος το κανάλι σιωπά: ένταση A={r[8]}, μίκτης #{r[7]:02X} (ο τόνος "
+          f"ανοιχτός για τη μουσική, ο θόρυβος κλειστός, βήμα 195)")
     play(m, sym, 5)
     tick(m, sym)
     check(m.psg_regs()[8] != 0, "και ελευθερώνεται για το επόμενο εφέ")
@@ -281,7 +282,7 @@ def main():
         for _ in range(40):
             tick(m, sym)
             ticks.append(m.psg_regs())
-        ticks += [[0] * 7 + [0x3F] + [0] * 8] * 10        # ανάσα ανάμεσα
+        ticks += [[0] * 7 + [0x38] + [0] * 8] * 10        # ανάσα ανάμεσα
     wav = os.path.join(ROOT, "build", "sounds.wav")
     secs = ayrender.write_wav(wav, ayrender.render_ticks(ticks))
     print(f"\nbuild/sounds.wav: {secs:.1f} s — τα οκτώ εφέ με τη σειρά "

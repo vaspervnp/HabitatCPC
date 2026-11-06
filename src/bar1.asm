@@ -208,3 +208,12 @@ bwd_ok:
         cp      BT_ROOM0 + RM_N
         jr      c,bwd_mk
         ret
+
+; bkm_vu — από το bk_more (src/goals.asm, OV_R1): το V, και μετά το U, η μουσική
+; (βήμα 195), στη μπάρα των ομάδων. Εδώ, γιατί στο OV_R1 έμενε 1 byte: εκεί
+; μένει ίδιο, με άλλο call.
+bkm_vu:
+        call    bkm_id
+        ld      bc,5 * 256 + #04        ; το U: γραμμή 5, μάσκα #04 (το bt_tab)
+        ld      a,BT_MUS
+        jp      bkm_id

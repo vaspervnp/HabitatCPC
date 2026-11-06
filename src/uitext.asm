@@ -19,7 +19,7 @@
 ; του rasm θα τα έδινε κατευθείαν σωστά, αλλά δεν συνδυάζεται με το `bankset 1`
 ; που στήνει τις τράπεζες 4-7 πιο πάνω.)
 
-TEXT_MAX    equ 4737                    ; η δέσμευση του §4.2, με τον κώδικα της 7 από το βήμα 170, τις σελίδες του tutorial από το 175, τα ορόσημα από το 177, οι πίνακες του I και των γραμμών από το 180 και η σελίδα των πόρων από το 191, στα 248 bytes των πεζών και των [ \ ] ^ _ ` της γραμματοσειράς (4.352 ως το βήμα 191, 3.840 ως το βήμα 180, 3.200 ως το βήμα 177, 2.578 ως το βήμα 175, 2.485 ως το βήμα 170, 2.148 ως το βήμα 169, 2.138 ως το βήμα 110, 2.120 ως το βήμα 100, 2.100 ως το βήμα 89, 2.080 ως το 87, 2.064 ως το 85, 2.048 ως το 84, 1.280 ως το 83,
+TEXT_MAX    equ 4720                    ; 4.737 ως το βήμα 194 (τα 17 bytes του συμβόλου της μουσικής, βήμα 195)· η δέσμευση του §4.2, με τον κώδικα της 7 από το βήμα 170, τις σελίδες του tutorial από το 175, τα ορόσημα από το 177, οι πίνακες του I και των γραμμών από το 180 και η σελίδα των πόρων από το 191, στα 248 bytes των πεζών και των [ \ ] ^ _ ` της γραμματοσειράς (4.352 ως το βήμα 191, 3.840 ως το βήμα 180, 3.200 ως το βήμα 177, 2.578 ως το βήμα 175, 2.485 ως το βήμα 170, 2.148 ως το βήμα 169, 2.138 ως το βήμα 110, 2.120 ως το βήμα 100, 2.100 ως το βήμα 89, 2.080 ως το 87, 2.064 ως το 85, 2.048 ως το 84, 1.280 ως το 83,
                                         ; 1.024 ως το 79)
 TEXT_IMG    equ #C000 + G_text - #4000
 
@@ -35,12 +35,10 @@ x_txt_pwr:    db "PWR",0
 x_txt_h2o:    db "H2O",0
 x_txt_fod:    db "FOD",0
 x_txt_sol:    db " SOL",0
-x_txt_day:    db "DAY",0
 x_txt_night:  db "NGT",0
 x_txt_ok:     db "ALL SYSTEMS OK",0
 x_txt_nopwr:  db "NO POWER",0
 x_txt_shed:   db "LOW POWER",0
-x_txt_noo2:   db "NO OXYGEN",0
 x_txt_storm:  db "SANDSTORM",0
 x_txt_meteor: db "METEOR SHOWER",0
 x_txt_nofood: db "LOW ON FOOD",0
@@ -75,12 +73,12 @@ x_t_keys:     db "SPACE=PLACE ESC=BACK",0
         ; χαρακτήρες από τις τρύπες και ο 33ος, κενό ή το «P» αυτού εδώ.
         assert  x_t_keys - x_t_look == 34
 x_t_ok:       db "READY SPACE TO BUILD",0
-x_t_block:    db "BLOCKED",0
 x_t_poor:     db "NOT ENOUGH MATERIAL",0
 x_t_ln1:      db "PICK THE FIRST DOME",0
 x_t_ln2:      db "NO ROUTE FROM THERE",0
 x_t_far:      db "TOO FAR",0       ; >= 64 tiles (βήμα 81)· ή > 12 (βήμα 85)
-x_t_path:     db "PATH BLOCKED",0       ; βήμα 85, src/link.asm
+x_t_path:     db "PATH "                 ; βήμα 85, src/link.asm
+x_t_block:    db "BLOCKED",0            ; βήμα 195: μέσα στο PATH BLOCKED
 x_t_nofit:    db "NO CORRIDOR FITS",0       ; βήμα 86: η ζώνη «σχεδόν διαγώνιο»
 x_t_nowat:    db "NEEDS WATER NEARBY",0
 x_t_half:     db "NO VEIN  HALF "       ; ως το βήμα 122 «NEEDS AN ORE VEIN»
@@ -141,7 +139,8 @@ x_t_i_ore:    db " ORE VEIN",0
 ; καθένα· τα λένε πια αυτά.)
 x_t_help:     db "DOMES",0, "LIVE AND WORK INSIDE",0
               db "SMALL DOME",0, "4X4, ANY ROOM",0
-              db "MEDIUM DOME",0, "6X6, NO OXYGEN",0
+              db "MEDIUM DOME",0, "6X6, "
+x_txt_noo2:   db "NO OXYGEN",0          ; βήμα 195: μέσα στη βοήθεια
               db "LARGE DOME",0, "8X8, NO OXYGEN",0
 x_t_r_oxy:    db "OXYGEN",0
               db "AIR FOR THE COLONY",0
@@ -165,7 +164,8 @@ x_t_r_lng:    db "LOUNGE",0
               db "KEEPS MORALE UP",0
               db "CORRIDOR",0, "LINKS TWO DOMES",0
               db "POWER",0, "MAKE AND STORE POWER",0
-              db "SOLAR PANEL",0, "POWER BY DAY",0
+              db "SOLAR PANEL",0, "POWER BY "
+x_txt_day:    db "DAY",0                ; βήμα 195: μέσα στη βοήθεια
               db "WIND TURBINE",0, "POWER FROM WIND",0
               db "COLLECTOR",0, "STORES POWER",0
               db "RESOURCES",0, "WATER AND ORE",0
@@ -184,6 +184,7 @@ x_t_r_lng:    db "LOUNGE",0
               db "CENTRE",0, "BACK TO THE MIDDLE",0
               db "DEMOLISH",0, "MATERIAL BACK",0       ; βήμα 101
               db "ALL RESOURCES",0, "HOW MUCH OF EACH",0   ; βήμα 191: το V (RESOURCES είναι η ομάδα E)
+              db "MUSIC",0, "ON OR OFF",0       ; βήμα 195: το U
               db "HELP",0, "THIS SCREEN",0
 x_t_help_end:
 x_t_a_keys:   db "SPACE=GO ESC=BACK",0

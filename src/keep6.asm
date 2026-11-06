@@ -31,6 +31,12 @@ svs_tl:
         pop     af
         dec     a
         jr      nz,svs_tl
+        ; Η ΜΟΥΣΙΚΗ (βήμα 195): το HL είναι τώρα στην ουρά της επόμενης σελίδας,
+        ; το EC_MUS. Την πρώτη φορά είναι ίδιο με το mu_off (το mu_key γράφει και
+        ; τα δύο), τη δεύτερη είναι του σωσίματος που μόλις ήρθε.
+        assert  EC_MUS == B6T_0 + B6T_N * 256
+        ld      a,(hl)
+        ld      (mu_off),a
         jp      dt_end                  ; η 1 (src/dirty.asm)
 ; svs_blk — BC bytes του (HL) με του (DE), και τα δύο μετά.
 svs_blk:

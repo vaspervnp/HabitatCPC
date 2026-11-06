@@ -164,6 +164,7 @@ joystick: its first fire is `COPY`, its second `ESC`.
 | `G` | The milestones: all five, and how far the colony is from each ([section 16](#16-goals-and-losing)). From the main view. |
 | `TAB` | The world map. From the main view. |
 | `V` | The resources: every stock as a number, red when short, green when plenty ([section 11](#11-power-air-water-food-storage)). From the main view, and in `M`. |
+| `U` | Music on or off ([section 15](#15-info-demolition-speed-saving)). From the main view, and in `M`. |
 
 ![The help screen, on ?](img/help.png)
 
@@ -190,7 +191,7 @@ where you were. The game waits while the map is open.
 | `P` POWER | `S` solar panel, `T` wind turbine, `C` collector |
 | `E` RESOURCES | `X` extractor (water), `M` mine (ore) |
 | `T` TRANSPORT | `A` airlock, `P` landing pad, `C` ship, `M` trade |
-| `M` MANAGE | `I` info, `F` fit, `S` save, `L` load, `H` centre, `D` demolish, `V` all resources |
+| `M` MANAGE | `I` info, `F` fit, `S` save, `L` load, `H` centre, `D` demolish, `V` all resources, `U` music |
 
 A button drawn in red cannot be used right now. For example, `TRADE` is red while no
 merchant is at the pad.
@@ -553,6 +554,11 @@ The line shows the most urgent message, in this order:
   - You get back **half** of what the building, its corridors and its machines cost.
     A site that was never finished gives everything back.
   - Whoever is inside walks out.
+- **Music** (`U`, or the `MUSIC` button in `M`): slow bells over a low drone, never
+  the same twice — the game makes it up as it plays. It is on when the game starts,
+  and `U` turns it off and on again. The sound effects take one of the three voices
+  while they play, and the music goes on in the other two. A save remembers whether
+  the music was on.
 - **Speed**: `1` pause, `2` normal, `3` ×2, `4` ×4. At ×4 the screen may skip frames,
   because the simulation does four times the work. Paused, you can still look around
   and build.

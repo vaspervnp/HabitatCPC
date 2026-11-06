@@ -129,7 +129,7 @@ class Game(TI.Game):
 
 # Η μπάρα των ομάδων με το ? (η λίστα του SPACE), και της ΔΙΑΧΕΙΡΙΣΗΣ
 FOCUS = B.GROUPS + ["help"]
-MANAGE = ["info", "fit", "save", "load", "centre", "demolish", "stocks", "help"]
+MANAGE = ["info", "fit", "save", "load", "centre", "demolish", "stocks", "music", "help"]
 K_PAD, K_SHIP, R_STORAGE = 6, 7, 6                       # src/const.asm
 TEXT = dict(zip([n for n, _ in B.BUTTONS], TB.HELP))
 
@@ -249,8 +249,9 @@ def run(sym, a, patch=(), quick=False):
     # Το DEMOLISH γκρεμίζει έναν θόλο της σκηνής κάθε φορά, όχι τον home ---
     victims = [f for f in fps if f[4] == "d"][1:3]
     for k, name in enumerate(MANAGE[:-1] + ["ship"]):
-        if name == "stocks":
-            continue                    # η σελίδα των πόρων: tests/test_resources.py, από τον δίσκο
+        if name in ("stocks", "music"):
+            continue                    # η σελίδα των πόρων: tests/test_resources.py, από τον
+                                        # δίσκο· η μουσική: tests/test_music.py (βήμα 195)
         for how in ("FIRE", "SPACE"):
             G.ship(1, pad0 if pad0 != 255 else 3, 0)
             far = (home[0] + 3, home[1] + 2)

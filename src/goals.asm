@@ -43,7 +43,7 @@ bk_more:
         call    bkm_one
         ld      bc,6 * 256 + #80        ; το V, οι πόροι (βήμα 191): γραμμή 6, #80,
         ld      a,BT_RES                ; με το δικό του κουμπί (το bt_tab)
-        call    bkm_id
+        call    bkm_vu                  ; ...και το U μετά (βήμα 195, src/bar1.asm)
         ld      a,(ms_req)
         rra
         jr      c,bkm_end               ; κανένα αίτημα: ούτε το κόστος του

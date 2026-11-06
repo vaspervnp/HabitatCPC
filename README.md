@@ -52,7 +52,12 @@ fit in a Z80 and 128 KB.
 - An info key, a **world map** on `TAB` (since milestone 186), **every stock as a
   number** on `V`, red when short and green when plenty (since milestone 191), four
   speeds, and **save and load** in three slots on the game's own disc.
-- **Sound:** effects on the AY, and a tune during world generation.
+- **Sound:**
+  - effects on the AY, and a tune during world generation;
+  - **music** while you play (since milestone 195): generative, slow bells over a low
+    drone, played by the interrupt. `U` turns it off and on, and a save keeps the
+    choice. An effect takes one voice while it plays, and the music goes on in the
+    other two.
 
 The game loads from its own disc. `RUN"HABITAT` shows REVIVE8BIT's screen and then
 Habitat's, ten seconds each or until `SPACE`, then the menu, and the chosen world is

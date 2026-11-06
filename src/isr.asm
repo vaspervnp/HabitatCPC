@@ -160,8 +160,13 @@ is_i3:
         jr      is_idle
 is_i5:
         push    af
+        ld      a,(mu_off)              ; βήμα 195: η μουσική (src/music.asm)
+        or      a
         ld      a,is_vs & 255
-        jr      is_idle
+        jr      nz,is_idle
+        ld      (IS_VEC + 1),a
+        push    bc
+        jp      mu_tick                 ; ...που τελειώνει στο is_out
 
 ; --- 171 -> 176: η κάτω λωρίδα ----------------------------------------------
 ; Τα pens ΜΕΤΑ το τέλος της 175 (η τελευταία γραμμή του κάδρου, ως τον
@@ -251,6 +256,10 @@ is_pal:     db GA_INK + #0C, GA_INK + #12, GA_INK + #0B
             db 0, 0, 0
             db GA_INK + #0C, GA_INK + #12, GA_INK + #0B
 is_fc:      db 0                    ; frames, mod 256 (το ρολόι του κέρσορα)
+; Η ΜΟΥΣΙΚΗ (βήμα 195): 0 παίζει, 1 όχι. 1 στο main.sna, γιατί ο κώδικάς της
+; ζει εκεί που οι δοκιμές γράφουν probes (src/music.asm)· 0 στον δίσκο, από το
+; tools/mkdsk.py. Το U την αλλάζει (mu_key), το σώσιμο την κρατά (svx_swap).
+mu_off:     db 1
 
 ; (Το is_init — διάνυσμα, IM 1, R7, τα pens του κάδρου — ζει από το βήμα 103
 ; μέσα στο start του src/main.asm, τον μόνο καλούντα του.)

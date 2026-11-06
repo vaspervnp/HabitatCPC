@@ -151,7 +151,16 @@ def staged(name, src):
         return banks()[0]
     if src == "bank7":
         return banks()[1]
-    return open(os.path.join(BUILD, src), "rb").read()
+    data = open(os.path.join(BUILD, src), "rb").read()
+    if name == "GAME.BIN":
+        # Η ΜΟΥΣΙΚΗ ΑΝΟΙΧΤΗ ΣΤΟΝ ΔΙΣΚΟ (βήμα 195): το main.sna την έχει κλειστή,
+        # γιατί ο κώδικάς της είναι εκεί που οι δοκιμές γράφουν probes. Το
+        # EC_MUS της τράπεζας 6 είναι ήδη 0 εδώ: η BANK6.BIN είναι του pack.py.
+        at = symbols()["MU_OFF"] - 0x0100
+        if data[at] != 1:
+            sys.exit(f"το mu_off του game.bin είναι {data[at]}, όχι 1")
+        data = data[:at] + b"\x00" + data[at + 1:]
+    return data
 
 
 @functools.lru_cache(maxsize=None)
@@ -228,7 +237,8 @@ def write_disc_tab():
 # game.bin έφτανε ως εκεί, το επίμετρο θα έγραφε πάνω σε κώδικα που πρόκειται
 # να τρέξει — και θα φαινόταν ως τυχαίο κρέμασμα μετά το φόρτωμα, όχι ως
 # σφάλμα build. Ηταν #3E00 ως το βήμα 26: το επίμετρο είναι σαράντα bytes και
-# κρατούσε πεντακόσια δώδεκα (βλ. src/boot.asm).
+# κρατούσε πεντακόσια δώδεκα (βλ. src/boot.asm). ΑΠΟ ΤΟ ΒΗΜΑ 195 ΣΤΟ #0040,
+# κάτω από τη στοίβα, και το #3FC0 είναι της μουσικής (check_fit).
 def endgame_addr():
     """Το ταβάνι της τράπεζας 0, διαβασμένο ΑΠΟ ΤΟ src/boot.asm."""
     for line in open(os.path.join(ROOT, "src", "boot.asm"), encoding="utf-8"):
@@ -324,12 +334,17 @@ TEST_FLOOR = 0x3EC0
 
 
 def check_fit():
-    n = os.path.getsize(os.path.join(BUILD, "game.bin"))
-    top = 0x0100 + n
-    if top > ENDGAME:
-        sys.exit(f"ο κώδικας της τράπεζας 0 φτάνει στο #{top:04X} και πατά το "
-                 f"επίμετρο του φορτωτή στο #{ENDGAME:04X} "
-                 f"({top - ENDGAME} bytes πάνω από το όριο)")
+    # ΑΠΟ ΤΟ ΒΗΜΑ 195 ΤΟ game.bin ΦΤΑΝΕΙ ΩΣ ΤΗ ΜΟΥΣΙΚΗ (src/music.asm), πάνω από
+    # το πάτωμα, και το επίμετρο τρέχει στο #0040, κάτω από τη στοίβα: ό,τι
+    # μετρά για τις δοκιμές είναι το τέλος του ΚΩΔΙΚΑ, το ZZ_BANK0_END. Τη
+    # μουσική οι δοκιμές την κλείνουν πριν γράψουν εκεί (src/isr.asm, mu_off).
+    sym = symbols()
+    top, end = sym["ZZ_BANK0_END"], 0x0100 + os.path.getsize(os.path.join(BUILD, "game.bin"))
+    if end != sym["ZZ_MUSIC_END"] or end > 0x4000:
+        sys.exit(f"το game.bin φτάνει στο #{end:04X}, όχι στο τέλος της μουσικής "
+                 f"(#{sym['ZZ_MUSIC_END']:04X}) μέσα στην τράπεζα 0")
+    if ENDGAME + 64 > 0x0100 - 128:
+        sys.exit(f"το επίμετρο στο #{ENDGAME:04X} πατά τη στοίβα του παιχνιδιού")
     if top > TEST_FLOOR:
         sys.exit(f"ο κώδικας της τράπεζας 0 φτάνει στο #{top:04X} και πατά τη "
                  f"σκαλωσιά των δοκιμών στο #{TEST_FLOOR:04X} "
@@ -340,7 +355,7 @@ def check_fit():
     # απόσταση ως το επίμετρο, που είναι 192 bytes πιο ψηλά από το πάτωμα των
     # δοκιμών: το «έχεις 512 ελεύθερα» ήταν 320 ελεύθερα και μια δοκιμή που
     # σπάει χωρίς να πει γιατί.
-    return min(ENDGAME, TEST_FLOOR) - top
+    return TEST_FLOOR - top
 
 
 def check_saves():
