@@ -32,6 +32,7 @@ TP_FROW     equ 24                      ; το υποσέλιδο, όπως τη
 TP_BUF      equ SV_HDR                  ; ένας τομέας
 TP_WHITE    equ #FF                     ; pen 3 όπου ο γλύφος έχει pixel
 TP_GREEN    equ #0F                     ; pen 2, όπως το hp_green
+TP_RED      equ #F0                     ; pen 1: οι πόροι που είναι λίγοι (βήμα 191)
 TP_KQ       equ 3                       ; το «?», το πλήκτρο /: γραμμή 3 του πίνακα,
 TP_KQM      equ #40                     ; bit 6 (0 = πατημένο)
 TP_KL       equ 4                       ; το L της σελίδας του τέλους (βήμα 177)
@@ -39,7 +40,13 @@ TP_KLM      equ #10
 TP_STUB     equ #8000                   ; η επανεκκίνηση: έξω από το παράθυρο, κάτω
                                         ; από τον φορτωτή (#9000) και τον buffer του
         include "../build/tupages.asm"  ; TP_N, tp_idx
-        assert  TP_N == PG_END + 1      ; src/const.asm, src/tupages.txt
+        ; τα πεδία των πόρων (rs_val): τα words από το EC_STOCK ως το EC_O2USE,
+        ; σε μία σελίδα για το ec_stock_ptr, και οι κανόνες ένας ανά πεδίο
+        assert  EC_PSTORE == EC_STOCK + 28 && EC_O2PROD == EC_STOCK + 38 && EC_O2USE == EC_STOCK + 40
+        assert  (EC_STOCK & 255) + 2 * 20 < 256
+        assert  S_WATER == 0 && S_FOOD == 1 && S_ORE == 2 && S_METAL == 3 && S_SPARE == 6 && S_MEAT == 13
+        assert  KEEP_METAL == 30 && BIO_MAX == 100 && SPARES_MAX == 20
+        assert  TP_N == PG_RES + 1      ; src/const.asm, src/tupages.txt (PG_END + 1 ως το βήμα 190)
 
 ; tp_show — A = σελίδα: 0 η εισαγωγή (και μετά η 1), #FF η σελίδα του βήματος
 ; (tp_cur). Γυρίζει με NZ αν το πλήκτρο που την έκλεισε ήταν το «?», με τις
@@ -415,8 +422,11 @@ tpp_fld:
 
 ; tp_field — A = ο χαρακτήρας μετά το «^» (βήμα 177, src/tupages.txt). «0»-«4»:
 ; DONE αν πιάστηκε το ορόσημο, μια παύλα αν όχι. «A»-«L»: το word του
-; ms_val, σε δεκαδικά χωρίς μηδενικά μπροστά. Τα γράφει το ms_go.
+; ms_val, σε δεκαδικά χωρίς μηδενικά μπροστά. Τα γράφει το ms_go. Από το βήμα
+; 191 και «a»-«z»: ένας πόρος, ζωντανά, σε χρώμα (rs_field).
 tp_field:
+        cp      'a'
+        jr      nc,rs_field
         sub     'A'
         jr      nc,tpf_num
         add     a,'A' - '0'
@@ -440,6 +450,7 @@ tpf_num:
         inc     hl
         ld      h,(hl)
         ld      l,a
+tpf_hl:                                 ; HL = ο αριθμός (rs_field, βήμα 191)
         xor     a
         ld      (tp_nz),a
         ld      de,-10000
@@ -452,7 +463,8 @@ tpf_num:
         call    tpn_d
         ld      a,l                     ; οι μονάδες, πάντα
         jr      tpn_ch
-; tpn_d — ένα ψηφίο: πόσα DE (αρνητικό) χωρούν στο HL. Μηδέν μπροστά: τίποτα.
+; tpn_d — ένα ψηφίο: πόσα DE (αρνητικό) χωρούν στο HL. Μηδέν μπροστά: τίποτα,
+; ή το tp_pad (βήμα 191: ένα κενό, και οι αριθμοί των πόρων στοιχίζονται δεξιά).
 tpn_d:
         ld      a,-1
 tpn_lp:
@@ -463,14 +475,250 @@ tpn_lp:
         ld      c,a
         ld      a,(tp_nz)
         or      c
+        jr      nz,tpn_dg
+        ld      a,(tp_pad)
+        or      a
         ret     z
+        jr      tpn_put
+tpn_dg:
         ld      a,c
 tpn_ch:
         add     a,'0'
         ld      (tp_nz),a               ; όχι μηδέν: από εδώ κάθε ψηφίο
+tpn_put:
         push    hl
         call    tp_put
         pop     hl
+        ret
+
+; ---------------------------------------------------------------------------
+; ΟΙ ΠΟΡΟΙ (βήμα 191, DESIGN §9.7). Ο ΠΑΙΚΤΗΣ: «Θέλω μια οθόνη που θα
+; εμφανίζεται από πάνω με ένα κουμπί (να είναι και στο μενού) και θα δείχνει
+; σε αριθμούς όλους τους πόρους. Με κόκκινο όσους είναι χαμηλά, πράσινο όσους
+; είναι ψηλά και άλλο χρώμα το απλά Οκ.» Διάλεξε μια σελίδα όπως του G, στο V
+; (src/help.asm: rs_key), με τα όρια του ίδιου του παιχνιδιού, και λευκό το OK.
+;
+; ΤΑ ΠΕΔΙΑ «^a»-«^z» της σελίδας (src/tupages.txt), με τη σειρά των words της
+; οικονομίας από το EC_STOCK ως το EC_O2USE, και μετά ό,τι δεν είναι εκεί:
+;   a-n τα δεκατέσσερα αποθέματα (S_WATER ... S_MEAT)
+;   o-s το ρεύμα: αποθηκευμένο, όσο χωρά, παραγωγή, ζήτηση (το EC_MPOWER)
+;   t-u το οξυγόνο: παραγωγή, ζήτηση
+;   v   το νερό, όσο χωρά (ec_wcap)       w   η αποθήκη, όσα έχει (όχι το νερό)
+;   x   η αποθήκη, όσο χωρά               y   τα νομίσματα (στην 6)
+;   z   οι ζωντανοί
+; Κάθε αριθμός σε πέντε στήλες, δεξιά, στο χρώμα του κανόνα του (rs_rule), και
+; μετά λευκό ξανά: οι γραμμές της σελίδας είναι όλες μέσα σε αστερίσκους.
+; Τιμές της στιγμής: το παιχνίδι σταματά όσο φαίνεται η σελίδα.
+; ---------------------------------------------------------------------------
+rs_field:
+        sub     'a'
+        ld      c,a
+        call    rs_val                  ; HL = η τιμή
+        push    hl
+        ld      a,c
+        ld      hl,rs_rule
+        call    ob_addu
+        ld      a,(hl)                  ; ο κανόνας
+        pop     hl
+        push    hl
+        call    rs_ink                  ; A = το χρώμα (η αποθήκη αλλάζει το HL)
+        pop     hl
+        ld      (tp_mask),a
+        ld      a,' '
+        ld      (tp_pad),a
+        call    tpf_hl
+        xor     a
+        ld      (tp_pad),a
+        ld      a,TP_WHITE              ; οι γραμμές της σελίδας είναι λευκές
+        ld      (tp_mask),a
+        ret
+
+; rs_val — C = πεδίο 0-25 -> HL = η τιμή του. Κρατά τον C.
+rs_val:
+        ld      a,c
+        cp      21
+        jr      nc,rsv_sp
+        call    ec_stock_ptr            ; DE -> το word (src/stock.asm), ως το EC_O2USE
+        ex      de,hl
+        ld      a,(hl)
+        inc     hl
+        ld      h,(hl)
+        ld      l,a
+        ret
+rsv_sp:
+        ld      hl,(ec_wcap)
+        sub     22
+        ret     c                       ; v: το νερό, όσο χωρά
+        jr      z,rsv_used              ; w
+        ld      de,STORE_BASE - EC_CAP  ; όσα δίνουν οι Storage, όπως το stc_wcap
+        add     hl,de
+        dec     a
+        ret     z                       ; x: η αποθήκη, όσο χωρά
+        dec     a
+        jr      z,rsv_coin              ; y
+        ld      a,(EC_ALIVE)            ; z
+        ld      l,a
+        ld      h,0
+        ret
+rsv_coin:
+        ld      hl,EC_COINS
+        call    rd6                     ; src/link.asm: κρατά BC, DE, HL
+        ld      e,a
+        inc     hl
+        call    rd6
+        ld      h,a
+        ld      l,e
+        ret
+rsv_used:                               ; όλα εκτός από το νερό, όπως το st_check
+        ld      hl,0
+        ld      de,EC_STOCK + 2
+        ld      b,13
+rsu_lp:
+        ld      a,(de)
+        add     a,l
+        ld      l,a
+        inc     de
+        ld      a,(de)
+        adc     a,h
+        ld      h,a
+        inc     de
+        djnz    rsu_lp
+        ret
+
+; rs_ink — A = κανόνας, HL = τιμή -> A = η μάσκα: κόκκινο κάτω από το LO (DE),
+; πράσινο από το HI (BC) και πάνω, λευκό ανάμεσα. Οι κανόνες: 0 πάντα λευκό·
+; 1-4 σταθερά όρια (rs_lohi)· 5 το νερό, 6 τα γεύματα, 7 το ρεύμα, 8 το
+; οξυγόνο, 9 η αποθήκη. Ενα HI 0 δεν είναι ποτέ πράσινο: το «0 MADE 0 USED»
+; της αρχής, όταν κανείς δεν αναπνέει ακόμη, είναι λευκό.
+rs_ink:
+        ld      de,0
+        ld      bc,#FFFF
+        sub     1
+        jp      c,rsi_cmp               ; 0: λευκό
+        cp      4
+        jr      nc,rsi_sp
+        add     a,a
+        push    hl
+        ld      hl,rs_lohi
+        call    ob_addu
+        ld      e,(hl)
+        inc     hl
+        ld      c,(hl)
+        inc     b                       ; BC = το HI, ως 255
+        pop     hl
+        jp      rsi_cmp
+rsi_sp:
+        sub     5
+        jr      nc,rsi_nw
+        ; ΤΟ ΝΕΡΟ: κάτω από 1,5 x ζωντανούς σταματούν οι κήποι (το R1 του
+        ; src/water.asm)· πράσινο από τα τρία τέταρτα του χώρου του.
+        ld      a,(EC_ALIVE)
+        ld      e,a
+        srl     a
+        add     a,e
+        ld      e,a                     ; ως 240
+        ld      bc,(ec_wcap)
+        jr      rsi_34
+rsi_nw:
+        jr      nz,rsi_np
+        ; ΤΑ ΓΕΥΜΑΤΑ: κάτω από ένα για κάθε ζωντανό το LOW ON FOOD (hd_short)·
+        ; πράσινο από τρία.
+        ld      a,(EC_ALIVE)
+        ld      e,a
+        ld      c,a
+        inc     b                       ; BC = ζωντανοί
+        push    hl
+        ld      h,b
+        ld      l,c
+        add     hl,hl
+        add     hl,bc
+        ld      b,h
+        ld      c,l
+        pop     hl
+        jr      rsi_cmp
+rsi_np:
+        dec     a
+        jr      nz,rsi_no
+        ; ΤΟ ΡΕΥΜΑ: κόκκινο όσο το HUD λέει PWR- (η ζήτηση περνά την παραγωγή,
+        ; ew_cycle)· πράσινο με PWR+ και τρία τέταρτα στους συλλέκτες. Χωρίς
+        ; συλλέκτη ποτέ πράσινο: η μπάρα του HUD είναι άδεια.
+        ld      a,(hu_pwr + 3)
+        cp      '-'
+        jr      nz,rsp_pl
+        dec     de                      ; LO = #FFFF: κόκκινο
+        jr      rsi_cmp
+rsp_pl:
+        ld      bc,(EC_PCAP)
+        ld      a,b
+        or      c
+        jr      nz,rsi_34
+        jr      rsi_cmp                 ; HI = 0: ποτέ πράσινο
+rsi_no:
+        dec     a
+        jr      nz,rsi_st
+        ; ΤΟ ΟΞΥΓΟΝΟ: κόκκινο όταν βγαίνει λιγότερο απ' όσο αναπνέεται, πράσινο
+        ; με ένα τέταρτο παραπάνω.
+        ld      de,(EC_O2USE)
+        push    hl
+        ld      h,d
+        ld      l,e
+        srl     h
+        rr      l
+        srl     h
+        rr      l
+        add     hl,de
+        ld      b,h
+        ld      c,l
+        pop     hl
+        jr      rsi_cmp
+rsi_st:
+        ; Η ΑΠΟΘΗΚΗ, ανάποδα: κόκκινο γεμάτη (το st_check: όσα έχει >= όσα χωρά),
+        ; πράσινο κάτω από τη μισή. Μετρά τον χώρο που μένει, όχι όσα έχει.
+        ex      de,hl                   ; DE = όσα έχει
+        ld      hl,(ec_wcap)
+        ld      bc,STORE_BASE - EC_CAP
+        add     hl,bc
+        ld      b,h
+        ld      c,l                     ; BC = όσα χωρά
+        or      a
+        sbc     hl,de                   ; HL = ο χώρος
+        jr      nc,rss_ok
+        ld      hl,0
+rss_ok:
+        ld      de,1                    ; LO: κανένας χώρος
+        srl     b
+        rr      c
+        inc     bc                      ; HI: πάνω από τον μισό
+        jr      rsi_cmp
+rsi_34:                                 ; BC = BC - BC / 4
+        push    hl
+        ld      h,b
+        ld      l,c
+        srl     b
+        rr      c
+        srl     b
+        rr      c
+        or      a
+        sbc     hl,bc
+        ld      b,h
+        ld      c,l
+        pop     hl
+rsi_cmp:
+        ld      a,b                     ; HI = 0: ποτέ πράσινο — ρεύμα χωρίς
+        or      c                       ; συλλέκτη, κανείς δεν αναπνέει, κανένας
+        jr      nz,rsi_hi               ; ζωντανός
+        dec     bc
+rsi_hi:
+        push    hl
+        or      a
+        sbc     hl,de
+        pop     hl
+        ld      a,TP_RED
+        ret     c
+        sbc     hl,bc                   ; Cy = 0
+        ld      a,TP_WHITE
+        ret     c
+        ld      a,TP_GREEN
         ret
 
 ; tp_get — A = το επόμενο byte του αρχείου, NC. C αν ο τομέας του δεν διαβάστηκε.
@@ -641,6 +889,17 @@ tp_blk:     ds 16
 ; ΤΑ ΝΟΥΜΕΡΑ ΤΩΝ ΣΕΛΙΔΩΝ (βήμα 177): τα γράφει όλα μαζί το ms_go.
 ms_val:     ds 2 * 12                   ; ^A-^L
 ms_mile:    db 0                        ; ^0-^4: τα bits του EC_MILE
+; ΟΙ ΚΑΝΟΝΕΣ ΤΩΝ ΠΟΡΩΝ (βήμα 191, rs_ink), ένας ανά πεδίο «^a»-«^z».
+rs_rule:    db 5, 6, 4, 1, 1, 2, 3, 2, 2, 0     ; νερό, γεύματα, μετάλλευμα, μέταλλο, βιοπλαστικό, chips, spares, φάρμακα, όπλα, ρομπότ
+            db 1, 1, 2, 1                       ; άμυλο, λαχανικά, βότανα, κρέας
+            db 7, 0, 0, 0, 0, 8, 0              ; ρεύμα (το αποθηκευμένο), οξυγόνο (η παραγωγή)
+            db 0, 9, 0, 0, 0                    ; η αποθήκη (όσα έχει)
+; Τα σταθερά όρια, LO και HI, των κανόνων 1-4.
+rs_lohi:    db KEEP_METAL, BIO_MAX              ; 1: κάτω από 30 οι μηχανές το κρατούν, από 100 η PLASTIC σταματά
+            db 1, 10                            ; 2: κανένα, ή δέκα
+            db 4, SPARES_MAX                    ; 3: από 20 η SPARES σταματά
+            db 10, 100                          ; 4: το μετάλλευμα
+tp_pad:     db 0                        ; ' ': τα μηδενικά μπροστά γίνονται κενά (rs_field)
 tp_mnew:    db 0                        ; τα ορόσημα που μένουν να δειχτούν
 tp_fl:      db 0                        ; 1: ο επόμενος χαρακτήρας είναι πεδίο
 tp_nz:      db 0                        ; όχι μηδέν: γράφτηκε ψηφίο

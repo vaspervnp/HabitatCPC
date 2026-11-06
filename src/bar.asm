@@ -11,6 +11,7 @@
 ;   ΠΟΡΟΙ E       X αντλία · M ορυχείο
 ;   ΜΕΤΑΦΟΡΑ T    A αεροθάλαμος · P πίστα · C πλοίο · M έμπορος (βήμα 93)
 ;   ΔΙΑΧΕΙΡΙΣΗ M  I πληροφορίες · F εξοπλισμός · S σώσιμο · L φόρτωμα · H κέντρο
+;                 D κατεδάφιση (βήμα 101) · V οι πόροι (βήμα 191)
 ;
 ; ΤΟ ΓΡΑΜΜΑ ΣΤΗΝ ΚΑΤΩ ΑΡΙΣΤΕΡΗ ΓΩΝΙΑ ΕΙΝΑΙ ΤΟ ΠΛΗΚΤΡΟ, και ισχύει όσο το κουμπί
 ; φαίνεται. Η ομάδα ανοίγει στο MENU με το αντικείμενό της έτοιμο (όπως ως
@@ -27,7 +28,7 @@
 ; το sl_draw της τράπεζας 2 (src/help.asm), που ζωγραφίζει και την οθόνη
 ; βοήθειας με τα ίδια κουμπιά.
 
-BT_N        equ 35                      ; κουμπιά (tools/buttons.py)· 34 ως το βήμα 100
+BT_N        equ 36                      ; κουμπιά (tools/buttons.py)· 35 ως το βήμα 190, 34 ως το 100
 BT_SMALL    equ 1                       ; 1-3 τα μεγέθη
 BT_ROOM0    equ 4                       ; 4-13 τα δωμάτια, με τη σειρά του rm_list
 BT_CORR     equ 14
@@ -36,7 +37,8 @@ BT_TRADE    equ 26                      ; βήμα 93: αμέσως μετά τ�
 BT_MANAGE   equ 27
 BT_FIT      equ 29
 BT_DEMO     equ 33                      ; βήμα 101
-BT_HELP     equ 34
+BT_RES      equ 34                      ; βήμα 191: οι πόροι, στο V
+BT_HELP     equ 35
 BT_NONE     equ 255
 BAR_N       equ 16                      ; θέσεις
 BAR_HELP    equ 15                      ; το ?
@@ -67,8 +69,9 @@ AB_HOME     equ 4
 AB_SHIP     equ 5
 AB_TRADE    equ 6                       ; βήμα 93· το AB_HELP ήταν 6
 AB_GOAL     equ 7                       ; βήμα 177: το G, στον πίνακα (το AB_HELP ήταν 7)
-AB_DEMO     equ 8                       ; βήμα 101: το src/act.asm πριν από τον πίνακα
-AB_HELP     equ 9
+AB_RES      equ 8                       ; βήμα 191: οι πόροι, στον πίνακα (το AB_DEMO ήταν 8)
+AB_DEMO     equ 9                       ; βήμα 101: το src/act.asm πριν από τον πίνακα
+AB_HELP     equ 10
 BT_GOAL     equ BT_N                    ; βήμα 177: μετά το bt_end, χωρίς εικόνα
 
 ; ---------------------------------------------------------------------------
@@ -110,7 +113,8 @@ bt_tab:
         db 'L',4,#10, KB_ACT << 5 | AB_LOAD     ; 31
         db 'H',5,#10, KB_ACT << 5 | AB_HOME     ; 32
         db 'D',7,#20, KB_ACT << 5 | AB_DEMO     ; 33 κατεδάφιση (βήμα 101)
-        db '?',3,#40, KB_ACT << 5 | AB_HELP     ; 34 (το πλήκτρο / ?)
+        db 'V',6,#80, KB_ACT << 5 | AB_RES      ; 34 οι πόροι (βήμα 191)
+        db '?',3,#40, KB_ACT << 5 | AB_HELP     ; 35 (το πλήκτρο / ?)
 bt_end:
         assert  bt_end - bt_tab == 4 * BT_N
 ; ΤΑ ΟΡΟΣΗΜΑ ΣΤΟ G (βήμα 177): ένα κουμπί που δεν ζωγραφίζεται. Μόνο στη μπάρα
@@ -118,7 +122,7 @@ bt_end:
 ; (src/goals.asm), όχι το bw_id. Το ίδιο κουμπί είναι και το αίτημα σελίδας
 ; (ms_req, src/input.asm). Μετά το bt_end: η βοήθεια και το tools/buttons.py
 ; μετρούν BT_N.
-        db 'G',6,#10, KB_ACT << 5 | AB_GOAL     ; 35
+        db 'G',6,#10, KB_ACT << 5 | AB_GOAL     ; 36
 
 ; Οι ομάδες: το πρώτο αντικείμενο του καταλόγου. (Το πρώτο κουμπί και πόσα
 ; τα δίνει το ac_l_grp πιο κάτω, που είναι οι ομάδες με τη σειρά και το ?.)
@@ -131,8 +135,8 @@ bld_end:
 ; και η ΔΙΑΧΕΙΡΙΣΗ. Η πρώτη είναι και η μπάρα του LOOK, στις θέσεις 0-5.
 ac_l_grp:   db 0, 14, 15, 19, 22, BT_MANAGE, BT_HELP
         ; bww_group: η ομάδα g είναι τα κουμπιά ac_l_grp[g] .. ac_l_grp[g + 1] - 1
-        assert  BT_CORR == 14 && BT_MANAGE == 27 && BT_HELP == BT_MANAGE + 7
-ac_l_man:   db 28, 29, 30, 31, 32, BT_DEMO, BT_HELP
+        assert  BT_CORR == 14 && BT_MANAGE == 27 && BT_HELP == BT_MANAGE + 8
+ac_l_man:   db 28, 29, 30, 31, 32, BT_DEMO, BT_RES, BT_HELP
 
 ; ---------------------------------------------------------------------------
 ; bk_scan — τα γράμματα της μπάρας που φαίνεται, μία φορά ανά frame.
@@ -335,21 +339,22 @@ sl_po:      db 0
 sl_pi:      db 0
 sl_ctl:     dw 0
 sl_buf:     defs 15 * BAR_W
+; ΠΡΙΝ ΑΠΟ ΤΟΝ ΠΙΝΑΚΑ ΑΠΟ ΤΟ ΒΗΜΑ 191: το κουμπί των πόρων (4 bytes στο bt_tab)
+; έσπρωξε το align 16 στα 15 bytes, και τα οκτώ τους το φέρνουν στα 7.
+sl_at:      dw 0
+sl_piq:     dw 0
+sl_gly:     dw 0
+sl_id:      db 0
+bs_pend:    db 0                        ; μένουν κουμπιά για το επόμενο frame
         align   16                      ; sld_ct: or με το κάτω byte
 ; n x #11 AND μάσκα, για n = 0-15: πράσινο (pen 2), λευκό (3), κόκκινο (1)
 sl_ctg:     db #00,#01,#02,#03,#04,#05,#06,#07,#08,#09,#0A,#0B,#0C,#0D,#0E,#0F
 sl_ctw:     db #00,#11,#22,#33,#44,#55,#66,#77,#88,#99,#AA,#BB,#CC,#DD,#EE,#FF
 sl_ctr:     db #00,#10,#20,#30,#40,#50,#60,#70,#80,#90,#A0,#B0,#C0,#D0,#E0,#F0
         assert  sl_ctw == sl_ctg + 16 && sl_ctr == sl_ctw + 16
-; ΜΕΤΑ ΤΟΝ ΠΙΝΑΚΑ, όχι πριν (βήμα 155): τα 3 bytes τους γύρισαν το align 16 στο
-; μηδέν, αφού το rt_flush (src/graph.asm) πήρε 4 και το έσπρωξε 13 bytes. Και
-; το bs_pend από το βήμα 157, για το byte του ob_struct_sort (src/object.asm),
-; και τα sl_at, sl_piq από το βήμα 177, για το ms_req και το κουμπί του G
-; (src/input.asm, το bt_tab), που το έσπρωξαν 11.
-sl_at:      dw 0
-sl_piq:     dw 0
-sl_gly:     dw 0
-sl_id:      db 0
-bs_pend:    db 0                        ; μένουν κουμπιά για το επόμενο frame
+; (ΜΕΤΑ ΤΟΝ ΠΙΝΑΚΑ ήταν ως το βήμα 190 τα sl_at, sl_piq, sl_gly, sl_id και
+; bs_pend: από το βήμα 155 τα sl_gly, sl_id, για το rt_flush του src/graph.asm
+; που έσπρωξε το align 16 13 bytes, από το 157 το bs_pend, και από το 177 τα
+; sl_at, sl_piq, για το ms_req και το κουμπί του G. Τώρα πριν, πιο πάνω.)
         assert  sl_pi == sl_po + 1 && sl_ctl == sl_pi + 1
 

@@ -349,10 +349,12 @@ VW_Q        equ 2
 EC_PEAK     equ G_worldinfo + 4
 EC_MSEEN    equ G_worldinfo + 5
 ; Οι σελίδες του TUTOR.TXT (src/tupages.txt) μετά του tutorial: τα πέντε
-; ορόσημα με τη σειρά των bits τους, το G, το τέλος (assert στο src/tpage.asm).
+; ορόσημα με τη σειρά των bits τους, το G, το τέλος, και από το βήμα 191 οι
+; πόροι στο V (assert στο src/tpage.asm).
 PG_MS0      equ 16
 PG_GOALS    equ PG_MS0 + 5
 PG_END      equ PG_GOALS + 1
+PG_RES      equ PG_END + 1
 TP_CHOOSE   equ #FE                     ; το tp_show: τη σελίδα τη διαλέγει το ms_go
 ; ΟΙ ΚΑΤΑΣΤΡΟΦΕΣ ΑΡΑΙΕΣ (βήμα 121, η απόφαση του χρήστη): θύελλα, έκλαμψη και
 ; βροχή μετεωριτών μόνο με DIS_POP ζωντανούς ή περισσότερους, και ποτέ μέσα σε

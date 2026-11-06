@@ -53,7 +53,7 @@ acm_at:
 acm_nd:
         pop     af
         ld      hl,ac_l_man
-        ld      bc,1 * 256 + 7
+        ld      bc,1 * 256 + 8          ; 7 ως το βήμα 190: και οι πόροι
 aco_set:
         ld      (ac_lst),hl
         ld      l,c
@@ -199,14 +199,14 @@ btk_act:
         ld      (ui_state),a            ; UI_LOOK
         jp      (hl)
 
-btk_ajp:    dw ac_info, fit_enter, ac_save, ac_load, ac_home, cw_open, tr_open, ms_key
+btk_ajp:    dw ac_info, fit_enter, ac_save, ac_load, ac_home, cw_open, tr_open, ms_key, rs_key
         assert  AB_INFO == 0 && AB_FIT == 1 && AB_SAVE == 2 && AB_LOAD == 3
         assert  AB_HOME == 4 && AB_SHIP == 5 && AB_TRADE == 6   ; το tr_open: src/lines.asm
         assert  AB_GOAL == 7                    ; το ms_key: src/goals.asm (βήμα 177)
-
-ac_info:
-        ld      a,UI_INFO
-        jp      ui_ask
+        assert  AB_RES == 8                     ; το rs_key: src/help.asm (βήμα 191)
+        assert  AB_DEMO > AB_RES && AB_HELP > AB_RES   ; αυτά πριν από τον πίνακα
+        ; (Το ac_info, το I, έφυγε στην 0 στο βήμα 191, πριν από το ui_ask του
+        ; src/ui.asm: εδώ ήταν 5 bytes, εκεί 2, και η 2 είχε 1 ελεύθερο.)
 ; ac_demo — το D, ή FIRE στο DEMOLISH (βήμα 101). Κόκκινο: όχι. Από τη
 ; γραμμή του, με το DEMOLISH διαλεγμένο: γκρεμίζει (dm_go). Αλλιώς ανοίγει τη
 ; ΔΙΑΧΕΙΡΙΣΗ πάνω του: η σειρά 3 λέει DEMOLISH και FIRE=GO ESC=BACK, και το

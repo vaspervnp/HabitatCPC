@@ -240,3 +240,22 @@ EVERYONE IN THE COLONY IS DEAD.
 
 A SAVED GAME TAKES THE COLONY BACK TO WHERE IT WAS SAVED. A NEW COLONY
 STARTS FROM THE MENU, AND THE GAME'S DISC MUST BE IN THE DRIVE FOR IT.
+; --- ΟΙ ΠΟΡΟΙ (βήμα 191, DESIGN §9.7): η σελίδα 23, στο V. Τα πεδία ^a-^z
+; είναι οι πόροι (src/tpage.asm, rs_field): ένας αριθμός σε πέντε στήλες, στο
+; χρώμα του κανόνα του — κόκκινο λίγο, πράσινο πολύ, λευκό αρκετό — και τα
+; ονόματα λευκά, μέσα σε αστερίσκους.
+@RESOURCES                                                  ^z COLONISTS
+*OXYGEN     ^t MADE     ^u USED*
+*POWER      ^o OF       ^p STORED   ^q MADE     ^r USED*
+*WATER      ^a OF       ^v*
+
+*MEALS      ^b          STARCH     ^k          VEGETABLES ^l*
+*MEAT       ^n          HERBS      ^m*
+
+*ORE        ^c          METAL      ^d          BIOPLASTIC ^e*
+*PROCESSORS ^f          SPARES     ^g          MEDICINE   ^h*
+*GUNS       ^i          BOTS       ^j*
+
+*STORE      ^w OF       ^x                     COINS      ^y*
+
+*RED IS LOW, WHITE IS ENOUGH, GREEN IS PLENTY.*

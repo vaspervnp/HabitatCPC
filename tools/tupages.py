@@ -17,13 +17,16 @@
                      ήδη ο κώδικας.
 
 Οι κανόνες, που τους ελέγχει εδώ (και το tests/test_tupage.py ξανά):
-  - μόνο οι χαρακτήρες της γραμματοσειράς, 32-95: κεφαλαία, ψηφία, σημεία·
-    όχι το «@», που χωρίζει σελίδες·
+  - μόνο οι χαρακτήρες της γραμματοσειράς, 32-90: κεφαλαία, ψηφία, σημεία
+    (ως το «Z»: τα [ \\ ] ^ _ ` και τα πεζά έφυγαν στο βήμα 191)· όχι το «@»,
+    που χωρίζει σελίδες·
   - ως TP_W χαρακτήρες η γραμμή χωρίς τους αστερίσκους, και ζυγοί αστερίσκοι·
   - ως TP_H γραμμές το σώμα μιας σελίδας (οι σειρές 3-22 της οθόνης);
   - το «^» μόνο στις σελίδες του G και του τέλους (βήμα 177), και πάντα με
     ένα από τα πεδία του FIELDS μετά: το πλάτος του μετρά όσο το πιο πλατύ
-    που μπορεί να γράψει.
+    που μπορεί να γράψει. Στη σελίδα των πόρων (βήμα 191) τα πεδία είναι τα
+    πεζά του RES_FIELDS, πέντε στήλες το καθένα· το πεζό γράμμα δεν τυπώνεται,
+    άρα δεν χρειάζεται να είναι στη γραμματοσειρά.
 """
 import os
 import re
@@ -36,11 +39,14 @@ BUILD = os.path.join(ROOT, "build")
 
 TP_W = 76                       # στήλες 2-77 (src/tpage.asm: TP_COL)
 TP_H = 20                       # σειρές 3-22 (TP_BROW ως πριν από το υποσέλιδο)
-TP_N = 23                       # εισαγωγή, 14 βήματα (TU_N), «THE COLONY IS YOURS»,
-                                # και από το βήμα 177 τα πέντε ορόσημα, το G και το τέλος
+TP_N = 24                       # εισαγωγή, 14 βήματα (TU_N), «THE COLONY IS YOURS»,
+                                # και από το βήμα 177 τα πέντε ορόσημα, το G και το τέλος,
+                                # και από το 191 οι πόροι (PG_RES)
 TP_FLD = 21                     # από αυτήν τα πεδία «^» (src/tpage.asm, tp_field)
 FIELDS = {**{c: 4 for c in "01234"},            # «DONE» ή τέσσερα κενά
           **{c: 5 for c in "ABCDEFGHIJKL"}}     # ένας αριθμός, ως 65535
+TP_RES = 23                     # η σελίδα των πόρων (βήμα 191, src/const.asm: PG_RES)
+RES_FIELDS = {c: 5 for c in "abcdefghijklmnopqrstuvwxyz"}   # src/tpage.asm, rs_field: πάντα πέντε
 
 
 class Fail(Exception):
@@ -76,17 +82,18 @@ def check(pages):
         raise Fail(f"{len(pages)} σελίδες, όχι {TP_N}")
     for k, (title, n, body) in enumerate(pages):
         rows = [(title, n)] + body
+        fields = RES_FIELDS if k == TP_RES else FIELDS
         for text, ln in rows:
-            for c in text:
-                if not 32 <= ord(c) <= 95 or c == "@":
+            for c in re.sub(r"\^.", "", text):
+                if not 32 <= ord(c) <= 90 or c == "@":
                     raise Fail(f"γραμμή {ln}: «{c}» δεν είναι στη γραμματοσειρά")
             if text.count("*") % 2:
                 raise Fail(f"γραμμή {ln}: μονός αριθμός αστερίσκων")
             w = len(text.replace("*", ""))
             for m in re.finditer(r"\^(.?)", text):
-                if k < TP_FLD or m.group(1) not in FIELDS:
+                if k < TP_FLD or m.group(1) not in fields:
                     raise Fail(f"γραμμή {ln}: «^{m.group(1)}» δεν είναι πεδίο εδώ")
-                w += FIELDS[m.group(1)] - 2
+                w += fields[m.group(1)] - 2
             if w > TP_W:
                 raise Fail(f"γραμμή {ln}: {w} χαρακτήρες, ως {TP_W}")
         if len(body) > TP_H:

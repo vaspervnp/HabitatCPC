@@ -25,6 +25,9 @@
 ; ΚΑΙ ΤΟ TAB ΑΠΟ ΤΟ ΒΗΜΑ 186, ο χάρτης (src/map.asm): μια τρίτη θέση του ίδιου
 ; κουμπιού, ανάμεσα στο G και στο αίτημα, άλλα 9 µs το frame στη μπάρα των
 ; ομάδων. Το ms_key κοιτάζει το TAB πρώτο. 14 bytes του OV_R1.
+; ΚΑΙ ΤΟ V ΑΠΟ ΤΟ ΒΗΜΑ 191, οι πόροι: όχι το BT_GOAL αλλά το δικό του κουμπί,
+; το BT_RES της ΔΙΑΧΕΙΡΙΣΗΣ, που το bt_key στέλνει στο rs_key (src/help.asm).
+; Αλλα 9 µs το frame στη μπάρα των ομάδων, και 10 bytes του OV_R1 (bkm_id).
 ; ---------------------------------------------------------------------------
 
 ; bk_more — από το bk_gen (src/button.asm): HL = η επόμενη θέση του bk_code, DE
@@ -38,6 +41,9 @@ bk_more:
         call    bkm_one
         ld      bc,8 * 256 + #10        ; το TAB, ο χάρτης (βήμα 186): γραμμή 8, #10
         call    bkm_one
+        ld      bc,6 * 256 + #80        ; το V, οι πόροι (βήμα 191): γραμμή 6, #80,
+        ld      a,BT_RES                ; με το δικό του κουμπί (το bt_tab)
+        call    bkm_id
         ld      a,(ms_req)
         rra
         jr      c,bkm_end               ; κανένα αίτημα: ούτε το κόστος του
@@ -56,8 +62,11 @@ bkm_end:
         ld      (hl),a
         ret
 ; bkm_one — B = γραμμή, C = μάσκα: μια θέση του bk_code για το BT_GOAL, όπως
-; τη γράφει το bk_gen.
+; τη γράφει το bk_gen. bkm_id — το ίδιο, για το κουμπί A (βήμα 191).
 bkm_one:
+        ld      a,BT_GOAL
+bkm_id:
+        push    af
         ld      (hl),#3A                ; ld a,(nn)
         inc     hl
         ld      a,b
@@ -69,11 +78,11 @@ bkm_one:
         ld      (hl),c
         ld      bc,4                    ; jr z, inc c
         add     hl,bc
-        ld      a,BT_GOAL
+        pop     af
         ld      (de),a
         inc     de
         ret
-        assert  BK_MAX >= 7 + 3         ; οι ομάδες, το ?, το G, το TAB, το αίτημα
+        assert  BK_MAX >= 7 + 4         ; οι ομάδες, το ?, το G, το TAB, το V, το αίτημα
 
 ; ms_key — το BT_GOAL (src/act.asm), στο LOOK: το G, ή το αίτημα. Τη σελίδα τη
 ; διαλέγει και γράφει τα νούμερά της το ms_go της 7 (src/tpage.asm)· το

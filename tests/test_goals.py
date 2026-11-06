@@ -37,7 +37,7 @@ import menuread as MR                                    # noqa: E402
 import test_tupage as TT                                 # noqa: E402
 
 FAIL = []
-PG_MS0, PG_GOALS, PG_END = 16, 21, 22                    # src/const.asm
+PG_MS0, PG_GOALS, PG_END, PG_RES = 16, 21, 22, 23        # src/const.asm (PG_RES: βήμα 191)
 UI_LOOK, UI_PLACE, UI_SLOT = 0, 2, 4
 END_FOOT = "*L*  LOAD A SAVED COLONY     *ANY OTHER KEY*  A NEW COLONY"   # src/tpage.asm
 
@@ -149,8 +149,9 @@ def text():
     pages = TP.parse()
     _, idx = TP.image(pages)
     have = [k for k, (_, _, body) in enumerate(pages) if any("^" in t for t, _ in body)]
-    check(have == [PG_GOALS, PG_END] and len(pages) == PG_END + 1,
-          f"ΚΕΙΜΕΝΟ: {len(pages)} σελίδες, πεδία «^» μόνο στις {have}")
+    check(have == [PG_GOALS, PG_END, PG_RES] and len(pages) == PG_RES + 1,
+          f"ΚΕΙΜΕΝΟ: {len(pages)} σελίδες, πεδία «^» μόνο στις {have} (και των πόρων, "
+          f"tests/test_resources.py)")
     src = open(TP.SRC, encoding="utf-8").read()
     first = next(l for l in src.splitlines() if l and not l.startswith((";", "@")))
     goal = src.index("@MILESTONES")

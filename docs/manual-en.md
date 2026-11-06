@@ -121,6 +121,7 @@ O2 ██████ PWR+█████ H2O-███·· FOD ██····  
   - `ME` Medicine;
   - `BO` Bots waiting to wake.
 - **`$` coins**, which visitors pay.
+- **Everything as a number** is on `V`, the resources page ([section 11](#11-power-air-water-food-storage)).
 - **Colonists alive / cap** (`6/6`, `140/160`), the **sol** (day number), `DAY` or
   `NGT` (night).
 - **The alert line**: the most urgent thing going on ([section 14](#14-the-alert-line)).
@@ -158,6 +159,7 @@ joystick: its first fire is `COPY`, its second `ESC`.
 | `C` | Call a colonist ship ([section 12](#12-ships-colonists-visitors-merchants-intruders)). |
 | `G` | The milestones: all five, and how far the colony is from each ([section 16](#16-goals-and-losing)). From the main view. |
 | `TAB` | The world map. From the main view. |
+| `V` | The resources: every stock as a number, red when short, green when plenty ([section 11](#11-power-air-water-food-storage)). From the main view, and in `M`. |
 
 ![The help screen, on ?](img/help.png)
 
@@ -184,7 +186,7 @@ where you were. The game waits while the map is open.
 | `P` POWER | `S` solar panel, `T` wind turbine, `C` collector |
 | `E` RESOURCES | `X` extractor (water), `M` mine (ore) |
 | `T` TRANSPORT | `A` airlock, `P` landing pad, `C` ship, `M` trade |
-| `M` MANAGE | `I` info, `F` fit, `S` save, `L` load, `H` centre, `D` demolish |
+| `M` MANAGE | `I` info, `F` fit, `S` save, `L` load, `H` centre, `D` demolish, `V` all resources |
 
 A button drawn in red cannot be used right now. For example, `TRADE` is red while no
 merchant is at the pad.
@@ -413,6 +415,31 @@ the full 160 with four.
   - The mines and the meat printer (`MEAT`) do not stop at once: each fills its own
     store first, 6 ore at a mine and 3 meat at the machine, and then stops. As soon as
     there is room again, what they hold goes into the store and they fill up again.
+
+**The resources page** (`V` from the main view, or `M` `V`) shows every stock as a
+number, with power, oxygen and the store. The game waits while it is open, and any key
+goes back. The numbers are coloured by the game's own limits:
+
+- **red**: the colony is short, and something stops or an alert comes soon;
+- **green**: plenty, or a machine has stopped because there is enough;
+- **white**: enough. The names, the bots, the colonists and the coins are always white.
+
+| Stock | Red below | Green from |
+|---|---|---|
+| Water | 1½ per colonist (the greenhouses and `MEAT` stop) | ¾ of the room for it |
+| Meals | 1 per colonist (`LOW ON FOOD`) | 3 per colonist |
+| Starch, Vegetables, Meat, Metal, Bioplastic | 30 | 100 |
+| Spares | 4 | 20 (`SPARES` stops) |
+| Ore | 10 | 100 |
+| Processors, Medicine, Guns, Herbs | 1 | 10 |
+| Power stored | while the HUD says `PWR-` | `PWR+` and ¾ full |
+| Oxygen made | what the colony breathes (`NO OXYGEN`) | a quarter more |
+| Store | full (`STORAGE FULL`) | under half full |
+
+The page is read from the game's disc, like the milestones' page, so the disc must be in
+the drive.
+
+![The resources page, on V](img/resources.png)
 
 ## 12. Ships: colonists, visitors, merchants, intruders
 
