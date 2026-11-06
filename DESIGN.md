@@ -6478,7 +6478,8 @@ The table is the other seven worlds.
   late, at sols 119–159: `1048` 1, `5A5A` 2, `BEEF` 2 and `C0DE` 0. It is not the order,
   which did not act. The script calls as many ships as before (261 and 233, against
   269 and 225). `1048` 1, stuck at 64 under milestone 188, grows to 128 and 89 and
-  starves. This is open in [§15](#15-open-risks).
+  starves. Milestone 190 found the cause in the player's power and Metal and fixed it
+  there ([§10.1](#hunger-after-a-hundred-at-milestone-190)).
 
 **Tested:**
 
@@ -18880,6 +18881,103 @@ Other tests:
 - Bank 7 now takes only the labels of `src/panel7.asm`, from `IN_P7` to `ZZ_ST7_END`,
   and the five negatives fail again.
 
+#### Hunger after a hundred, at milestone 190
+
+The player, after milestone 189: "look at the hunger after a hundred"
+([§15](#15-open-risks)). Nothing in the game changed at this milestone; the scripted
+player (`tools/play.py`) did.
+
+**What starved them.** In milestone 189's plays the hunger came in waves of 20–40
+deaths in one sol, when the food reached 0 with the Vegetables or the Meat at 0.
+- **The power.** While the load is shed only the `OXYGEN` machines run: the gardens,
+  `VITROMEAT`, `MEALS` and `METAL` all stop
+  ([§6.5](#the-pumps-stop-last-but-one-at-milestone-176)). The colonies that starved
+  past 100 had the load shed in 27–52 % of their samples, the others in 5–10 %. They
+  had 8–13 turbines and 360–720 of battery, against 17–19 and 1,080–1,440.
+- **The battery held nothing for the machines.** It lends to them only above the
+  oxygen's reserve, eight cycles of its demand
+  ([§6.5](#machines-stop-then-oxygen-stops--and-that-then-was-missing)): about 540 at
+  160 colonists. With 360–720 the machines got 0–180, less than one cycle of a calm
+  wind. The player asked for a collector only when the production was 0, and with
+  turbines it almost never is.
+- **No site for a turbine.** The player looked for a structure's site only within 20
+  tiles of the domes' centre, as it did for domes until
+  [milestone 160](#colonies-that-stop-at-milestone-160). Past 100 the colonies reach
+  out to 60, and from sol 57–65 a turbine found no site: six stepping-stone airlocks,
+  and then nothing, under the old player as under the new one's first version.
+- **One `METAL` machine.** Every colony had one, from 64 colonists to 158, with
+  300–600 ore in store and the Metal under 54 in 80–94 % of the samples.
+  `μέταλλο+` was asked under 40 Metal, cost 38 to fill or 54 for a dome, and stood
+  behind the food steps: in 30 plays it was never built
+  ([§15](#15-open-risks) since milestone 174).
+- `1048` 1 was different: its valley had no site left, and five `VITROMEAT` for 128.
+- The rates: a colonist eats about every 800 revolutions (its needs every 4, 192 down
+  to `NEED_LOW`) and a machine runs every 64. At full duty a Vegetables plant feeds
+  25 colonists, a Starch plant 37.5, a `VITROMEAT` 25 and a `MEALS` 12.5.
+
+**The player's change, the user's choice: Metal and power.**
+- **`μέταλλο+` while it can be paid**, before the food steps: when the ore is 100 or
+  more and the Metal under 100, up to one `METAL` machine for 20 colonists.
+- **The power check sees the whole sol** since the last power structure was finished,
+  not half a sol. A collector when the mean production covers 1.1 × the demand but
+  less than two cycles of demand are left above the oxygen's reserve; a turbine
+  otherwise.
+- **The collector joins `LIFE`**: built without the 30 of Metal the player keeps, 14
+  and not 44, like the turbine since [milestone 174](#a-hundred-and-sixty-at-milestone-174).
+- **Structures as far as domes**: `EDGE_R`, 20, 32, 44 and 60 tiles around the domes'
+  centre, as `CORE_R` is for domes. This is the power's part: without a site there is
+  no turbine.
+
+**The batches**, eight worlds and 160 sols, the old player's (`o190`) on the same
+binary. A control (`n`) has one `nop` at the head of `ob_corr`, which changes the
+timing and nothing else:
+
+| Batch | The player | Alive at 160 | at 120 | at 80 | Deaths | to intruders | hunger | other | Shed past 100 | Reach 140, mean sol |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `o190` | milestone 189 | 999 | 951 | 633 | 100 | 17 | 82 | 1 | 20 % | 129 (4 worlds) |
+| `x190` | Metal, the power check, the collector | 944 | 875 | 738 | 109 | 25 | 81 | 3 | 38 % | 119 (4) |
+| `xn190` | `x190`, control | 726 | 846 | 720 | 418 | 23 | 391 | 4 | 37 % | 113 (4) |
+| `z190` | milestone 189 and structures to 60 | 1,216 | 1,068 | 643 | 56 | 31 | 23 | 2 | 5 % | 124 (7) |
+| **`y190`** | **milestone 190: `x190` and structures to 60** | **1,194** | **1,155** | **760** | **27** | 20 | **0** | 7 | **7 %** | **107 (7)** |
+| `yn190` | `y190`, control | 1,178 | 1,091 | 756 | 28 | 27 | 0 | 1 | 10 % | 110 (6) |
+
+Alive at sol 120 / 160:
+
+| World | `o190` | `x190` | `z190` | `y190` | `yn190` |
+|---|---|---|---|---|---|
+| `1048` 0 | 114 / 149 | 50 / 66 | 148 / 160 | 159 / 158 | 159 / 159 |
+| `1048` 1 | 120 / 83 | 46 / 46 | 128 / 105 | 99 / 99 | 93 / 93 |
+| `5A5A` 2 | 90 / 90 | 99 / 99 | 109 / 159 | 132 / 140 | 110 / 150 |
+| `ACE1` 0 | 148 / 159 | 150 / 158 | 151 / 159 | 160 / 160 | 144 / 159 |
+| `ACE1` 1 | 132 / 160 | 128 / 158 | 132 / 159 | 128 / 159 | 122 / 138 |
+| `BEEF` 0 | 120 / 158 | 150 / 157 | 142 / 160 | 160 / 159 | 157 / 160 |
+| `BEEF` 2 | 107 / 70 | 122 / 112 | 120 / 157 | 160 / 160 | 160 / 160 |
+| `C0DE` 0 | 120 / 130 | 130 / 148 | 138 / 157 | 157 / 159 | 146 / 159 |
+
+**`y190` is milestone 190.** It ends with 1,194 alive at sol 160 against 999 (149 a
+world against 125), its control with 1,178, and none of either died of hunger. Six
+worlds of eight reach 157–160, the cap, in each.
+- **`x190` alone made the power worse.** More Metal built more machines, the demand
+  grew, and the turbines still had no site: the load was shed 37–38 % of the time.
+  In its control `C0DE` 0 died out at sol 150, and 391 died of hunger.
+- **`z190`, only the structures' radius, does most of it**: 1,216 at sol 160, the load
+  shed 5 % of the time. Metal and the power check bring the colonies to 140 about
+  seventeen sols sooner (107 and 110 against 124) and take the last 23 deaths of
+  hunger, in `1048` 1's valley. From sol 80 the Metal is 164–182 on average against
+  62, with 2.4–2.5 `METAL` machines a world against one.
+
+**What holds a colony now** (`y190` and `yn190`):
+- **The tables.** By sol 120–142, at 156–160 colonists, the colonies have 56–64 domes
+  of 64 and 46–48 structures of 48 ([§15](#15-open-risks)). From there the game refuses
+  the sites the player finds ("δεν μπήκε", 919–1,162 times a batch), at no cost.
+- **`1048` 1's valley**, at 93–99.
+- **Newcomers outside.** In `y190` four newcomers died in their suits in `C0DE` 0 at
+  sol 126, once.
+
+**The tests.** `tests/test_tutor.py`, `tests/test_noroom.py`,
+`tests/test_brokenop.py` and `tests/test_outside.py`, the four that take
+`tools/play.py`, pass.
+
 ### 10.2 Milestones
 
 No victory screen — Planetbase's own choice, and the right one for a game about a
@@ -20301,10 +20399,10 @@ gap.
 | **Growth outruns the food chain** (found at milestone 131) | Medium | With materials topped up, colonies of 10–22 starved: one lab feeds about fourteen, and the scripted player found no room for a second. A ship comes when the store is full, not when production can follow ([§10.1](#past-twenty-at-milestone-131)). |
 | **Spares run out when Metal runs short** (found at milestone 158) | Medium | In one game of eight at 120 sols ([§4.2](#the-start-in-the-ghosts-log-at-milestone-158), `ACE1` 1, a timing-only divergence from milestone 157's): no Storage dome built, the store full, Ore 0–10 and Metal at its reserve of 30, so the `SPARES` machine stopped; repairs took the Spares from 20 to 0 in 20 sols, then the `SPARES` machine and two `OXYGEN` broke with none, and 42 colonists suffocated at sol 109.1. The same world lives in milestone 157's game (46) and in the control (61). Milestones 143–144 closed this for 60 sols by the player; at 120 the Metal reserve can still starve the Spares. Not chosen yet: Spares exempt from the Metal reserve, a repair priority for `SPARES` and `OXYGEN`, the player buying Spares when Metal is short. **Milestone 160 found the player's second mine is never built**: it is asked for under 40 Metal and costs 30 plus the reserve of 30 ([§10.1](#colonies-that-stop-at-milestone-160)). Without that dead end, five off-vein mines left `ACE1` 0's Metal at the reserve, the Spares ran out from sol 105, and 21 died of air. The user chose to treat the mines with this risk. At milestone 159 ([§4.2](#128-corridors-and-their-scan-limit-at-milestone-159)) `ACE1` 1 lives (30, and 18 in its control), but it and `5A5A` 2 stop at the first Control's 54 with the Ore at 0 most of the time: the player's steps behind a held mine never come. |
 | ~~Pumps stop when the power is shed~~ (found at milestone 174) | ~~High~~ | **Resolved at milestone 176, the user's choice: three steps** ([§6.5](#the-pumps-stop-last-but-one-at-milestone-176)). The machines stop first, then the pumps, the oxygen last, and the battery's reserve stays the oxygen's. In two batches of eight to sol 160: no deaths of air against 94 and 206, water never under 20 against 1.9–3.3 % of the time. The price is in food: the load is shed 26–27 % of the time against 16 %, and 209 and 355 died of hunger against 22 and 47 — the colonies over 100 are short of power ([below](#15-open-risks), Metal). The first form, the pumps counted in the reserve too, shed 33 % and was dropped. |
-| **Hunger after a hundred** (milestone 189) | Medium | In both batches of milestone 189 the hunger deaths went up: 158 and 106 against 66 and 46 in seven worlds to sol 160 ([§6.5](#power-and-water-as-balances-like-planetbase-at-milestone-189)). They come late, at sols 119–159, in the colonies that grew past 100: `1048` 1 (stuck at 64 under milestone 188), `5A5A` 2, `BEEF` 2 and `C0DE` 0. The water's shortage order did not act (water under R1 in 0.1 % of the samples), and the script called as many ships. The food chain at that size, the wall of [§10.1](#a-hundred-and-sixty-at-milestone-174), is the first suspect; a player step should measure the food stocks before the first death. |
-| **The tables hold 160 and no more** (milestone 174) | Low | At 144–159 colonists the colonies have 53–64 domes of 64, 47–48 structures of 48 and 93–111 corridors of 128 ([§10.1](#a-hundred-and-sixty-at-milestone-174)). |
-| **Metal holds most colonies under 120** (milestone 174) | Medium | After sol 80 the Metal is under 45 57–60 % of the time, and five worlds of eight stop at 88–111 waiting for a garden's dome (54) or a turbine (18) ([§10.1](#a-hundred-and-sixty-at-milestone-174)). Since milestone 176 the same wall is a power wall: the pumps run while the load is shed, the gardens do not, and 209–355 of a batch die of hunger ([§6.5](#the-pumps-stop-last-but-one-at-milestone-176)). The player's `μέταλλο+` is asked for under 40 and costs 54, so it is never paid, like the second mine of [milestone 160](#colonies-that-stop-at-milestone-160); without the reserve it took the power and 298 lives (`v174g`). |
-| **A valley without sites** (milestone 174) | Low | `1048` 1 stops at 49 with the turbine player in nine batches of ten: from sol 47 there is no site for oxygen or a Control room within the player's radii ([§10.1](#a-hundred-and-sixty-at-milestone-174)). With panels it reached 117–119. A question of where the player builds, as at [milestone 165](#the-neck-of-the-valley-at-milestone-165). |
+| ~~**Hunger after a hundred**~~ (milestone 189) | ~~Medium~~ | **Resolved at milestone 190, the user's choice: the player's Metal and power** ([§10.1](#hunger-after-a-hundred-at-milestone-190)). The colonies starved when the load was shed, in 27–52 % of their samples past 100: then the gardens, `VITROMEAT`, `MEALS` and `METAL` stop. The player found no site for a turbine beyond 20 tiles of the domes' centre, asked for a collector only at no production, which the battery's oxygen reserve made useless at 360–720, and never built a second `METAL`. Now `μέταλλο+` comes before the food while it can be paid, the power check sees the sol, the collector costs 14, and structures are sited as far as domes: 1,194 and 1,178 alive at sol 160 against 999, none dead of hunger against 82, the load shed 7–10 % of the time against 20 %. Until then: in both batches of milestone 189 the hunger deaths went up: 158 and 106 against 66 and 46 in seven worlds to sol 160 ([§6.5](#power-and-water-as-balances-like-planetbase-at-milestone-189)). They come late, at sols 119–159, in the colonies that grew past 100: `1048` 1 (stuck at 64 under milestone 188), `5A5A` 2, `BEEF` 2 and `C0DE` 0. The water's shortage order did not act (water under R1 in 0.1 % of the samples), and the script called as many ships. The food chain at that size, the wall of [§10.1](#a-hundred-and-sixty-at-milestone-174), is the first suspect; a player step should measure the food stocks before the first death. |
+| **The tables hold 160 and no more** (milestone 174) | Low | At 144–159 colonists the colonies have 53–64 domes of 64, 47–48 structures of 48 and 93–111 corridors of 128 ([§10.1](#a-hundred-and-sixty-at-milestone-174)). **Since milestone 190 most colonies reach them**: by sol 120–142, at 156–160 colonists, 56–64 domes and 46–48 structures, and the game refuses the player's sites from there on, 919–1,162 times a batch, at no cost ([§10.1](#hunger-after-a-hundred-at-milestone-190)). |
+| ~~**Metal holds most colonies under 120**~~ (milestone 174) | ~~Medium~~ | **Resolved at milestone 190, in the player** ([§10.1](#hunger-after-a-hundred-at-milestone-190)): `μέταλλο+` is asked while the ore is 100 or more and the Metal under 100, before the food steps, up to one for 20 colonists. 2.4–2.5 `METAL` machines a world against one, the Metal 164–182 on average from sol 80 against 62, seven worlds of eight past 140 by sol 107–110 on average. Most of the power wall was the turbines' sites. Until then: after sol 80 the Metal is under 45 57–60 % of the time, and five worlds of eight stop at 88–111 waiting for a garden's dome (54) or a turbine (18) ([§10.1](#a-hundred-and-sixty-at-milestone-174)). Since milestone 176 the same wall is a power wall: the pumps run while the load is shed, the gardens do not, and 209–355 of a batch die of hunger ([§6.5](#the-pumps-stop-last-but-one-at-milestone-176)). The player's `μέταλλο+` is asked for under 40 and costs 54, so it is never paid, like the second mine of [milestone 160](#colonies-that-stop-at-milestone-160); without the reserve it took the power and 298 lives (`v174g`). |
+| **A valley without sites** (milestone 174) | Low | `1048` 1 stops at 49 with the turbine player in nine batches of ten: from sol 47 there is no site for oxygen or a Control room within the player's radii ([§10.1](#a-hundred-and-sixty-at-milestone-174)). With panels it reached 117–119. A question of where the player builds, as at [milestone 165](#the-neck-of-the-valley-at-milestone-165). At milestone 190 it ends at 93–99; the old player reached 128 there and lost 45 to hunger (`o190`) ([§10.1](#hunger-after-a-hundred-at-milestone-190)). |
 | **A colony fills its valley** (found at milestone 160) | Low | A dome needs a corridor of up to 12 pieces to another dome, over ground, dust or foundation ([§9.3](#every-building-needs-a-neighbour-at-milestone-85)) and, since milestone 161, rock ([§9.4](#over-rock-too-at-milestone-161)). Where rock, mountain and water close a colony in, the valley runs out. `1048` 1 at sol 80 had no site for a dome anywhere in the world, 50 colonists and 600 Metal in store ([§10.1](#colonies-that-stop-at-milestone-160)). The player's own limit, 32 tiles from the domes' centre, was lifted at milestone 160. **Milestone 161, the user's choice, lets a corridor cross rock**: a third to a half more dome sites in the stuck colonies that still had some (32 → 49, 19 → 31, 180 → 232), none for `1048` 1 at sol 80, which mountain and a lake close. **Played, it gave fewer colonists, not more**: 410 at sol 120 against 446 with the old rule at the same speed. The scripted player spends the sites sooner — `5A5A` 2 filled its valley at 17 domes by sol 45 and stayed at 18 colonists — and two colonies stopped at the first Control's cap behind the Metal-held medbay — the player's order, changed at milestone 162 ([§10.1](#the-players-order-at-milestone-162)). **At milestone 164 `5A5A` 2 filled its valley again**: a medium dome at sol 37 closed the pass between mountain and lake, 32 sites for a small dome became 13, and none was left from sol 44. **Milestone 165, the user's choice, changes the player's choice, and the risk is Low since** ([§10.1](#the-neck-of-the-valley-at-milestone-165)). Under 40 sites, a medium dome that closes over three times what the step's small one would close, plus 2, is built small. `5A5A` 2 went east through the pass and ends at 64, and no world ends below milestone 164: 547 → 595 (control 596). A fixed limit, no medium dome under 40 sites, also saved `5A5A` 2 but left `1048` 1 at 50: its small domes spent the valley before the second Control. Open: a small dome or a structure's path can still close a neck, since only the step's two domes are compared. Also open: mountain or shallow water, which the user did not take. |
 | **Water at seventy** (found at milestone 162) | Medium | Milestone 145 keeps one pump site ahead for the scripted player ([§10.1](#water-kept-at-milestone-145)), which held to sixty-odd colonists. In two of milestone 162's batches `1048` 0 grew to 76 and 68 by sol 85–95, the water fell to 0 — once with no site for another pump, once with pumps built to sol 78 and the power at its life-support level — and the `OXYGEN` machines stopped: 66 and 49 died of air at once ([§10.1](#the-players-order-at-milestone-162)). The batch the user chose reached 77 there with one death; the same can happen to it. **It happened again at milestone 166**, on the path of a variant that was not kept (`v166d`): `1048` 0 at 77, the water at 0 by sol 109–112, 53 dead of air at sol 113 ([§6.10](#everyone-inside-at-milestone-166)). **At milestone 168 it was found to be the player's order**, not the water: an `οξυγόνο+` waiting for the metal of nine pieces of corridor held back the `αντλία+` of 22 for two and a half sols, and `BEEF` 2 of `v168d` lost 82 to air at sols 54 and 112. The pump now comes before the oxygen ([§10.1](#the-players-plants-at-milestone-168)), and in `v168g` no world has water under 20 after sol 30 (`v168a`: 30 samples in `1048` 0, 15 in `5A5A` 2). The game still has no warning before the water runs out. |
 | ~~Intruders kill whoever is outside~~ (found at milestone 165) | ~~Medium~~ | **Resolved at milestone 166, the user's choice: the alert, everyone inside** ([§6.10](#everyone-inside-at-milestone-166)). In the eight big plays of milestone 165, 60 of 62 deaths were to intruders, and a probe of the 95 raids found all 67 dead outside: 33 newcomers waiting for work at the pad where the intruders' ship lands, 30 at the mine, 55 before any guard struck. At the landing every colonist outside who is not a guard and not already going in now takes `T_FIGHT` and walks to the nearest ready airlock. Probed again: 13 raid deaths, 6 before a guard's blow, 82 of 95 raids without a death; 14 deaths in all, 606 alive at sol 120 against 595. Open: five guards died against one, since the intruders now meet them, and the late food wall still stops `1048` 0 and `ACE1` 0 at 74. |

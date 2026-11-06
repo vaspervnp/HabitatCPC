@@ -58,6 +58,7 @@ DROOM = dict(oxygen=4, canteen=3, quarters=2, green=5, factory=8, lab=9, medbay=
 MACHINE_COUNT = (1, 4, 8)          # υποδοχές ανά μέγεθος s/m/l (tools/econ.py)
 GROW_AT = 14                       # από τόσους αποίκους τα «+» χτίζουν μεσαίο θόλο
 CORE_R = (14, 20, 26, 32, 44, 60)  # tiles γύρω από το κέντρο των θόλων, με τη σειρά (44, 60: βήμα 160)
+EDGE_R = (20, 32, 44, 60)          # το ίδιο για τις δομές (βήμα 190· ως τότε μόνο 20)
 SHORE_AHEAD = 1                    # βήμα 145: ελεύθερες θέσεις αντλίας που κρατά
 SHORE_R = 16                       # ως τόσα tiles από το σκάφος
 SHORE_AT = GROW_AT                 # από τόσους αποίκους
@@ -67,7 +68,7 @@ FAR_ANCHORS = 6                    # σκαλοπάτια (airlock) για νε�
 SLOT_KEEP = 2                      # θέσεις δομών (STRUCT_SLOTS) που μένουν για αντλίες
 STRUCT_SLOTS = 48                  # το MAX_STRUCT του src/const.asm (32 ως το βήμα 155)
 MINE_K = 4                         # K_MINE, το είδος της δομής
-K_SOLAR, K_COLLECT, K_EXTRACT, K_AIRLOCK = 0, 2, 3, 5   # τα K_* του src/const.asm
+K_SOLAR, K_TURBINE, K_COLLECT, K_EXTRACT, K_AIRLOCK = 0, 1, 2, 3, 5   # τα K_* του src/const.asm
 R_GREEN = 5                        # D_ROOM του θερμοκηπίου: οι υποδοχές του είναι φυτά
 R_STORAGE = 6                      # D_ROOM της αποθήκης (το ROOM είναι η σειρά του καταλόγου)
 STRUCT_NAMES = ["ηλιακός", "ανεμογ.", "συλλέκτης", "αντλία", "ορυχείο", "airlock", "πίστα",
@@ -1362,17 +1363,43 @@ def power_short(G, night):
     138): αν στο τελευταίο sol η μπαταρία δεν έφτασε το 90% της χωρητικότητας,
     η μέρα δεν αφήνει περίσσευμα, και ένας ακόμη συλλέκτης μένει άδειος. Ως
     τότε το σενάριο έχτιζε συλλέκτες στη σειρά — πέντε στο 1048·0 του 136 —
-    με δύο ηλιακούς για 28-35 κατανάλωση."""
-    rows = last(G, 4)
-    if any(r["storm"] for r in rows):
+    με δύο ηλιακούς για 28-35 κατανάλωση.
+
+    ΟΛΟ ΤΟ SOL ΑΠΟ ΤΗΝ ΤΕΛΕΥΤΑΙΑ ΔΟΜΗ ΡΕΥΜΑΤΟΣ, ΚΑΙ Η ΡΕΖΕΡΒΑ ΤΟΥ ΟΞΥΓΟΝΟΥ
+    (βήμα 190, η επιλογή του χρήστη). Με τις ανεμογεννήτριες το pp σπάνια είναι
+    0, οπότε ο συλλέκτης δεν ζητιόταν σχεδόν ποτέ, και το μισό sol έκλεινε πριν
+    πληρωθεί η δομή: την έπαιρναν τα «+» της τροφής. Και η μπαταρία δανείζει τις
+    μηχανές μόνο πάνω από τη ρεζέρβα του οξυγόνου (οκτώ κύκλοι της ζήτησής του,
+    tools/econ.py tries): στους 160 ~540, και με 360-720 οι μηχανές δεν έπαιρναν
+    σχεδόν τίποτα. Στο v189 οι αποικίες που πείνασαν πάνω από τους 100 είχαν το
+    ρεύμα κομμένο το 27-52% των δειγμάτων (οι άλλες 5-10%), και τότε σταματούν
+    κήποι, VITROMEAT, MEALS και METAL. Τώρα: κόπηκε μέσα στο sol, από τότε που
+    τελείωσε η τελευταία δομή ρεύματος· συλλέκτης αν η μέση παραγωγή φτάνει
+    (1,1 x τη ζήτηση) αλλά πάνω από τη ρεζέρβα μένουν λιγότεροι από δύο κύκλοι
+    ζήτησης, αλλιώς ανεμογεννήτρια."""
+    rows = power_rows(G)
+    if any(r["storm"] for r in last(G, 4)):
         return False                        # η θύελλα σκεπάζει τα πάνελ: περνά
-    if any(t[4] == DS_BUILDING and t[2] in (0, 1, 2) for t in G.structs()):
+    if any(t[4] == DS_BUILDING and t[2] in (K_SOLAR, K_TURBINE, K_COLLECT) for t in G.structs()):
         return False
-    filled = max(r["bat"] for r in last(G)) >= 0.9 * max(1, G.rows[-1]["bcap"])
-    cut = lambda dark: any(r["pok"] != 1 and ((r["pp"] == 0) == dark) for r in rows)
-    if night:
-        return cut(True) and filled
-    return cut(False) or (cut(True) and not filled)
+    if not any(r["pok"] != 1 for r in rows):
+        return False
+    pu = sum(r["pu"] for r in rows) / len(rows)
+    pp = sum(r["pp"] for r in rows) / len(rows)
+    free = G.rows[-1]["bcap"] - EC.RESERVE_CYCLES * EC.RECIPE[OXYGEN][8] * machines(G, OXYGEN)
+    store = pp >= 1.1 * pu and free < 2 * pu
+    return store if night else not store
+
+
+def power_rows(G):
+    """Τα δείγματα του τελευταίου sol μετά την τελευταία δομή ρεύματος που
+    τελείωσε: ό,τι κόπηκε πριν από αυτήν δεν ζητά άλλη (βήμα 190)."""
+    rows = G.rows[-9:]
+    n = lambda r: sum(1 for k in r["sk"] if k in (K_SOLAR, K_TURBINE, K_COLLECT))
+    for i in range(len(rows) - 1, 0, -1):
+        if n(rows[i]) > n(rows[i - 1]):
+            return rows[i:]
+    return rows[1:]
 
 
 def food_short(G, which):
@@ -1582,6 +1609,17 @@ def plan_big():
         step("έλεγχος+", DOME_S, None, "control", zone="core", after=["έλεγχος"],
              when=lambda G: G.grow and G.rows[-1]["popcap"] < EC.AG_BOT0
              and G.rows[-1]["popcap"] - alive(G) < 8, again=True),
+        # ΤΟ ΜΕΤΑΛΛΟ ΠΡΙΝ ΑΠΟ ΤΗΝ ΤΡΟΦΗ, ΚΑΙ ΟΣΟ ΠΛΗΡΩΝΕΤΑΙ (βήμα 190, η επιλογή
+        # του χρήστη): ζητιόταν κάτω από 40 μέταλλα και κοστίζει 38 (γέμισμα) ή
+        # 54 (θόλος), και πίσω από τα «+» της τροφής — σε 30 παιχνίδια του 189
+        # δεν χτίστηκε ούτε μία, κάθε αποικία είχε μία METAL ως τους 158, με
+        # μετάλλευμα 300-600 στην αποθήκη και το μέταλλο κάτω από 54 το 80-94%
+        # των δειγμάτων. Τώρα όσο το μετάλλευμα μαζεύεται (100+) και το μέταλλο
+        # δεν περισσεύει (κάτω από 100), μία ανά είκοσι αποίκους. Στο LIFE (βήμα
+        # 174, χωρίς το απόθεμα και ως 1 + ζωντανοί / 10) 600 ζωντανοί και 298 νεκροί.
+        step("μέταλλο+", DOME_S, None, "factory", [METAL], zone="core", fill=True, grow=True, after=["εργοστάσιο"],
+             when=demand("μέταλλο+", lambda G: st(G, S_METAL) < 100 and st(G, S_ORE) >= 100
+                         and machines(G, METAL) < 1 + alive(G) // 20), again=True),
         step("γεύματα+", DOME_S, None, "canteen", [MEALS], zone="core", fill=True, grow=True, after=["γεύματα"],
              when=demand("γεύματα+", lambda G: food_short(G, "meals")), again=True),
         step("άμυλο+", DOME_S, None, "green", [STARCH], zone="core", fill=True, grow=True, after=["άμυλο"],
@@ -1625,9 +1663,6 @@ def plan_big():
         step("πλαστικό+", DOME_S, None, "factory", [PLASTIC], zone="core", fill=True, grow=True, after=["πλαστικό"],
              when=demand("πλαστικό+", lambda G: st(G, S_BIOPL) < 25 and st(G, S_STARCH_I) >= 40
                          and machines(G, PLASTIC) < 1 + alive(G) // 10), again=True),
-        step("μέταλλο+", DOME_S, None, "factory", [METAL], zone="core", fill=True, grow=True, after=["εργοστάσιο"],
-             when=demand("μέταλλο+", lambda G: st(G, S_METAL) < 40 and st(G, S_ORE) >= 30
-                         and machines(G, METAL) < 1 + alive(G) // 10), again=True),
         # ΔΕΝ ΧΤΙΖΕΤΑΙ ΠΟΤΕ (βρέθηκε στο βήμα 160): ζητείται κάτω από 40 μέταλλα
         # και κοστίζει 30 + 30 του αποθέματος (reserve), οπότε κάθε αποικία μένει
         # με ένα ορυχείο — και το μέταλλο+ έχει παράθυρο 38-39. Χωρίς το αδιέξοδο
@@ -1783,7 +1818,8 @@ def ready(G, s):
 # ΚΑΙ ΤΟ ΡΕΥΜΑ (βήμα 174): πάνω από τους 80 το ρεύμα έπεφτε το 31% του χρόνου
 # (p174), τα εργοστάσια μετάλλου σταματούσαν μαζί του, και ο «ηλιακός+» περίμενε
 # 45 μέταλλα (15 και τα 30) με το μέταλλο κάτω από 45 το 68% του χρόνου.
-LIFE = ("οξυγόνο+", "αντλία+", "airlock 2", "γεύματα+", "ανεμογεννήτρια+")
+# ΚΑΙ Ο ΣΥΛΛΕΚΤΗΣ (βήμα 190): 14 αντί για 44, όπως η ανεμογεννήτρια από το 174.
+LIFE = ("οξυγόνο+", "αντλία+", "airlock 2", "γεύματα+", "ανεμογεννήτρια+", "συλλέκτης+")
 
 
 def reserve(G, s):
@@ -1882,7 +1918,13 @@ def try_step(G, s):
         # λαχανικά+ στο (34, 0) τις έκλεινε όλες και ο μικρός στο (30, -4) 12 —
         # 19 δεν είναι πάνω από 3 x 12 + 2, και η αποικία έμεινε 18 ως το τέλος.
         for it in ((DOME_M, DOME_S) if item == DOME_M else (item,)):
-            for R in (CORE_R if s["zone"] == "core" and G.grow else (None,)):
+            # ΚΑΙ ΟΙ ΔΟΜΕΣ ΠΙΟ ΜΑΚΡΙΑ (βήμα 190): ως 20 tiles από το κέντρο των
+            # θόλων, όπως οι θόλοι ως το βήμα 160. Από τους 100 οι αποικίες
+            # απλώνονται ως τα 60, και από το sol 57-65 η ανεμογεννήτρια δεν
+            # έβρισκε θέση (BEEF 2, 1048 0): έξι σκαλοπάτια airlock, και το ρεύμα
+            # κομμένο το 38-57% των δειγμάτων — με αυτό σταματούν και τα MEALS.
+            rs = CORE_R if s["zone"] == "core" else EDGE_R
+            for R in (rs if G.grow else (None,)):
                 got = G.spot_zone(it, s["zone"], R)
                 if got is not None:
                     break
