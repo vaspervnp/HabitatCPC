@@ -48,6 +48,7 @@ MENU = [("RANDOM", "ANY OF THE FOUR", "RANDOM WORLD"),
 SUBTITLE = "a colony on a dead world"
 CHOOSE = "CHOOSE A WORLD"
 KEYS = "UP/DOWN, SPACE OR ENTER"   # βήμα 182: όχι FIRE (src/menu.asm: και RETURN, χειριστήριο)
+CREDIT = "REVIVE8BIT - 2026 - VASPER"   # βήμα 192: κάτω από το πάνελ, σβηστό
 LOADING = "LOADING"
 BUILDING = "BUILDING THE WORLD"
 TITLE = "HABITAT"
@@ -205,7 +206,7 @@ def encode(plane, tx, ty):
 def strings():
     """{ετικέτα: κείμενο} όσων γράφει το MENU.BIN."""
     s = {"s_sub": SUBTITLE, "s_cho": CHOOSE, "s_key": KEYS,
-         "s_lod": LOADING, "s_wld": BUILDING}
+         "s_lod": LOADING, "s_wld": BUILDING, "s_cred": CREDIT}
     for i, (name, desc, full) in enumerate(MENU):
         s[f"s_opt{i}"] = " " + name
         s[f"s_dsc{i}"] = desc
@@ -428,13 +429,15 @@ def bar(cv, files, gen):
 
 
 def background(i):
-    """Ο κόσμος i, ο τίτλος και ο υπότιτλος: ό,τι μένει σε όλη την αναμονή."""
+    """Ο κόσμος i, ο τίτλος, ο υπότιτλος και η υπογραφή: ό,τι μένει σε όλη την
+    αναμονή."""
     g = geom()
     seed, pl, tx, ty, plane = worlds()[i]
     cv = Canvas()
     draw_world(cv, plane, tx, ty)
     title(cv)
     text(cv, g["SUB_COL"], g["SUB_ROW"], SUBTITLE, g["SUB_W"])
+    text(cv, g["CRED_COL"], g["CRED_ROW"], CREDIT, mode="dim")
     return cv
 
 

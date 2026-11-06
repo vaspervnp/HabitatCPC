@@ -142,8 +142,8 @@ mw_exent:
         ret
 
 ; ---------------------------------------------------------------------------
-; mw_show — A = κόσμος, B = η διαλεγμένη γραμμή: ο κόσμος, ο τίτλος, και το
-; πάνελ του μενού. Χωρίς firmware (το καλούν και οι δοκιμές).
+; mw_show — A = κόσμος, B = η διαλεγμένη γραμμή: ο κόσμος, ο τίτλος, η
+; υπογραφή, και το πάνελ του μενού. Χωρίς firmware (το καλούν και οι δοκιμές).
 ; ---------------------------------------------------------------------------
 mw_show:
         push    af
@@ -156,6 +156,13 @@ mw_show:
         ld      de,SUB_ROW * 256 + SUB_COL
         ld      c,SUB_W
         call    mw_textn
+        xor     a                       ; η υπογραφή, σβηστή (βήμα 192)
+        ld      b,DIM
+        call    mw_mode
+        ld      hl,s_cred
+        ld      de,CRED_ROW * 256 + CRED_COL
+        call    mw_text
+        call    mw_flat
         call    mw_panel
         ld      hl,s_cho
         ld      de,CHO_ROW * 256 + CHO_COL
@@ -447,8 +454,10 @@ mw_flat:
         ld      b,#FF
 mw_mode:
         ld      (mgm_x + 1),a
+        ld      (mgm_x2 + 1),a
         ld      a,b
         ld      (mgm_a + 1),a
+        ld      (mgm_a2 + 1),a
         ret
 
 ; mw_text — HL = string, D = σειρά, E = στήλη. mw_textn: και C = πλάτος, με
@@ -485,6 +494,8 @@ mt_pad:
         jr      mt_pad
 
 ; mt_one — ένας γλύφος A στο DE, και DE += 2· το C (πλάτος) μετράει ως το 0.
+; Το XOR/AND του mw_mode μέσα στη γραμμή, όχι σε call (βήμα 192): 8 µs το byte,
+; ~32 ms στο μενού, πληρώνουν τα 12 ms της υπογραφής.
 mt_one:
         push    hl
         ld      l,a
@@ -502,12 +513,14 @@ mt_one:
 mto_ln:
         ld      a,(hl)
         inc     hl
-        call    mg_mode
+mgm_x:  xor     0
+mgm_a:  and     #FF
         ld      (de),a
         inc     de
         ld      a,(hl)
         inc     hl
-        call    mg_mode
+mgm_x2: xor     0
+mgm_a2: and     #FF
         ld      (de),a
         dec     de
         ld      a,d
@@ -522,10 +535,6 @@ mto_ln:
         or      a
         ret     z
         dec     c
-        ret
-mg_mode:
-mgm_x:  xor     0
-mgm_a:  and     #FF
         ret
 
 ; ---------------------------------------------------------------------------

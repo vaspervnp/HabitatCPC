@@ -19864,7 +19864,7 @@ order of this table: its own sector reader goes track by track
 |---|---|---|---|
 | `HABITAT.BAS` | — | 3 lines | `MEMORY &8FFF` · `LOAD"LOADER.BIN",&9000` · `CALL &9000` |
 | `LOADER.BIN` | `&9000` | 1,231 since milestone 177, which keeps the jumpblock's word for a new colony ([§10.3](#the-end-at-milestone-177)); 1,205 from milestone 175, which zeroes bank 6 (1,188 until then, 1,677 at milestones 128–129, 1,228 until 128, 589 until 113) | the loader with its own sector reader and the bar's files part, plus the 53-byte endgame it copies to `&3FC0`. The planet menu's code was here at 128–129 |
-| `MENU.BIN` | `&4000` | 8,457 | the menu over a world (milestone 130): 32 worlds, their tiles, the game's font and the code ([§13.2](#the-menu-over-a-world-at-milestone-130)). Read first, then overwritten by `PAGE2.BIN` and `BANK1.BIN` |
+| `MENU.BIN` | `&4000` | 8,674 since milestone 192's signature, the same nine blocks (8,530 at 191, 8,457 at 130) | the menu over a world (milestone 130): 32 worlds, their tiles, the game's font and the code ([§13.2](#the-menu-over-a-world-at-milestone-130)). Read first, then overwritten by `PAGE2.BIN` and `BANK1.BIN` |
 | `BANK6.BIN` | bank 6 | 4,095 since milestone 175 (16,384 until then) | quadrants, figures, entity tables. Without its last 12,289 bytes, which were zeros: the loader zeroes bank 6 before reading it ([§9.6](#pages-at-milestone-175)) |
 | `BANK7.BIN` | bank 7 | 16,384 | structures, plants, and the reserved holes |
 | `TEXT.BIN` | bank 7, over the hole | 3,707 since milestone 177's milestones and end ([§10.2](#seen-at-milestone-177)), the same four blocks; 3,132 from milestone 175, with the tutorial's page code (2,488 until then, 2,400 at milestone 170, 2,070 at 169) | every string the game prints ([§4.2](#42-the-eight-banks)), and since milestone 170 the structures' drawing code after them ([§8.4](#the-structures-without-their-masks-at-milestone-170)) |
@@ -20254,6 +20254,8 @@ it for the tests' reference.
   line drawn once, the RLE without the vein's bit, the last row whole, the highlight
   flat, the title's outline yellow, and `BUILDING THE WORLD` lit from the start. A tenth
   since milestone 149: five lines drawn (`ld b,5`), and the sixth, `TUTORIAL`, missing.
+  Two more since milestone 192: the signature lit, and the signature missing
+  ([below](#the-signature-at-milestone-192)).
 - **`tests/test_disc.py`** checks:
   - the menu screen, byte for byte, for the world the loader picked;
   - its colours, pixel for pixel from the emulator's framebuffer, with the palette of
@@ -20266,6 +20268,50 @@ it for the tests' reference.
   - the bar never goes back, the files fill their 12 bytes before
     `BUILDING THE WORLD` lights, and the generator fills its 32 after.
 - **`tests/menuread.py`** reads the game's font in Mode 0: normal, inverse or dimmed.
+
+#### The signature, at milestone 192
+
+The user asked for `REVIVE8BIT - 2026 - VASPER` at the bottom of the menu screen.
+
+- **Where:** the last row, 24, under the panel. The panel is rows 10–23, 26 columns
+  from column 7, and the line is 26 characters, so it fills the panel's width, centred
+  on the 40 columns, on a black strip that continues the panel's black.
+- **How:** dimmed, in pen 4, the frame's colour (`AND &3F`, as `BUILDING THE WORLD`
+  before it lights). It reads as a signature, not as a line of the menu.
+- **When:** `mw_show` draws it with the world, the title and the subtitle, so it stays
+  on the loading screen too, until the game clears the screen.
+- **Where it is defined:** `CRED_COL` and `CRED_ROW` in `src/menugeom.asm` (`PNL_COL`,
+  `PNL_ROW + PNL_H`), and the text, `CREDIT`, in `tools/menuworld.py`.
+
+**Cost:**
+
+- **`MENU.BIN`** grew from 8,530 to 8,674 bytes, 144 more:
+  - 96 for six new glyphs (`-`, `0`, `2`, `6`, `8`, `V`; 39 characters instead of 33);
+  - 27 for the string;
+  - 21 for the code.
+
+  It is still nine blocks, so the disc is unchanged. The loader reads one sector more
+  (18 instead of 17).
+- **The draw.** The 26 glyphs cost 11,920 µs: 492,430 → 504,350, over the test's
+  ceiling of 500,000. That is paid back by moving `mw_mode`'s `XOR` and `AND` into the
+  glyph loop, instead of a call per byte (`mg_mode` is gone). That saves 8 µs a byte,
+  128 a glyph, and about 32 ms over the menu's 254 glyphs.
+  - The menu now draws in **471,950 µs**, 20 ms less than before the signature.
+  - Moving the highlight (two lines and the description, 71 glyphs) is about 9 ms
+    faster too.
+- **The game:** nothing.
+
+**Tests:**
+
+- **`tests/test_menu.py`.** The reference draws the signature in `background()`, so
+  the byte-for-byte checks of all 32 worlds and of the six loading panels include it.
+  - A new check that the text is the user's, on row 24, under the panel and centred.
+  - Two new negatives: the signature lit (`AND &FF`, 2,060 bytes differ over four
+    worlds), and missing (no `call mw_text`, 3,124 bytes).
+- **Disc tests.** `test_disc`, `test_save`, `test_tutor`, `test_goals` and
+  `test_tupage` boot the disc through the menu, and they pass.
+- **Manuals.** The images `docs/img/menu.png` and `docs/img/loading.png` were
+  regenerated.
 
 ### 13.3 The loader reads the disc itself, at milestone 113
 

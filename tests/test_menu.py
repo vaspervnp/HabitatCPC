@@ -20,7 +20,9 @@
      autotile ανάποδα, το βαθύ νερό όχι νερό, η φλέβα χωρίς τα bits της, οι
      γραμμές του tile μία φορά, το RLE χωρίς το bit της φλέβας, η τελευταία
      σειρά ολόκληρη, η διαλεγμένη ίσια, το περίγραμμα του τίτλου κίτρινο, το
-     BUILDING THE WORLD αναμμένο από την αρχή.
+     BUILDING THE WORLD αναμμένο από την αρχή, η υπογραφή ίσια ή καθόλου.
+  5. Η ΥΠΟΓΡΑΦΗ (βήμα 192): REVIVE8BIT - 2026 - VASPER στην τελευταία σειρά,
+     κάτω από το πάνελ και στο πλάτος του· τη ζωγραφίζει το 2 μαζί με όλα.
 """
 import os, subprocess, sys
 
@@ -115,6 +117,16 @@ def main():
           f"MENU.BIN {size} bytes από το #{g['MW_ORG']:04X}, με το παράθυρο των "
           f"κλάσεων ως το #{end:04X} (ταβάνι #8000)")
 
+    # --- 5. η υπογραφή (βήμα 192) ----------------------------------------------
+    check(MW.CREDIT == "REVIVE8BIT - 2026 - VASPER"
+          and MW.strings().get("s_cred") == MW.CREDIT
+          and g["CRED_ROW"] == 24 and g["CRED_ROW"] == g["PNL_ROW"] + g["PNL_H"]
+          and g["CRED_COL"] == g["PNL_COL"] and len(MW.CREDIT) == g["PNL_W"]
+          and 2 * g["CRED_COL"] + len(MW.CREDIT) == 40,
+          f"η υπογραφή «{MW.CREDIT}» στη σειρά {g['CRED_ROW']} (η τελευταία), κάτω "
+          f"από το πάνελ, στήλες {g['CRED_COL']}-{g['CRED_COL'] + len(MW.CREDIT) - 1} "
+          f"(στη μέση των 40)")
+
     # --- 2. η σχεδίαση -------------------------------------------------------
     rig = Rig(blob)
     show, load = sym["MW_SHOW_E"], sym["MW_LOAD_E"]
@@ -181,6 +193,11 @@ def main():
          [(find("MW_LOAD", [0x06, 0x3F]) + 1, 0xFF)], "load"),
         ("πέντε γραμμές, χωρίς το TUTORIAL (ld b,5· βήμα 149)",
          [(find("MW_SHOW", [0x06, g["OPT_N"]]) + 1, 5)], None),
+        ("την υπογραφή αναμμένη (βήμα 192)",
+         [(find("MW_SHOW", [0x06, 0x3F]) + 1, 0xFF)], None),
+        ("χωρίς υπογραφή (το call mw_text της)",
+         [(find("MW_SHOW", [0x11, g["CRED_COL"], g["CRED_ROW"]]) + 3 + k, 0)
+          for k in range(3)], None),
     ]
     for label, patch, what in negs:
         n = 0
