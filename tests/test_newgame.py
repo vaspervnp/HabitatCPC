@@ -198,6 +198,8 @@ def wipe6(L, before):
     dome, ag = L["G_dome_tbl"] - 0x4000, L["G_agent_fields"] - 0x4000
     b6 = bytearray(before[6])
     b6[dome:0x4000] = bytes(0x4000 - dome)
+    for a, z in codeat.B6T:                              # οι ουρές μένουν: κώδικας (βήμα 188)
+        b6[a - 0x4000:z - 0x4000] = before[6][a - 0x4000:z - 0x4000]
     for page in (9, 10, 11):                             # θέση, ακμή, εργασία
         o = ag + 256 * page
         b6[o:o + 188] = b"\xff" * 188                 # N_AGENT, κάτω από την κρυφή μνήμη του 192
@@ -317,7 +319,10 @@ def check(sym, patch=(), n=8, timing=False, colony=False):
             # τα έξι bytes ως εκεί, και από τους θόλους
             w6, x6, d6 = (L[k] - 0x4000 for k in ("G_worldinfo", "G_b6x", "G_dome_tbl"))
             G.put(6, w6, bytes(rnd.randrange(256) for _ in range(x6 - w6)))
+            keep = [(a - 0x4000, bytes(G.bank(6, a - 0x4000, z - a))) for a, z in codeat.B6T]
             G.put(6, d6, bytes(rnd.randrange(256) for _ in range(0x4000 - d6)))
+            for o, code in keep:                         # ...ούτε τις ουρές (βήμα 188)
+                G.put(6, o, code)
             G.put(5, L["G_corr_tbl"] - 0x4000, bytes(rnd.randrange(256) for _ in range((codeat.MAX_CORR + 1) * 4)))
             G.put(2, L["G_econ_state"] - 0x8000,
                   bytes(rnd.randrange(256) for _ in range(L["G_hud_shadow"] - L["G_econ_state"])))

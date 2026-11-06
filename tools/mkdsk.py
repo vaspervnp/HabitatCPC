@@ -52,6 +52,7 @@ FILES = [
     ("BANK7.BIN",   "bank7.bin", 0x4000, 0x0000),
     ("TEXT.BIN",    "text.bin",  0,      0x0000),   # από το layout: G_text
     ("B6CODE.BIN",  "b6code.bin", 0,     0x0000),   # από το layout: G_b6code (βήμα 92)
+    ("B6TAIL.BIN",  "b6tail.bin", 0,     0x0000),   # από το const: B6T_0, οι ουρές των πεδίων (βήμα 188)
     ("BANK1.BIN",   "bank1c.bin", 0,      0x0000),  # από το OV_LOAD: ο κώδικας των τρυπών (βήμα 102),
                                                     # τα εικονίδια, ο κώδικας του b1code (βήμα 94)
     ("PAGE2.BIN",   "page2.bin", 0x8000, 0x0000),

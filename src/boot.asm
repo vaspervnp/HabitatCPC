@@ -178,6 +178,13 @@ bt_norom:
         ld      de,G_b6code
         ld      c,PAGE_B6
         call    ld_bank
+        ; ...και ο κώδικας στις ουρές των σελίδων πεδίων (βήμα 188, src/full6.asm),
+        ; από την πρώτη ουρά ως το τέλος της τελευταίας, με τα πεδία ανάμεσα μηδέν.
+        ld      hl,n_b6tail
+        ld      b,n_b6tail_e - n_b6tail
+        ld      de,B6T_0
+        ld      c,PAGE_B6
+        call    ld_bank
         ; Η «τράπεζα 1» είναι η βασική RAM στο παράθυρο, όχι επέκταση: τα
         ; εικονίδια κάθονται πάνω από τον πίνακα DIST, χωρίς σελιδοποίηση.
         ld      hl,n_bank1
@@ -934,6 +941,8 @@ n_text:     db "TEXT.BIN"
 n_text_e:
 n_b6code:   db "B6CODE.BIN"
 n_b6code_e:
+n_b6tail:   db "B6TAIL.BIN"
+n_b6tail_e:
 n_page2:    db "PAGE2.BIN"
 n_page2_e:
 n_bank5:    db "BANK5.BIN"

@@ -322,15 +322,19 @@ class Run:
         και ο βρόχος διαβάζει τα πλήκτρα (listening). Χωρίς το τελευταίο, από
         το βήμα 186 ο κόσμος του DESERT (άλλο R, άλλα μεγέθη αρχείων) έφτανε
         εδώ στη μέση της πρώτης πλήρους σχεδίασης, 221 ms χωρίς σάρωση, και το
-        G των 4 frames του tests/test_goals.py χανόταν."""
+        G των 4 frames του tests/test_goals.py χανόταν. Από το βήμα 188 (ένα
+        αρχείο ακόμη, το B6TAIL.BIN) το is_fc άλλαζε μία φορά στη μέση του
+        φορτώματος, πριν από τη γεννήτρια: το listening γύριζε False μετά από
+        3 s, με τη γεννήτρια ακόμη στη μέση, και το game() το αγνοούσε. Τώρα
+        ένα False σημαίνει «όχι ακόμη» και ο βρόχος συνεχίζει."""
         for f in range(limit):
             if self.pg() == 0xFF:
                 a = self.m.peek(self.sym["IS_FC"])
                 self.m.run_frames(2)
                 if self.m.peek(self.sym["IS_FC"]) != a:
                     self.m.run_frames(20)
-                    self.listening()
-                    return f
+                    if self.listening():
+                        return f
             self.m.run_frames(1)
         return None
 

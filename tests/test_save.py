@@ -655,47 +655,60 @@ def main():
           "κατεδάφιση από τις τρύπες")
     ov_write(sa + k + 1, b"\x6F")
 
-    # --- 9. ο κώδικας του b6x μένει (βήμα 187) ------------------------------
+    # --- 9. ο κώδικας του b6x και των ουρών μένει (βήματα 187-188) ----------
     # Το μπλοκ της τράπεζας 6 γράφει από το #6600, και το b6x (#6606-#667F,
-    # src/need6.asm) είναι μέσα του: κάθε σώσιμο έχει εκεί τον κώδικα του
-    # παιχνιδιού που το έγραψε, και ένα του βήματος 186 μηδενικά. Ενα τέτοιο
-    # εδώ: το b6x μηδέν στη μνήμη μόνο όσο σώζει, με τον τροχό σταματημένο,
-    # ώστε κανένας κύκλος ροής να μην τρέξει το st_need στο μεταξύ.
+    # src/need6.asm) και οι ουρές των σελίδων πεδίων 0-3 (src/full6.asm) είναι
+    # μέσα του: κάθε σώσιμο έχει εκεί τον κώδικα του παιχνιδιού που το έγραψε,
+    # και ένα του βήματος 186 μηδενικά. Ενα τέτοιο εδώ: ο κώδικας μηδέν στη
+    # μνήμη μόνο όσο σώζει, με τον τροχό σταματημένο, ώστε κανένας κύκλος ροής
+    # να μην τρέξει το st_need στο μεταξύ.
     lay = {p[0]: int(p[2].lstrip("#"), 16) for p in (
         line.split() for line in open(os.path.join(ROOT, "build", "layout.asm"),
                                       encoding="utf-8")) if len(p) >= 3 and p[1] == "equ"}
     b6 = cpc._lib.cpcemu_ram_ptr(m._h, 6)
-    x6, d6 = lay["G_b6x"] - 0x4000, lay["G_dome_tbl"] - 0x4000
+    areas = [(lay["G_b6x"] - 0x4000, lay["G_dome_tbl"] - 0x4000)] + \
+            [(a - 0x4000, z - 0x4000) for a, z in codeat.B6T]
 
-    def b6x(data=None):
+    def code6(data=None):
         if data is not None:
-            for i, v in enumerate(data):
-                b6[x6 + i] = v
-        return bytes(b6[x6 + i] for i in range(d6 - x6))
-    code_x = b6x()
+            data = iter(data)
+            for a, z in areas:
+                for o in range(a, z):
+                    b6[o] = next(data)
+        return bytes(b6[o] for a, z in areas for o in range(a, z))
+    code_x = code6()
     n_x = sym["ZZ_B6X_END"] - lay["G_b6x"]
+    n_t = sum(1 for x in code_x[n_x:] if x)                     # ό,τι δεν είναι μηδέν στις ουρές
     freeze(True)
-    b6x(bytes(d6 - x6))
+    code6(bytes(len(code_x)))
     disc_op("S", 1)
-    b6x(code_x)
+    code6(code_x)
     freeze(False)
     disc_op("L", 1)
-    check("LOADED FROM SLOT 2" in LAST_MSG and b6x() == code_x and any(code_x[:n_x]),
-          f"σώσιμο με το b6x μηδέν, όπως του βήματος 186: φορτώνεται (|{LAST_MSG}|), και "
-          f"οι {n_x} bytes του κώδικα μένουν ({sum(1 for a, b in zip(b6x(), code_x) if a != b)} άλλαξαν)")
-    # ΑΡΝΗΤΙΚΟ: το sv_bodyx χωρίς το svx_in (call -> nop): ο κώδικας μένει μηδέν.
-    sb, si = sym["SV_BODYX"], sym["SVX_IN"]
-    k = next(k for k in range(16) if list(m.read_ram(sb + k, 3)) == [0xCD, si & 255, si >> 8])
-    m.write_ram(sb + k, b"\0\0\0")
+    check("LOADED FROM SLOT 2" in LAST_MSG and code6() == code_x and any(code_x[:n_x])
+          and n_t > 64,
+          f"σώσιμο με το b6x και τις ουρές μηδέν, όπως του βήματος 186: φορτώνεται "
+          f"(|{LAST_MSG}|), και οι {n_x} + {n_t} bytes του κώδικα μένουν "
+          f"({sum(1 for a, b in zip(code6(), code_x) if a != b)} άλλαξαν)")
+    # ΑΡΝΗΤΙΚΟ: το sv_bodyx χωρίς τη δεύτερη ανταλλαγή (call -> nop): ο κώδικας
+    # μένει όπως το σώσιμο, μηδέν. Και χωρίς το ec_setfull του wheel_reset, που
+    # τρέχει από τις ουρές (σε μηδενικά θα έπεφτε στα πεδία των πρακτόρων).
+    sb, sw = sym["SV_BODYX"], sym["SVX_SWAP"]
+    ks = [k for k in range(16) if list(m.read_ram(sb + k, 3)) == [0xCD, sw & 255, sw >> 8]]
+    wr, sf = sym["WHEEL_RESET"], sym["EC_SETFULL"]
+    kw = next(k for k in range(32) if list(m.read_ram(wr + k, 3)) == [0xCD, sf & 255, sf >> 8])
+    m.write_ram(sb + ks[1], b"\0\0\0")
+    m.write_ram(wr + kw, b"\0\0\0")
     freeze(True)                         # ό,τι φορτωθεί δεν τρέχει
     disc_op("L", 1)
-    got_x = b6x()
-    b6x(code_x)
-    m.write_ram(sb + k, bytes([0xCD, si & 255, si >> 8]))
+    got_x = code6()
+    code6(code_x)
+    m.write_ram(sb + ks[1], bytes([0xCD, sw & 255, sw >> 8]))
+    m.write_ram(wr + kw, bytes([0xCD, sf & 255, sf >> 8]))
     freeze(False)
-    check(not any(got_x[:n_x]),
-          f"ΑΡΝΗΤΙΚΟ: χωρίς το svx_in το φόρτωμα αφήνει το b6x όπως το σώσιμο: "
-          f"{sum(1 for x in got_x if x)} μη μηδενικά")
+    check(len(ks) == 2 and not any(got_x),
+          f"ΑΡΝΗΤΙΚΟ: χωρίς τη δεύτερη ανταλλαγή το φόρτωμα αφήνει το b6x και τις ουρές "
+          f"όπως το σώσιμο: {sum(1 for x in got_x if x)} μη μηδενικά")
 
     # ΑΡΝΗΤΙΚΟ (μετά το βήμα 174): το sv_ovl με τον κώδικα εκεί που ήταν, μετά
     # τα 512 της κεφαλίδας (ld de,GH_BUF + 512): οι γραμμές του γράφουν πάνω

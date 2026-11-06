@@ -497,6 +497,12 @@ MAX_DEGREE  equ 8
 ; AG_PG + 8 + k: από το ένα στο άλλο `set 3,h`, αφού το AG_PG είναι πολλαπλάσιο
 ; του 16 (assert), και το `inc h` από πεδίο σε πεδίο του ίδιου μισού μένει.
 AG_PG       equ G_agent_fields >> 8
+; ΟΙ ΟΥΡΕΣ ΩΣ ΚΩΔΙΚΑΣ (βήμα 188, src/full6.asm): τα ids N_AGENT-255 των σελίδων
+; AG_PG + 0..B6T_N-1. Στις σελίδες 8-15, από το 192, η κρυφή μνήμη φιγούρων
+; (assert στο src/main.asm).
+B6T_0       equ G_agent_fields + N_AGENT
+B6T_LEN     equ 256 - N_AGENT
+B6T_N       equ 4
 AG_HI       equ 8                            ; οι σελίδες των δεύτερων πεδίων
 AG_FLAGS    equ G_agent_fields               ; flags     (role     στο + AG_HI σελίδες)
 AG_NODE     equ G_agent_fields + 256         ; node      (slot)
@@ -543,7 +549,7 @@ PAGE2_CODE  equ GH_BUF + GH_LOG     ; από εδώ και πάνω, κώδικ�
 ; game_new. Ο δίσκος τον φέρνει με το game2.bin, που αρχίζει πια από εδώ (ο
 ; φορτωτής αντιγράφει στο BOOT_ORG, src/boot.asm), και από κάτω του η αποικία
 ; δοκιμών (μόνο στο snapshot). Το πρώτο μεγάλο φάντασμα τον σβήνει.
-BOOT_MAX    equ 448
+BOOT_MAX    equ 464                 ; 448 ως το βήμα 187: το game_new γύρω από τις ουρές
 BOOT_ORG    equ PAGE2_CODE - BOOT_MAX
 ; Η κρυφή μνήμη φιγούρων ήταν εδώ και πήρε 512 bytes τράπεζας 2· από το βήμα 30
 ; ζει στην τράπεζα 6 (G_dome_fig), όπου το πέρασμα αντικειμένων την έχει ήδη

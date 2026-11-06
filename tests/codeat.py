@@ -30,8 +30,15 @@ B6X_START = _layout("G_b6x")            # και το δεύτερο κομμά�
 B6X_END = _layout("G_dome_tbl")
 
 
+# ΚΑΙ ΟΙ ΟΥΡΕΣ ΤΩΝ ΣΕΛΙΔΩΝ ΠΕΔΙΩΝ (βήμα 188, src/full6.asm): τα ids 188-255 των
+# σελίδων 0-3, από το G_agent_fields (src/const.asm: B6T_0, B6T_LEN, B6T_N).
+B6T = [(_layout("G_agent_fields") + 256 * k + 188, _layout("G_agent_fields") + 256 * (k + 1))
+       for k in range(4)]
+
+
 def in_b6(addr):
-    return B6_START <= addr < B6_END or B6X_START <= addr < B6X_END
+    return (B6_START <= addr < B6_END or B6X_START <= addr < B6X_END
+            or any(a <= addr < z for a, z in B6T))
 
 
 def _b6(m):

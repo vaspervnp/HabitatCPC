@@ -414,67 +414,6 @@ erv_put:
         ld      (EC_RSV),a              ; όχι μηδέν: ο επόμενος κύκλος με χώρο το αδειάζει
         ret                             ; στο erd_lp
 
-; ec_setfull — A = 0 ή 1: το ec_full (src/stock.asm) και ο κώδικας που το
-; ακούει χωρίς να το διαβάζει (βήμα 122). Ενα «ld a,(ec_full) / or a» σε κάθε
-; μηχανή και σε κάθε κήπο κόστιζε ~170 us στην επίσκεψη των θόλων 0-15 της
-; αποικίας του tests/test_sim.py (12,5 ms, η βαρύτερη της θέσης 11) για κάτι
-; που αλλάζει σπάνια: εδώ αλλάζει η τρίτη κλήση του ec_run_mach (erm_in ή
-; erm_inf) και το «or a» του κήπου (ή «xor a», που αφήνει πάντα Z). Από το
-; st_check (src/needs.asm) και το wheel_reset. Χαλάει AF, C, HL.
-ec_setfull:
-        ld      (ec_full),a
-        or      a
-        ld      hl,erm_in
-        ld      de,256 * S_WATER + #3E  ; ld a,S_WATER: ο κήπος όπως ήταν
-        jr      z,esf_put
-        ; ΓΕΜΑΤΗ (βήμα 142): το σπανιότερο υλικό του γεύματος — το ec_need, που
-        ; το erm_inf το διαβάζει ως απόθεμα — και στο erp_chk ως κατηγορία φυτού
-        ; (άμυλο 0, λαχανικά 1· το κρέας δεν το βγάζει κανένα φυτό, #FF).
-        ld      a,(ec_need)
-        sub     S_STARCH
-        cp      2
-        jr      c,esf_cls
-        ld      a,#FF
-esf_cls:
-        ld      (erp_cls + 1),a
-        ld      hl,erm_inf
-        ld      de,#18 + 256 * (erp_chk - erp_full - 2)   ; jr erp_chk
-esf_put:
-        ld      (erm_c3 + 1),hl
-        ld      (erp_full),de
-        ; ΚΑΙ ΤΟ ΑΠΟΘΕΜΑ ΜΕΤΑΛΛΟΥ (βήμα 127) ΚΑΙ ΤΟ ΟΡΙΟ ΤΟΥ ΒΙΟΠΛΑΣΤΙΚΟΥ (βήμα
-        ; 138): τα δύο bits του ec_keep διαλέγουν την πρώτη κλήση εισόδου από
-        ; τις τέσσερις. Οσο υπάρχει μέταλλο και το βιοπλαστικό είναι κάτω από
-        ; BIO_MAX, τίποτα δεν κοστίζει· με το ένα από τα δύο, όσο κόστιζε το
-        ; απόθεμα μετάλλου μόνο του.
-        ; Πρόσθεση 16 bits, όχι σελίδα: οι δοκιμές βάζουν τον κώδικα αλλού.
-        ; ΚΑΙ ΤΟ ΟΡΙΟ ΤΩΝ ΑΝΤΑΛΛΑΚΤΙΚΩΝ (βήμα 144): το bit 2 διαλέγει τη δεύτερη
-        ; κλήση, erm_in ή erm_inp. Τα δύο κάτω την πρώτη, όπως ως τώρα.
-        ld      a,(ec_keep)
-        ld      hl,erm_in
-        bit     2,a
-        jr      z,esf_c2
-        ld      hl,erm_inp
-esf_c2:
-        ld      (erm_c2 + 1),hl
-        and     3
-        add     a,a
-        ld      hl,esf_tab
-        add     a,l
-        ld      l,a
-        adc     a,h
-        sub     l
-        ld      h,a
-        ld      a,(hl)
-        inc     hl
-        ld      h,(hl)
-        ld      l,a
-        ld      (erm_c1 + 1),hl
-        ret
-esf_tab:
-        dw      erm_in, erm_inb, erm_ink, erm_inkb      ; ec_keep 0-3
-        assert  erp_chk - erp_full - 2 < 128 && NEED_MIN < 256 && S_WATER == 0
-
 ; erm_ink — η πρώτη είσοδος όταν το μέταλλο είναι κάτω από KEEP_METAL (βήμα
 ; 127, η επιλογή του χρήστη): CY, και η μηχανή σταματά — ούτε τρώει ούτε ζητά
 ; ρεύμα — αν η πρώτη της είσοδος είναι το μέταλλο. Οσες το τρώνε, το έχουν

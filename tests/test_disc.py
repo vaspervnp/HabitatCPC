@@ -632,6 +632,16 @@ def main():
     check(len(code) > 64 and not bad and sym["BOT_TICK"] == at,
           f"ο κώδικας του τροχού ήρθε από τον δίσκο στην τράπεζα 6: {len(code)} bytes στο "
           f"#{at:04X}, {len(bad)} διαφορετικά {where} (έξω από τα {len(live)} που γράφει όσο τρέχει)")
+    # ...ΚΑΙ ΟΙ ΟΥΡΕΣ ΤΩΝ ΣΕΛΙΔΩΝ ΠΕΔΙΩΝ (βήμα 188, src/full6.asm): η B6TAIL.BIN από
+    # την πρώτη ως το τέλος της τελευταίας, με τα πεδία των πρακτόρων ανάμεσα·
+    # μόνο οι ουρές είναι του build — τα πεδία είναι του παιχνιδιού που τρέχει.
+    tail = open(os.path.join(ROOT, "build", "b6tail.bin"), "rb").read()
+    t0 = sym["EC_SETFULL"]
+    tails = [(t0 + 256 * k, tail[256 * k:256 * k + 256 - (t0 & 255)])
+             for k in range((len(tail) + 255) // 256)]
+    tbad = [a + i for a, want in tails for i, x in enumerate(want) if b6[a - 0x4000 + i] != x]
+    check((t0 & 255) == 188 and len(tails) == 4 and not tbad and any(tail[:68]),
+          f"και οι {len(tails)} ουρές των σελίδων πεδίων από το #{t0:04X}: {len(tbad)} διαφορετικά")
 
     # --- 3δ. κανένα out (c),c στον κώδικα της τράπεζας 6 (βήμα 110) ----------
     # Ο,τι τρέχει από το b6code τρέχει από το παράθυρο &4000-&7FFF· μια άλλη
@@ -644,6 +654,7 @@ def main():
     main_src = open(os.path.join(ROOT, "src", "main.asm"), encoding="utf-8").read()
     block = main_src[main_src.index("org     G_b6code"):main_src.index("zz_b6code_end:")]
     block += main_src[main_src.index("org     G_b6x"):main_src.index("zz_b6x_end:")]   # βήμα 187
+    block += main_src[main_src.index("org     B6T_0, #8000"):main_src.index("zz_b6t_end:")]   # βήμα 188
     b6files = re.findall(r'^\s+include\s+"([^"]+)"', block, re.M)
 
     def pages(text):
@@ -912,6 +923,9 @@ def main():
     want6, want7 = bytearray(img("bank6.bin")), bytearray(img("bank7.bin"))
     code6, text7 = img("b6code.bin"), img("text.bin")
     want6[lay["G_b6code"] - 0x4000:lay["G_b6code"] - 0x4000 + len(code6)] = code6
+    tail6 = img("b6tail.bin")                       # οι ουρές (βήμα 188)
+    t6 = sym["EC_SETFULL"] - 0x4000
+    want6[t6:t6 + len(tail6)] = tail6
     want7[lay["G_text"] - 0x4000:lay["G_text"] - 0x4000 + len(text7)] = text7
     wi6 = lay["G_worldinfo"] - 0x4000
     game = img("game.bin")
