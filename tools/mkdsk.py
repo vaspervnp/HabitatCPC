@@ -63,6 +63,8 @@ STUB = ('10 MEMORY &8FFF\r\n'
 FILES = [
     ("LOADER.BIN",  "boot.bin",   0x9000,       None),
     ("MENU.BIN",    "menu.bin",   "MW_ORG",     0x8000),    # το μενού πάνω σε κόσμο (βήμα 130)
+    ("REVIVE.BIN",  "revive.bin", "SP_TMP",     "GEN_END"), # οι δύο οθόνες (βήμα 194, tools/splash.py),
+    ("SPLASH.BIN",  "splash.bin", "SP_TMP",     "GEN_END"), # στην τράπεζα 4: 16 KB και τα χρώματα, ως το #8010
     ("BANK6.BIN",   "bank6",      0x4000,       "GEN_END"), # όλη η 6: + b6code (βήμα 92) + ουρές (188)
     ("BANK7.BIN",   "bank7",      0x4000,       "GEN_END"), # όλη η 7: + τα κείμενα στο G_text
     ("BANK1.BIN",   "bank1c.bin", "OV_LOAD",    "GEN_END"), # ο κώδικας των τρυπών (βήμα 102),
@@ -79,6 +81,7 @@ FILES = [
     ("TUTOR.TXT",   "tutor.txt",  None,         None),
 ]
 PLAIN = {"LOADER.BIN", "TUTOR.TXT"}                     # χωρίς συμπίεση
+PRE_BAR = {"LOADER.BIN", "REVIVE.BIN", "SPLASH.BIN", "MENU.BIN"}    # πριν από τη μπάρα
 
 
 @functools.lru_cache(maxsize=None)
@@ -106,9 +109,9 @@ def addr(v):
     """Ενας αριθμός, ή το όνομά του: του φορτωτή, του μενού, ή των equ."""
     if isinstance(v, int):
         return v
-    if v == "MW_ORG":
+    if v in ("MW_ORG", "SP_TMP"):
         import menuworld
-        return menuworld.geom()["MW_ORG"]
+        return menuworld.geom()[v]
     if v in ("SCRATCH", "SCRATCH_G2", "OV_LOAD", "GAME_TMP", "GEN_ORG"):
         return boot_equ(v)
     if v == "GEN_END":
@@ -185,6 +188,8 @@ def assemble():
     # σύμβολά του για το tests/test_menu.py.
     import menuworld
     menuworld.write()
+    import splash                       # οι δύο οθόνες (βήμα 194)
+    splash.write()
     run([RASM, "menu.asm", "-oi", os.path.join(BUILD, "menu.sna"), "-v2",
          "-s", "-os", os.path.join(BUILD, "menu.sym")], cwd=src)
     write_disc_tab()
@@ -200,13 +205,14 @@ def write_disc_tab():
     BAR_K σε ένα 8.8, και το πάνω byte είναι ως πού γεμίζει. Οι τομείς ενός
     αρχείου: η κεφαλίδα AMSDOS και το μήκος του, ανά 512 — όπως τους μετρά ο
     φορτωτής από το lf_len. Μετριούνται τα αρχεία του ΠΑΙΧΝΙΔΙΟΥ: όχι ο
-    φορτωτής (τον φορτώνει το BASIC) και όχι το μενού (πριν από τη μπάρα).
-    Από το βήμα 193 οι τομείς των ροών ZX0, όσοι διαβάζονται."""
+    φορτωτής (τον φορτώνει το BASIC) και όχι το μενού και οι δύο οθόνες του
+    βήματος 194 (πριν από τη μπάρα). Από το βήμα 193 οι τομείς των ροών ZX0,
+    όσοι διαβάζονται."""
     import menuworld
     files = menuworld.geom()["BAR_FILES"]
     sect = 0
     for name, src, load, _ in FILES:
-        if name in ("LOADER.BIN", "MENU.BIN") or load is None:
+        if name in PRE_BAR or load is None:
             continue
         sect += (len(packed(name, src)[0]) + 128 + 511) // 512
     k = files * 256 // sect

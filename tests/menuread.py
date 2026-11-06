@@ -82,12 +82,37 @@ def ready(m, bs):
 
 
 def wait(m, bs, limit=600):
-    """Τρέχει ως να είναι έτοιμο το μενού· γυρίζει τα frames, ή None."""
-    for f in range(limit):
+    """Τρέχει ως να είναι έτοιμο το μενού· γυρίζει τα frames, ή None. Τις δύο
+    οθόνες πριν από αυτό (βήμα 194) τις προσπερνά με το SPACE, μόλις η καθεμιά
+    το περιμένει αφημένο (mw_spon 2, src/menu.asm)."""
+    f = 0
+    while f < limit:
         if ready(m, bs):
             return f
+        if spon(m, bs) == 2:
+            skip(m)
+            f += 4
+            continue
         m.run_frames(1)
+        f += 1
     return None
+
+
+def spon(m, bs):
+    """Το mw_spon του μενού (βήμα 194) ΑΠΟ ΤΗ ΒΑΣΙΚΗ RAM: όσο ο φορτωτής
+    φέρνει μια οθόνη, στο παράθυρο είναι η τράπεζα 4, και το peek εκεί διαβάζει
+    την εικόνα."""
+    return m.read_ram(bs["MW_SPON"], 1)[0]
+
+
+def skip(m):
+    """Ενα SPACE, 4 frames, από το πληκτρολόγιο: με το χειριστήριο του τύπου 1
+    ο εξομοιωτής το κάνει FIRE του χειριστηρίου."""
+    from cpc import KEY_SPACE
+    m.set_joystick_type(0)
+    m.key_down(KEY_SPACE)
+    m.run_frames(4)
+    m.key_up(KEY_SPACE)
 
 
 def press(m, keys, joy=False):

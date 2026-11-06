@@ -54,8 +54,9 @@ fit in a Z80 and 128 KB.
   speeds, and **save and load** in three slots on the game's own disc.
 - **Sound:** effects on the AY, and a tune during world generation.
 
-The game loads from its own disc. `RUN"HABITAT` shows the menu after a few seconds,
-and the chosen world is built in about five.
+The game loads from its own disc. `RUN"HABITAT` shows REVIVE8BIT's screen and then
+Habitat's, ten seconds each or until `SPACE`, then the menu, and the chosen world is
+built in about five seconds.
 
 | | |
 |---|---|

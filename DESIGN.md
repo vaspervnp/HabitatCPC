@@ -19866,8 +19866,9 @@ order of this table: its own sector reader goes track by track
 | File | Goes to | Bytes | |
 |---|---|---|---|
 | `HABITAT.BAS` | — | 3 lines | `MEMORY &8FFF` · `LOAD"LOADER.BIN",&9000` · `CALL &9000` |
-| `LOADER.BIN` | `&9000` | 1,294 since milestone 193, with the ZX0 decompressor and without bank 6's zeroing and three files ([§13.5](#135-a-compressed-disc-at-milestone-193)); 1,231 since milestone 177, which keeps the jumpblock's word for a new colony ([§10.3](#the-end-at-milestone-177)); 1,205 from milestone 175, which zeroes bank 6 (1,188 until then, 1,677 at milestones 128–129, 1,228 until 128, 589 until 113) | the loader with its own sector reader and the bar's files part, plus the 53-byte endgame it copies to `&3FC0`. The planet menu's code was here at 128–129 |
-| `MENU.BIN` | `&4000` | 8,674 since milestone 192's signature, the same nine blocks (8,530 at 191, 8,457 at 130) | the menu over a world (milestone 130): 32 worlds, their tiles, the game's font and the code ([§13.2](#the-menu-over-a-world-at-milestone-130)). Read first, then overwritten by `PAGE2.BIN` and `BANK1.BIN` |
+| `LOADER.BIN` | `&9000` | 1,367 since milestone 194, which loads and copies the two screens before the menu ([§13.6](#136-two-screens-before-the-menu-at-milestone-194)); 1,294 since milestone 193, with the ZX0 decompressor and without bank 6's zeroing and three files ([§13.5](#135-a-compressed-disc-at-milestone-193)); 1,231 since milestone 177, which keeps the jumpblock's word for a new colony ([§10.3](#the-end-at-milestone-177)); 1,205 from milestone 175, which zeroes bank 6 (1,188 until then, 1,677 at milestones 128–129, 1,228 until 128, 589 until 113) | the loader with its own sector reader and the bar's files part, plus the 53-byte endgame it copies to `&3FC0`. The planet menu's code was here at 128–129 |
+| `REVIVE.BIN`, `SPLASH.BIN` | bank 4, then `&C000` | 16,400 each since milestone 194, 8,354 and 3,651 packed | the two screens before the menu, REVIVE8BIT's and Habitat's, with their inks ([§13.6](#136-two-screens-before-the-menu-at-milestone-194)). Read after `MENU.BIN`, which shows them |
+| `MENU.BIN` | `&4000` | 8,744 since milestone 194's two screens; 8,674 since milestone 192's signature, the same nine blocks (8,530 at 191, 8,457 at 130) | the menu over a world (milestone 130): 32 worlds, their tiles, the game's font and the code ([§13.2](#the-menu-over-a-world-at-milestone-130)). Read first, then overwritten by `PAGE2.BIN` and `BANK1.BIN` |
 | `BANK6.BIN` | bank 6 | 16,384 since milestone 193, the whole bank with `B6CODE.BIN` and `B6TAIL.BIN` in it, packed to 6,179 ([§13.5](#135-a-compressed-disc-at-milestone-193)); 4,095 from milestone 175 (16,384 until then) | quadrants, figures, entity tables. From milestone 175 to 192 without its last 12,289 bytes, which were zeros: the loader zeroed bank 6 before reading it ([§9.6](#pages-at-milestone-175)) |
 | `BANK7.BIN` | bank 7 | 16,384, since milestone 193 with `TEXT.BIN` in it, packed to 6,332 | structures, plants, and the reserved holes |
 | `TEXT.BIN` (until milestone 192; since 193 inside `BANK7.BIN`) | bank 7, over the hole | 3,707 since milestone 177's milestones and end ([§10.2](#seen-at-milestone-177)), the same four blocks; 3,132 from milestone 175, with the tutorial's page code (2,488 until then, 2,400 at milestone 170, 2,070 at 169) | every string the game prints ([§4.2](#42-the-eight-banks)), and since milestone 170 the structures' drawing code after them ([§8.4](#the-structures-without-their-masks-at-milestone-170)) |
@@ -19902,6 +19903,7 @@ failure.
 |---|---|---|
 | `rasm` | `~/rasm/rasm.exe` | assembler; handles banking directives and `align 256` |
 | `iDSK` | `~/idsk/iDSK` | builds the `.dsk` image, a standard one, which `tools/dsk.py` rewrites as EXTENDED since milestone 183 ([§13.4](#134-an-extended-disc-at-milestone-183)) |
+| `tools/splash.py` | — | since milestone 194: the two screens before the menu, REVIVE8BIT's from `art/` and Habitat's drawn by the game's references, with their inks ([§13.6](#136-two-screens-before-the-menu-at-milestone-194)) |
 | `tools/zx0.py` | — | since milestone 193: packs a file with rasm's `LZX0`, and unpacks it in Python, to check it and to count the margin it needs to unpack in place ([§13.5](#135-a-compressed-disc-at-milestone-193)) |
 | `tools/mapsize.py` | — | per-file byte counts for bank 0 and bank 2's code, by assembling a copy of `main.asm` with a label before every `include` — and, since milestone 66, one after it, so that `main.asm`'s own code is counted as `main.asm` wherever it sits. `tools/mkdsk.py` says how many bytes are left; this says who took them, which is the half that tells you what to move |
 | `tools/agents.py` | — | reads the colonists' own fields out of bank 6 while the game runs: what each one is doing, where, and how full their bars are. [§6.6](#66-needs)'s oscillation is invisible in stocks and in the HUD; it is obvious in one colonist's `dest` sampled every 25 frames. It steals the CPU **only in the vsync wait at the top of the loop**, where the stack is at its base and only `BC` is live — taken anywhere else, the scaffolding leaves a nail on the stack per sample and the colony ends up with 217 living |
@@ -20588,6 +20590,95 @@ whole plane after a boot, as before.
   - with the second extent read from the first entry, 3,743 bytes differ, all after
     the first 16,256.
 
+### 13.6 Two screens before the menu, at milestone 194
+
+The user asked for REVIVE8BIT's screen, `revive8b.scr`, "as in the other games", and
+one more screen. They chose:
+
+- the order: REVIVE8BIT's, then Habitat's, then the menu;
+- each one for 10 seconds or until `SPACE`, as in the other REVIVE8BIT games;
+- Habitat's screen made from the game's own graphics.
+
+**The files.** `tools/splash.py` writes both into `build/`. `tools/mkdsk.py` packs them
+with ZX0 ([§13.5](#135-a-compressed-disc-at-milestone-193)). Each is 16,384 bytes of
+Mode 0 screen as at `&C000`, then the 16 firmware inks: 16,400 bytes. The border is
+black, as in the menu.
+
+- **`REVIVE.BIN`** is `art/revive8b.scr` with the inks of `art/revive8b.txt`.
+  - Both files are the ones every REVIVE8BIT game carries, byte for byte (md5
+    `9eff5c07`). They live in `art/`, because `assets/` is synced from `CPCArt` and
+    would lose them.
+  - On the disc: 8,354 bytes, 9 blocks.
+- **`SPLASH.BIN`** is drawn by the game's references:
+  - a desert world, `menuworld.draw_world`, the third desert seed of the menu at its
+    own window;
+  - a greenhouse dome of eight plants in the middle, a small oxygen dome to the left
+    and small quarters to the right, joined by corridors of two tiles;
+  - a solar panel and a turbine below, the ship top right, and ten colonists. All of
+    them come from `scene.draw_objects`, the reference the game's object pass matches
+    byte for byte;
+  - the stamp under the domes, as `tools/colony.py` lays it;
+  - the menu's title at twice its size (cells of 2 bytes × 4 lines), and its subtitle.
+  - On the disc: 3,651 bytes, 4 blocks.
+
+**The loader loads `MENU.BIN` first**, then the two screens, then calls the menu.
+
+- **The screens unpack into bank 4**, the world plane, which the generator fills
+  later; until then `GAME.BIN` also passes through there. The menu sits in base RAM
+  at `&4000`, so the screens cannot use that.
+  - The 16 inks fall past `&8000`, into base RAM.
+- **The loader copies a screen to `&C000` from `&9000` (`bt_screen`).** The menu
+  cannot do the copy: it runs in the window, and paging bank 4 in would hide its own
+  code from under it. That was the first version, and the machine reset.
+  - The writes to `&C000` reach RAM; only reads would see BASIC's ROM.
+- **The menu has two new entry points**, `MW_SCR_DARK` (`MW_ORG + 9`) and
+  `MW_SCR_SHOW` (`+ 12`):
+  - `mw_black` turns every ink black and waits 7 interrupts, more than a frame, so
+    that the hardware has them before the copy;
+  - `mw_screen` sets the screen's inks and waits.
+- **The wait counts `halt`s**: 3,000, at the firmware's 300 a second. The first
+  version counted `MC WAIT FLYBACK` calls, which return at once while the flyback
+  lasts. The screen then went after 175 frames instead of 500.
+- **`SPACE` counts only once it has been seen up.** `mw_spon` is 1 until then, and 2
+  after. A `SPACE` still held from the first screen therefore does not skip the
+  second; a new press does. It is 0 outside the wait, and the tests read it from base
+  RAM: while a screen is loading, bank 4 is in the window, and a `peek` there reads the
+  image.
+- **The menu's world is still random.** `R` is read after `MENU.BIN` loads, before
+  the screens, and kept on the stack. Read after them it would be the same at every
+  boot: a wait ends on an interrupt, and everything after it is the same each time.
+
+**Cost:**
+
+- **The loader:** 1,367 bytes (1,294), still in track 0.
+  - Showing the screens from the loader itself made it 1,440. That is past the 1,408
+    that fit in three sectors, and `test_disc` keeps AMSDOS believing track 0
+    ([§13.3](#133-the-loader-reads-the-disc-itself-at-milestone-113)).
+- **`MENU.BIN`:** 8,744 bytes (8,674), 7 blocks (6).
+- **The disc:** 77 of the 106 blocks before the slots; 29 are free (43). The files end
+  on track 17.
+- **The boot:** the first screen is up 215 frames after `RUN`. Each screen lasts 519
+  frames without a key, about 10 s; the 19 frames over 500 are `KM TEST KEY` between
+  the `halt`s. The second screen appears 7 frames after the first goes, and the menu
+  30 frames after the second.
+- **The game:** nothing.
+
+**Tests:**
+
+- **`tests/test_splash.py` (new):**
+  - the two files: the art's md5, the inks, `splash.bin` made again the same, and the
+    title and colony on top of the bare world;
+  - from the disc, each screen in screen memory byte for byte, and in the emulator's
+    framebuffer with its own inks (with the other's, 49,868 and 114,604 pixels differ);
+  - the 10 s; `SPACE` skips; a held `SPACE` does not skip the second screen, a new one
+    does; the menu comes after.
+  - **Negatives:** `mw_spon` starting at 2, which lets the held `SPACE` skip both; and
+    `nop` instead of `halt`, which leaves the screen up for 31 frames.
+- **`tests/menuread.py`:** `wait()` skips the two screens with `SPACE` (`spon`,
+  `skip`). Every test that boots the disc goes through it.
+- **`tests/test_disc.py`:** `held()`, the `RETURN` held from `RUN`, now skips the
+  screens with `SPACE` while `RETURN` stays down.
+
 ---
 
 ## 14. Delivery plan
@@ -20644,7 +20735,7 @@ gap.
 
 | Risk | Severity | Mitigation |
 |---|---|---|
-| ~~**The disc is nearly full** (milestone 175)~~ | ~~Medium~~ | **Resolved at milestone 193: 43 blocks, 43 KB, are free**, with every file the loader reads packed with ZX0 ([§13.5](#135-a-compressed-disc-at-milestone-193)). Until then: **two sectors, 1 KB, were free** between the last file and the save slots at track 24 since milestone 188's `B6TAIL.BIN`, one block ([§4.2](#code-in-the-agents-field-tails-at-milestone-188)). Milestone 191's resources page, 588 bytes, went into the 650 that `TUTOR.TXT`'s last block had: 62 are left there ([§9.7](#97-the-resources-page-at-milestone-191)). Four from milestone 186's `BANK1.BIN` of 8 KB, one block more ([§9.3](#the-world-map-at-milestone-186)). Milestone 185's disc had six, counted from the catalogue's blocks: this row went on saying ten, from milestone 177's seven pages ([§10.2](#seen-at-milestone-177)), while the files grew. Sixteen, 8 KB, from milestone 175, after `BANK6.BIN` lost its zeros to make room for `TUTOR.TXT` ([§9.6](#pages-at-milestone-175)). `tools/mkdsk.py` stops the build if a file reaches the slots (`check_saves`). Levers, each to be checked first: other files' last zeros with the same zeroing in the loader (`page2.bin` 1,538, `gen.bin` 1,217, `bank7.bin` 1,560), and the three sectors each slot leaves unused. |
+| ~~**The disc is nearly full** (milestone 175)~~ | ~~Medium~~ | **Resolved at milestone 193: 43 blocks, 43 KB, were free**; **29 since milestone 194's two screens** ([§13.6](#136-two-screens-before-the-menu-at-milestone-194)), with every file the loader reads packed with ZX0 ([§13.5](#135-a-compressed-disc-at-milestone-193)). Until then: **two sectors, 1 KB, were free** between the last file and the save slots at track 24 since milestone 188's `B6TAIL.BIN`, one block ([§4.2](#code-in-the-agents-field-tails-at-milestone-188)). Milestone 191's resources page, 588 bytes, went into the 650 that `TUTOR.TXT`'s last block had: 62 are left there ([§9.7](#97-the-resources-page-at-milestone-191)). Four from milestone 186's `BANK1.BIN` of 8 KB, one block more ([§9.3](#the-world-map-at-milestone-186)). Milestone 185's disc had six, counted from the catalogue's blocks: this row went on saying ten, from milestone 177's seven pages ([§10.2](#seen-at-milestone-177)), while the files grew. Sixteen, 8 KB, from milestone 175, after `BANK6.BIN` lost its zeros to make room for `TUTOR.TXT` ([§9.6](#pages-at-milestone-175)). `tools/mkdsk.py` stops the build if a file reaches the slots (`check_saves`). Levers, each to be checked first: other files' last zeros with the same zeroing in the loader (`page2.bin` 1,538, `gen.bin` 1,217, `bank7.bin` 1,560), and the three sectors each slot leaves unused. |
 | ~~Every save and every load broke the choice of a building, from milestone 155~~ | ~~High~~ | **Found and resolved after milestone 174** ([§11](#the-save-wrote-past-the-ghosts-log-found-after-milestone-174)). The save's overlay was copied in whole rows of 16, and the last one wrote 8 zeros over `bd_select`. The code now runs at the start of the ghost's log with its header at the end, and `assert`s check the rows, not only the code. `tests/test_save.py` checks bank 2's first bytes after `S` and `L`. |
 | ~~CRTC offset scrolling with a two-page raster split~~ | ~~High~~ | **Resolved at milestone 5, and split in two.** Offset scrolling works to the pixel ([§8.2](#82-camera)). The mid-frame page change does **not** — the CRTC latches the start address once per frame — so the HUD moved into the play page and bank 2 went flat ([§8.1](#81-screen-layout), [§4.3](#43-bank-2-flat-again)). |
 | ~~HUD re-render on every scroll step, ≈ 0.4 frames, estimated not measured~~ | ~~Medium~~ | **Measured at 2.55 frames**, six times the estimate, and then cut ([§8.1](#81-screen-layout)). The cell cache of [§9.2](#92-hud) took an ordinary tick to 1.15, and milestone 52's smaller HUD to **0.65**; a camera step, which moves every cell, still pays **1.75** (2.30 before milestone 52, 2.20 before the font moved to bank 7 at milestone 33). The escape hatch for that one — *move* the HUD block inside the ring instead of re-rendering it — **was taken at milestone 83**: 0.89–0.94 frames per step, cheaper than what it replaced, and the HUD is never rubble after a scroll, paused or not ([§8.1](#81-screen-layout)). |

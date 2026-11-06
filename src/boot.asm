@@ -27,6 +27,9 @@
 ;   #A200-#A2FF   η σελίδα εργασίας της γεννήτριας (GEN_WORK)
 ;   ως το #A67B   το HIMEM του 6128 με δίσκο: από πάνω ο χώρος του AMSDOS
 ;   #3FC0         το επίμετρο — ΑΦΟΥ σβήσουν τα ROM
+;   τράπεζα 4     το επίπεδο του κόσμου, που το γεμίζει η γεννήτρια· ως τότε
+;                 πρόχειρο: οι δύο οθόνες πριν από το μενού (βήμα 194), μετά
+;                 το GAME.BIN (βήμα 193)
 ;
 ; Η ΣΕΙΡΑ ΕΙΝΑΙ ΔΕΣΜΕΥΤΙΚΗ. Δύο κομμάτια πατάνε πάνω στο AMSDOS: τα δεδομένα
 ; της τράπεζας 2 (#8000-#ABFF) και ο κώδικας της τράπεζας 2 (#B440). Και τα δύο
@@ -125,6 +128,21 @@ boot:
         ld      de,MW_ORG
         call    ld_file
         ld      a,r
+        push    af
+        ; --- οι δύο οθόνες (βήμα 194, tools/splash.py) ---
+        ; Πρώτα του REVIVE8BIT, μετά του Habitat, η καθεμιά 10 s ή ως το
+        ; SPACE, όπως στα άλλα παιχνίδια του REVIVE8BIT. Ξεδιπλώνονται στην
+        ; τράπεζα 4 — το μενού κάθεται ήδη στη βασική RAM — και τις δείχνει
+        ; το μενού (mw_screen). Ο κόσμος του μενού από τον R ΠΡΙΝ από αυτές:
+        ; η αναμονή τελειώνει πάντα σε ένα frame, και ό,τι ακολουθεί είναι κάθε
+        ; φορά το ίδιο — ο R μετά θα έδινε τον ίδιο κόσμο σε κάθε εκκίνηση.
+        ld      hl,n_revive
+        ld      b,n_revive_e - n_revive
+        call    bt_screen
+        ld      hl,n_splash
+        ld      b,n_splash_e - n_splash
+        call    bt_screen
+        pop     af
         and     MW_N - 1
         call    MW_ORG
         ld      (bt_pl),a
@@ -289,6 +307,26 @@ eg_end:
 ; ελέγχει το tools/mkdsk.py· ΑΥΤΟ εδώ ελέγχει το ίδιο το επίμετρο, που το βήμα
 ; 30 το στρίμωξε από τα 128 bytes στα 64.
         assert  eg_end - eg_code <= #4000 - ENDGAME
+
+; bt_screen — HL = όνομα, B = μήκος: μία οθόνη στο SP_TMP της τράπεζας 4, και
+; στην οθόνη (βήμα 194). Το μενού σβήνει τα χρώματα, ο φορτωτής αντιγράφει —
+; από εδώ, έξω από το παράθυρο όπου κάθεται το μενού — και το μενού βάζει τα
+; χρώματα της οθόνης και περιμένει (src/menu.asm: mw_black, mw_screen). Οι
+; εγγραφές στο #C000 πάνε στη RAM· μόνο οι αναγνώσεις βλέπουν την πάνω ROM.
+bt_screen:
+        ld      de,SP_TMP
+        ld      c,PAGE_B4
+        call    ld_bank
+        call    MW_SCR_DARK
+        ld      bc,GA_PORT + PAGE_B4
+        out     (c),c
+        ld      hl,SP_TMP
+        ld      de,#C000
+        ld      bc,#4000
+        ldir
+        ld      bc,GA_PORT + PAGE_B1
+        out     (c),c
+        jp      MW_SCR_SHOW
 
 ; ld_bank — σαν το ld_file, με την τράπεζα C στο παράθυρο.
 ;
@@ -942,6 +980,10 @@ bt_end:     db 0                        ; ως πού έχει γεμίσει
 
 bt_pl:      db #FF                      ; ό,τι διάλεξε, για τη γεννήτρια
 
+n_revive:   db "REVIVE.BIN"
+n_revive_e:
+n_splash:   db "SPLASH.BIN"
+n_splash_e:
 n_menu:     db "MENU.BIN"
 n_menu_e:
 n_bank1:    db "BANK1.BIN"

@@ -41,6 +41,9 @@ DEEPWATER       equ 5
 mw_entry:   jp      mw_run              ; A = κόσμος. Out: A = πλανήτης 0-3, #FF τυχαίος, 4 το tutorial
 mw_show_e:  jp      mw_show             ; A = κόσμος, B = η διαλεγμένη 0-5
 mw_load_e:  jp      mw_load             ; A = η διαλεγμένη 0-5: το πάνελ της φόρτωσης
+mw_dark_e:  jp      mw_black            ; οι δύο οθόνες (βήμα 194): όλα μαύρα,
+mw_screen_e: jp     mw_screen           ; και η οθόνη με τα χρώματά της ως το SPACE
+        assert  mw_dark_e == MW_SCR_DARK && mw_screen_e == MW_SCR_SHOW
 
 ; ---------------------------------------------------------------------------
 ; mw_run — όλο το μενού. MODE 0 και τα χρώματα του πλανήτη του κόσμου, ο
@@ -52,12 +55,7 @@ mw_run:
         call    SCR_SET_MODE            ; MODE 0· σβήνει και την οθόνη
         ; ΟΛΑ ΤΑ ΧΡΩΜΑΤΑ ΜΑΥΡΑ ΟΣΟ ΖΩΓΡΑΦΙΖΕΙ: ~0,5 s, και ο παίκτης θα έβλεπε
         ; τον κόσμο να χτίζεται σειρά σειρά. Η παλέτα μπαίνει όλη μαζί στο τέλος.
-        ld      hl,mw_ink
-        ld      de,mw_ink + 1
-        ld      bc,15
-        ld      (hl),b                  ; 0
-        ldir
-        call    mw_setink
+        call    mw_dark
         ld      a,(mw_k)
         ld      b,0                     ; ο τυχαίος διαλεγμένος
         call    mw_show
@@ -69,6 +67,67 @@ mw_run:
         pop     af
         dec     a                       ; 0 τυχαίος -> #FF, 1-4 -> 0-3, 5 το tutorial -> 4
         ret
+
+; ---------------------------------------------------------------------------
+; mw_black, mw_screen — μία από τις δύο οθόνες πριν από το μενού (βήμα 194,
+; tools/splash.py). Ο φορτωτής την ξεδιπλώνει στο SP_TMP της τράπεζας 4, καλεί
+; το mw_black (όλα μαύρα, και ένα frame για να φτάσουν στο υλικό), την
+; αντιγράφει στην οθόνη, και καλεί το mw_screen: τα 16 χρώματα, που μένουν
+; στο SP_TMP + #4000 της βασικής RAM, και η αναμονή, ως το SPACE ή SP_WAIT
+; διακοπές του firmware — με halt, όχι με το MC WAIT FLYBACK, που γυρίζει
+; αμέσως όσο κρατά το flyback και μετρούσε το ίδιο frame δύο και τρεις φορές.
+;
+; ΕΝΑ SPACE ΠΟΥ ΠΑΤΙΕΤΑΙ ΑΦΟΥ ΦΑΝΕΙ: το mw_spon είναι 1 ως να βρεθεί το SPACE
+; αφημένο και 2 από εκεί, οπότε ένα SPACE που κρατιέται από την προηγούμενη
+; οθόνη δεν την προσπερνά — 0 έξω από την αναμονή (οι δοκιμές το διαβάζουν).
+; ---------------------------------------------------------------------------
+mw_black:
+        call    mw_dark
+        ld      b,7                     ; παραπάνω από ένα frame (6 διακοπές)
+mwb_lp:
+        halt
+        djnz    mwb_lp
+        ret
+mw_screen:
+        ld      hl,SP_TMP + #4000
+        ld      de,mw_ink
+        ld      bc,16
+        ldir
+        call    mw_setink
+        ld      hl,mw_spon
+        ld      (hl),1
+        ld      bc,SP_WAIT
+msp_lp:
+        push    bc
+        halt
+        ld      a,SP_KEY
+        call    KM_TEST_KEY             ; NZ: πατημένο
+        pop     bc
+        ld      hl,mw_spon
+        jr      z,msp_up
+        ld      a,(hl)
+        cp      2
+        jr      z,msp_end               ; πατήθηκε αφού αφέθηκε
+        jr      msp_nx
+msp_up:
+        ld      (hl),2
+msp_nx:
+        dec     bc
+        ld      a,b
+        or      c
+        jr      nz,msp_lp
+msp_end:
+        ld      (hl),0
+        ret
+
+; mw_dark — όλα τα χρώματα μαύρα (το mw_ink μηδέν, και στο firmware).
+mw_dark:
+        ld      hl,mw_ink
+        ld      de,mw_ink + 1
+        ld      bc,15
+        ld      (hl),b                  ; 0
+        ldir
+        jr      mw_setink
 
 ; ---------------------------------------------------------------------------
 ; mw_inks — A = κόσμος: τα 16 pens, palette_fw με τα τέσσερα του πλανήτη του
@@ -874,6 +933,7 @@ mn_ktab:    db 0,1, 72,1                ; πάνω: βελάκι, χειριστ
             db #FF
 mn_sel:     db 0                        ; 0 τυχαίος, 1-4 οι πλανήτες 0-3
 mn_prev:    db #FF
+mw_spon:    db 0                        ; 1, 2 στην αναμονή μιας οθόνης (βήμα 194)
 mf_y:       db 0
 mf_x:       dw 0                        ; x, πλάτος
 mf_h:       dw 0                        ; εσοχή, ύψος

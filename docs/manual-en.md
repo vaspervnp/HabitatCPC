@@ -62,8 +62,12 @@ Insert the disc and type:
 RUN"HABITAT
 ```
 
-After a few seconds the menu appears over a piece of a world, a different one each
-time.
+Two screens come first: REVIVE8BIT's, then Habitat's own, ten seconds each. `SPACE`
+moves on at once.
+
+![Habitat's screen](img/splash.png)
+
+Then the menu appears over a piece of a world, a different one each time.
 
 ![The menu](img/menu.png)
 

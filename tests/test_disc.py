@@ -280,9 +280,10 @@ def handover(m, disc, eg, amsdos=None):
 
 
 def held(m, disc, hold=400):
-    """BASIC, |DISC και RUN"HABITAT, με το RETURN του RUN ΚΡΑΤΗΜΕΝΟ για hold
-    frames: ως τότε ο φορτωτής έχει φορτωθεί και έχει γράψει το μενού. Γυρίζει
-    την οθόνη τη στιγμή πριν αφεθεί το πλήκτρο."""
+    """BASIC, |DISC και RUN"HABITAT, με το RETURN του RUN ΚΡΑΤΗΜΕΝΟ: πέρα από τις
+    δύο οθόνες πριν από το μενού (βήμα 194), που τις προσπερνά το SPACE με το
+    RETURN ακόμη κάτω, και hold frames μετά — ως τότε ο φορτωτής έχει γράψει το
+    μενού. Γυρίζει την οθόνη τη στιγμή πριν αφεθεί το πλήκτρο."""
     from cpc import KEY_ENTER
     m.run_frames(300)                    # το BASIC θέλει τον χρόνο του
     m.insert_disc(disc)
@@ -292,6 +293,14 @@ def held(m, disc, hold=400):
     m.run_frames(60)
     m.type_text('run"habitat', hold_frames=4, gap_frames=8)
     m.key_down(KEY_ENTER)
+    bs, shown = MR.syms(ROOT), 0
+    for _ in range(3000):
+        if MR.spon(m, bs) == 2:
+            MR.skip(m)
+            shown += 1
+        if shown == 2 and MR.spon(m, bs) == 0:
+            break
+        m.run_frames(1)
     m.run_frames(hold)
     ram = m.read_ram(0xC000, 0x4000)
     m.key_up(KEY_ENTER)
