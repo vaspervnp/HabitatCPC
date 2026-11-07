@@ -5,14 +5,18 @@
 τη σειρά. Από το 155 τρία σημεία (src/const.asm):
 
   OV_R1   βασική τράπεζα 1, #6000, συνεχές: οι χειριστές της κατεδάφισης
-          (src/dm_hand.asm, από το DH_RSIZE), οι γραμμές του tutorial (TU_TXT),
-          ο κώδικάς του (build/ovl4.bin, από το ZZ_TUT_END).
+          (src/dm_hand.asm, από το DH_RSIZE), το bar_sync (βήμα 199,
+          src/sync1.asm, από το BAR_SYNC), ο κώδικας του tutorial
+          (build/ovl4.bin, από το TU_AT· ως το βήμα 198 μετά τις γραμμές του).
   OV_R2   βασική τράπεζα 1, οι στήλες 112-127 των γραμμών θόλων του DIST, 16
           bytes ανά γραμμή: το σώσιμο (build/ovl2.bin), και από την επόμενη
           γραμμή του η βοήθεια (build/ovl3.bin).
   OV_R3   τράπεζα 5, οι στήλες 112-127 του NEXTHOP: η κατεδάφιση
           (build/ovl.bin), και από την επόμενη γραμμή της ο χάρτης (βήμα 186,
           build/ovl5.bin).
+  TX_HOLE βασική τράπεζα 1, οι στήλες 48-63 των γραμμών 0-31 του μπλοκ των
+          δομών (#6430, 16 bytes ανά γραμμή των 64): οι γραμμές του tutorial
+          (βήμα 199, build/ovtx.bin· ως τότε στο OV_R1, από το TU_TXT).
 
 Οι διευθύνσεις είναι του παραθύρου (&4000-&7FFF)· το bank(n)[a - 0x4000] του
 εξομοιωτή είναι το byte, όποια τράπεζα κι αν φαίνεται τη στιγμή εκείνη.
@@ -25,6 +29,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UNIT, NODE_CAP = 16, 112
 OV_R1, OV_R2, OV_R3 = 0x6000, 0x4000 + NODE_CAP, 0x4000 + NODE_CAP
 TU_LINES = 16 * 32
+TX_HOLE = 0x6400 + 48                   # DB_ROW + MAX_STRUCT (src/const.asm)
 
 
 def _bin(name):
@@ -43,29 +48,30 @@ def _gh():
 GH = _gh()
 
 
-def spread(start, n):
-    """Οι διευθύνσεις n bytes, UNIT σε κάθε γραμμή των 128 από το start."""
-    return [start + (k // UNIT) * 128 + k % UNIT for k in range(n)]
+def spread(start, n, stride=128):
+    """Οι διευθύνσεις n bytes, UNIT σε κάθε γραμμή των stride από το start."""
+    return [start + (k // UNIT) * stride + k % UNIT for k in range(n)]
 
 
 def pieces(sym):
     """όνομα -> (τράπεζα, διευθύνσεις ανά byte, πού τρέχει το byte 0, τα bytes
-    του build). Τα "hand" και "tutext" δεν έχουν δικό τους αρχείο· είναι μέσα
+    του build). Τα "hand" και "sync" δεν έχουν δικό τους αρχείο· είναι μέσα
     στο "r1", το OV_R1 ολόκληρο (build/ovr1.bin)."""
     dm, sv, hp, tu = _bin("ovl.bin"), _bin("ovl2.bin"), _bin("ovl3.bin"), _bin("ovl4.bin")
-    mp = _bin("ovl5.bin")
+    mp, tx = _bin("ovl5.bin"), _bin("ovtx.bin")
     r1 = _bin("ovr1.bin")                   # όλο το OV_R1, όπως φτάνει
     rows2 = -(-len(sv) // UNIT)
     rows3 = -(-len(dm) // UNIT)
-    hand = sym["TU_TXT"] - sym["DH_RSIZE"]
+    hand = sym["BAR_SYNC"] - sym["DH_RSIZE"]
     return {
         "dm": (5, spread(OV_R3, len(dm)), GH, dm),
         "map": (5, spread(OV_R3 + rows3 * 128, len(mp)), GH, mp),
         "save": (1, spread(OV_R2, len(sv)), GH, sv),     # στο GH_BUF + 512 ως το βήμα 174
         "help": (1, spread(OV_R2 + rows2 * 128, len(hp)), GH, hp),
-        "tutor": (1, list(range(sym["ZZ_TUT_END"], sym["ZZ_TUT_END"] + len(tu))), GH, tu),
-        "tutext": (1, list(range(sym["TU_TXT"], sym["TU_TXT"] + TU_LINES)), sym["TU_TXT"], None),
+        "tutor": (1, list(range(sym["TU_AT"], sym["TU_AT"] + len(tu))), GH, tu),
+        "tutext": (1, spread(TX_HOLE, TU_LINES, 64), sym["TU_TXT"], tx),
         "hand": (1, list(range(sym["DH_RSIZE"], sym["DH_RSIZE"] + hand)), sym["DH_RSIZE"], None),
+        "sync": (1, list(range(sym["BAR_SYNC"], sym["TU_AT"])), sym["BAR_SYNC"], None),
         "r1": (1, list(range(OV_R1, OV_R1 + len(r1))), OV_R1, r1),
     }
 

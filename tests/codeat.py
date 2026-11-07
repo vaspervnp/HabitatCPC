@@ -32,9 +32,10 @@ B6X_END = _layout("G_dome_tbl")
 
 # ΚΑΙ ΟΙ ΟΥΡΕΣ ΤΩΝ ΣΕΛΙΔΩΝ ΠΕΔΙΩΝ (βήμα 188, src/full6.asm): τα ids 188-255 των
 # σελίδων 0-7 (0-3 ως το βήμα 197), από το G_agent_fields (src/const.asm: B6T_0,
-# B6T_LEN, B6T_N).
-B6T_N = 8
-B6T = [(_layout("G_agent_fields") + 256 * k + 188, _layout("G_agent_fields") + 256 * (k + 1))
+# B6T_LEN, B6T_N). ΚΑΙ ΤΗΣ ΣΕΛΙΔΑΣ ΤΩΝ ΣΗΜΑΔΙΩΝ από το βήμα 199, πρώτη, ακριβώς
+# πριν από τα πεδία (G_agent_marks).
+B6T_N = 9
+B6T = [(_layout("G_agent_marks") + 256 * k + 188, _layout("G_agent_marks") + 256 * (k + 1))
        for k in range(B6T_N)]
 
 

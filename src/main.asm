@@ -316,16 +316,13 @@ OV_MAX      equ #7000 - OV_LOAD
         include "dm_hand.asm"
         include "top.asm"               ; βήμα 157: το όριο σάρωσης, τρέχει εδώ
         include "goals.asm"             ; βήμα 177: το G και το αίτημα σελίδας, τρέχουν εδώ
-TU_TXT:
-        include "tutext.asm"
-zz_tut_end:
-TU_AT       equ zz_tut_end              ; ο κώδικας του tutorial, στο OV_R1
+        include "sync1.asm"             ; βήμα 199: το bar_sync, από την τράπεζα 0· τρέχει εδώ
+TU_AT:                                  ; ο κώδικας του tutorial, στο OV_R1
         org     GH_BUF, TU_AT
 zz_ov4:
         include "tutor.asm"
 zz_ov4_end:
         assert  tuo_buf + 32 <= GH_BUF + GH_LOG
-        assert  zz_tut_end - TU_TXT == (TU_YOURS + 1) * 32
 TU_LEN      equ zz_ov4_end - GH_BUF
 R1_LEN      equ TU_AT + TU_LEN - OV_R1
         assert  OV_R1 + R1_LEN <= DB_ROW
@@ -407,6 +404,19 @@ R3_ALL      equ R3_UNITS + OV5_ROWS
 ; και οκτώ φορές το κομμάτι δεν πρέπει να περνά τις 112 γραμμές του NEXTHOP.
 OVI_CH      equ floor((R3_ALL + OVI_N - 1) / OVI_N)
         assert  OVI_N * OVI_CH >= R3_ALL && OVI_N * OVI_CH <= NODE_CAP && OVI_R3 + OVI_N * OVI_CH * OV_UNIT <= #7000
+; ΟΙ ΓΡΑΜΜΕΣ ΤΟΥ TUTORIAL (βήμα 199), στο τέλος της εικόνας: ο εγκαταστάτης τις
+; βάζει, τελευταίες, στις στήλες 48-63 των γραμμών 0-31 του μπλοκ των δομών
+; (TX_HOLE, src/const.asm), 16 bytes ανά γραμμή του μπλοκ — εκεί το rt_flush
+; δεν γράφει ποτέ: μία γραμμή του μπλοκ έχει τις 48 στήλες των δομών. Ως το
+; βήμα 198 ήταν στο OV_R1, και τα 512 bytes τους τα πήρε το bar_sync.
+OVI_TU      equ OVI_R3 + OVI_N * OVI_CH * OV_UNIT
+        org     OVI_TU
+TU_TXT:
+        include "tutext.asm"
+zz_tut_end:
+        assert  zz_tut_end - TU_TXT == (TU_YOURS + 1) * 32 && zz_tut_end - TU_TXT == TX_UNITS * OV_UNIT
+        assert  zz_tut_end <= OV_LOAD + OV_MAX && DB_STRIDE - MAX_STRUCT == OV_UNIT && TX_UNITS <= STRUCT_CAP
+        save    "../build/ovtx.bin", TU_TXT, zz_tut_end - TU_TXT        ; για τις δοκιμές
 
         org     BOOT_ORG - 256
 zz_colony:
@@ -569,7 +579,9 @@ zz_b6x_end:
         ; κώδικας, κομμάτι ανά ουρά (B6T_PIECE), και τα υπόλοιπα μετά την
         ; τελευταία· ανάμεσα, τα πεδία των πρακτόρων, μηδέν όπως στο bank6.bin
         ; (τα κρατά το pack.py, χωρίς δεδομένα). Η B6TAIL.BIN είναι όλο αυτό, από
-        ; την πρώτη ουρά ως το τέλος της τελευταίας.
+        ; την πρώτη ουρά ως το τέλος της τελευταίας. ΑΠΟ ΤΟ ΒΗΜΑ 199 Η ΠΡΩΤΗ
+        ; ΟΥΡΑ ΕΙΝΑΙ ΤΩΝ ΣΗΜΑΔΙΩΝ (MKPG), η σελίδα πριν από τα πεδία: κι εκεί
+        ; κανείς πράκτορας δεν είναι πάνω από το 187 (src/const.asm).
         ; ΚΑΙ ΤΟ EC_MUS = 1, όπως το mu_off του snapshot (βήμα 195, src/const.asm):
         ; ένα σώσιμο του main.sna φορτώνεται με τη μουσική κλειστή. Στον δίσκο 0,
         ; όπως το mu_off εκεί (tools/mkdsk.py). Στο node_occ από το βήμα 197,
@@ -580,12 +592,15 @@ zz_b6x_end:
 mu_saved:   db 1                        ; το σύμβολο, για τις δοκιμές (tests/codeat.py)
         incbin  "../build/bank6.bin", EC_MUS + 1 - #4000, B6T_0 - EC_MUS - 1
         assert  EC_MUS < B6T_0
-        assert  N_AGENT + B6T_LEN == 256 && B6T_N <= AG_HI && (B6T_0 & 255) == N_AGENT
+        assert  N_AGENT + B6T_LEN == 256 && B6T_N <= AG_HI + 1 && (B6T_0 & 255) == N_AGENT && B6T_0 >> 8 == MKPG
 macro   B6T_PIECE n
         assert  $ <= B6T_0 + ({n} - 1) * 256 + B6T_LEN      ; το προηγούμενο χωρά στην ουρά του
         org     B6T_0 + {n} * 256, #8000 + B6T_0 + {n} * 256 - #4000
 mend
         org     B6T_0, #8000 + B6T_0 - #4000
+        ; Η ΟΥΡΑ ΤΩΝ ΣΗΜΑΔΙΩΝ (βήμα 199): άδεια, για το βήμα 200. Ο κώδικας από
+        ; κάτω έμεινε στη θέση του: κάθε κομμάτι ένα νούμερο πιο πάνω.
+        B6T_PIECE 1
         include "full6.asm"             ; το ec_setfull, από την τράπεζα 0
         include "water.asm"             ; βήμα 189: το ισοζύγιο του ρεύματος και του νερού
         include "debt6.asm"             ; βήμα 198: το χρέος, στην ουρά 3

@@ -520,7 +520,7 @@ def negatives(sym, data, idx):
     # 3. το tuo_go χωρίς τη σελίδα του βήματος 2: cp 2 -> cp 3 στο OV_R1, όπου
     # το βάζει το ov_install στην εκκίνηση: μετά τις πρώτες σελίδες
     def no_step2(R):
-        at = sym["ZZ_TUT_END"]                   # TU_AT: ο κώδικας του tutorial στο OV_R1
+        at = sym["TU_AT"]                        # ο κώδικας του tutorial στο OV_R1
         n = sym["ZZ_OV4_END"] - sym["TUO_GO"]
         o = at - 0x4000
         k = [i for i in range(n) if R.b1[o + i] == 0xFE and R.b1[o + i + 1] == 2

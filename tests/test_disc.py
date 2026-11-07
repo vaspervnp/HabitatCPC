@@ -668,12 +668,14 @@ def main():
     # την πρώτη ως το τέλος της τελευταίας, με τα πεδία των πρακτόρων ανάμεσα·
     # μόνο οι ουρές είναι του build — τα πεδία είναι του παιχνιδιού που τρέχει.
     tail = open(os.path.join(ROOT, "build", "b6tail.bin"), "rb").read()
-    t0 = sym["EC_SETFULL"]
+    # Από το βήμα 199 η πρώτη είναι της σελίδας των σημαδιών, πριν από το
+    # ec_setfull, και ο κώδικας έμεινε όπου ήταν: η 1 και η 5 έχουν κώδικα.
+    t0 = sym["EC_SETFULL"] - 256
     tails = [(t0 + 256 * k, tail[256 * k:256 * k + 256 - (t0 & 255)])
              for k in range((len(tail) + 255) // 256)]
     tbad = [a + i for a, want in tails for i, x in enumerate(want) if b6[a - 0x4000 + i] != x]
-    check((t0 & 255) == 188 and len(tails) == 8 and not tbad and any(tail[:68])     # 4 ως το βήμα 197
-          and any(tail[4 * 256:4 * 256 + 68]),
+    check((t0 & 255) == 188 and len(tails) == 9 and not tbad and any(tail[256:256 + 68])  # 8 ως το 198, 4 ως το 197
+          and any(tail[5 * 256:5 * 256 + 68]),
           f"και οι {len(tails)} ουρές των σελίδων πεδίων από το #{t0:04X}: {len(tbad)} διαφορετικά")
 
     # --- 3δ. κανένα out (c),c στον κώδικα της τράπεζας 6 (βήμα 110) ----------
@@ -755,10 +757,13 @@ def main():
     import ovmap as OV
     # ΚΑΙ Ο ΧΑΡΤΗΣ (βήμα 186, build/ovl5.bin), μετά την κατεδάφιση στο NEXTHOP·
     # και η BANK1.BIN από το #6000, με το OV_R1 στη θέση του.
+    # ΚΑΙ ΟΙ ΓΡΑΜΜΕΣ ΤΟΥ TUTORIAL (βήμα 199), στις στήλες 48-63 του μπλοκ των
+    # δομών: τις βάζει εκεί ο εγκαταστάτης από το τέλος της εικόνας. Το OV_R1
+    # έχει πια το bar_sync στη θέση τους.
     got = {n: (OV.read(m, sym, n), OV.pieces(sym)[n][3])
-           for n in ("dm", "save", "help", "r1", "map")}
+           for n in ("dm", "save", "help", "r1", "map", "tutext")}
     check(len(got["dm"][1]) > 512 and len(got["save"][1]) > 512 and len(got["help"][1]) > 128
-          and len(got["r1"][1]) > 512 + 256 and len(got["map"][1]) > 512
+          and len(got["r1"][1]) > 512 and len(got["map"][1]) > 512 and len(got["tutext"][1]) == 512
           and all(x == y for x, y in got.values()),
           "ο κώδικας της κατεδάφισης, του σωσίματος, της βοήθειας, του tutorial και του "
           "χάρτη ήρθε από τον δίσκο στις τρύπες: "
@@ -958,7 +963,7 @@ def main():
     code6, text7 = img("b6code.bin"), img("text.bin")
     want6[lay["G_b6code"] - 0x4000:lay["G_b6code"] - 0x4000 + len(code6)] = code6
     tail6 = img("b6tail.bin")                       # οι ουρές (βήμα 188)
-    t6 = sym["EC_SETFULL"] - 0x4000
+    t6 = sym["EC_SETFULL"] - 256 - 0x4000           # B6T_0: από το βήμα 199 η ουρά των σημαδιών
     want6[t6:t6 + len(tail6)] = tail6
     want7[lay["G_text"] - 0x4000:lay["G_text"] - 0x4000 + len(text7)] = text7
     wi6 = lay["G_worldinfo"] - 0x4000

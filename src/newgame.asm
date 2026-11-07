@@ -71,7 +71,7 @@ ngw_tl:
         call    ngw_pg
         dec     a
         jr      nz,ngw_tl
-        ld      bc,#8000 - G_agent_fields - B6T_N * 256 - 1
+        ld      bc,#8000 - (B6T_0 & #FF00) - B6T_N * 256 - 1
         call    ngw_pg
         ld      a,255                   ; ως το βήμα 187 έμενε από το NO_JOB πιο πάνω
         ; Τρεις στήλες πρακτόρων θέλουν 255, όχι 0: μια θέση 0 σημαίνει «στην

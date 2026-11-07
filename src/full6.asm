@@ -43,7 +43,7 @@ esf_put:
         jp      esf_keep                ; η επόμενη ουρά
         assert  erp_chk - erp_full - 2 < 128 && NEED_MIN < 256 && S_WATER == 0
 
-        B6T_PIECE 1
+        B6T_PIECE 2
 
 ; esf_keep — ΚΑΙ ΤΟ ΑΠΟΘΕΜΑ ΜΕΤΑΛΛΟΥ (βήμα 127) ΚΑΙ ΤΟ ΟΡΙΟ ΤΟΥ ΒΙΟΠΛΑΣΤΙΚΟΥ
 ; (βήμα 138): τα δύο bits του ec_keep διαλέγουν την πρώτη κλήση εισόδου από

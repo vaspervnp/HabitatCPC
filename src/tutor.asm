@@ -32,9 +32,10 @@
 ; tu_run τρέχει ΠΡΙΝ από το game_new (src/main.asm), που το μηδενίζει: ως το
 ; πρώτο γεγονός το EC_TU είναι 0, και το 0 σε κόσμο του tutorial είναι το βήμα 1.
 ;
-; ΤΟ ΚΕΙΜΕΝΟ. Δεκαέξι γραμμές των 32 bytes ΠΡΙΝ από τον κώδικα, συνεχείς στο
-; OV_R1 από το βήμα 155 (TU_TXT· ως τότε μία ανά τρύπα του DIST, μετά τον
-; κώδικα): δεν έρχονται στο GH_BUF, φέρνει μία κάθε φορά ένα ldir, και
+; ΤΟ ΚΕΙΜΕΝΟ. Δεκαέξι γραμμές των 32 bytes, από το βήμα 199 στις τρύπες του
+; μπλοκ των δομών (TX_HOLE, src/const.asm: 16 + 16 bytes η καθεμία· από το
+; 155 ως το 198 συνεχείς στο OV_R1 πριν από τον κώδικα, ως τότε μία ανά τρύπα
+; του DIST): δεν έρχονται στο GH_BUF, φέρνουν μία κάθε φορά δύο ldir, και
 ; πάει στο x_t_look της τράπεζας 7 — εκεί που το διαβάζει η γραμμή του LOOK
 ; όπως πάντα (ui_panel): ο δρόμος που τη ζωγραφίζει δεν άλλαξε ούτε ένα byte.
 ; Το x_t_look έχει 33 χαρακτήρες· ο 33ος είναι κενό στα βήματα και το «P» του
@@ -89,19 +90,23 @@ tuo_set:
         ld      a,TU_YOURS
 tuo_txt:
         ld      (tuo_i),a
-        ld      l,a
-        ld      h,0
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl
-        add     hl,hl                   ; HL = A * 32
-        ld      de,TU_TXT
+        ; ΑΠΟ ΤΟ ΜΠΛΟΚ ΤΩΝ ΔΟΜΩΝ (βήμα 199, TX_HOLE): η γραμμή A στις στήλες
+        ; 48-63 των γραμμών 2A και 2A + 1 του, 64 bytes η μία από την άλλη.
+        ; Ως το 198 32 bytes συνεχόμενα στο OV_R1 (από το βήμα 155).
+        ld      h,a
+        ld      l,0
+        srl     h
+        rr      l                       ; HL = A * 128
+        ld      de,TX_HOLE
         add     hl,de
         call    ov_b1                   ; src/demolish.asm
         ld      de,tuo_buf
-        ld      bc,32
-        ldir                            ; από το OV_R1 (βήμα 155)
+        ld      bc,OV_UNIT
+        ldir
+        ld      c,DB_STRIDE - OV_UNIT   ; το B είναι 0 μετά το ldir
+        add     hl,bc
+        ld      c,OV_UNIT
+        ldir
         ld      bc,GA_PORT + PAGE_B7
         out     (c),c
         ld      hl,tuo_buf

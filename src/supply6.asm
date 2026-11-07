@@ -5,7 +5,7 @@
 ; sp_sweep, το mca_got και το fit_set μετά το fit_slot. Στο tests/simtest.asm,
 ; στο uitest και στο objtest το B6T_PIECE δεν κάνει τίποτα.
 
-        B6T_PIECE 4
+        B6T_PIECE 5
 
 ; sp_owed — A = κόμβος, (sp_mat) = 0 μέταλλο, 1 βιοπλαστικό. HL -> το byte
 ; αυτού του υλικού, DE -> του άλλου (σε δομή το ίδιο), B = ένα φορτίο, C = η
@@ -65,7 +65,7 @@ mcl_st:
         ret
 
 
-        B6T_PIECE 5
+        B6T_PIECE 6
 
 ; ---------------------------------------------------------------------------
 ; mc_order — A = θόλος, από το fit_set (src/fit.asm): μία Supply ανά υλικό
