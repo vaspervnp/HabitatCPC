@@ -506,10 +506,13 @@ MAX_DEGREE  equ 8
 AG_PG       equ G_agent_fields >> 8
 ; ΟΙ ΟΥΡΕΣ ΩΣ ΚΩΔΙΚΑΣ (βήμα 188, src/full6.asm): τα ids N_AGENT-255 των σελίδων
 ; AG_PG + 0..B6T_N-1. Στις σελίδες 8-15, από το 192, η κρυφή μνήμη φιγούρων
-; (assert στο src/main.asm).
+; (assert στο src/main.asm). Οκτώ από το βήμα 197 (τέσσερις ως τότε): στο
+; φόρτωμα οι τέσσερις πρώτες περιμένουν στην κεφαλίδα, οι 4-7 στις γραμμές 0-3
+; του NEXTHOP, που το sv_after μηδενίζει αμέσως μετά (src/keep6.asm).
 B6T_0       equ G_agent_fields + N_AGENT
 B6T_LEN     equ 256 - N_AGENT
-B6T_N       equ 4
+B6T_N       equ 8
+B6T_HDR     equ 4                            ; όσες περιμένουν στην κεφαλίδα
 AG_HI       equ 8                            ; οι σελίδες των δεύτερων πεδίων
 AG_FLAGS    equ G_agent_fields               ; flags     (role     στο + AG_HI σελίδες)
 AG_NODE     equ G_agent_fields + 256         ; node      (slot)
@@ -528,12 +531,15 @@ AG_SLEEP    equ AG_FOOD + AG_HI * 256
 AG_MORALE   equ AG_HEALTH + AG_HI * 256
 AG_SPARE    equ AG_SUIT + AG_HI * 256
 ; Η ΜΟΥΣΙΚΗ ΤΟΥ ΣΩΣΙΜΑΤΟΣ (βήμα 195): το ίδιο byte με το mu_off (src/isr.asm),
-; μέσα στο μπλοκ που σώζεται, στην ουρά της σελίδας του AG_O2: κανένας
-; πράκτορας από το N_AGENT, και κώδικας μόνο στις ουρές 0..B6T_N-1. Το γράφει
-; το mu_key μαζί με το mu_off, το διαβάζει το φόρτωμα (svx_swap). 0 σε κάθε
-; σώσιμο ως το βήμα 194: τα παλιά φορτώνονται με τη μουσική ανοιχτή.
-EC_MUS      equ AG_O2 + N_AGENT
-        assert  B6T_N <= 4                 ; το AG_O2 είναι η σελίδα 4 των πεδίων
+; μέσα στο μπλοκ που σώζεται. Το γράφει το mu_key μαζί με το mu_off, το
+; διαβάζει το φόρτωμα (svx_swap). 0 σε κάθε σώσιμο ως το βήμα 194: τα παλιά
+; φορτώνονται με τη μουσική ανοιχτή. ΣΤΟ node_occ ΑΠΟ ΤΟ ΒΗΜΑ 197, στο
+; τελευταίο από τα 16 bytes που κανένας κόμβος δεν φτάνει (MAX_NODE-127, πριν
+; από τον χάρτη των εισβολέων): ως τότε στην ουρά της σελίδας του AG_O2, που
+; έγινε κώδικας. Τα σωσίματα των βημάτων 195-196 φορτώνονται με μουσική.
+EC_NOCC     equ G_node_occ + MAX_NODE        ; 16 bytes, ως το G_node_occ + 127
+EC_MUS      equ G_node_occ + 127
+        assert  MAX_NODE <= 127                    ; ως το EC_MUS, κανένας κόμβος
 ; ΤΑ ΣΗΜΑΔΙΑ ΤΩΝ ΦΙΓΟΥΡΩΝ (fg_mark, src/entity.asm), ένα ανά πράκτορα, σε δική
 ; τους σελίδα από το βήμα 172· ως τότε το πάνω μισό του node_occ.
 MKPG        equ G_agent_marks >> 8

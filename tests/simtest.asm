@@ -212,6 +212,7 @@ macro   B6T_PIECE n                         ; βήμα 188: στο παιχνί�
 mend
         include "../src/full6.asm"          ; βήμα 188: το ec_setfull (στο παιχνίδι στις ουρές της 6)
         include "../src/water.asm"          ; βήμα 189: το ισοζύγιο (στο παιχνίδι στις ουρές της 6)
+        include "../src/supply6.asm"        ; βήμα 197: της τροφοδοσίας (στο παιχνίδι στις ουρές της 6)
         include "../src/ship.asm"
         include "../src/visit.asm"          ; βήμα 136: οι επισκέπτες που περπατούν
         include "../src/visit0.asm"         ; ...και ό,τι στο παιχνίδι είναι στην τράπεζα 0

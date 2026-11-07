@@ -59,6 +59,7 @@ import test_supply as TS                                 # noqa: E402
 import test_reveal as R                                  # noqa: E402
 import test_fit as TF                                    # noqa: E402
 import balance as B                                      # noqa: E402
+import codeat as CA                                      # noqa: E402
 import econ as EC                                        # noqa: E402
 
 FAIL = []
@@ -308,7 +309,7 @@ def fit(sym, g, patch=(), quiet=False):
     say = (lambda s: None) if quiet else (lambda s: print("    " + s))
     G = R.Game(sym, g)
     for at, v in patch:
-        G.m.poke(at, v)
+        CA.poke(G.m, at, v)
     F = TF.Fit(G, sym, g)
     F.set_stocks(TF.STOCK, TF.STOCK)
     tx, ty = B.clear_spots(8, 1, dome=True)[0]
@@ -520,7 +521,7 @@ def negatives(sym):
     out = []
 
     def at0(label, name, n, pat, edits, test):
-        hits = TD.find(m.read_ram(sym[name], n), sym[name], pat)
+        hits = TD.find(CA.read(m, sym[name], n), sym[name], pat)   # το mc_order στην 6 (βήμα 197)
         out.append((label, [(hits[0] + k, v) for k, v in edits] if len(hits) == 1 else None, test))
 
     mo, sb, mt, ma = sym["MC_ORDER"], sym["SP_BUILD"], sym["MC_TAIL"], sym["MC_ARRIVE"]
@@ -564,10 +565,11 @@ def main():
     sym, g = TG.build()
     shots = [a for a in sys.argv[1:] if a.endswith(".png")]
     # Από το βήμα 108 και το install.asm στην τράπεζα 2: τα 68 bytes του στην
-    # τράπεζα 0 τα πήραν τα διαστήματα των θόλων (src/span.asm).
-    check(sym["MC_ARRIVE"] >= 0x9C00 and sym["MC_ORDER"] >= 0x9C00,
-          f"το mc_arrive (#{sym['MC_ARRIVE']:04X}) και το mc_order (#{sym['MC_ORDER']:04X}) "
-          f"στο page2")
+    # τράπεζα 0 τα πήραν τα διαστήματα των θόλων (src/span.asm). Το mc_order
+    # από το βήμα 197 στις ουρές της 6 (src/supply6.asm).
+    check(sym["MC_ARRIVE"] >= 0x9C00 and CA.in_b6(sym["MC_ORDER"]),
+          f"το mc_arrive (#{sym['MC_ARRIVE']:04X}) στο page2 και το mc_order "
+          f"(#{sym['MC_ORDER']:04X}) στις ουρές της 6")
     for fn, what in ((deliver, "ΦΟΡΤΙΟ: οκτώ σκηνές, σε θόλο σε λειτουργία και σε εργοτάξιο"),
                      (install, "ΣΤΗΣΙΜΟ: επίσκεψη προς επίσκεψη, και το κτίριο που τελειώνει"),
                      (stopped, "ΣΤΑΜΑΤΗΜΕΝΗ: παραγωγή, χειριστής, επισκευή, βλάβη")):

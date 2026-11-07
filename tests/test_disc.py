@@ -672,7 +672,8 @@ def main():
     tails = [(t0 + 256 * k, tail[256 * k:256 * k + 256 - (t0 & 255)])
              for k in range((len(tail) + 255) // 256)]
     tbad = [a + i for a, want in tails for i, x in enumerate(want) if b6[a - 0x4000 + i] != x]
-    check((t0 & 255) == 188 and len(tails) == 4 and not tbad and any(tail[:68]),
+    check((t0 & 255) == 188 and len(tails) == 8 and not tbad and any(tail[:68])     # 4 ως το βήμα 197
+          and any(tail[4 * 256:4 * 256 + 68]),
           f"και οι {len(tails)} ουρές των σελίδων πεδίων από το #{t0:04X}: {len(tbad)} διαφορετικά")
 
     # --- 3δ. κανένα out (c),c στον κώδικα της τράπεζας 6 (βήμα 110) ----------

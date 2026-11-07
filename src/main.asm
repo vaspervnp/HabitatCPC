@@ -570,8 +570,16 @@ zz_b6x_end:
         ; τελευταία· ανάμεσα, τα πεδία των πρακτόρων, μηδέν όπως στο bank6.bin
         ; (τα κρατά το pack.py, χωρίς δεδομένα). Η B6TAIL.BIN είναι όλο αυτό, από
         ; την πρώτη ουρά ως το τέλος της τελευταίας.
+        ; ΚΑΙ ΤΟ EC_MUS = 1, όπως το mu_off του snapshot (βήμα 195, src/const.asm):
+        ; ένα σώσιμο του main.sna φορτώνεται με τη μουσική κλειστή. Στον δίσκο 0,
+        ; όπως το mu_off εκεί (tools/mkdsk.py). Στο node_occ από το βήμα 197,
+        ; πριν από τις ουρές (ως τότε μετά από αυτές).
         org     #8000 + G_dome_tbl - #4000
-        incbin  "../build/bank6.bin", G_dome_tbl - #4000, B6T_0 - G_dome_tbl
+        incbin  "../build/bank6.bin", G_dome_tbl - #4000, EC_MUS - G_dome_tbl
+        org     EC_MUS, #8000 + EC_MUS - #4000
+mu_saved:   db 1                        ; το σύμβολο, για τις δοκιμές (tests/codeat.py)
+        incbin  "../build/bank6.bin", EC_MUS + 1 - #4000, B6T_0 - EC_MUS - 1
+        assert  EC_MUS < B6T_0
         assert  N_AGENT + B6T_LEN == 256 && B6T_N <= AG_HI && (B6T_0 & 255) == N_AGENT
 macro   B6T_PIECE n
         assert  $ <= B6T_0 + ({n} - 1) * 256 + B6T_LEN      ; το προηγούμενο χωρά στην ουρά του
@@ -580,18 +588,13 @@ mend
         org     B6T_0, #8000 + B6T_0 - #4000
         include "full6.asm"             ; το ec_setfull, από την τράπεζα 0
         include "water.asm"             ; βήμα 189: το ισοζύγιο του ρεύματος και του νερού
+        include "supply6.asm"           ; βήμα 197: της τροφοδοσίας, από τη σελίδα 2
 zz_b6t_end:
         assert  zz_b6t_end <= B6T_0 + (B6T_N - 1) * 256 + B6T_LEN && ((zz_b6t_end - 1) & 255) >= N_AGENT
 B6T_END     equ B6T_0 + (B6T_N - 1) * 256 + B6T_LEN
         save    "../build/b6tail.bin", #8000 + B6T_0 - #4000, B6T_END - B6T_0
         org     #8000 + B6T_END - #4000
-        ; ΚΑΙ ΤΟ EC_MUS = 1, όπως το mu_off του snapshot (βήμα 195, src/const.asm):
-        ; ένα σώσιμο του main.sna φορτώνεται με τη μουσική κλειστή. Στον δίσκο 0,
-        ; όπως το mu_off εκεί (tools/mkdsk.py).
-        incbin  "../build/bank6.bin", B6T_END - #4000, EC_MUS - B6T_END
-        org     EC_MUS, #8000 + EC_MUS - #4000
-mu_saved:   db 1                        ; το σύμβολο, για τις δοκιμές (tests/codeat.py)
-        incbin  "../build/bank6.bin", EC_MUS + 1 - #4000
+        incbin  "../build/bank6.bin", B6T_END - #4000
         ; Η τράπεζα 7 έρχεται σε ΔΥΟ κομμάτια, με τα κείμενα στη μέση: ο rasm
         ; δεν δέχεται org μέσα σε περιοχή που έχει ήδη γεμίσει, και το
         ; δεσμευμένο κενό «text» του pack.py (§4.2) είναι ακριβώς εκεί.

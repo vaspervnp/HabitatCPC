@@ -276,6 +276,9 @@ blk_row     equ 0
         include "../src/hud.asm"
         include "../src/stock.asm"          ; το ec_stock_ptr του hud.asm (βήμα 52)
         include "../src/supply.asm"         ; το sp_noeng του hud.asm (βήμα 88)
+macro   B6T_PIECE n                         ; βήμα 197: στο παιχνίδι μια ουρά της 6 ανά κομμάτι· εδώ τίποτα
+mend
+        include "../src/supply6.asm"        ; βήμα 197: ό,τι ήταν στο src/supply.asm
         include "../src/suit.asm"           ; το su_hud του hud.asm (βήμα 90)
 tr_arrive:                              ; το sp_arrive, για μια J_TRADE (src/carry.asm),
 mc_arrive:                              ; και για τις μηχανές (βήμα 99, src/install.asm),

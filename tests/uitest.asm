@@ -248,6 +248,9 @@ blk_row     equ 0
         include "../src/input.asm"
         include "../src/build.asm"
         include "../src/supply.asm"         ; βήμα 88: το bd_link και το HUD το καλούν
+macro   B6T_PIECE n                         ; βήμα 197: στο παιχνίδι μια ουρά της 6 ανά κομμάτι· εδώ τίποτα
+mend
+        include "../src/supply6.asm"        ; βήμα 197: ό,τι ήταν στο src/supply.asm
         include "../src/suit.asm"           ; βήμα 90: το su_hud του HUD
 tr_arrive:                              ; το sp_arrive, για μια J_TRADE (src/carry.asm),
 mc_arrive:                              ; και για τις μηχανές (βήμα 99, src/install.asm),

@@ -455,7 +455,7 @@ def main():
           f"το svx_swap: πριν από το σώσιμο το mu_off μένει {first}, μετά γίνεται του "
           f"σωσίματος ({last}), και η τράπεζα 6 γυρίζει ίδια ({diff} bytes αλλιώς)")
     m = fresh()
-    st = CA.find(m, sym["SVX_SWAP"], [0x32, sym["MU_OFF"] & 255, sym["MU_OFF"] >> 8], 60)
+    st = CA.find(m, sym["SVX_SWAP"], [0x32, sym["MU_OFF"] & 255, sym["MU_OFF"] >> 8], 128)   # 60 ως το βήμα 197
     del m
     _, last, _ = swap([(st + i, 0) for i in range(3)] if st else [])
     check(bool(st) and last == 1, f"ΑΡΝΗΤΙΚΟ: χωρίς την εγγραφή στο mu_off: μένει {last}")
