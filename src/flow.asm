@@ -111,10 +111,9 @@ ef_skip:
         add     ix,de                   ; DE = STRUCT_REC σε κάθε ef_lp
         djnz    ef_lp
         ; ΚΑΙ Ο,ΤΙ ΧΑΘΗΚΕ ΑΠΟ ΓΕΜΑΤΟ ΠΙΝΑΚΑ (βήμα 115, src/repost.asm): μόνο
-        ; όταν κάτι χάθηκε, 8 us τον κύκλο όταν όχι.
-        ld      a,(jb_lost)
-        or      a
-        call    nz,sp_sweep
+        ; όταν κάτι χάθηκε, 8 us τον κύκλο όταν όχι. Και από το βήμα 198 ό,τι
+        ; περίμενε υλικά (sp_wake, src/wake6.asm).
+        call    sp_wake
         jr      ef_balance
 
 ef_solar:

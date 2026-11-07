@@ -147,7 +147,15 @@ do_link:
         call    cr_plan
         or      a
         jr      z,dl_done
+        ; ΣΤΗΝ ΚΑΤΑΣΤΑΣΗ ΤΟΥ LINK, όπως το uil_second (βήμα 198): μόνο εκεί ο
+        ; διάδρομος πληρώνεται αμέσως (cr_pay)· αλλού μπαίνει στο χρέος.
+        ld      hl,ui_state
+        ld      a,(hl)
+        push    af
+        ld      (hl),UI_LINK
         call    cr_commit_ln            ; ό,τι και το LINK (βήμα 87)
+        pop     af
+        ld      (ui_state),a
 dl_done:
         ld      a,#5A
         ld      (done_flag),a
@@ -250,7 +258,7 @@ blk_row     equ 0
         include "../src/supply.asm"         ; βήμα 88: το bd_link και το HUD το καλούν
 macro   B6T_PIECE n                         ; βήμα 197: στο παιχνίδι μια ουρά της 6 ανά κομμάτι· εδώ τίποτα
 mend
-        include "../src/supply6.asm"        ; βήμα 197: ό,τι ήταν στο src/supply.asm
+        ; (το supply6.asm και το fit6.asm πιο κάτω, στη σελίδα 2, βήμα 198)
         include "../src/suit.asm"           ; βήμα 90: το su_hud του HUD
 tr_arrive:                              ; το sp_arrive, για μια J_TRADE (src/carry.asm),
 mc_arrive:                              ; και για τις μηχανές (βήμα 99, src/install.asm),
@@ -313,6 +321,12 @@ vs_coins:                               ; βήμα 134: src/ship.asm, που ε�
         ; που το ανεβάζει, στο παιχνίδι στο b1code: η επίπεδη περιοχή περνούσε
         ; το #3F00 κατά 15 bytes — 5 κώδικα, και το align του rm_nbuf.
         include "../src/commit.asm"         ; βήμα 94: το al_commit, στην τράπεζα 1 του παιχνιδιού
+        ; ΚΑΙ Ο,ΤΙ ΖΕΙ ΣΤΙΣ ΟΥΡΕΣ ΤΗΣ 6 (βήματα 197-198): η επίπεδη περιοχή
+        ; περνούσε το #3F00 κατά 157 bytes με το χρέος του 198 (src/fit6.asm, το
+        ; sp_pay της τροφοδοσίας, και το src/debt6.asm).
+        include "../src/debt6.asm"          ; βήμα 198: το χρέος
+        include "../src/supply6.asm"        ; βήμα 197: ό,τι ήταν στο src/supply.asm
+        include "../src/fit6.asm"           ; βήμα 198: το fs_put του fit_set, το mc_out
         include "../src/top.asm"
         assert  $ <= #C000
         org     #7000

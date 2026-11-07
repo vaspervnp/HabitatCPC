@@ -333,17 +333,22 @@ def fit(sym, g, patch=(), quiet=False):
                           if G.m.peek(jt + 5 * k) in (J_SUPPLY, J_SUPPLY + 1)
                           and G.m.peek(jt + 5 * k + 4) == node)
     fe0, bi0 = F.stocks()
+    d0 = CA.debt(G.m)
     for s, i in enumerate([1, 2, 1, 4]):            # μέταλλο, βιοπλαστικό, μέταλλο, ρομπότ
         F.put(s, i)
     fe1, bi1 = F.stocks()
+    d1 = CA.debt(G.m)
+    owed = (d1[0] - d0[0], d1[1] - d0[1])
     rec, jobs = F.rec(node), mine()
     kinds = [(j[0], j[3], j[4]) for j in jobs]
+    # ΣΤΟ ΧΡΕΟΣ (βήμα 198): τα αποθέματα μένουν, κανείς δεν σηκώνει φορτίο εδώ
     if rec[16:20] != [OWED] * 4 or kinds != [(J_SUPPLY, 4, node), (J_SUPPLY + 1, 4, node)] \
-            or (fe0 - fe1, bi0 - bi1) != (8 + 8 + 8 + 10, 2 + 2 + 2 + 4):
-        return (f"FIT: υγείες {rec[16:20]}, Supply του θόλου {jobs}, πληρώθηκαν "
-                f"{(fe0 - fe1, bi0 - bi1)} — η πρόζα λέει [7]*4, μία ανά υλικό, (34, 10)")
-    say(f"FIT: τέσσερις μηχανές στο εργοστάσιο {node}, υγείες {rec[16:20]}, πληρωμένες "
-        f"-{fe0 - fe1}/-{bi0 - bi1}, και ΔΥΟ Supply: {kinds}")
+            or owed != (8 + 8 + 8 + 10, 2 + 2 + 2 + 4) or (fe1, bi1) != (fe0, bi0):
+        return (f"FIT: υγείες {rec[16:20]}, Supply του θόλου {jobs}, στο χρέος {owed}, "
+                f"αποθέματα {(fe0, bi0)} -> {(fe1, bi1)} — η πρόζα λέει [7]*4, μία ανά υλικό, "
+                f"(34, 10) στο χρέος και τα αποθέματα ίδια")
+    say(f"FIT: τέσσερις μηχανές στο εργοστάσιο {node}, υγείες {rec[16:20]}, στο χρέος "
+        f"{owed[0]}/{owed[1]}, και ΔΥΟ Supply: {kinds}")
     return None
 
 
@@ -525,7 +530,8 @@ def negatives(sym):
         out.append((label, [(hits[0] + k, v) for k, v in edits] if len(hits) == 1 else None, test))
 
     mo, sb, mt, ma = sym["MC_ORDER"], sym["SP_BUILD"], sym["MC_TAIL"], sym["MC_ARRIVE"]
-    at0("το FIT χωρίς εργασίες", "FIT_SET", 120, [0xCD] + w(mo), [(0, 0), (1, 0), (2, 0)], "fit")
+    # το call mc_order είναι στο fs_put από το βήμα 198 (src/fit6.asm, στην 6)
+    at0("το FIT χωρίς εργασίες", "FS_PUT", 40, [0xCD] + w(mo), [(0, 0), (1, 0), (2, 0)], "fit")
     # call sp_find · ret z: το ret z μετά το call, γιατί από το βήμα 156 το
     # sp_find είναι στο &ADC8 και το C8 βγαίνει και στο call
     at0("χωρίς το «αν δεν υπάρχει ήδη»", "MCO_ONE", 6, [0xCD] + w(sym["SP_FIND"]) + [0xC8],

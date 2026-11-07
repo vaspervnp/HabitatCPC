@@ -23,6 +23,7 @@ sys.path.insert(0, "/home/vasilhs/cpcemu")
 
 from sprites import load_map, load_bin
 import hudread                                  # noqa: E402
+import codeat                                   # noqa: E402
 
 RASM = os.path.expanduser("~/rasm/rasm.exe")
 SNA = os.path.join(ROOT, "build", "uitest.sna")
@@ -551,14 +552,17 @@ def main():
     structs = [list(colony_.struct[8 * k:8 * k + 5]) for k in range(len(colony_.struct) // 8)]
     res = reach.plan(bytes(plane.buf), domes, structs, dims, 0, 0, 4, 4,
                      2 * tx + 4, 2 * ty + 4)
+    # ΣΤΟ ΧΡΕΟΣ ΑΠΟ ΤΟ ΒΗΜΑ 198: τα αποθέματα μένουν, και κάθε φορτίο
+    # πληρώνεται όταν το σηκώσει ο μεταφορέας (tests/test_debt.py).
     cost = 12 + reach.CORR_M * res["pieces"]
     fe1 = m4.peek(g + 6) | (m4.peek(g + 7) << 8)
-    if fe1 != fe0 - cost:
-        print(f"ΑΠΟΤΥΧΙΑ κόστος: μέταλλο {fe0} -> {fe1}, περίμενα -{cost} "
-              f"({len(res['corridors'])} διάδρομοι, {res['pieces']} πλακίδια)")
+    owe = codeat.debt(m4)[0]
+    if fe1 != fe0 or owe != cost:
+        print(f"ΑΠΟΤΥΧΙΑ κόστος: μέταλλο {fe0} -> {fe1}, χρέος {owe}, περίμενα ίδιο και "
+              f"{cost} ({len(res['corridors'])} διάδρομοι, {res['pieces']} πλακίδια)")
         fails += 1
     else:
-        print(f"OK πληρώθηκε: μέταλλο {fe0} -> {fe1} — το κέλυφος και "
+        print(f"OK στο χρέος: {owe} μέταλλο, το απόθεμα {fe1} ίδιο — το κέλυφος και "
               f"{len(res['corridors'])} διάδρομοι, {res['pieces']} πλακίδια")
 
     # ΠΡΩΤΑ ΤΑ ΥΛΙΚΑ (βήμα 88, §6.9): ο θόλος χρωστά ό,τι πλήρωσε — το κέλυφος
@@ -603,7 +607,7 @@ def main():
             assert len(at) == 1, "το and του uist_place δεν βρέθηκε"
             mm.poke(at[0] + 1, 0x30)
         st = mm.peek(sym["UI_STATE"])
-        fe = mm.peek(g + 6) | (mm.peek(g + 7) << 8)
+        fe = codeat.debt(mm)[0]                         # στο χρέος (βήμα 198)
         # ΧΩΡΙΣ ΧΕΙΡΙΣΤΗΡΙΟ: με το joystick ανοιχτό ο εξομοιωτής στέλνει το
         # SPACE ως fire του χειριστηρίου (chips/cpc.h), και η δοκιμή θα
         # δοκίμαζε το FIRE — το αρνητικό το έπιασε.
@@ -611,14 +615,14 @@ def main():
         mm.run_frames(2)
         tap(mm, KEY_SPACE)
         mm.run_frames(60)
-        return st, mm.peek(sym["BD_NODE"]), fe - (mm.peek(g + 6) | (mm.peek(g + 7) << 8))
+        return st, mm.peek(sym["BD_NODE"]), codeat.debt(mm)[0] - fe
     st, nd, paid = space_build()
     if st != UI_PLACE or nd != node or paid != cost:
         print(f"ΑΠΟΤΥΧΙΑ SPACE: κατάσταση {st}, κόμβος {nd} (με το FIRE {node}), "
-              f"πληρώθηκαν {paid} (με το FIRE {cost})")
+              f"χρέος {paid} (με το FIRE {cost})")
         fails += 1
     else:
-        print(f"OK το SPACE στο PLACE έχτισε όπως το FIRE: ο θόλος {nd}, {paid} μέταλλο")
+        print(f"OK το SPACE στο PLACE έχτισε όπως το FIRE: ο θόλος {nd}, {paid} μέταλλο στο χρέος")
     st, nd, paid = space_build(patch=True)
     if nd != 255 or paid:
         print(f"ΑΠΟΤΥΧΙΑ ΑΡΝΗΤΙΚΟ: χωρίς το A_MENU στο and το SPACE έχτισε ακόμη "

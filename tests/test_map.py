@@ -118,7 +118,10 @@ def main():
     bad, say = ghost(I_MINE, *vein[0], 4)
     check(not bad and "READY" in say,
           f"και στους πρόποδες {vein[0]} ολόκληρο: ui_bad={bad} |{say}|")
-    metal = lambda: m.peek(g_metal) | m.peek(g_metal + 1) << 8
+    # ΤΑ ΑΠΟΘΕΜΑΤΑ ΜΕΙΟΝ ΤΟ ΧΡΕΟΣ (βήμα 198): η τιμή μπαίνει στο χρέος, και
+    # ένα φορτίο που σηκώνεται στο μεταξύ το αφαιρεί και από τα δύο
+    import codeat
+    metal = lambda: (m.peek(g_metal) | m.peek(g_metal + 1) << 8) - codeat.debt(m)[0]
     m0 = metal()
     tx, ty = vein[0]
     check(B.build(m, sym, I_MINE, g_metal, at=(2 * tx + 4, 2 * ty + 4)),

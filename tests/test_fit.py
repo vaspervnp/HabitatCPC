@@ -6,21 +6,28 @@
 ΠΛΗΚΤΡΑ, στο κανονικό binary, και τίποτα δεν ελέγχεται με «φαίνεται σωστό»:
 
   ΜΠΑΙΝΕΙ    οκτώ υποδοχές ενός χτισμένου εργοστασίου L: η εγγραφή λέει ό,τι
-             διαλέχτηκε, τα αποθέματα πλήρωσαν ό,τι λέει το fit_cost, και η
+             διαλέχτηκε, η τιμή του fit_cost μπήκε στο χρέος (βήμα 198), και η
              οθόνη είναι ΙΔΙΑ με πλήρη σχεδίαση. Οι μηχανές περιμένουν τα
              υλικά τους και τον μηχανικό (βήμα 99, tests/test_install.py)· τα
              φυτά δουλεύουν αμέσως.
-  ΒΓΑΙΝΕΙ    ΑΔΕΙΟ σε μία υποδοχή: NO_MACH, υγεία 0, τα μισά πίσω· ό,τι ήταν
+  ΒΓΑΙΝΕΙ    ΑΔΕΙΟ σε μία υποδοχή: NO_MACH, υγεία 0· πίσω ό,τι πληρώθηκε αν
+             δεν στήθηκε ακόμη (πρώτα στο χρέος), τα μισά αν στήθηκε. Ο,τι ήταν
              κάτω από τη μηχανή ξαναστρώνεται (dhv_rect), και η οθόνη είναι
              πάλι η πλήρης σχεδίαση — με κανάρινι που δεν σβήνει. ΑΡΝΗΤΙΚΟ:
              χωρίς το dhv_rect η μηχανή μένει ζωγραφισμένη, και η σύγκριση
              πρέπει να το πιάσει.
-  ΑΛΛΑΖΕΙ    μηχανή με άλλη: πληρώνεται η νέα, τα μισά της παλιάς πίσω.
-  ΟΧΙ        χωρίς υλικά το FIRE δεν αλλάζει τίποτα και το πλαίσιο είναι
-             κόκκινο· κατάλυμα (δωμάτιο χωρίς μηχανές) δεν ανοίγει.
+  ΑΛΛΑΖΕΙ    μηχανή με άλλη: η νέα στο χρέος, η παλιά βγαίνει όπως πιο πάνω.
+  ΚΑΙ ΧΩΡΙΣ  υλικά μια μηχανή μπαίνει, με πράσινο πλαίσιο (βήμα 198, ο
+             παίκτης)· ένα φυτό όχι: το FIRE δεν αλλάζει τίποτα και το πλαίσιο
+             είναι κόκκινο. Κατάλυμα (δωμάτιο χωρίς μηχανές) δεν ανοίγει.
   SPACE      όπως το COPY, ΜΟΝΟ η υποδοχή του κέρσορα (βήμα 196· ως το 195 το
-             ίδιο σε όλες): οι άλλες μένουν όπως ήταν, και χωρίς υλικά ο ήχος
-             της άρνησης. ΑΡΝΗΤΙΚΟ: χωρίς το bit του SPACE στη μάσκα, τίποτα.
+             ίδιο σε όλες): οι άλλες μένουν όπως ήταν, και χωρίς υλικά μπαίνει
+             κι αυτό. ΑΡΝΗΤΙΚΟ: χωρίς το bit του SPACE στη μάσκα, τίποτα.
+
+ΤΑ ΑΠΟΘΕΜΑΤΑ ΜΕΙΟΝ ΤΟ ΧΡΕΟΣ (Fit.net, βήμα 198): ο τροχός τρέχει όσο
+πατιούνται τα πλήκτρα, και ένας μεταφορέας που σηκώνει φορτίο πληρώνει από
+τα αποθέματα ό,τι αφαιρεί από το χρέος — το net δεν το βλέπει. Μια τιμή το
+ρίχνει ακριβώς όσο είναι, και μια μηχανή που βγαίνει το ανεβάζει όσο δίνει πίσω.
   ΔΕΙΧΝΕΙ    σε κάθε υποδοχή η επιλογή στέκεται σε ό,τι έχει ήδη μέσα (fit_pick)
              — στο θερμοκήπιο, η κλάση του φυτού. ΑΡΝΗΤΙΚΟ: το fit_pick μία
              θέση μετά. Το βήμα 55 βρήκε ότι κανένας έλεγχος δεν το έπιανε: το
@@ -40,6 +47,7 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, "/home/vasilhs/cpcemu")
 
 import balance as B                                                # noqa: E402
+import codeat                                                      # noqa: E402
 import test_game as T                                              # noqa: E402
 import test_reveal as R                                            # noqa: E402
 from cpc import (JOY_FIRE, KEY_SPACE, KEY_RIGHT, KEY_LEFT,         # noqa: E402
@@ -141,6 +149,11 @@ class Fit:
     def rec(self, d):
         return B.dome_rec(self.m, self.sym, d)
 
+    def net(self):
+        """(μέταλλο, βιοπλαστικό): τα αποθέματα μείον το χρέος (βήμα 198)."""
+        (fe, bi), (dm, db) = self.stocks(), codeat.debt(self.m)
+        return fe - dm, bi - db
+
     def sounds(self, act, *args):
         """Οι ήχοι που ΞΕΚΙΝΗΣΑΝ όσο έτρεχε το act(*args). Το snd_play βάζει
         τον δείκτη ενός καναλιού (sn_st + 1) στο πρώτο βήμα του εφέ — ένα byte
@@ -168,6 +181,20 @@ class Fit:
         finally:
             m.run_us = raw
         return heard
+
+
+def back(code, health):
+    """Ο,τι δίνει πίσω μια μηχανή που βγαίνει (mc_out, βήμα 198): όλη την τιμή
+    της αν δεν στήθηκε (υγεία 1-127: πρώτα στο χρέος, ό,τι μένει στα
+    αποθέματα — το net ανεβαίνει όσο η τιμή), τα μισά αν στήθηκε ή χάλασε."""
+    if code == NO_MACH:
+        return 0, 0
+    fe, bi = COST[code]
+    return (fe, bi) if 0 < health < 128 else (fe // 2, bi // 2)
+
+
+def delta(n1, n0):
+    return n1[0] - n0[0], n1[1] - n0[1]
 
 
 def picks(F, node, slots, code=lambda v: v):
@@ -226,10 +253,10 @@ def factory(sym, g):
     on = G.still()
     plan = [1, 2, 3, 4, 5, 1, 2, 3]          # θέσεις στη λίστα
     want = [lst[i] for i in plan]
-    fe0, bi0 = F.stocks()
+    n0 = F.net()
     for s, i in enumerate(plan):
         F.put(s, i)
-    fe1, bi1 = F.stocks()
+    n1 = F.net()
     pay = (sum(COST[k][0] for k in want), sum(COST[k][1] for k in want))
     rec = F.rec(node)
     # ΣΤΑΜΑΤΗΜΕΝΕΣ (βήμα 99): περιμένουν τα υλικά τους και τον μηχανικό, με
@@ -237,9 +264,9 @@ def factory(sym, g):
     # όσο πατιούνταν τα πλήκτρα (tests/test_install.py).
     check(rec[8:16] == want and all(0 < h < 128 for h in rec[16:24]),
           f"οκτώ μηχανές μπήκαν: {rec[8:16]}, υγείες {rec[16:24]} (περιμένουν)")
-    check((fe0 - fe1, bi0 - bi1) == pay,
-          f"και πληρώθηκαν χωριστά: μέταλλο -{fe0 - fe1}, βιοπλαστικό "
-          f"-{bi0 - bi1} (fit_cost: {pay})")
+    check(delta(n0, n1) == pay,
+          f"και μπήκαν στο χρέος χωριστά: αποθέματα μείον χρέος -{delta(n0, n1)} "
+          f"(fit_cost: {pay})")
     truth(G, "μετά τις οκτώ")
 
     # --- ΒΓΑΙΝΕΙ: πρώτα το ΑΡΝΗΤΙΚΟ ----------------------------------------
@@ -264,20 +291,20 @@ def factory(sym, g):
     # --- ΒΓΑΙΝΕΙ, κανονικά -----------------------------------------------
     rect = slot_rect(F)
     before = G.play()
-    fe0, bi0 = F.stocks()
     F.slot(2)
     F.pick(0)
     c = G.canary(79, 0)
     G.iters = []
+    h, n0 = F.rec(node)[18], F.net()
     F.fire()
     worst = G.worst()
-    fe1, bi1 = F.stocks()
+    n1 = F.net()
     rec = F.rec(node)
     check(rec[10] == NO_MACH and rec[18] == 0,
           f"ΑΔΕΙΟ στην υποδοχή 2: {rec[10]}, υγεία {rec[18]}")
-    check((fe1 - fe0, bi1 - bi0) == (5, 2),
-          f"και τα μισά πίσω: μέταλλο +{fe1 - fe0}, βιοπλαστικό +{bi1 - bi0} "
-          f"(όπλα 10/4)")
+    check(0 < h < 128 and delta(n1, n0) == back(3, h),
+          f"και πίσω όλα, πρώτα στο χρέος: +{delta(n1, n0)} (όπλα 10/4, υγεία {h}: "
+          f"δεν στήθηκαν)")
     after = G.play()
     moved = sum(1 for k in rect if before[k] != after[k])
     check(moved > 20, f"η μηχανή έφυγε από την οθόνη: {moved} από {len(rect)} "
@@ -287,29 +314,37 @@ def factory(sym, g):
     check(worst < 120, f"ο χειρότερος γύρος του FIRE ήταν {worst:.0f} ms")
 
     # --- ΑΛΛΑΖΕΙ ----------------------------------------------------------
-    fe0, bi0 = F.stocks()
     F.slot(0)
     F.pick(4)                                # σίδερο -> ρομπότ
+    h, n0 = F.rec(node)[16], F.net()
     heard = F.sounds(F.fire)
-    fe1, bi1 = F.stocks()
+    n1 = F.net()
     rec = F.rec(node)
-    check(rec[8] == 5 and (fe0 - fe1, bi0 - bi1) == (10 - 4, 4 - 1)
+    b = back(1, h)
+    check(rec[8] == 5 and delta(n0, n1) == (10 - b[0], 4 - b[1])
           and heard == [SFX_BUILD],
-          f"σίδερο -> ρομπότ: υποδοχή 0 = {rec[8]}, μέταλλο -{fe0 - fe1}, "
-          f"βιοπλαστικό -{bi0 - bi1} (10/4 μείον τα μισά του 8/2), ήχοι {heard}")
+          f"σίδερο -> ρομπότ: υποδοχή 0 = {rec[8]}, αποθέματα μείον χρέος "
+          f"-{delta(n0, n1)} (10/4 μείον {b} του 8/2 με υγεία {h}), ήχοι {heard}")
 
-    # --- ΟΧΙ ----------------------------------------------------------------
+    # --- ΚΑΙ ΧΩΡΙΣ ΥΛΙΚΑ (βήμα 198) --------------------------------------
+    # Ως το 197 εδώ «ΟΧΙ»: με 3 μέταλλο τα όπλα δεν έμπαιναν. Τώρα μπαίνουν, με
+    # πράσινο πλαίσιο, και η τιμή τους στο χρέος· τα φυτά όχι (greenhouse).
     F.set_stocks(3, STOCK)
     F.slot(1)
     F.pick(3)                                # όπλα, 10 μέταλλο
     # Το gh_pen κρατά το byte γεμίσματος, hud_solid[pen - 8] (gh_setpen).
-    pen, red = F.peek("GH_PEN"), F.peek("HUD_SOLID", PEN_NO - 8)
+    pen, green = F.peek("GH_PEN"), F.peek("HUD_SOLID", PEN_OK - 8)
+    h, n0 = F.rec(node)[17], F.net()
     heard = F.sounds(F.fire)
+    n1 = F.net()
     rec = F.rec(node)
-    check(rec[9] == 2 and F.stocks()[0] == 3 and pen == red
-          and red != F.peek("HUD_SOLID", PEN_OK - 8) and heard == [SFX_DENY],
-          f"με 3 μέταλλο τα όπλα δεν μπαίνουν: υποδοχή 1 = {rec[9]}, μέταλλο "
-          f"{F.stocks()[0]}, πλαίσιο #{pen:02X} (κόκκινο #{red:02X}), ήχοι {heard}")
+    b = back(2, h)
+    check(rec[9] == 3 and F.stocks()[0] == 3 and pen == green
+          and green != F.peek("HUD_SOLID", PEN_NO - 8) and heard == [SFX_BUILD]
+          and delta(n0, n1) == (10 - b[0], 4 - b[1]),
+          f"με 3 μέταλλο τα όπλα μπαίνουν: υποδοχή 1 = {rec[9]}, μέταλλο "
+          f"{F.stocks()[0]}, πλαίσιο #{pen:02X} (πράσινο #{green:02X}), ήχοι {heard}, "
+          f"αποθέματα μείον χρέος -{delta(n0, n1)}")
     F.set_stocks(STOCK, STOCK)
 
     # --- SPACE: Η ΥΠΟΔΟΧΗ, ΚΑΙ ΜΟΝΟ ΑΥΤΗ (βήμα 196) -------------------------
@@ -330,31 +365,35 @@ def factory(sym, g):
     check(F.rec(node)[8:16] == before,
           f"ΑΡΝΗΤΙΚΟ: χωρίς το A_MENU στη μάσκα το SPACE δεν άλλαξε τίποτα — "
           f"{F.rec(node)[8:16]}")
-    fe0, bi0 = F.stocks()
+    n0 = F.net()
     heard = F.sounds(F.key, KEY_SPACE)
     G.run(400_000)
     rec = F.rec(node)
     want = before[:2] + [1] + before[3:]
     check(before[2] == NO_MACH and rec[8:16] == want and F.peek("FIT_S") == 2
-          and (fe0 - F.stocks()[0], bi0 - F.stocks()[1]) == (8, 2)
+          and delta(n0, F.net()) == (8, 2)
           and heard == [SFX_BUILD],
           f"SPACE: σίδερο ΜΟΝΟ στην υποδοχή 2 — {before} -> {rec[8:16]}, "
-          f"κέρσορας {F.peek('FIT_S')}, μέταλλο -{fe0 - F.stocks()[0]}, "
-          f"βιοπλαστικό -{bi0 - F.stocks()[1]}, ήχοι {heard}")
+          f"κέρσορας {F.peek('FIT_S')}, αποθέματα μείον χρέος -{delta(n0, F.net())}, "
+          f"ήχοι {heard}")
     truth(G, "μετά το SPACE")
 
-    # --- SPACE χωρίς υλικά: όπως το COPY, η άρνηση και τίποτα άλλο ----------
+    # --- SPACE χωρίς υλικά: όπως το COPY, μπαίνει (βήμα 198) ----------------
     F.set_stocks(3, STOCK)
     F.slot(3)
     F.pick(3)                                # ρομπότ -> όπλα, 10 μέταλλο
     before = F.rec(node)[8:16]
+    h, n0 = F.rec(node)[19], F.net()
     heard = F.sounds(F.key, KEY_SPACE)
     G.run(400_000)
     rec = F.rec(node)
-    check(before[3] == 5 and rec[8:16] == before and F.stocks()[0] == 3
-          and heard == [SFX_DENY],
+    b = back(5, h)
+    check(before[3] == 5 and rec[8:16] == before[:3] + [3] + before[4:]
+          and F.stocks()[0] == 3 and heard == [SFX_BUILD]
+          and delta(n0, F.net()) == (10 - b[0], 4 - b[1]),
           f"SPACE με 3 μέταλλο: {rec[8:16]}, μέταλλο {F.stocks()[0]}, ήχοι "
-          f"{heard} (τίποτα δεν άλλαξε, η άρνηση)")
+          f"{heard}, αποθέματα μείον χρέος -{delta(n0, F.net())} (τα όπλα στη θέση "
+          f"των ρομπότ, υγεία {h})")
     F.set_stocks(STOCK, STOCK)
     F.slot(1)                                # το picks() θέλει κάθε slot() να κινεί
 
@@ -400,17 +439,31 @@ def greenhouse(sym, g):
           f"και ο εξοπλισμός του ανοίγει ΑΠΟ ΤΩΡΑ: ΑΔΕΙΟ, ΜΙΚΤΟ, άμυλο, "
           f"λαχανικά, βότανα, δέντρο — {F.lst()}")
     on = G.still()
-    fe0, _ = F.stocks()
+    n0, d0 = F.net(), codeat.debt(G.m)
     for s, i in enumerate([2, 2, 3, 5]):     # άμυλο, άμυλο, λαχανικά, δέντρο
         F.put(s, i)
     rec = F.rec(node)
     # Η ποικιλία βγαίνει από την υποδοχή: άμυλο 0 + 0, 0 + 1, λαχανικά 5 + 2.
-    check(rec[8:12] == [0, 1, 7, 11] and fe0 - F.stocks()[0] == 8
-          and rec[16:20] == [200] * 4,
+    # ΤΑ ΦΥΤΑ ΠΛΗΡΩΝΟΝΤΑΙ ΑΜΕΣΩΣ (βήμα 198): τίποτα στο χρέος — ό,τι έπεσε
+    # από αυτό, το σήκωσε μεταφορέας του εργοταξίου.
+    check(rec[8:12] == [0, 1, 7, 11] and delta(n0, F.net())[0] == 8
+          and codeat.debt(G.m)[0] <= d0[0] and rec[16:20] == [200] * 4,
           f"καλλιέργειες ανά υποδοχή: {rec[8:12]} (άμυλο, άμυλο, λαχανικά, "
-          f"δέντρο), μέταλλο -{fe0 - F.stocks()[0]}, υγείες {rec[16:20]} (τα φυτά "
-          f"μένουν άμεσα, βήμα 99)")
+          f"δέντρο), αποθέματα μείον χρέος -{delta(n0, F.net())[0]}, χρέος "
+          f"{d0[0]} -> {codeat.debt(G.m)[0]}, υγείες {rec[16:20]} (τα φυτά μένουν "
+          f"άμεσα, βήμα 99)")
     truth(G, "εξοπλισμός πάνω σε εργοτάξιο: τίποτα δεν ζωγραφίστηκε")
+    # ΟΧΙ: ένα φυτό χωρίς υλικά — κόκκινο πλαίσιο, η άρνηση, τίποτα δεν αλλάζει.
+    F.set_stocks(1, STOCK)
+    F.slot(0)
+    F.pick(3)                                # άμυλο -> λαχανικά, 2 μέταλλο
+    pen, red = F.peek("GH_PEN"), F.peek("HUD_SOLID", PEN_NO - 8)
+    heard = F.sounds(F.fire)
+    check(F.rec(node)[8] == 0 and F.stocks()[0] == 1 and pen == red
+          and red != F.peek("HUD_SOLID", PEN_OK - 8) and heard == [SFX_DENY],
+          f"με 1 μέταλλο τα λαχανικά δεν μπαίνουν: υποδοχή 0 = {F.rec(node)[8]}, "
+          f"μέταλλο {F.stocks()[0]}, πλαίσιο #{pen:02X} (κόκκινο #{red:02X}), ήχοι {heard}")
+    F.set_stocks(STOCK, STOCK)
     # Η κλάση από την ποικιλία (rooms.asm): 0-4 άμυλο, 5-9 λαχανικά, 10, 11.
     cls = lambda v: FT_CLS + (0 if v < 5 else 1 if v < 10 else v - 8)
     bad = picks(F, node, (3, 2, 0), code=cls)

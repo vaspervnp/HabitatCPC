@@ -195,12 +195,18 @@ def main():
     m.poke(sym["CUR_HX"], -9 & 0xFF)     # ΜΕΤΑ τον κατάλογο, που κουμπώνει
     m.poke(sym["CUR_HY"], -11 & 0xFF)    # τον κέρσορα στην ισοτιμία του
     fire()                               # -> PLACE
-    metal0 = w16(g + 3 * 2)
+    import codeat                        # εδώ: το test_game το εισάγουν όλοι, πριν από το build
+    # ΤΟ ΜΕΤΑΛΛΟ ΜΕΙΟΝ ΤΟ ΧΡΕΟΣ (βήμα 198): μια τιμή το ρίχνει όσο είναι, ένα
+    # φορτίο που σηκώνεται στο μεταξύ δεν το αλλάζει
+    net = lambda: w16(g + 3 * 2) - codeat.debt(m)[0]
+    metal0, owe0 = w16(g + 3 * 2), codeat.debt(m)[0]
     fire()                               # -> τοποθέτηση
-    metal1 = w16(g + 3 * 2)
-    check(metal1 == metal0 - 15,
-          f"πληρώθηκε ο ηλιακός: μέταλλο {metal0} -> {metal1}")
-    if metal1 != metal0 - 15:
+    metal1, owe1 = w16(g + 3 * 2), codeat.debt(m)[0]
+    # ΣΤΟ ΧΡΕΟΣ (βήμα 198): πληρώνεται φορτίο-φορτίο στο σήκωμα· ένα φορτίο
+    # που σηκώθηκε μέσα στα frames του FIRE αφαιρείται και από τα δύο.
+    check(owe1 - owe0 == 15 - (metal0 - metal1),
+          f"ο ηλιακός στο χρέος: μέταλλο {metal0} -> {metal1}, χρέος {owe0} -> {owe1}")
+    if owe1 - owe0 + metal0 - metal1 != 15:          # δεν μπήκε
         print(f"    (ui_bad={m.peek(sym['UI_BAD'])} — το έδαφος είπε όχι)")
         return 1
 
@@ -299,7 +305,7 @@ def main():
     m.key_up("\x01")
     m.set_joystick_type(1)
     fire()                               # -> PLACE
-    metal0 = w16(g + 3 * 2)
+    metal0 = net()
     mpow0, o2p0 = w16(g + 36), w16(g + 38)
     # ΚΑΙ ΟΙ ΔΙΑΔΡΟΜΟΙ ΤΟΥ (βήμα 85), όσους δείχνει ο κανόνας του tools/reach.py
     pcs = B.live_plan(m, sym, 0, at)["pieces"]
@@ -307,8 +313,8 @@ def main():
     m.set_joystick_type(0)
     m.run_frames(30)
     # ΤΟ ΚΕΛΥΦΟΣ ΜΟΝΟ (βήμα 45): 12. Η γεννήτρια μπαίνει από τον εξοπλισμό.
-    check(w16(g + 3 * 2) == metal0 - 12 - 6 * pcs,
-          f"πληρώθηκε ο θόλος στο {at}: μέταλλο {metal0} -> {w16(g + 3 * 2)}, "
+    check(net() == metal0 - 12 - 6 * pcs,
+          f"ο θόλος στο χρέος, στο {at}: μέταλλο μείον χρέος {metal0} -> {net()}, "
           f"κέλυφος 12 και {pcs} πλακίδια διαδρόμων "
           f"(ui_bad={m.peek(sym['UI_BAD'])}, κέρσορας "
           f"{sb(m.peek(sym['CUR_HX']))},{sb(m.peek(sym['CUR_HY']))})")
@@ -333,14 +339,14 @@ def main():
     check(r3.startswith("< OXYGEN       >  FE  8  BI  2")
           and r4.startswith("LT/RT=SLOT 1/1  UP/DN=PICK SPACE=FIT"),
           f"και ο πίνακας λέει τι και πόσο:\n   |{r3}|\n   |{r4}|")
-    metal0 = w16(g + 3 * 2)
+    metal0 = net()
     fire()                               # -> η γεννήτρια μπαίνει
     rec = B.dome_rec(m, sym, node)
     # ΣΤΑΜΑΤΗΜΕΝΗ ΩΣ ΝΑ ΣΤΗΘΕΙ (βήμα 99): χρωστά μέταλλο και βιοπλαστικό
     # (υγεία 7), που θα τα κουβαλήσουν, και μετά τη στήνει ο μηχανικός.
-    check(w16(g + 3 * 2) == metal0 - 8 and rec[8] == 0 and rec[16] == 7,
-          f"η γεννήτρια μπήκε και πληρώθηκε: μέταλλο {metal0} -> "
-          f"{w16(g + 3 * 2)}, υποδοχή 0 = {rec[8]}, υγεία {rec[16]} (7: χρωστά)")
+    check(net() == metal0 - 8 and rec[8] == 0 and rec[16] == 7,
+          f"η γεννήτρια μπήκε, στο χρέος: μέταλλο μείον χρέος {metal0} -> "
+          f"{net()}, υποδοχή 0 = {rec[8]}, υγεία {rec[16]} (7: χρωστά)")
     m.joystick(0x20)                     # -> LOOK
     m.run_frames(4)
     m.joystick(0)
@@ -451,15 +457,15 @@ def main():
     # όχι για το πόσα αγοράζει το άνοιγμα (εκείνο είναι του §10.1).
     m.poke(g + 3 * 2, 200 & 255)
     m.poke(g + 3 * 2 + 1, 200 >> 8)
-    metal0 = w16(g + 3 * 2)
+    metal0 = net()
     fire()                               # -> PLACE
     pcs = B.live_plan(m, sym, 0, at2)["pieces"]
     fire()                               # -> τοποθέτηση
     m.set_joystick_type(0)
     m.run_frames(30)
-    check(w16(g + 3 * 2) == metal0 - 12 - 6 * pcs,
-          f"πληρώθηκε η αίθουσα ελέγχου στο {at2}: μέταλλο {metal0} -> "
-          f"{w16(g + 3 * 2)} (ui_bad={m.peek(sym['UI_BAD'])})")
+    check(net() == metal0 - 12 - 6 * pcs,
+          f"η αίθουσα ελέγχου στο χρέος, στο {at2}: μέταλλο μείον χρέος {metal0} -> "
+          f"{net()} (ui_bad={m.peek(sym['UI_BAD'])})")
     got = 0
     for _ in range(80):
         m.run_frames(50)

@@ -13,7 +13,8 @@
   bd_afford  Z και A = 0 αν φτάνουν μέταλλο και βιοπλαστικό, NZ και A = 1 αν όχι
   bd_stock_pay  τα δύο αποθέματα μείον το κόστος, 16 bit
   bd_commit  η πρώτη άδεια θέση θόλου ή δομής και η εγγραφή της, το θεμέλιο
-             και η κατοχή στο αποτύπωμα, η πληρωμή, η εργασία Build, το ob_idx
+             και η κατοχή στο αποτύπωμα, η τιμή στο χρέος και τα αποθέματα ίδια
+             (βήμα 198, ως τότε η πληρωμή), η εργασία Build, το ob_idx
              — ή 255 και καμία αλλαγή. ΚΑΜΙΑ ακμή από το βήμα 85: ως τότε έδενε
              το κτίσμα με τον κοντινότερο θόλο όσο μακριά κι αν ήταν· τώρα τους
              δεσμούς τους βάζει το al_commit (tests/test_reach.py)
@@ -359,6 +360,8 @@ def commit_rules(sym, patch=(), n=300):
         m.poke(sym["BD_RSEL"], rsel)
         m.poke(sym["BD_NODE"], rnd.randrange(256))
         m.write_ram(G.g + 6, bytes([0xE8, 3, 0xE8, 3]))
+        d0 = (rnd.randrange(600), rnd.randrange(600))    # ό,τι χρωστιόταν ήδη (βήμα 198)
+        codeat.set_debt(m, *d0)
         m.poke(sym["RT_DIRTY"], 0)
         m.poke(sym["OB_IDX"], 0)
         # και με το bit 3 (του πόρου, §3.5): η σφραγίδα κρατά μόνο το decor
@@ -411,7 +414,7 @@ def commit_rules(sym, patch=(), n=300):
         # --- ο κανόνας ---
         want_d, want_s, want_w = bytearray(domes), bytearray(structs), bytearray(world)
         want_deg, want_adj, want_jobs = bytearray(deg), bytearray(adj), bytearray(jobs)
-        stock, dirty, idx = (1000, 1000), 0, 0
+        stock, dirty, idx, debt = (1000, 1000), 0, 0, d0
         if kind == 0:
             slot = next((d for d in range(64) if domes[24 * d + 4] == 0), None)
             node = slot
@@ -441,7 +444,9 @@ def commit_rules(sym, patch=(), n=300):
                     # θόλος: το έδαφός του, μόνο κατοχή (βήμα 94)· δομή: θεμέλιο
                     want_w[a] = (want_w[a] & 0xCF | 0x10 if kind == 0
                                  else want_w[a] & 0xC0 | 0x17)
-            stock = (1000 - bm, 1000 - G.items[i][5])
+            # ΤΑ ΑΠΟΘΕΜΑΤΑ ΜΕΝΟΥΝ, η τιμή στο χρέος (βήμα 198): πληρώνεται
+            # φορτίο-φορτίο στο σήκωμα (tests/test_debt.py)
+            debt = (d0[0] + bm, d0[1] + G.items[i][5])
             # ο γράφος δεν αλλάζει (βήμα 85): ούτε βαθμοί, ούτε γείτονες, ούτε rt_dirty
             # Supply για ό,τι χρωστιέται, μέταλλο πρώτα· αν τίποτα, Build
             for k, n_ in ((7, lm), (8, lb)) if lm or lb else ((0, 1),):
@@ -452,12 +457,14 @@ def commit_rules(sym, patch=(), n=300):
             idx = OB_IX_FIG + (OB_IX_DOME if kind == 0 else OB_IX_STRUCT)
         got = {"A": A, "θόλοι": G.bank(6, G.gd, 64 * 24), "δομές": G.bank(6, G.gs, NS * 8),
                "κόσμος": G.bank(4), "αποθέματα": (G.w16(G.g + 6), G.w16(G.g + 8)),
+               "χρέος": codeat.debt(m),
                "βαθμοί": m.read_ram(G.nodes, 112), "γείτονες": m.read_ram(G.adj, 8 * 112),
                "εργασίες": m.read_ram(G.jobs, 5 * 32), "rt_dirty": m.peek(sym["RT_DIRTY"]),
                "ob_idx": m.peek(sym["OB_IDX"]),
                "bd_metal, bd_half": (m.peek(sym["BD_METAL"]), m.peek(sym["BD_HALF"]))}
         want = {"A": want_a, "θόλοι": bytes(want_d), "δομές": bytes(want_s),
-                "κόσμος": bytes(want_w), "αποθέματα": stock, "βαθμοί": bytes(want_deg),
+                "κόσμος": bytes(want_w), "αποθέματα": stock, "χρέος": debt,
+                "βαθμοί": bytes(want_deg),
                 "γείτονες": bytes(want_adj), "εργασίες": bytes(want_jobs), "rt_dirty": dirty,
                 "ob_idx": idx,
                 # μετά από τοποθέτηση το bd_mprice: το επόμενο ορυχείο πληρώνει, το
@@ -604,7 +611,7 @@ def main():
             [(find("BD_LINK", [0x11, 0x17, 0xC0]) + 1, 0x07)]),
            # ld a,(bd_kind) · or a · jr nz,bst_rl γίνεται jr: θεμέλιο και ο θόλος (ως το 93)
            ("ο θόλος με θεμέλιο", commit_rules,
-            [(find("BD_LINK", [0xB7, 0x20], 40) + 1, 0x18)]),
+            [(find("BD_LINK", [0xB7, 0x20], 48) + 1, 0x18)]),
            # ΤΑ ΧΡΕΗ (βήμα 88): με το ld (hl),d του D_OPS σβησμένο, ο θόλος δεν
            # χρωστά βιοπλαστικό ενώ η εργασία του δημοσιεύεται
            ("το D_OPS χωρίς το βιοπλαστικό", commit_rules,
@@ -620,7 +627,11 @@ def main():
            ("το δωρεάν ορυχείο χωρίς ST_FREE", commit_rules,
             [(find("BD_MFLAGS", [0xF6, 8], 24) + 1, 0)]),
            ("το επόμενο ορυχείο δωρεάν κι αυτό", commit_rules,
-            [(a, 0) for a in (lambda p: (p, p + 1, p + 2))(find("BDK_POST", call("BD_MPRICE"), 8))])]
+            [(a, 0) for a in (lambda p: (p, p + 1, p + 2))(find("BDK_POST", call("BD_MPRICE"), 8))]),
+           # ΤΟ ΧΡΕΟΣ (βήμα 198): χωρίς το call db_own του bd_link τίποτα δεν
+           # χρωστιέται, και τα αποθέματα μένουν όπως είναι
+           ("το bd_link χωρίς το db_own", commit_rules,
+            [(a, 0) for a in (lambda p: (p, p + 1, p + 2))(find("BD_LINK", call("DB_OWN"), 8))])]
     for label, fn, patch in neg:
         why = fn(sym, patch, n=150)
         if why:

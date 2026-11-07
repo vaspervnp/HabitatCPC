@@ -67,7 +67,9 @@ dmd_it:
         xor     a
         ld      (dm_m),a                ; 30 -> 0· το βιοπλαστικό είναι ήδη 0
 dmd_paid:
-        ; --- ΟΙ ΜΗΧΑΝΕΣ ΕΝΟΣ ΘΟΛΟΥ, με την τιμή του FIT (fit_price) ---
+        ; --- ΟΙ ΜΗΧΑΝΕΣ ΕΝΟΣ ΘΟΛΟΥ, με την τιμή του FIT (mc_out, βήμα 198):
+        ; όποια στήθηκε ή χάλασε τα μισά, όποια περιμένει ό,τι κουβαλήθηκε.
+        ; Σε εργοτάξιο όλες σαν να περιμένουν (υγεία 1), και τα φυτά του.
         ld      a,(dm_n)
         cp      MAX_DOME
         jr      nc,dmd_corr
@@ -86,10 +88,16 @@ dmd_paid:
 dmm_lp:
         push    bc
         push    hl
+        ld      a,(dm_st)
+        cp      DS_ACTIVE
+        ld      d,1
         ld      a,(hl)
-        call    fit_price               ; χαλάει C, DE, HL
-        ld      de,(bd_metal)           ; E = μέταλλο, D = βιοπλαστικό
-        call    dm_add8
+        jr      nz,dmm_out
+        ld      de,D_HEALTH - D_MACH
+        add     hl,de
+        ld      d,(hl)                  ; η υγεία της
+dmm_out:
+        call    mc_out                  ; src/fit6.asm, στην 6· χαλάει C, DE, HL
         pop     hl
         pop     bc
         inc     hl
@@ -166,17 +174,19 @@ dmk_nx:
         pop     bc
         djnz    dmk_lp
         call    asc_b6
-        ; --- ΤΑ ΥΛΙΚΑ ΠΙΣΩ: τα μισά, ή όλα από εργοτάξιο ---
+        ; --- ΤΑ ΥΛΙΚΑ ΠΙΣΩ: τα μισά, ή από εργοτάξιο ό,τι κουβαλήθηκε (βήμα
+        ; 198): η τιμή του φεύγει πρώτα από το χρέος, και ό,τι μένει γυρίζει
+        ; (db_both, src/fit6.asm). Οσα δεν ήρθαν δεν θα έρθουν πια.
         ld      hl,(dm_m)
         ld      de,(dm_b)
         ld      a,(dm_st)
         cp      DS_ACTIVE
-        jr      nz,dmr_all
+        jr      nz,dmr_site
+dmr_half:                               ; τα μισά (tests/test_demolish.py)
         srl     h
         rr      l
         srl     d
         rr      e
-dmr_all:
         push    de
         ex      de,hl
         ld      a,S_METAL
@@ -184,6 +194,10 @@ dmr_all:
         pop     de
         ld      a,S_BIOPL
         call    ec_add_stock
+        jr      dmr_jobs
+dmr_site:
+        call    db_both
+dmr_jobs:
         ; --- ΟΙ ΕΡΓΑΣΙΕΣ ΤΟΥ. Οσες είναι του κόμβου (J_SITE) σβήνουν· όσες
         ; έρχονται από αυτόν ή πάνε σε αυτόν από αλλού (μια Supply από την
         ; αποθήκη του, μια Haul προς αυτήν) γυρίζουν στο J_SITE τους. Οποιος
@@ -735,14 +749,7 @@ dm_tiles:
         pop     hl
         ret
 
-; dm_add8 — E = μέταλλο, D = βιοπλαστικό. dm_add — HL = μέταλλο, DE =
-; βιοπλαστικό: στο σύνολο.
-dm_add8:
-        ld      l,e
-        ld      e,d
-        xor     a
-        ld      h,a
-        ld      d,a
+; dm_add — HL = μέταλλο, DE = βιοπλαστικό: στο σύνολο.
 dm_add:
         push    de
         ld      de,(dm_m)

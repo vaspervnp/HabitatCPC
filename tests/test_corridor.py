@@ -78,6 +78,7 @@ W_OCC_MASK, W_DUST, W_ROCK, W_FOUNDATION = 0x30, 1, 2, 7    # src/const.asm
 MAX_CORR, CORR_REC, MAX_DEGREE = 128, 4, 8            # 4 bytes από το βήμα 154· 128 από το 159
 CT_EMPTY = 254                                           # άδεια θέση: το C_A
 DK_CONN, DK_CROW, VIEW_TW, VIEW_TH = 3, 7, 20, 10
+UI_PLACE, UI_LINK = 2, 3                                 # src/ui.asm
 # Τα stubs ΠΑΝΩ από το PROBE, στο #3F00 (βήμα 95· ως τότε στο #3D60): βλ. test_place.
 RLOG, RPTR, STUB = 0x3800, 0x3EFC, 0x3F00                 # το ημερολόγιο του cr_redraw
 # µs με το probe (βήμα 72): plan, walk, check, afford, commit ανά γεωμετρία.
@@ -382,7 +383,7 @@ def commit_rules(sym, patch=(), n=400):
     rnd = random.Random(7272)
     seen = {"στροφές": 0, "χωρίς θέση": 0, "τελευταία θέση": 0, "γεμάτος βαθμός": 0,
             "ζευγάρι μόνο με την τελευταία": 0, "εργοτάξιο: καμία ακμή": 0,
-            "το όριο ανέβηκε": 0}
+            "το όριο ανέβηκε": 0, "LINK": 0, "PLACE": 0}
     tbl = ctypes.addressof(G.ptr[5].contents) + G.gc     # στην τράπεζα 5 (βήμα 154)
     span = MAX_CORR * CORR_REC + 32                       # και 32 bytes μετά τον πίνακα
     pairs = {1: [], 2: []}                                # ευθείες και στροφές, μισές-μισές
@@ -451,6 +452,12 @@ def commit_rules(sym, patch=(), n=400):
         t, A, _ = G.plan(a, b, live)
         if A != len(runs):
             return f"θόλοι {a} -> {b}: το cr_plan έδωσε {A}"
+        # ΤΟ LINK ΠΛΗΡΩΝΕΙ ΑΜΕΣΩΣ, οι διάδρομοι ενός θόλου στο PLACE μπαίνουν στο
+        # χρέος (βήμα 198, cr_pay): ό,τι λέει το ui_state, μισές-μισές φορές.
+        link = rnd.random() < 0.5
+        m.poke(sym["UI_STATE"], UI_LINK if link else UI_PLACE)
+        codeat.set_debt(m, 0, 0)
+        seen["LINK" if link else "PLACE"] += 1
         _, A, _ = G.run("CR_COMMIT_LN")
         where = f"θόλοι {a} -> {b}, {runs}, πίνακας είδους {kind}"
         got = ctypes.string_at(tbl, span)
@@ -474,9 +481,12 @@ def commit_rules(sym, patch=(), n=400):
         seen["το όριο ανέβηκε"] += t1 > t0
         nt = sum(length for _, length in runs)
         stock = (G.w16(G.g + 6), G.w16(G.g + 8))
-        want_st = (1000 - 6 * nt, 1000 - 3 * nt) if at is not None else (1000, 1000)
-        if stock != want_st:
-            return f"{where}: αποθέματα {stock}, ο κανόνας λέει {want_st}"
+        cost = (6 * nt, 3 * nt) if at is not None else (0, 0)
+        want_st = (1000 - cost[0], 1000 - cost[1]) if link else (1000, 1000)
+        want_db = (0, 0) if link else cost
+        if stock != want_st or codeat.debt(m) != want_db:
+            return (f"{where}, {'LINK' if link else 'PLACE'}: αποθέματα {stock}, χρέος "
+                    f"{codeat.debt(m)}, ο κανόνας λέει {want_st} και {want_db}")
         # οι ακμές: ο ένας στους γείτονες του άλλου, αν χωράει — και μόνο αν
         # είναι έτοιμοι και οι δύο
         wdeg, wadj = list(deg), bytearray(adj0)
@@ -803,8 +813,15 @@ def main():
         else:
             print(f"ΑΠΟΤΥΧΙΑ ΑΡΝΗΤΙΚΟΥ: με {label} περνά")
             fails += 1
+    # ΤΟ cr_pay (βήμα 198): cp UI_LINK · jp z,ec_spend
+    cp = sym["CR_PAY"] + m.read_ram(sym["CR_PAY"], 16).find(bytes([0xFE, UI_LINK, 0xCA]))
+    assert cp >= sym["CR_PAY"], "δεν βρέθηκε το cp UI_LINK · jp z στο cr_pay"
     for label, fn, patch in (("ζευγάρι και στην τελευταία θέση", commit_rules,
                               [(cm + il + 2, 0), (cm + il + 3, 0)]),
+                             ("τον διάδρομο του LINK στο χρέος", commit_rules,
+                              [(cp + 1, 255)]),
+                             ("και τους διαδρόμους του PLACE από τα αποθέματα", commit_rules,
+                              [(cp + 2, 0xC3)]),
                              # cr_lnk: το ret nz πριν από το cr_link γίνεται nop
                              ("ακμή και προς εργοτάξιο", commit_rules,
                               [(sym["CR_LINK"] - 1, 0)]),

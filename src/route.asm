@@ -1148,20 +1148,17 @@ crm_put:
 
         assert  C_A == 0 && C_B == 1 && C_DIR == 2 && C_LEN == 3 && CORR_REC == 4
 
-; cr_pay — αφαιρεί το κόστος ολόκληρης της διαδρομής.
+; cr_pay — το κόστος ολόκληρης της διαδρομής. Ενας διάδρομος του LINK
+; πληρώνεται αμέσως, όπως πάντα: δεν έχει εργοτάξιο ούτε φορτία. Οι διάδρομοι
+; ενός θόλου (το al_commit, στο PLACE) μπαίνουν από το βήμα 198 στο χρέος του,
+; μαζί με τον θόλο (src/build.asm, cr_owe). Γυρίζει με την 1.
 cr_pay:
-        call    cr_cost
-        ex      de,hl
-        ld      hl,(EC_STOCK + S_METAL*2)
-        or      a
-        sbc     hl,de
-        ld      (EC_STOCK + S_METAL*2),hl
-        ld      hl,(EC_STOCK + S_BIOPL*2)
+        call    cr_cost                 ; HL = μέταλλο
         ld      de,(cr_biop)
-        or      a
-        sbc     hl,de
-        ld      (EC_STOCK + S_BIOPL*2),hl
-        ret
+        ld      a,(ui_state)
+        cp      UI_LINK
+        jp      z,ec_spend
+        jp      cr_owe
 
 ; cr_lnk — η ακμή, ΜΟΝΟ αν και οι δύο άκρες είναι έτοιμες (βήμα 87). Ενας
 ; διάδρομος προς εργοτάξιο δεν έχει αέρα στη μία του άκρη· γίνεται ακμή όταν

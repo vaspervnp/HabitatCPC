@@ -9,7 +9,9 @@
             ή κάθεται πλοίο.
   ΠΙΣΩ      τα μισά υλικά, όπως μια μηχανή που βγαίνει στο FIT: του κτιρίου,
             των διαδρόμων του (6 μέταλλο, 3 βιοπλαστικό το πλακίδιο) και των
-            μηχανών του. Ενα εργοτάξιο δίνει πίσω όλα όσα πληρώθηκαν.
+            μηχανών του. Ενα εργοτάξιο δίνει πίσω ό,τι πληρώθηκε γι' αυτό: από
+            το βήμα 198 η τιμή του φεύγει πρώτα από το χρέος, και ό,τι μένει
+            γυρίζει (tests/test_debt.py).
   ΠΩΣ       M, D (ή το DEMOLISH στη ΔΙΑΧΕΙΡΙΣΗ), και το FIRE γκρεμίζει· αμέσως.
             Κόκκινο το κουμπί εκεί που δεν γίνεται, και το FIRE δεν κάνει τίποτα.
   ΑΝΘΡΩΠΟΙ  όσοι στέκονται εκεί πάνε στο κοντινότερο airlock ή στο σκάφος, με
@@ -64,6 +66,7 @@ import route                                             # noqa: E402
 import reach                                             # noqa: E402
 import econ as EC                                        # noqa: E402
 import ovmap as OV                                       # noqa: E402
+import codeat                                            # noqa: E402
 
 FAIL = []
 DOME = {0: (12, 8), 1: (24, 14), 2: (40, 24)}            # bld_items: μέταλλο, βιοπλαστικό
@@ -261,10 +264,12 @@ def demolish(G, F, at, fire=True):
     F.key("D")
     sel = F.peek("AC_SEL")
     s0 = F.stocks()
+    G.debt0 = codeat.debt(G.m)                           # το χρέος (βήμα 198)
     G.iters = []
     if fire:
         F.fire()
     s1 = F.stocks()
+    G.debt1 = codeat.debt(G.m)
     G.run(3_000_000, until=lambda: G.m.peek(F.sym["DIRTY_NUM"]) == 0)
     G.settle()
     return fit, sel, s0, s1, max(G.iters, default=0)
@@ -474,11 +479,11 @@ def site(sym, g, patch=(), quiet=False):
     tx, ty = B.clear_spots(8, 1, dome=True)[0]
     G.camera(tx - 6, ty - 1)
     at = (2 * tx + 8, 2 * ty + 8)
-    s0 = F.stocks()
+    d0 = codeat.debt(G.m)
     B.build(G.m, sym, TF.I_DOME_M, g + 6, at=at, room=TF.RM_FACTORY, fit=False)
     n = G.m.peek(sym["BD_NODE"])
-    s1 = F.stocks()
-    paid = (s0[0] - s1[0], s0[1] - s1[1])
+    d1 = codeat.debt(G.m)
+    paid = (d1[0] - d0[0], d1[1] - d0[1])               # στο χρέος (βήμα 198)
     G.run(3_000_000)
     mine = [j for j in jobs(G) if n in (j[2], j[5])]
     if rec(G, n)[4] != 1 or not mine:
@@ -486,8 +491,12 @@ def site(sym, g, patch=(), quiet=False):
     nbrs = adj(G, n)
     fit, sel, s2, s3, _ = demolish(G, F, at)
     got = (s3[0] - s2[0], s3[1] - s2[1])
-    if got != paid:
-        return f"ΕΡΓΟΤΑΞΙΟ: πληρώθηκαν {paid}, πίσω {got} — η πρόζα λέει όλα"
+    # ΠΡΩΤΑ ΤΟ ΧΡΕΟΣ: ό,τι χρωστιόταν ακόμη δεν θα κουβαληθεί, και ό,τι
+    # σηκώθηκε (η τιμή μείον το χρέος της στιγμής) γυρίζει στα αποθέματα
+    carried = (paid[0] - G.debt0[0], paid[1] - G.debt0[1])
+    if got != carried or G.debt1 != (0, 0) or d0 != (0, 0):
+        return (f"ΕΡΓΟΤΑΞΙΟ: τιμή {paid}, χρέος στο FIRE {G.debt0} -> {G.debt1}, πίσω {got} "
+                f"— η πρόζα λέει ό,τι κουβαλήθηκε {carried}, και χρέος 0")
     builds = sum(1 for j in jobs(G) if j[1] == 0)
     if econ(G, 91) != builds:
         return f"ΕΡΓΟΤΑΞΙΟ: EC_NBUILD {econ(G, 91)}, Build στον πίνακα {builds}"
@@ -495,7 +504,7 @@ def site(sym, g, patch=(), quiet=False):
     if why:
         return "ΕΡΓΟΤΑΞΙΟ: " + why
     say(f"ΕΡΓΟΤΑΞΙΟ: το εργοτάξιο {n} με τις εργασίες του (είδη {[j[1] for j in mine]}) "
-        f"έφυγε, πίσω όλα όσα πληρώθηκαν {paid}")
+        f"έφυγε· τιμή {paid}, χρέος στο FIRE {G.debt0} -> 0, πίσω ό,τι κουβαλήθηκε {got}")
     return None
 
 
@@ -562,7 +571,9 @@ def mines(sym, g, patch=(), quiet=False):
     G.run(1_000_000)
     G.settle()
     g_metal = L["G_econ_state"] + 6
-    metal = lambda: G.m.peek(g_metal) | G.m.peek(g_metal + 1) << 8
+    # ΤΑ ΑΠΟΘΕΜΑΤΑ ΜΕΙΟΝ ΤΟ ΧΡΕΟΣ (βήμα 198): η τιμή μπαίνει στο χρέος, και ένα
+    # φορτίο που σηκώνεται στο μεταξύ το αφαιρεί και από τα δύο
+    metal = lambda: (G.m.peek(g_metal) | G.m.peek(g_metal + 1) << 8) - codeat.debt(G.m)[0]
     spots = B.res_spots("ore", 4, 2)
     if len(spots) < 2:
         return f"ΟΡΥΧΕΙΑ: η σκηνή θέλει δύο θέσεις στη φλέβα: {spots}"
@@ -587,7 +598,7 @@ def mines(sym, g, patch=(), quiet=False):
         x, y = centre(G, n)
         G.camera((x >> 1) - 10, (y >> 1) - 5)
         _, _, s0, s1, _ = demolish(G, F, (x, y))
-        back.append(s1[0] - s0[0])
+        back.append((s1[0] - G.debt1[0]) - (s0[0] - G.debt0[0]))
         if struct(G, n)[4]:
             return f"ΟΡΥΧΕΙΑ: το {n} δεν γκρεμίστηκε: {struct(G, n)}"
     if back != [30, 0]:
@@ -720,8 +731,11 @@ def negatives(sym, g):
     pad = at_ovl(sym, "DMCA_S", 8, [0xC6, 3], [(1, 1)])
     pad2 = at_ovl(sym, "DMCA_S", 20, [0xD6, 65], [(1, 64)])
     return [
-        ("καμία επιστροφή", at_ovl(sym, "DMR_ALL", 13, cd("EC_ADD_STOCK"), nop3, hits=2),
+        ("καμία επιστροφή", at_ovl(sym, "DMR_HALF", 21, cd("EC_ADD_STOCK"), nop3, hits=2),
          factory),
+        # cp DS_ACTIVE · jr nz,dmr_site -> nop nop: το εργοτάξιο τα μισά (βήμα 198)
+        ("το εργοτάξιο τα μισά, χωρίς το χρέος", at_ovl(sym, "DMK_NX", 40, [0xFE, 2, 0x20],
+                                                       [(2, 0), (3, 0)]), site),
         ("όλα πίσω και από χτισμένο", at_ovl(sym, "DMK_NX", 30, [0xFE, 2, 0x20], [(2, 0x18)]),
          factory),
         # ld (hl),CT_EMPTY · dec hl · ld (hl),CT_EMPTY -> nop (βήμα 154: οι δύο άκρες)

@@ -248,8 +248,10 @@ which you can save like any other.
 
 **What it costs:**
 - The panel shows the price in Metal (`FE`) and Bioplastic (`BI`), and a dome's
-  price includes its corridors. It is **paid at placement**.
-- Then the colonists **carry the materials** to the site, ten at a time.
+  price includes its corridors.
+- **You can place it even without the materials.** The colonists **carry them** to
+  the site, ten at a time, and each load is paid from the stocks **when it is picked
+  up**. When a stock runs out, its loads wait, and they go as the colony makes more.
 - When everything has arrived, an **engineer** (or a constructor bot) builds it. If
   nobody can, the alert line says `NO ENGINEER`.
 
@@ -276,7 +278,7 @@ which you can save like any other.
 | Message | Why |
 |---|---|
 | `BLOCKED` | the ground there is not buildable, or something stands in the way |
-| `NOT ENOUGH MATERIAL` | not enough Metal or Bioplastic |
+| `NOT ENOUGH MATERIAL` | a link with `R` is paid at once, and the stocks do not have it |
 | `TOO FAR` | nothing it could join is within 12 tiles |
 | `PATH BLOCKED` | a corridor or path cannot get through |
 | `NO CORRIDOR FITS` | the two domes are almost diagonal to each other; move one a little |
@@ -303,12 +305,14 @@ changed afterwards.
   comes first.
 - `SPACE` or `COPY` installs it in that slot only, so every slot can hold a different
   machine. `ESC` closes.
-- The box around the slot is green when you can pay for the machine, red when you
-  cannot, and pink when it is already there.
-- **Each machine is paid for when you fit it.** Its materials are then carried to the
-  dome, and an engineer installs it. Until then it is drawn stopped, with a mark.
-  Plants grow at once.
-- Taking a machine out gives back **half** its price.
+- The box around the slot is pink when that is already there. Plants are green when
+  you can pay for them and red when you cannot; a machine can always go in.
+- **A machine goes in even without the materials.** They are carried to the dome load
+  by load, each paid when it is picked up, and an engineer installs it. Until then it
+  is drawn stopped, with a mark. **Plants** are paid at once and grow at once.
+- Taking a machine out gives back **half** its price. One that was not installed yet
+  is not carried any more, and what was already paid for it comes back — or pays
+  for loads still owed elsewhere.
 - You can fit a dome while it is still being built.
 - Quarters, Storage and Lounge have no machines.
 
@@ -552,7 +556,8 @@ The line shows the most urgent message, in this order:
   - While a ship is due or at the pad, the pad and the Storage domes cannot be
     demolished.
   - You get back **half** of what the building, its corridors and its machines cost.
-    A site that was never finished gives everything back.
+    A site that was never finished, and a machine not yet installed, give back what
+    was already paid for them — or it pays for loads still owed elsewhere.
   - Whoever is inside walks out.
 - **Music** (`U`, or the `MUSIC` button in `M`): slow bells over a low drone, never
   the same twice — the game makes it up as it plays. It is on when the game starts,

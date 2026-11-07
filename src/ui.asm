@@ -557,8 +557,9 @@ uip_fire:
         call    ui_validate
         or      a
         jr      nz,uip_deny             ; άκυρη θέση — το FIRE δεν κάνει τίποτα
-        call    al_afford               ; και οι διάδρομοι μαζί (βήμα 85)
-        jr      nz,uip_deny             ; ούτε τα υλικά φτάνουν
+        ; ΚΑΙ ΧΩΡΙΣ ΤΑ ΥΛΙΚΑ (βήμα 198, ο παίκτης): το κόστος μπαίνει στο χρέος, και
+        ; τα φορτία πάνε όπως παράγονται (bd_link, src/build.asm). Ως τότε εδώ το
+        ; al_afford, και το FIRE δεν έκανε τίποτα χωρίς αυτά.
         call    ui_hide
         call    bd_commit
         inc     a                       ; 255: δεν χωρά
@@ -1393,7 +1394,7 @@ uip_st:
         ld      a,(ui_bad)
         or      a
         jr      nz,uip_blocked
-        call    al_afford
+        xor     a                       ; ποτέ NOT ENOUGH MATERIAL στο PLACE (βήμα 198)
         jr      uip_aff
 uip_blocked:
         ; ΓΙΑΤΙ ΟΧΙ, ΟΧΙ ΜΟΝΟ ΟΧΙ. Οταν φταίνε τα tiles, το φάντασμα τα δείχνει

@@ -728,7 +728,10 @@ def main():
     code6(code_x)
     m.write_ram(sw + kc[2], bytes([0xCD, s68 & 255, s68 >> 8]))
     freeze(False)
-    n_lo = n_x + 4 * 68                                 # το b6x και οι ουρές 0-3
+    # Η ΠΕΡΙΟΧΗ του b6x, όχι ο κώδικάς του (n_x): ως το βήμα 197 τα 15 bytes
+    # που λείπουν έπεφταν στο άδειο τέλος της ουράς 3· από το 198 εκεί είναι το
+    # db_own (src/debt6.asm).
+    n_lo = lay["G_dome_tbl"] - lay["G_b6x"] + 4 * 68    # το b6x και οι ουρές 0-3
     check(len(kc) == 4 and got_x[:n_lo] == code_x[:n_lo] and not any(got_x[n_lo:])
           and any(code_x[n_lo:]),
           f"ΑΡΝΗΤΙΚΟ: χωρίς τη γραμμή του NEXTHOP οι ουρές 4-7 μένουν όπως το σώσιμο "

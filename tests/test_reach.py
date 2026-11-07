@@ -802,6 +802,14 @@ def on_path(res, b4, cx, cy, w=4, h=4):
     return sum(map(path, fp)) >= 4 and any(map(path, ct))
 
 
+def net(G):
+    """Τα αποθέματα μείον το χρέος (βήμα 198, tests/codeat.py): μια τοποθέτηση
+    τα ρίχνει όσο η τιμή της, και ένα φορτίο που σηκώνεται δεν τα αλλάζει."""
+    m, g = G.m, layout("G_econ_state")
+    d = codeat.debt(m)
+    return ((m.peek(g + 6) | m.peek(g + 7) << 8) - d[0], (m.peek(g + 8) | m.peek(g + 9) << 8) - d[1])
+
+
 def fire(sym, g, patch=()):
     """Το FIRE χτίζει ό,τι έδειξε το φάντασμα. Η πρώτη διαφορά, ή None."""
     import test_reveal as R
@@ -831,7 +839,7 @@ def fire(sym, g, patch=()):
         if need and not (need(res, b4) if need.__code__.co_argcount == 2 else need(res)):
             return f"{name}: η σκηνή δεν έχει αυτό που δοκιμάζει — {len(res['corridors'])} διάδρομοι"
         deg0 = m.read_ram(nodes, 96)
-        stock0 = (G.m.peek(g + 6) | G.m.peek(g + 7) << 8, G.m.peek(g + 8) | G.m.peek(g + 9) << 8)
+        stock0 = net(G)
         ncorr0 = sum(1 for k in range(96) if b5[corr + 4 * k] != 254)
         G.run(40_000)
         G.iters = []                         # μόνο ο γύρος του FIRE και οι σειρές
@@ -896,7 +904,8 @@ def fire(sym, g, patch=()):
             return f"{name}: οι εγγραφές διαδρόμων {recs}, ο κανόνας λέει {sorted(want_r)}"
         ncorr = sum(1 for k in range(96) if b5[corr + 4 * k] != 254)
         want_c = sum(len(c[3]) for c in res["corridors"])
-        stock = (G.m.peek(g + 6) | G.m.peek(g + 7) << 8, G.m.peek(g + 8) | G.m.peek(g + 9) << 8)
+        # ΣΤΟ ΧΡΕΟΣ (βήμα 198): τα αποθέματα μείον το χρέος πέφτουν όσο η τιμή
+        stock = net(G)
         paid = (stock0[0] - stock[0], stock0[1] - stock[1])
         want_p = (cost_m + reach.CORR_M * res["pieces"], cost_b + reach.CORR_B * res["pieces"])
         if ncorr - ncorr0 != want_c or paid != want_p:

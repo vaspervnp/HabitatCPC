@@ -930,7 +930,13 @@ class Game:
         return True if done else "SPACE χωρίς συμφωνία" if ok else "η γραμμή δεν δέχτηκε τα ποσά"
 
     def call_ship(self):
+        """C, SPACE. True μόνο αν έρχεται πλοίο αποίκων: ένα άλλο που έρχεται
+        ήδη (επισκέπτες, έμπορος) δεν αφήνει την κλήση, και το στάδιο ξαναδοκιμάζει
+        (βήμα 198: το tutorial του tests/test_tutor.py έφτασε στην πίστα πιο νωρίς,
+        και ένα πλοίο επισκεπτών ερχόταν τη στιγμή της κλήσης)."""
         from cpc import JOY_FIRE
+        if self.m.peek(self.X["EC_SHSTATE"]):
+            return False
         self.look()
         self.m.key_down("C")
         self.m.run_frames(6)
@@ -939,7 +945,7 @@ class Game:
         self.stick(JOY_FIRE)
         self.m.run_frames(30)
         self.look()
-        return self.m.peek(self.X["EC_SHSTATE"]) != 0
+        return self.m.peek(self.X["EC_SHSTATE"]) != 0 and self.m.peek(self.X["EC_SHKIND"]) == 0
 
 
 # --------------------------------------------------------------------------

@@ -391,9 +391,11 @@ def main():
     say(ok, f"ΧΑΜΕΝΗ: στο FIRE τίποτα και jb_lost #{lv:02X}· η Supply {first[0] if first else None} "
         f"frames αφού άδειασε ο πίνακας (ταβάνι {CEIL_FIRST}), jb_lost τότε "
         f"{first[1] if first else None}· χτίστηκε στα {built}")
-    gate = codeat.find(box0.m, sym["ECON_FLOW"], [0xC4, sym["SP_SWEEP"] & 255, sym["SP_SWEEP"] >> 8], 300)
+    # το call sp_wake του κύκλου ροής (βήμα 198, src/wake6.asm· ως τότε call nz,sp_sweep)
+    gate = codeat.find(box0.m, sym["ECON_FLOW"], [0xCD, sym["SP_WAKE"] & 255, sym["SP_WAKE"] >> 8], 300)
+    assert gate is not None, "δεν βρέθηκε το call sp_wake στο econ_flow"
     (board, lv, rec), first, built = game(sym, g, fill, [(gate + i, 0) for i in range(3)])
-    say(first is None and built is None, f"ΑΡΝΗΤΙΚΟ ΧΑΜΕΝΗΣ: ο κύκλος ροής χωρίς το call nz,sp_sweep — "
+    say(first is None and built is None, f"ΑΡΝΗΤΙΚΟ ΧΑΜΕΝΗΣ: ο κύκλος ροής χωρίς το call sp_wake — "
         f"Supply: {first}, χτίστηκε: {built} (9.000 frames)")
 
     # --- ΜΕΤΕΩΡΙΤΗΣ ---------------------------------------------------------

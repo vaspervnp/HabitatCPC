@@ -175,3 +175,26 @@ def set_ctop(m, n):
 def ctop(m):
     """Το CT_TOP του m."""
     return m.peek(CT_AT)
+
+
+# ΤΟ ΧΡΕΟΣ ΤΩΝ ΕΡΓΟΤΑΞΙΩΝ (βήμα 198, src/const.asm: EC_DEBT = G_node_occ +
+# MAX_NODE, στην τράπεζα 6): μέταλλο και βιοπλαστικό, 16 bit το καθένα, και
+# μετά το EC_WAIT (bit 0 μέταλλο, bit 1 βιοπλαστικό).
+DEBT_AT = _layout("G_node_occ") + 112
+WAIT_AT = DEBT_AT + 4
+
+
+def debt(m):
+    """(μέταλλο, βιοπλαστικό) που χρωστιούνται."""
+    b = ctypes.string_at(ctypes.addressof(_b6(m).contents) + DEBT_AT - 0x4000, 4)
+    return b[0] | b[1] << 8, b[2] | b[3] << 8
+
+
+def set_debt(m, metal, biopl):
+    for k, v in enumerate((metal & 255, metal >> 8, biopl & 255, biopl >> 8)):
+        _b6(m)[DEBT_AT - 0x4000 + k] = v
+
+
+def wait(m):
+    """Το EC_WAIT."""
+    return _b6(m)[WAIT_AT - 0x4000]

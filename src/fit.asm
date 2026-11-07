@@ -159,64 +159,46 @@ uf_snd:
 
 ; ---------------------------------------------------------------------------
 ; fit_set — η υποδοχή fit_s παίρνει το fit_lst[fit_i].
-; Out: Z = μπήκε (ή ήταν ήδη εκεί), NZ = δεν φτάνουν τα υλικά.
+; Out: Z = μπήκε (ή ήταν ήδη εκεί), NZ = δεν φτάνουν τα υλικά (μόνο φυτό).
 ;
-; ΠΛΗΡΩΝΕΙ ΤΟ ΝΕΟ ΠΡΙΝ ΠΑΡΕΙ ΠΙΣΩ ΤΟ ΠΑΛΙΟ: μια μηχανή που αντικαθιστά άλλη
-; θέλει τα υλικά της στην αποθήκη, όπως στο Planetbase, όπου το ξήλωμα είναι
-; άλλη πράξη από το χτίσιμο.
+; ΜΙΑ ΜΗΧΑΝΗ ΜΠΑΙΝΕΙ ΚΑΙ ΧΩΡΙΣ ΤΑ ΥΛΙΚΑ (βήμα 198, ο παίκτης): η τιμή της
+; μπαίνει στο χρέος, και τα φορτία της πάνε όπως παράγονται. Ενα φυτό δουλεύει
+; αμέσως, οπότε πληρώνεται αμέσως, όπως ως τότε κάθε μηχανή: πρώτα το νέο, μετά
+; τα μισά του παλιού πίσω (fs_put, src/fit6.asm).
 ; ---------------------------------------------------------------------------
 fit_set:
-        call    fit_want
+        call    fit_want                ; C = το νέο, B = το παλιό, η 1 μέσα (uid_out)
         ret     z                       ; ίδιο: τίποτα να γίνει
+        ld      a,(fit_rm)
+        cp      R_GREENHS
+        jr      nz,fs_owe               ; μηχανή: στο χρέος
         call    bd_afford               ; κρατά το BC, όπως και το bd_stock_pay
         ret     nz
         call    bd_stock_pay
-        push    bc                      ; B = το παλιό, για τα μισά πίσω
-        ; --- η υποδοχή ---
-        call    fit_slot
-        pop     bc
+        jr      fs_set
+fs_owe:
+        ; ΜΕ ΤΗΝ 6: το fit_want γυρίζει με την 1 (uid_out), και το χρέος είναι
+        ; στο node_occ της 6 — χωρίς αυτό το db_own θα έτρεχε ό,τι έχει η 1 στη
+        ; θέση του (tests/test_fit.py). Το ob_b6 χαλάει το BC.
         push    bc
-        ld      (hl),c
-        ld      de,D_HEALTH - D_MACH
-        add     hl,de
-        ; Η ΥΓΕΙΑ (βήμα 99): άδεια 0· ένα φυτό δουλεύει αμέσως· μια μηχανή
-        ; χρωστά τα υλικά της (MACH_OWED), που θα τα κουβαλήσουν δύο Supply,
-        ; και μετά τη στήνει ένας μηχανικός (src/install.asm).
-        ld      a,c
-        inc     a                       ; NO_MACH: 0
-        jr      z,fs_hp
-        ld      a,(fit_rm)
-        cp      R_GREENHS
-        ld      a,MACH_HP
-        jr      z,fs_hp                 ; φυτό
-        ld      a,(fit_d)
-        call    mc_order                ; src/supply.asm· κρατά το HL
-        ld      a,MACH_OWED
-fs_hp:
-        ld      (hl),a
+        call    ob_b6
+        pop     bc
+        call    db_own                  ; η τιμή της (src/debt6.asm)· κρατά το BC
+fs_set:
+        push    bc
+        call    fit_slot                ; HL -> η υποδοχή, η 6 μέσα
+        pop     bc
+        call    fs_put                  ; η υποδοχή, η υγεία, το χρέος, το παλιό έξω
         ld      a,D_STATE
         call    fit_fld
         ld      a,(hl)
         call    uid_out
         cp      DS_ACTIVE
-        jr      nz,fs_give              ; εργοτάξιο: τις ζωγραφίζει το dh_built
+        jr      nz,fs_done              ; εργοτάξιο: τις ζωγραφίζει το dh_built
         ld      bc,(fit_s)              ; C = υποδοχή, B = θόλος
         ld      a,DK_MACH
         call    dirty_push
-fs_give:
-        pop     af                      ; ΤΑ ΜΙΣΑ ΠΙΣΩ για ό,τι βγήκε
-        call    fit_price               ; HL = (bd_metal): L = μέταλλο, H = βιοπλ.
-        push    hl
-        ld      e,l
-        ld      a,S_METAL
-        call    fs_half
-        pop     de
-        ld      e,d
-        ld      a,S_BIOPL
-fs_half:
-        srl     e
-        ld      d,0
-        call    ec_add_stock            ; με ταβάνι (src/stock.asm)
+fs_done:
         xor     a                       ; Z
         ret
 
@@ -394,7 +376,10 @@ fit_show:
         call    fit_want                ; και η τιμή, για τον πίνακα
         ld      a,PEN_CUR
         jr      z,fsh_pen               ; ήδη μέσα
-        call    bd_afford               ; A = 0 πληρώνεται, 1 όχι
+        ld      a,(fit_rm)
+        cp      R_GREENHS
+        ld      a,0                     ; μηχανή: μπαίνει πάντα (βήμα 198)
+        call    z,bd_afford             ; φυτό: A = 0 πληρώνεται, 1 όχι
         xor     PEN_OK
 fsh_pen:
         call    gh_setpen
