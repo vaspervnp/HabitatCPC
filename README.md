@@ -96,7 +96,8 @@ It is a complete game. The ten delivery milestones of
 
 ## Playing
 
-Build the disc (below), then on a 6128 or a 6128 emulator:
+The finished disc is [`habitat.dsk`](habitat.dsk), with no saves on it. You can also
+build it yourself (below). Then, on a 6128 or a 6128 emulator:
 
 ```
 RUN"HABITAT
@@ -149,6 +150,8 @@ The emulator is headless and scriptable, so the game is tested as it runs:
 ```
 DESIGN.md        the design document, kept up to date milestone by milestone
 README.md        this file
+habitat.dsk      the finished disc (Extended DSK), built from the code as it is here
+story.md         the game's story and a short description
 docs/            the player's manuals (English, Greek), as Markdown and PDF, and their screenshots
 src/             the game, in Z80 assembly (rasm)
 tools/           build tools, reference models, the scripted player
