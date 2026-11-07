@@ -36,6 +36,10 @@
   ΕΡΓΟΤΑΞΙΟ  θερμοκήπιο εξοπλισμένο ΠΡΙΝ τελειώσει, με καλλιέργειες ανά
              υποδοχή: τίποτα δεν ζωγραφίζεται πάνω στο εργοτάξιο, και τα φυτά
              φαίνονται όταν τελειώσει.
+  ΒΟΥΤΙΑ     τα αποθέματα πέφτουν και ξαναφτάνουν με τον εξοπλισμό ανοιχτό: το
+             πλαίσιο ενός φυτού γίνεται κόκκινο και ξανά πράσινο χωρίς πλήκτρο,
+             και η οθόνη είναι η πλήρης σχεδίαση (μετά το βήμα 198· ως τότε
+             έμενε κόκκινο, 76 bytes). ΑΡΝΗΤΙΚΟ: το ui_panel χωρίς το uipc_aff.
   ΧΡΟΝΟΣ     ο χειρότερος γύρος του βρόχου όταν βγαίνει μηχανή.
 """
 import os, sys
@@ -425,6 +429,54 @@ def factory(sym, g):
     return G, F
 
 
+def dip(G, F, node):
+    """ΒΟΥΤΙΑ ΤΩΝ ΑΠΟΘΕΜΑΤΩΝ (μετά το βήμα 198): λαχανικά στην υποδοχή 0 με STOCK
+    μέταλλο, μετά 1, ένα FIRE, και πάλι STOCK — 40 frames μετά από κάθε αλλαγή,
+    όσο χρειάζεται το ρολόι του HUD (16), και κανένα πλήκτρο. -> ([το πλαίσιο
+    στα τρία], οι ήχοι του FIRE, η υποδοχή 0 μετά, το μέταλλο μετά)."""
+    F.slot(0)
+    F.pick(3)                                # λαχανικά, 2 μέταλλο
+    pens = [F.peek("GH_PEN")]
+    F.set_stocks(1, STOCK)
+    G.run(40 * 20_000)
+    pens.append(F.peek("GH_PEN"))
+    heard = F.sounds(F.fire)
+    slot0, stock1 = F.rec(node)[8], F.stocks()[0]
+    F.set_stocks(STOCK, STOCK)
+    G.run(40 * 20_000)
+    pens.append(F.peek("GH_PEN"))
+    return pens, heard, slot0, stock1
+
+
+def dip_negative(sym, g):
+    """ΑΡΝΗΤΙΚΟ ΒΟΥΤΙΑΣ: το jr nz,uipc_aff του ui_panel πίσω στο uipc_go, όπως
+    ως το βήμα 198 — το πλαίσιο μένει όπως ήταν με τα αποθέματα πριν."""
+    G = R.Game(sym, g)
+    F = Fit(G, sym, g)
+    F.set_stocks(STOCK, STOCK)
+    tx, ty = B.clear_spots(8, 1, dome=True)[0]
+    G.camera(tx - 6, ty - 2)
+    at = (2 * tx + 6, 2 * ty + 6)
+    B.build(G.m, sym, I_DOME_M, g + 6, at=at, room=RM_GREEN, fit=False)
+    node = G.m.peek(sym["BD_NODE"])
+    a = sym["UIS_AFF"]
+    pat = [0xCD, a & 255, a >> 8, 0xE1, 0xBE, 0x20]     # call uis_aff · pop hl · cp (hl) · jr nz
+    at_jr = [sym["UI_PANEL"] + k + 5 for k in range(160)
+             if list(G.m.read_ram(sym["UI_PANEL"] + k, 6)) == pat]
+    if len(at_jr) != 1 or not F.enter(at):
+        check(False, f"ΑΡΝΗΤΙΚΟ ΒΟΥΤΙΑΣ: το jr βρέθηκε {len(at_jr)} φορές, FIT {F.peek('UI_STATE')}")
+        return
+    G.m.poke(at_jr[0] + 1, (sym["UIPC_GO"] - (at_jr[0] + 2)) & 255)
+    G.still()
+    pens, _, _, _ = dip(G, F, node)
+    green, red = F.peek("HUD_SOLID", PEN_OK - 8), F.peek("HUD_SOLID", PEN_NO - 8)
+    # μόνο το πλήκτρο το ξαναβάφει: πράσινο με 1 ως το FIRE, που το κάνει
+    # κόκκινο, και κόκκινο μετά με 500 — ό,τι έβλεπε ο παίκτης ως το 198
+    check(pens == [green, green, red],
+          f"ΑΡΝΗΤΙΚΟ ΒΟΥΤΙΑΣ: χωρίς το uipc_aff το πλαίσιο αλλάζει μόνο με πλήκτρο, όπως "
+          f"ως το βήμα 198: {['#%02X' % p for p in pens]} (πράσινο, πράσινο, κόκκινο)")
+
+
 def greenhouse(sym, g):
     G = R.Game(sym, g)
     F = Fit(G, sym, g)
@@ -454,16 +506,18 @@ def greenhouse(sym, g):
           f"άμεσα, βήμα 99)")
     truth(G, "εξοπλισμός πάνω σε εργοτάξιο: τίποτα δεν ζωγραφίστηκε")
     # ΟΧΙ: ένα φυτό χωρίς υλικά — κόκκινο πλαίσιο, η άρνηση, τίποτα δεν αλλάζει.
-    F.set_stocks(1, STOCK)
-    F.slot(0)
-    F.pick(3)                                # άμυλο -> λαχανικά, 2 μέταλλο
-    pen, red = F.peek("GH_PEN"), F.peek("HUD_SOLID", PEN_NO - 8)
-    heard = F.sounds(F.fire)
-    check(F.rec(node)[8] == 0 and F.stocks()[0] == 1 and pen == red
-          and red != F.peek("HUD_SOLID", PEN_OK - 8) and heard == [SFX_DENY],
-          f"με 1 μέταλλο τα λαχανικά δεν μπαίνουν: υποδοχή 0 = {F.rec(node)[8]}, "
-          f"μέταλλο {F.stocks()[0]}, πλαίσιο #{pen:02X} (κόκκινο #{red:02X}), ήχοι {heard}")
-    F.set_stocks(STOCK, STOCK)
+    # Και το πλαίσιο ακολουθεί τα αποθέματα χωρίς πλήκτρο (μετά το βήμα 198).
+    green, red = F.peek("HUD_SOLID", PEN_OK - 8), F.peek("HUD_SOLID", PEN_NO - 8)
+    pens, heard, slot0, stock1 = dip(G, F, node)
+    check(slot0 == 0 and stock1 == 1 and pens[1] == red and red != green
+          and heard == [SFX_DENY],
+          f"με 1 μέταλλο τα λαχανικά δεν μπαίνουν: υποδοχή 0 = {slot0}, μέταλλο "
+          f"{stock1}, πλαίσιο #{pens[1]:02X} (κόκκινο #{red:02X}), ήχοι {heard}")
+    check(pens == [green, red, green],
+          f"ΒΟΥΤΙΑ: το πλαίσιο με 500, 1 και ξανά 500 μέταλλο, χωρίς πλήκτρο: "
+          f"{['#%02X' % p for p in pens]} — πράσινο #{green:02X}, κόκκινο #{red:02X}, "
+          f"πράσινο")
+    truth(G, "ΒΟΥΤΙΑ: και η οθόνη είναι η πλήρης σχεδίαση (76 bytes ως το βήμα 198)")
     # Η κλάση από την ποικιλία (rooms.asm): 0-4 άμυλο, 5-9 λαχανικά, 10, 11.
     cls = lambda v: FT_CLS + (0 if v < 5 else 1 if v < 10 else v - 8)
     bad = picks(F, node, (3, 2, 0), code=cls)
@@ -490,6 +544,7 @@ def main():
     sym, g = T.build()
     factory(sym, g)
     greenhouse(sym, g)
+    dip_negative(sym, g)
     if R.FAIL:
         print(f"\n{len(R.FAIL)} ΑΠΟΤΥΧΙΕΣ")
         return 1
