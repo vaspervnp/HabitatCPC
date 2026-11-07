@@ -331,7 +331,7 @@ def main():
           f"το FIRE πάνω στο εργοτάξιο άνοιξε τον εξοπλισμό του (κατάσταση "
           f"{m.peek(sym['UI_STATE'])}, θόλος {m.peek(sym['FIT_D'])}/{node})")
     check(r3.startswith("< OXYGEN       >  FE  8  BI  2")
-          and r4.startswith("SLOT 1/1  UP/DN=PICK COPY=FIT SPACE=ALL"),
+          and r4.startswith("LT/RT=SLOT 1/1  UP/DN=PICK SPACE=FIT"),
           f"και ο πίνακας λέει τι και πόσο:\n   |{r3}|\n   |{r4}|")
     metal0 = w16(g + 3 * 2)
     fire()                               # -> η γεννήτρια μπαίνει

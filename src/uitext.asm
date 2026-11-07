@@ -118,8 +118,8 @@ x_t_f_names:  db "OXYGEN ",0, "METAL  ",0, "PLASTIC",0, "WEAPONS",0
               db "MIXED  ",0, "EMPTY  ",0
               db "ORE    ",0        ; 18: μόνο για τη γραμμή του εμπόρου (βήμα 93)
               db "COINS  ",0        ; 19: κι αυτά (βήμα 135)
-x_t_f_slot:   db "SLOT ",0
-x_t_f_keys:   db "UP/DN=PICK COPY=FIT SPACE=ALL",0
+x_t_f_slot:   db "LT/RT=SLOT ",0     ; βήμα 196: και πώς αλλάζει
+x_t_f_keys:   db "UP/DN=PICK SPACE=FIT",0   ; βήμα 196: όχι πια SPACE=ALL
 
 ; Τι έχει κάτω ο κέρσορας (src/info.asm, βήμα 79). Τα εδάφη ΕΝΤΕΚΑ bytes το
 ; καθένα, με τη σειρά του W_*: το in_panel τα βρίσκει με x11.

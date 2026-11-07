@@ -151,8 +151,8 @@ joystick: its first fire is `COPY`, its second `ESC`.
 | Key | Action |
 |---|---|
 | Cursor keys / joystick | Move the cursor, one tile a press. Held, it moves again every fifth of a second. In a menu, left/right picks the item and up/down the room. |
-| `SPACE` | Go to the button bar. Left/right picks a group, and `SPACE` opens it. It opens on the last group you built from, so `SPACE` `SPACE` returns to where you were. `SPACE` also places a building or a corridor, picks in a menu, calls the ship, makes a deal and picks a save slot. |
-| `COPY` / fire 1 | On a dome: open its machines (`FIT`). In `FIT`: put the machine in the slot. Everywhere else it does what `SPACE` does. |
+| `SPACE` | Go to the button bar. Left/right picks a group, and `SPACE` opens it. It opens on the last group you built from, so `SPACE` `SPACE` returns to where you were. `SPACE` also places a building or a corridor, picks in a menu, puts a machine in the slot you chose, calls the ship, makes a deal and picks a save slot. |
+| `COPY` / fire 1 | On a dome: open its machines (`FIT`). Everywhere else it does what `SPACE` does. |
 | `ESC` / fire 2 | Cancel, back. |
 | The letter on a button | Press that button while it is on the bar. From the main view: `D` `R` `P` `E` `T` `M`. |
 | `?` (the `/` key) | The help screen: every button with one line about it. Any key returns. |
@@ -301,8 +301,8 @@ changed afterwards.
 - `COPY` on a dome (or `M` `F`) opens it.
 - Left/right picks a slot, and up/down picks what goes in. The room's main machine
   comes first.
-- `COPY` installs it, and `SPACE` puts the same machine in every slot, as far as the
-  materials go. `ESC` closes.
+- `SPACE` or `COPY` installs it in that slot only, so every slot can hold a different
+  machine. `ESC` closes.
 - The box around the slot is green when you can pay for the machine, red when you
   cannot, and pink when it is already there.
 - **Each machine is paid for when you fit it.** Its materials are then carried to the

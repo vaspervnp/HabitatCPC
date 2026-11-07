@@ -9,14 +9,15 @@
 ;
 ;   αριστερά / δεξιά    ποια υποδοχή
 ;   πάνω / κάτω         τι μπαίνει: ΑΔΕΙΟ ή ό,τι δέχεται το δωμάτιο
-;   FIRE                μπαίνει και πληρώνεται· ό,τι βγήκε δίνει τα μισά πίσω
-;   SPACE               το ίδιο σε ΟΛΕΣ τις υποδοχές, όσο φτάνουν τα υλικά
+;   COPY ή SPACE        μπαίνει στην υποδοχή και πληρώνεται· ό,τι βγήκε δίνει
+;                       τα μισά πίσω (ως το βήμα 195 το SPACE έβαζε το ίδιο σε
+;                       ΟΛΕΣ τις υποδοχές· ο παίκτης το έβγαλε στο 196)
 ;   ESC                 πίσω στο LOOK
 ;
 ; ΤΟ ΘΕΡΜΟΚΗΠΙΟ διαλέγει ΚΑΛΛΙΕΡΓΕΙΑ, όχι ποικιλία — άμυλο, λαχανικά, βότανα,
 ; δέντρο — και η ποικιλία βγαίνει από την υποδοχή, ώστε ένα χωράφι με άμυλο να
 ; μην είναι οκτώ φορές το ίδιο sprite. Και ΜΙΚΤΟ: η εναλλαγή του rm_plants, η
-; παλιά αυτόματη μίξη, για όποιον θέλει έναν θόλο που τα βγάζει όλα (με SPACE).
+; παλιά αυτόματη μίξη — η υποδοχή παίρνει ό,τι θα της έδινε εκείνη.
 
 UI_FIT      equ 5
 FT_MIX      equ 254
@@ -138,35 +139,13 @@ uf_click:
         ld      a,SFX_MENU
         jr      uf_snd
 uf_fire:
+        ; COPY Ή SPACE: Η ΥΠΟΔΟΧΗ, ΚΑΙ ΜΟΝΟ ΑΥΤΗ (βήμα 196). Ως τότε το SPACE
+        ; έβαζε το ίδιο σε όλες, ενώ παντού αλλού το SPACE βάζει (βήμα 182) —
+        ; και ο παίκτης γέμιζε το εργοστάσιο με ένα είδος χωρίς να το θέλει.
         ld      a,(act_hit)             ; τα bits, όχι in_hit (βήμα 103)
-        bit     A_FIRE,a
-        jr      z,uf_all
-        call    fit_set
-        jr      uf_paid
-uf_all:
-        and     1 << A_MENU
+        and     (1 << A_FIRE) | (1 << A_MENU)
         ret     z
-        ; ΟΛΕΣ ΟΙ ΥΠΟΔΟΧΕΣ, από την πρώτη. Οσες δεν πληρώνονται μένουν όπως
-        ; ήταν, και ο ήχος της άρνησης λέει «όχι όλες».
-        ld      hl,(fit_n)              ; L = fit_n, H = fit_s (ο κέρσορας)
-        push    hl
-        ld      b,l
-        ld      c,0                     ; πόσες δεν πληρώθηκαν
-ufa_lp:
-        push    bc
-        ld      a,(fit_n)
-        sub     b
-        ld      (fit_s),a
         call    fit_set
-        pop     bc
-        jr      z,ufa_ok
-        inc     c
-ufa_ok:
-        djnz    ufa_lp
-        pop     hl
-        ld      (fit_n),hl
-        ld      a,c
-        or      a
 uf_paid:
         ld      a,SFX_BUILD
         jr      z,uf_snd
@@ -440,7 +419,8 @@ fn_m:
         ld      b,12 - 7
         jp      uipi_bl                 ; hud_blank, και τα βέλη (src/ui.asm)
 
-; fit_row4 — «SLOT 2/4  UP/DN=PICK FIRE=FIT SPACE=ALL».
+; fit_row4 — «LT/RT=SLOT 2/4  UP/DN=PICK SPACE=FIT» (βήμα 196· ως τότε
+; «SLOT 2/4  UP/DN=PICK COPY=FIT SPACE=ALL»).
 fit_row4:
         ld      hl,t_f_slot
         call    hud_text7
@@ -454,8 +434,8 @@ fit_row4:
         call    hud_char
         ld      b,2
         call    hud_blank
-        ld      hl,t_f_keys             ; 39 στήλες ως εδώ: το uip_say σβήνει
-        jp      uip_say                 ; την 40ή και γράφει την ταχύτητα
+        ld      hl,t_f_keys             ; 36 στήλες ως εδώ: το uip_say σβήνει
+        jp      uip_say                 ; ως την 40ή και γράφει την ταχύτητα
 
 fit_rm:     db 0
 fit_n:      db 0                        ; πόσες υποδοχές έχει

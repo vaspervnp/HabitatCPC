@@ -543,7 +543,7 @@ def fit_dome(m, sym, how=None):
     υποδοχή (0 = ΑΔΕΙΟ). Επιστρέφει πόσες υποδοχές έχουν μηχανή, ή None αν ο
     θόλος δεν δέχεται τίποτα.
     """
-    from cpc import KEY_DOWN, KEY_UP, KEY_RIGHT, KEY_SPACE, JOY_FIRE
+    from cpc import KEY_DOWN, KEY_UP, KEY_RIGHT, JOY_FIRE
 
     def tap(key):
         m.key_down(key)
@@ -582,16 +582,15 @@ def fit_dome(m, sym, how=None):
     if how is None:
         how = ([1] * n if m.peek(sym["FIT_RM"]) == FIT_GREEN
                else [1 + k % (c - 1) for k in range(n)])
-    if len(set(how)) == 1:
-        pick(how[0])
-        tap(KEY_SPACE)                   # σε όλες, με ένα πάτημα
-    else:
-        for k, want in enumerate(how):
-            assert m.peek(sym["FIT_S"]) == k, (
-                f"η υποδοχή δεν κλείδωσε: fit_s={m.peek(sym['FIT_S'])} αντί {k}")
-            pick(want)
-            stick(JOY_FIRE)
-            tap(KEY_RIGHT)
+    # ΥΠΟΔΟΧΗ-ΥΠΟΔΟΧΗ ΠΑΝΤΑ (βήμα 196): ως το 195 ένα SPACE έβαζε το ίδιο σε
+    # όλες, και το σενάριο το χρησιμοποιούσε όταν όλες ήθελαν το ίδιο. Τώρα το
+    # SPACE βάζει μόνο στην υποδοχή, όπως το FIRE.
+    for k, want in enumerate(how):
+        assert m.peek(sym["FIT_S"]) == k, (
+            f"η υποδοχή δεν κλείδωσε: fit_s={m.peek(sym['FIT_S'])} αντί {k}")
+        pick(want)
+        stick(JOY_FIRE)
+        tap(KEY_RIGHT)
     d = m.peek(sym["FIT_D"])
     stick(0x20)                          # -> LOOK
     m.run_frames(4)
