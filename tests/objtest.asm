@@ -279,6 +279,8 @@ blk_row     equ 0
 macro   B6T_PIECE n                         ; βήμα 197: στο παιχνίδι μια ουρά της 6 ανά κομμάτι· εδώ τίποτα
 mend
         include "../src/supply6.asm"        ; βήμα 197: ό,τι ήταν στο src/supply.asm
+        include "../src/rise6.asm"          ; βήμα 200: η πρόοδος με κάθε φορτίο (στο παιχνίδι στην ουρά 0)
+        include "../src/rise0.asm"          ; βήμα 200: το εργοτάξιο που υψώνεται (στο παιχνίδι στην τράπεζα 0)
         include "../src/suit.asm"           ; το su_hud του hud.asm (βήμα 90)
 tr_arrive:                              ; το sp_arrive, για μια J_TRADE (src/carry.asm),
 mc_arrive:                              ; και για τις μηχανές (βήμα 99, src/install.asm),

@@ -2051,7 +2051,9 @@ def keep_branches(sym, g, nexthop, sim0):
     negs.append(("το όριο των ανταλλακτικών 19", "ανταλλ. 19", a and [(a + 1, (-19) & 255)]))
     a = code_at("ERM_INP", [0xFE, EC.S_BIOPL, 0x28], 6)
     negs.append(("η SPARES περνά", "ανταλλ. 20", a and [(a + 1, 0xFE)]))
-    a = code_at("EC_SETFULL", [0x21, sym["ERM_INP"] & 255, sym["ERM_INP"] >> 8], 60)
+    # από το esf_keep, το δεύτερο κομμάτι του ec_setfull: στο simtest ακολουθούσε
+    # μέσα σε 60 bytes, ως να μπει από το βήμα 200 ανάμεσα το mt_site (src/full6.asm)
+    a = code_at("ESF_KEEP", [0x21, sym["ERM_INP"] & 255, sym["ERM_INP"] >> 8], 24)
     negs.append(("η δεύτερη κλήση μένει erm_in", "ανταλλ. 20",
                  a and [(a + 1, sym["ERM_IN"] & 255), (a + 2, sym["ERM_IN"] >> 8)]))
     for what, case, patch in negs:

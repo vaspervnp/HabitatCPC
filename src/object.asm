@@ -407,9 +407,18 @@ ob_dome_live:
         ld      a,c
         ret
 
+; ob_getdh — το ίδιο, με HL -> D_STATE του θόλου A, όπως το αφήνει το
+; ob_dome_live: χωρίς το ob_domeadr, 25 us λιγότερα σε κάθε θόλο του ob_shell,
+; του ob_fittings και του dt_prep. Βήμα 200: πληρώνουν τον έλεγχο του
+; εργοταξίου που υψώνεται (src/rise0.asm) με το παραπάνω.
+ob_getdh:
+        ld      de,-D_STATE
+        add     hl,de
+        jr      obg_id
 ob_getdome:
+        call    ob_domeadr              ; κρατά το A
+obg_id:
         ld      (d_id),a
-        call    ob_domeadr
         ld      de,d_rec
         ld      bc,DOME_REC
         ldir
@@ -575,9 +584,15 @@ oov_no:
 ob_shell:
         call    ob_dome_live
         ret     z
-        call    ob_getdome
+        call    ob_getdh
         call    ob_vis
         ret     z
+        ; ΤΟ ΕΡΓΟΤΑΞΙΟ ΥΨΩΝΕΤΑΙ ΑΠΟ ΚΑΤΩ (βήμα 200, src/rise0.asm): όσο χρωστά
+        ; φορτία, μόνο οι κάτω γραμμές του, όσες λέει το μερίδιο που έφτασε.
+        ld      a,(d_rec+D_STATE)
+        rra                             ; CY: DS_BUILDING
+        call    c,ob_rise
+        assert  DS_BUILDING == 1 && DS_ACTIVE == 2
         ; ΠΟΥ ΕΧΕΙ ΚΑΤΙ ΚΑΘΕ ΟΚΤΩ ΓΡΑΜΜΕΣ (βήμα 108, src/span.asm): από το
         ; βήμα 110 στην κεφαλίδα του ίδιου του κελύφους, στην τράπεζα 6.
         ld      hl,(d_geo)
@@ -635,7 +650,7 @@ oq_noy:
 ob_fittings:
         call    ob_dome_live
         ret     z
-        call    ob_getdome
+        call    ob_getdh
         call    ob_vis
         ret     z
         call    jt_dome                 ; βήμα 3: οι αρμοί (src/joint.asm, βήμα 96)
@@ -648,7 +663,7 @@ ob_fittings:
         jr      z,obf_full
         xor     a
         ld      (d_rec+D_ROOM),a
-        call    ob_icon
+        call    ob_ricon                ; κομμένο όπως το κέλυφος (βήμα 200)
         jp      ob_figures
 obf_full:
         call    ob_icon
@@ -1218,16 +1233,21 @@ ob_struct:
         ; ΠΡΩΤΑ Η ΑΝΤΙΓΡΑΦΗ, ΜΕΤΑ Η ΕΡΩΤΗΣΗ: το s_rec είναι πρόχειρο. ΜΟΝΟ ΤΑ
         ; ΠΕΝΤΕ ΠΡΩΤΑ (βήμα 154), cx, cy, είδος, μέγεθος, κατάσταση, όσα
         ; διαβάζουν αυτό και το st_mark: 32 us, όπου τα 8 ήταν 50 — και
-        ; πληρώνουν τα 4 us του add hl,hl και του add a,STB_C πάνω. Πέντε ldi
-        ; θα ήταν 25 us, αλλά 5 bytes ακόμη έσπρωχναν το align 16 του sl_ctg
-        ; (src/bar.asm) πέρα από το όριο: 16 bytes της τράπεζας 0.
+        ; πληρώνουν τα 4 us του add hl,hl και του add a,STB_C πάνω. ΤΕΣΣΕΡΑ
+        ; ldi ΚΑΙ Η ΚΑΤΑΣΤΑΣΗ ΣΤΟ A από το βήμα 200: 24 us αντί για 36 με το
+        ; ld a,(s_rec+ST_STATE), και πληρώνουν τα 2 us του ελέγχου του
+        ; εργοταξίου (os_site, src/rise0.asm) με το παραπάνω. Ως το 199 τα
+        ; bytes δεν χωρούσαν πριν από το align 16 του sl_ctg (src/bar.asm).
         ld      de,s_rec
-        ld      bc,5
-        ldir
+        ldi
+        ldi
+        ldi
+        ldi
+        ld      a,(hl)                  ; ST_STATE
+        ld      (de),a
         assert  ST_CX == 0 && ST_CY == 1 && ST_KIND == 2 && ST_SIZE == 3 && ST_STATE == 4
-        ld      a,(s_rec+ST_STATE)
-        or      a
-        ret     z
+        cp      DS_ACTIVE
+        call    c,os_site               ; η άδεια θέση δεν γυρίζει εδώ
         ; (kind*4 + size)*2 για το struct_dims (δύο bytes ανά μέγεθος), kind*2
         ; στο B για το struct_ptr (μία λέξη ανά είδος, βήμα 152: ό,τι περνά τον
         ; έλεγχο του μηδενός από κάτω έχει το μόνο μέγεθος του είδους του).

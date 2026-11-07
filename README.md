@@ -26,7 +26,10 @@ fit in a Z80 and 128 KB.
   - three dome sizes and ten rooms, fitted slot by slot with the machines the room
     allows;
   - corridors laid automatically to the domes in reach;
-  - airlocks as the only doors, and paths on the ground to the structures outside.
+  - airlocks as the only doors, and paths on the ground to the structures outside;
+  - placed even without the materials, which the colonists carry as the colony makes
+    them, and each site rises line by line from the bottom as its loads arrive (since
+    milestones 198 and 200).
 - **Autonomous colonists**, up to 160, and 16 bots:
   - five specialties — worker, engineer, biologist, medic, guard;
   - six needs — oxygen, water, food, sleep, health, morale;

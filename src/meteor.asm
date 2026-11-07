@@ -166,8 +166,7 @@ mt_hit:
         inc     hl                      ; D_INTEG = ST_INTEG
         cp      DS_ACTIVE
         jr      z,mth_live
-        ld      (hl),0                  ; εργοτάξιο: χάνει την πρόοδο
-        ret
+        jp      mt_site                 ; εργοτάξιο: χάνει την πρόοδο (src/rise6.asm, βήμα 200)
 mth_live:
         ld      a,c
         cp      MAX_DOME

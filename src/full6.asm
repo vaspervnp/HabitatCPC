@@ -8,7 +8,7 @@
 ; φόρτωμα τις κρατά στην άκρη όπως το b6x (src/keep6.asm). Τρέχουν με την 6.
 ;
 ; ΤΟ ec_setfull ΣΕ ΔΥΟ ΚΟΜΜΑΤΙΑ, ένα ανά ουρά: το δεύτερο, το esf_keep, ήταν
-; η συνέχειά του. Στο tests/simtest.asm το B6T_PIECE δεν κάνει τίποτα, και
+; η συνέχειά του. Στο τέλος του πρώτου, το mt_site του βήματος 200. Στο tests/simtest.asm το B6T_PIECE δεν κάνει τίποτα, και
 ; το jp πάει στην επόμενη εντολή.
 
 ; ec_setfull — A = 0 ή 1: το ec_full (src/stock.asm) και ο κώδικας που το
@@ -42,6 +42,28 @@ esf_put:
         ld      (erp_full),de
         jp      esf_keep                ; η επόμενη ουρά
         assert  erp_chk - erp_full - 2 < 128 && NEED_MIN < 256 && S_WATER == 0
+
+; mt_site — ο μετεωρίτης σε εργοτάξιο (mt_hit, src/meteor.asm), στο τέλος της
+; ουράς 1 από το βήμα 200: η ουρά 0 γέμισε με το sp_dlv (src/rise6.asm), και στο
+; b6code δεν χωρούσε. HL -> D_INTEG = ST_INTEG, C = ο κόμβος. Χάνει την πρόοδο
+; του χτίστη. Οσο χρωστά φορτία, η ακεραιότητα είναι το μερίδιο που έφτασε και
+; μένει, όπως έμενε ως το βήμα 199 το 0 της εκεί.
+mt_site:
+        inc     hl
+        ld      a,c
+        cp      MAX_DOME
+        ld      a,(hl)                  ; D_POWER
+        inc     hl
+        jr      c,mts_d
+        xor     a                       ; δομή: μόνο το ST_OWED
+mts_d:
+        or      (hl)                    ; D_OPS, ή ST_OWED
+        ret     nz
+        dec     hl
+        dec     hl
+        ld      (hl),0
+        ret
+        assert  D_OPS == D_INTEG + 2 && ST_OWED == ST_INTEG + 2
 
         B6T_PIECE 2
 

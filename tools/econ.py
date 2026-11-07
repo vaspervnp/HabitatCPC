@@ -959,7 +959,12 @@ def _impact(e):
     else:
         return                              # έδαφος: ο κρατήρας είναι του κόσμου
     if rec[base + D_STATE] != DS_ACTIVE:
-        rec[base + D_INTEG] = 0             # εργοτάξιο: χάνει την πρόοδο
+        # εργοτάξιο: χάνει την πρόοδο του χτίστη. Οσο χρωστά φορτία είναι το
+        # μερίδιο που έφτασε, και μένει (βήμα 200, mt_site)
+        left = rec[base + D_POWER] | rec[base + D_OPS] if n < MAX_DOME \
+            else rec[base + ST_OWED]
+        if not left:
+            rec[base + D_INTEG] = 0
     elif n < MAX_DOME:
         break_one(e, n + 64 * s)            # μία μηχανή σταματά
     elif rec[base + ST_KIND] == K_SHIP:
@@ -1071,6 +1076,19 @@ def owed(e, node, mat):
         return e.dome, me, other, 1, 0xFF
     b = (node - MAX_DOME) * STRUCT_REC + ST_OWED
     return (e.struct, b, b, 0x10, 0xF0) if mat == 0 else (e.struct, b, b, 1, 0x0F)
+
+
+def rise(rec, me, other, mask):
+    """Το sp_dlv (βήμα 200, src/rise6.asm), μετά από ένα φορτίο: η ακεραιότητα
+    του εργοταξίου γίνεται το μερίδιο που έφτασε, p + (255 - p) / (όσα μένουν
+    + 1), που δίνει 255 x k / N μετά από k από τα N· με το τελευταίο 0, για τον
+    χτίστη. Οι εγγραφές είναι σε όρια του 8: η ακεραιότητα είναι στο +5."""
+    if mask == 0xFF:
+        left = (rec[me] + rec[other]) & 0xFF
+    else:
+        left = (rec[me] & 15) + (rec[me] >> 4)
+    i = (me & ~1) - 1
+    rec[i] = 0 if left == 0 else rec[i] + (255 - rec[i]) // (left + 1)
 
 
 def supply_source(e, node):
@@ -1516,6 +1534,7 @@ def jobs_tick(e, a, F_ALIVE, F_WORKING):
             rec, me, other, unit, mask = owed(e, site, mat)
             if not mach_live(e, site) and rec[me] & mask:
                 rec[me] = (rec[me] - unit) & 0xFF
+                rise(rec, me, other, mask)      # η πρόοδος (βήμα 200)
                 if rec[me] & mask:
                     more = True
                 else:

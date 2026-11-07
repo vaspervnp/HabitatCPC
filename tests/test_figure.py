@@ -714,11 +714,24 @@ def meteor(sym, g, patch=(), quiet=False):
     return None
 
 
+def solar_whole(w, sym, g):
+    """Το ηλιακό στο SOLAR_FAR, ΟΛΟΚΛΗΡΟ στην οθόνη. Από το βήμα 200 ένα εργοτάξιο
+    που χρωστά φορτία φαίνεται από κάτω όσο φτάνουν, και χωρίς κανένα είναι το
+    έδαφος (src/rise0.asm): τα κελιά «πάνω σε κτίσμα» του ΚΕΛΙΟΥ, των ΣΤΟΙΒΩΝ και
+    των ΜΕΡΩΝ θα ήταν πάνω σε έδαφος — το αρνητικό «μία σειρά από τα 3x3» δεν είχε
+    πια τι να πιάσει, και το σβήσιμο πάνω σε κτίσμα έπεφτε ~400 us. Οχι στο
+    ΚΟΣΤΟΣ: αυτό ζει από τους μεταφορείς που πηγαίνουν τα φορτία του. Το ST_OWED του γίνεται 0: εργοτάξιο που δεν χρωστά, ολόκληρο,
+    όπως ήταν κάθε εργοτάξιο ως το βήμα 199."""
+    B.build(w.m, sym, 4, g + 6, at=SOLAR_FAR, fit=False)
+    n = w.m.peek(sym["BD_NODE"])
+    w.bank(6)[w.L["G_struct_tbl"] + 8 * (n - 64) + 7 - 0x4000] = 0
+
+
 def cells(sym, g, patch=(), quiet=False):
     """ΚΕΛΙ (βήμα 105). Η πρώτη διαφορά από την πλήρη σχεδίαση, ή None."""
     say = (lambda s: None) if quiet else (lambda s: print("    " + s))
     w = G(sym, g, patch)
-    B.build(w.m, sym, 4, g + 6, at=SOLAR_FAR, fit=False)
+    solar_whole(w, sym, g)
     look(w.m)
     w.drain()
     pl = bytes(w.bank(4))
@@ -796,7 +809,7 @@ def stacks(sym, g, patch=(), quiet=False):
     """ΣΤΟΙΒΕΣ (βήμα 106). Η πρώτη διαφορά από την πλήρη σχεδίαση, ή None."""
     say = (lambda s: None) if quiet else (lambda s: print("    " + s))
     w = G(sym, g, patch)
-    B.build(w.m, sym, 4, g + 6, at=SOLAR_FAR, fit=False)
+    solar_whole(w, sym, g)
     look(w.m)
     w.drain()
     pl = bytes(w.bank(4))
@@ -961,7 +974,7 @@ def parts(sym, g, patch=(), out=None):
     δύο καμερών, χρεώνουν όσο κοστίζουν ή περισσότερο."""
     check_ = out or check
     w = G(sym, g, patch)
-    B.build(w.m, sym, 4, g + 6, at=SOLAR_FAR, fit=False)
+    solar_whole(w, sym, g)
     look(w.m)
     w.drain()
     pl = bytes(w.bank(4))

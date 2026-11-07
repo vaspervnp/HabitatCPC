@@ -252,6 +252,10 @@ which you can save like any other.
 - **You can place it even without the materials.** The colonists **carry them** to
   the site, ten at a time, and each load is paid from the stocks **when it is picked
   up**. When a stock runs out, its loads wait, and they go as the colony makes more.
+- **The site rises line by line from the bottom** as its loads arrive: with half of
+  them there, you see the lower half of the building, and above it the ground. The
+  corridors are there from the start, and a structure's yellow and black stripes stay
+  until it is finished.
 - When everything has arrived, an **engineer** (or a constructor bot) builds it. If
   nobody can, the alert line says `NO ENGINEER`.
 
@@ -540,8 +544,9 @@ The line shows the most urgent message, in this order:
 
 - **Info** (`I`, or `M` `I`): what is under the cursor — the building, its state
   (`SITE` or `ACTIVE`), its condition (`HP`), and the ground (`GROUND`, `DUST`,
-  `ROCK`, `MOUNTAIN`, `WATER`, `ORE VEIN`…). On a working mine it also shows the ore
-  the mine holds: `ORE 4/6`.
+  `ROCK`, `MOUNTAIN`, `WATER`, `ORE VEIN`…). On a site, `HP` is the share of its loads
+  that has arrived; with the last load it starts again from 0, as the engineer builds.
+  On a working mine it also shows the ore the mine holds: `ORE 4/6`.
 - **Demolish**: put the cursor on the building, then `M` `D` and `SPACE`.
   - It works on domes and structures, finished or not. A dome's corridors go with it.
   - **The ship** can come down once you have a finished airlock and a Storage dome.

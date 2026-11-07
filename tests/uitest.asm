@@ -326,6 +326,8 @@ vs_coins:                               ; βήμα 134: src/ship.asm, που ε�
         ; sp_pay της τροφοδοσίας, και το src/debt6.asm).
         include "../src/debt6.asm"          ; βήμα 198: το χρέος
         include "../src/supply6.asm"        ; βήμα 197: ό,τι ήταν στο src/supply.asm
+        include "../src/rise6.asm"          ; βήμα 200: η πρόοδος με κάθε φορτίο (στο παιχνίδι στην ουρά 0)
+        include "../src/rise0.asm"          ; βήμα 200: το εργοτάξιο που υψώνεται (στο παιχνίδι στην τράπεζα 0)
         include "../src/fit6.asm"           ; βήμα 198: το fs_put του fit_set, το mc_out
         include "../src/top.asm"
         assert  $ <= #C000

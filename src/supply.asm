@@ -352,8 +352,7 @@ spa_site:
         jr      z,spa_mach              ; δεν το χρωστά: μια μηχανή του
         ld      a,(hl)
         sub     b
-        ld      (hl),a
-        and     c
+        call    sp_dlv                  ; ld (hl),a / and c, και η πρόοδος (βήμα 200, src/rise6.asm)
         jr      z,spa_paid
         pop     af
         xor     a

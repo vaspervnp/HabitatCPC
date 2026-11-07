@@ -6,8 +6,10 @@
 
   OV_R1   βασική τράπεζα 1, #6000, συνεχές: οι χειριστές της κατεδάφισης
           (src/dm_hand.asm, από το DH_RSIZE), το bar_sync (βήμα 199,
-          src/sync1.asm, από το BAR_SYNC), ο κώδικας του tutorial
-          (build/ovl4.bin, από το TU_AT· ως το βήμα 198 μετά τις γραμμές του).
+          src/sync1.asm, από το BAR_SYNC), οι σειρές του εργοταξίου που
+          υψώνεται (βήμα 200, src/rise1.asm, από το DH_RISE), ο κώδικας του
+          tutorial (build/ovl4.bin, από το TU_AT· ως το βήμα 198 μετά τις
+          γραμμές του).
   OV_R2   βασική τράπεζα 1, οι στήλες 112-127 των γραμμών θόλων του DIST, 16
           bytes ανά γραμμή: το σώσιμο (build/ovl2.bin), και από την επόμενη
           γραμμή του η βοήθεια (build/ovl3.bin).
@@ -55,7 +57,7 @@ def spread(start, n, stride=128):
 
 def pieces(sym):
     """όνομα -> (τράπεζα, διευθύνσεις ανά byte, πού τρέχει το byte 0, τα bytes
-    του build). Τα "hand" και "sync" δεν έχουν δικό τους αρχείο· είναι μέσα
+    του build). Τα "hand", "sync" και "rise" δεν έχουν δικό τους αρχείο· είναι μέσα
     στο "r1", το OV_R1 ολόκληρο (build/ovr1.bin)."""
     dm, sv, hp, tu = _bin("ovl.bin"), _bin("ovl2.bin"), _bin("ovl3.bin"), _bin("ovl4.bin")
     mp, tx = _bin("ovl5.bin"), _bin("ovtx.bin")
@@ -71,7 +73,8 @@ def pieces(sym):
         "tutor": (1, list(range(sym["TU_AT"], sym["TU_AT"] + len(tu))), GH, tu),
         "tutext": (1, spread(TX_HOLE, TU_LINES, 64), sym["TU_TXT"], tx),
         "hand": (1, list(range(sym["DH_RSIZE"], sym["DH_RSIZE"] + hand)), sym["DH_RSIZE"], None),
-        "sync": (1, list(range(sym["BAR_SYNC"], sym["TU_AT"])), sym["BAR_SYNC"], None),
+        "sync": (1, list(range(sym["BAR_SYNC"], sym["DH_RISE"])), sym["BAR_SYNC"], None),
+        "rise": (1, list(range(sym["DH_RISE"], sym["TU_AT"])), sym["DH_RISE"], None),
         "r1": (1, list(range(OV_R1, OV_R1 + len(r1))), OV_R1, r1),
     }
 

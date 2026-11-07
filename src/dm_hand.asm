@@ -17,7 +17,11 @@ DH_RSIZE:
         ret
 DH_RECT:
         ld      hl,(dt_a)
+        ld      a,h
+        cp      RISE_TY
+        jp      z,dh_rise               ; το εργοτάξιο που υψώνεται (βήμα 200, src/rise1.asm)
         ld      (vr_tx),hl              ; vr_tx, vr_ty
+dhr_go:
         call    vr_clip                 ; src/view.asm
         ret     z                       ; έξω από το κάδρο
         call    dt_ghost_rect           ; το φάντασμα σηκώνεται, αν είναι εκεί

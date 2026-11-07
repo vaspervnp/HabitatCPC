@@ -272,7 +272,7 @@ dt_prep:
         ld      a,(dt_a)
         call    ob_dome_live
         jr      z,dt_skip
-        call    ob_getdome
+        call    ob_getdh
         call    ob_vis
         jr      z,dt_skip
         ; fall through
