@@ -283,6 +283,11 @@ def draw_fittings(canvas, a, cam, colony, d, clip, agents=None):
         if not hp & 0x80:
             blit(canvas, mark_rows(0 if hp == 0 else 1), fx + px, fy + py, False, clip)
 
+    # Η ΚΟΡΔΕΛΑ (βήμα 202, src/tape1.asm): στο πλαίσιο του εργοταξίου, πριν
+    # από τις φιγούρες, που πατούν πάνω της.
+    if site:
+        draw_tape(canvas, fx, fy, 2 * qw, 2 * qh, clip)
+
     if agents is None:
         return
     for slot, fig in agents.get(d, {}).items():
@@ -290,6 +295,24 @@ def draw_fittings(canvas, a, cam, colony, d, clip, agents=None):
         py = a.corr_slots[sz * 16 + slot * 2 + 1]
         blit(canvas, a.rows(f"slot_{SIZES[sz]}_{slot}_{FIG_NAMES[fig]}"),
              fx + px, fy + py, False, clip)
+
+
+TK_PEN = 0x3C                            # pen 6 και στα δύο pixels
+
+
+def draw_tape(canvas, x0, y0, w, h, clip):
+    """Η κορδέλα ενός εργοταξίου (βήμα 202): οι δύο πάνω και οι δύο κάτω
+    γραμμές του πλαισίου στα bytes με (x - x0) mod 4 = 0 ή 3, και το πρώτο και
+    το τελευταίο byte στις γραμμές με (y - y0 + 4) mod 16 < 8. Μόνο οι θόλοι:
+    οι δομές-εργοτάξια, με το σήμα τους, δεν είναι στις σκηνές της αναφοράς."""
+    on = set()
+    for y in (y0, y0 + 1, y0 + h - 2, y0 + h - 1):
+        on |= {(x0 + dx, y) for dx in range(w) if dx % 4 in (0, 3)}
+    for x in (x0, x0 + w - 1):
+        on |= {(x, y0 + dy) for dy in range(h) if (dy + 4) & 8 == 0}
+    for x, y in on:
+        if clip.x0 <= x < clip.x1 and clip.y0 <= y < clip.y1:
+            canvas.buf[y * SCR_W + x] = TK_PEN
 
 
 FIG_NAMES = ["empty", "colonist", "biologist", "medic", "guard",

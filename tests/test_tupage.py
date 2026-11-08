@@ -301,6 +301,7 @@ class Run:
         m.type_text('run"habitat\n', hold_frames=4, gap_frames=8)
         self.b7 = cpc._lib.cpcemu_ram_ptr(m._h, 7)
         self.b1 = cpc._lib.cpcemu_ram_ptr(m._h, 1)
+        self.b0 = cpc._lib.cpcemu_ram_ptr(m._h, 0)     # το game() και το listening()
         self.f_pick = MR.pick(m, self.bs, planet)
         # Ως να φορτωθεί το TEXT.BIN (ο φορτωτής, μετά την επιλογή): ως τότε
         # η τράπεζα 7 είναι μηδενικά και το tp_pg λέει «σελίδα 0».
@@ -339,12 +340,20 @@ class Run:
         αρχείο ακόμη, το B6TAIL.BIN) το is_fc άλλαζε μία φορά στη μέση του
         φορτώματος, πριν από τη γεννήτρια: το listening γύριζε False μετά από
         3 s, με τη γεννήτρια ακόμη στη μέση, και το game() το αγνοούσε. Τώρα
-        ένα False σημαίνει «όχι ακόμη» και ο βρόχος συνεχίζει."""
+        ένα False σημαίνει «όχι ακόμη» και ο βρόχος συνεχίζει.
+
+        ΑΠΟ ΤΗ RAM, ΟΧΙ ΜΕ ΤΟ peek (βήμα 202). Οσο ο φορτωτής καλεί το
+        firmware, στο #0000-#3FFF είναι η κάτω ROM, και το peek διαβάζει τα
+        bytes της: 21 στο is_fc, #35 στη γραμμή 9 του key_now, και 0 μόλις
+        σβήσει. Το is_fc «άλλαζε», και το listening έβλεπε το σημάδι του
+        σβησμένο — το poke γράφει στη RAM από κάτω. Με τον δίσκο του 202 (άλλα
+        μεγέθη αρχείων) αυτό έπεφτε στη φόρτωση πριν από τη γεννήτρια, και το
+        game() γύριζε 5 s πριν αρχίσει το παιχνίδι: το G και το V χάνονταν."""
         for f in range(limit):
             if self.pg() == 0xFF:
-                a = self.m.peek(self.sym["IS_FC"])
+                a = self.b0[self.sym["IS_FC"]]
                 self.m.run_frames(2)
-                if self.m.peek(self.sym["IS_FC"]) != a:
+                if self.b0[self.sym["IS_FC"]] != a:
                     self.m.run_frames(20)
                     if self.listening():
                         return f
@@ -359,9 +368,9 @@ class Run:
         at = self.sym["KEY_NOW"] + 9
         seen = 0
         for _ in range(limit_ms):
-            self.m.poke(at, 0xAA)
+            self.b0[at] = 0xAA                  # η RAM: βλ. το game()
             self.m.run_us(1000)
-            if self.m.peek(at) != 0xAA:
+            if self.b0[at] != 0xAA:
                 seen += 1
                 if seen == 2:
                     return True

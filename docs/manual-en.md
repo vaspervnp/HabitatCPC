@@ -256,6 +256,9 @@ which you can save like any other.
   them there, you see the lower half of the building, and above it the ground. The
   corridors are there from the start, and a structure's yellow and black stripes stay
   until it is finished.
+- **A yellow dashed outline** marks where the building will stand, like the frame of
+  the green ghost when you placed it. It is drawn on top, like tape, from the moment
+  you place it until the engineer finishes, and then it goes.
 - When everything has arrived, an **engineer** (or a constructor bot) builds it. If
   nobody can, the alert line says `NO ENGINEER`.
 

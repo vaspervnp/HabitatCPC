@@ -72,7 +72,7 @@ fit_can:
         ld      a,(hl)                  ; D_STATE
         call    uid_out                 ; κρατά το DE, όπως και το ob_addu
         ; ΚΑΙ ΣΤΟ ΕΡΓΟΤΑΞΙΟ, όπως στο Planetbase: οι μηχανές μπαίνουν από τώρα
-        ; και φαίνονται όταν τελειώσει ο θόλος (dh_built).
+        ; και φαίνονται όταν τελειώσει ο θόλος (το αποτύπωμα του st_built).
         dec     a                       ; εργοτάξιο 0, χτισμένος 1
         cp      2
         jr      nc,fc_no
@@ -194,7 +194,7 @@ fs_set:
         ld      a,(hl)
         call    uid_out
         cp      DS_ACTIVE
-        jr      nz,fs_done              ; εργοτάξιο: τις ζωγραφίζει το dh_built
+        jr      nz,fs_done              ; εργοτάξιο: τις ζωγραφίζει το st_built
         ld      bc,(fit_s)              ; C = υποδοχή, B = θόλος
         ld      a,DK_MACH
         call    dirty_push

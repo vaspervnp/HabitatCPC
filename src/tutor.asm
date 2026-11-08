@@ -57,7 +57,7 @@
 ; των γραμμών 32-47 του μπλοκ των δομών (TB_HOLE), μετά τις γραμμές του
 ; κειμένου, στο GH_BUF + TU_ALEN. Το tu_run φέρνει από το OV_R1 μόνο αυτό το
 ; μέρος, ως το tuo_i· το OV_R1 κερδίζει 141 bytes για την κορδέλα του
-; εργοταξίου (βήμα 202).
+; εργοταξίου (βήμα 202), και άλλα 57 με την ανάγνωση της γραμμής (tuo_line).
 tuo_go:
         ld      hl,TB_HOLE
         ld      de,GH_BUF + TU_ALEN
@@ -101,37 +101,7 @@ tuo_set:
         jr      c,tuo_txt
         ld      a,TU_YOURS
 tuo_txt:
-        ld      (tuo_i),a
-        ; ΑΠΟ ΤΟ ΜΠΛΟΚ ΤΩΝ ΔΟΜΩΝ (βήμα 199, TX_HOLE): η γραμμή A στις στήλες
-        ; 48-63 των γραμμών 2A και 2A + 1 του, 64 bytes η μία από την άλλη.
-        ; Ως το 198 32 bytes συνεχόμενα στο OV_R1 (από το βήμα 155).
-        ld      h,a
-        ld      l,0
-        srl     h
-        rr      l                       ; HL = A * 128
-        ld      de,TX_HOLE
-        add     hl,de
-        call    ov_b1                   ; src/demolish.asm
-        ld      de,tuo_buf
-        ld      bc,OV_UNIT
-        ldir
-        ld      c,DB_STRIDE - OV_UNIT   ; το B είναι 0 μετά το ldir
-        add     hl,bc
-        ld      c,OV_UNIT
-        ldir
-        ld      bc,GA_PORT + PAGE_B7
-        out     (c),c
-        ld      hl,tuo_buf
-        ld      de,t_look
-        ld      bc,32
-        ldir
-        ld      a,(tuo_i)
-        cp      TU_YOURS
-        ld      a,' '
-        jr      nz,tuo_33
-        ld      a,'P'                   ; το τέλος του «C=SHIP»
-tuo_33:
-        ld      (de),a
+        call    tuo_line                ; src/tutor2.asm (βήμα 202)
         ld      a,(tuo_s)
         ld      (tp_cur),a              ; η σελίδα του «?» (src/tpage.asm, βήμα 175)
         ; --- οι βλάβες σβηστές στα βήματα (or αντί για and στο ev_fault) ---

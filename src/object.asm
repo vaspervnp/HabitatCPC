@@ -657,14 +657,15 @@ ob_fittings:
         ; ΤΟ ΕΡΓΟΤΑΞΙΟ ΕΙΝΑΙ ΑΔΕΙΟ. Ο εξοπλισμός (src/fit.asm) γράφει μηχανές
         ; και πάνω σε εργοτάξιο, όπως στο Planetbase — αλλά αν φαίνονταν από
         ; τότε, ο μισοχτισμένος θόλος θα έδειχνε τελειωμένος. Τις ζωγραφίζει
-        ; το dh_built στο τέλος. Το κενό εικονίδιο είναι το 0.
+        ; το αποτύπωμα του st_built στο τέλος (src/meteor.asm, βήμα 202· ως
+        ; τότε το dh_built). Το κενό εικονίδιο είναι το 0.
         ld      a,(d_rec+D_STATE)
         cp      DS_ACTIVE
         jr      z,obf_full
         xor     a
         ld      (d_rec+D_ROOM),a
         call    ob_ricon                ; κομμένο όπως το κέλυφος (βήμα 200)
-        jp      ob_figures
+        jp      ob_tapef                ; η κορδέλα, και οι φιγούρες από πάνω (βήμα 202)
 obf_full:
         call    ob_icon
         call    ob_machines

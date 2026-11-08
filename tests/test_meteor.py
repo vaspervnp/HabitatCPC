@@ -16,7 +16,9 @@ byte προς byte για το ΤΙ χτυπά. Εδώ, στο binary που φ�
   ΑΠΟΙΚΙΑ    Η πίστα γίνεται εργοτάξιο και ξαναχτίζεται· η μηχανή οξυγόνου
              σταματά και την επισκευάζουν.
   ΣΗΜΑ       (βήμα 109) Η πίστα που χτύπησε έχει στην οθόνη το σήμα του
-             εργοταξίου, χωρίς πλήρη σχεδίαση: το DK_TILE του st_redraw.
+             εργοταξίου, χωρίς πλήρη σχεδίαση: από το βήμα 202 όλο το
+             αποτύπωμα (το st_site, DK_RSIZE και DK_RECT), με το σήμα και την
+             κορδέλα· ως το 201 το DK_TILE του st_redraw.
              ΑΡΝΗΤΙΚΟ: χωρίς αυτό η πίστα μένει όπως ήταν ως να ξαναχτιστεί.
   ΠΑΙΚΤΗΣ    Ο πίνακας γράφει METEOR SHOWER, ο ήχος της κρούσης παίζει.
   ΣΥΧΝΟΤΗΤΑ  Η ζαριά μία ανά ~5 sol, και ΠΟΤΕ στον ίδιο γύρο με θύελλα,
@@ -176,11 +178,11 @@ def shower(sym, g, cut_push=False, no_half=False, cut_mark=False):
             sys.exit("δεν βρέθηκε το JP wh_push στο mt_ground")
         codeat.poke(G.m, a, 0xC9)
     if cut_mark:
-        # CALL st_redraw -> τρία NOP, στο mth_struct
-        at, sr = sym["MTH_STRUCT"], sym["ST_REDRAW"]
+        # CALL st_site -> τρία NOP, στο mth_struct (ως το βήμα 201 st_redraw)
+        at, sr = sym["MTH_STRUCT"], sym["ST_SITE"]
         a = codeat.find(G.m, at, [0xCD, sr & 0xFF, sr >> 8], 48)
         if a is None:
-            sys.exit("δεν βρέθηκε το CALL st_redraw στο mth_struct")
+            sys.exit("δεν βρέθηκε το CALL st_site στο mth_struct")
         for k in range(3):
             codeat.poke(G.m, a + k, 0)
     world0 = bytes(G.bank(4)[:W.SIZE])
@@ -303,7 +305,7 @@ def main():
     bad = sum(1 for i, (a, b) in enumerate(zip(k["pic"], k["ref"]))
               if a != b and i != k["spot"])
     check(not k["mark"] and k["mark_ref"] and bad > 0,
-          f"ΑΡΝΗΤΙΚΟ: χωρίς το st_redraw του mth_struct η πίστα δεν έχει σήμα "
+          f"ΑΡΝΗΤΙΚΟ: χωρίς το st_site του mth_struct η πίστα δεν έχει σήμα "
           f"στην οθόνη, ενώ στην πλήρη σχεδίαση έχει — {bad} λάθος bytes")
 
     # --- ΑΡΝΗΤΙΚΟ: χωρίς τα tiles του μισού πλάτους (βήμα 96) ---------------

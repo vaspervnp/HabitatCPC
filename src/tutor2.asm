@@ -1,6 +1,7 @@
 ; ---------------------------------------------------------------------------
 ; tutor2.asm — το δεύτερο μέρος του κώδικα του tutorial (src/tutor.asm): ο
-; έλεγχος ενός βήματος και ο πίνακάς τους. ΓΡΑΜΜΕΝΟ ΓΙΑ ΤΟ GH_BUF + TU_ALEN,
+; έλεγχος ενός βήματος και ο πίνακάς τους, και από το βήμα 202 η ανάγνωση της
+; γραμμής του κειμένου (tuo_line). ΓΡΑΜΜΕΝΟ ΓΙΑ ΤΟ GH_BUF + TU_ALEN,
 ; μετά το πρώτο μέρος, και ΣΤΙΣ ΤΡΥΠΕΣ ΤΟΥ ΜΠΛΟΚΑ ΤΩΝ ΔΟΜΩΝ από το βήμα 201:
 ; στις στήλες 48-63 των γραμμών 32-47 (TB_HOLE, src/const.asm), μετά τις
 ; γραμμές του κειμένου. Ο εγκαταστάτης το βάζει εκεί από την αρχή της εικόνας,
@@ -21,6 +22,43 @@ TU_ANY      equ #FE                     ; δεύτερο byte: ό,τι κι αν
 TU_METAL    equ 1                       ; οι μηχανές, με τη σειρά του MACH του tools/pack.py
 TU_MEALS    equ 6
 TU_MEAT     equ 9
+
+; tuo_line — A = η γραμμή του κειμένου: στο x_t_look της τράπεζας 7, που μένει
+; μέσα. Ως το βήμα 201 ήταν μέσα στο tuo_go, στο πρώτο μέρος: 60 bytes του
+; OV_R1 για την κορδέλα του εργοταξίου (βήμα 202).
+tuo_line:
+        ld      (tuo_i),a
+        ; ΑΠΟ ΤΟ ΜΠΛΟΚ ΤΩΝ ΔΟΜΩΝ (βήμα 199, TX_HOLE): η γραμμή A στις στήλες
+        ; 48-63 των γραμμών 2A και 2A + 1 του, 64 bytes η μία από την άλλη.
+        ; Ως το 198 32 bytes συνεχόμενα στο OV_R1 (από το βήμα 155).
+        ld      h,a
+        ld      l,0
+        srl     h
+        rr      l                       ; HL = A * 128
+        ld      de,TX_HOLE
+        add     hl,de
+        call    ov_b1                   ; src/demolish.asm
+        ld      de,tuo_buf
+        ld      bc,OV_UNIT
+        ldir
+        ld      c,DB_STRIDE - OV_UNIT   ; το B είναι 0 μετά το ldir
+        add     hl,bc
+        ld      c,OV_UNIT
+        ldir
+        ld      bc,GA_PORT + PAGE_B7
+        out     (c),c
+        ld      hl,tuo_buf
+        ld      de,t_look
+        ld      bc,32
+        ldir
+        ld      a,(tuo_i)
+        cp      TU_YOURS
+        ld      a,' '
+        jr      nz,tuo_33
+        ld      a,'P'                   ; το τέλος του «C=SHIP»
+tuo_33:
+        ld      (de),a
+        ret
 
 ; tuo_done — A = βήμα 1-14. CY αν έγινε. Η 6 στο παράθυρο.
 tuo_done:

@@ -243,6 +243,7 @@ mla_pok:
         include "b6out.asm"                 ; βήμα 110: ό,τι του b6code θέλει άλλη τράπεζα (στην 0 από το 152)
         include "keep6.asm"                 ; βήμα 187: ο κώδικας του b6x στην άκρη όσο φορτώνεται
         include "rise0.asm"                 ; βήμα 200: το εργοτάξιο υψώνεται από κάτω
+        include "tape0.asm"                 ; βήμα 202: η κορδέλα του εργοταξίου, οι είσοδοί της
 zz_bank0_end:
         ; ΤΟ ΠΑΤΩΜΑ ΤΩΝ TESTS. Πάνω από τον κώδικα στήνουν stubs, ημερολόγια και
         ; probes: τα probes στο #3E80, το test_loop τα stubs του από το
@@ -354,6 +355,7 @@ TB_ROWS     equ (zz_tub_end - zz_tub + 15) >> 4                 ; όσες γρ�
         include "goals.asm"             ; βήμα 177: το G και το αίτημα σελίδας, τρέχουν εδώ
         include "sync1.asm"             ; βήμα 199: το bar_sync, από την τράπεζα 0· τρέχει εδώ
         include "rise1.asm"             ; βήμα 200: οι σειρές που φάνηκαν με ένα φορτίο, τρέχει εδώ
+        include "tape1.asm"             ; βήμα 202: η κορδέλα του εργοταξίου, τρέχει εδώ
 TU_AT:                                  ; ο κώδικας του tutorial, στο OV_R1
         org     GH_BUF, TU_AT
 zz_ov4:

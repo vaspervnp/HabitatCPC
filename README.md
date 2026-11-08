@@ -28,8 +28,9 @@ fit in a Z80 and 128 KB.
   - corridors laid automatically to the domes in reach;
   - airlocks as the only doors, and paths on the ground to the structures outside;
   - placed even without the materials, which the colonists carry as the colony makes
-    them, and each site rises line by line from the bottom as its loads arrive (since
-    milestones 198 and 200).
+    them, and each site rises line by line from the bottom as its loads arrive, inside
+    a yellow dashed outline of the building, until the engineer finishes it (since
+    milestones 198, 200 and 202).
 - **Autonomous colonists**, up to 160, and 16 bots:
   - five specialties — worker, engineer, biologist, medic, guard;
   - six needs — oxygen, water, food, sleep, health, morale;
