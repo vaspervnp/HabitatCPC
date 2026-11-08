@@ -9,7 +9,7 @@
           src/sync1.asm, από το BAR_SYNC), οι σειρές του εργοταξίου που
           υψώνεται (βήμα 200, src/rise1.asm, από το DH_RISE), ο κώδικας του
           tutorial (build/ovl4.bin, από το TU_AT· ως το βήμα 198 μετά τις
-          γραμμές του).
+          γραμμές του· από το 201 μόνο το πρώτο μέρος του).
   OV_R2   βασική τράπεζα 1, οι στήλες 112-127 των γραμμών θόλων του DIST, 16
           bytes ανά γραμμή: το σώσιμο (build/ovl2.bin), και από την επόμενη
           γραμμή του η βοήθεια (build/ovl3.bin).
@@ -19,6 +19,9 @@
   TX_HOLE βασική τράπεζα 1, οι στήλες 48-63 των γραμμών 0-31 του μπλοκ των
           δομών (#6430, 16 bytes ανά γραμμή των 64): οι γραμμές του tutorial
           (βήμα 199, build/ovtx.bin· ως τότε στο OV_R1, από το TU_TXT).
+  TB_HOLE οι ίδιες στήλες των γραμμών 32-47 (#6C30): το δεύτερο μέρος του
+          κώδικα του tutorial (βήμα 201, src/tutor2.asm, build/ovtb.bin), που
+          τρέχει στο GH_BUF + TU_ALEN, από το ZZ_TUB.
 
 Οι διευθύνσεις είναι του παραθύρου (&4000-&7FFF)· το bank(n)[a - 0x4000] του
 εξομοιωτή είναι το byte, όποια τράπεζα κι αν φαίνεται τη στιγμή εκείνη.
@@ -32,6 +35,7 @@ UNIT, NODE_CAP = 16, 112
 OV_R1, OV_R2, OV_R3 = 0x6000, 0x4000 + NODE_CAP, 0x4000 + NODE_CAP
 TU_LINES = 16 * 32
 TX_HOLE = 0x6400 + 48                   # DB_ROW + MAX_STRUCT (src/const.asm)
+TB_HOLE = TX_HOLE + 32 * 64             # TX_HOLE + TX_UNITS * DB_STRIDE (βήμα 201)
 
 
 def _bin(name):
@@ -60,7 +64,7 @@ def pieces(sym):
     του build). Τα "hand", "sync" και "rise" δεν έχουν δικό τους αρχείο· είναι μέσα
     στο "r1", το OV_R1 ολόκληρο (build/ovr1.bin)."""
     dm, sv, hp, tu = _bin("ovl.bin"), _bin("ovl2.bin"), _bin("ovl3.bin"), _bin("ovl4.bin")
-    mp, tx = _bin("ovl5.bin"), _bin("ovtx.bin")
+    mp, tx, tb = _bin("ovl5.bin"), _bin("ovtx.bin"), _bin("ovtb.bin")
     r1 = _bin("ovr1.bin")                   # όλο το OV_R1, όπως φτάνει
     rows2 = -(-len(sv) // UNIT)
     rows3 = -(-len(dm) // UNIT)
@@ -72,6 +76,7 @@ def pieces(sym):
         "help": (1, spread(OV_R2 + rows2 * 128, len(hp)), GH, hp),
         "tutor": (1, list(range(sym["TU_AT"], sym["TU_AT"] + len(tu))), GH, tu),
         "tutext": (1, spread(TX_HOLE, TU_LINES, 64), sym["TU_TXT"], tx),
+        "tutb": (1, spread(TB_HOLE, len(tb), 64), sym["ZZ_TUB"], tb),
         "hand": (1, list(range(sym["DH_RSIZE"], sym["DH_RSIZE"] + hand)), sym["DH_RSIZE"], None),
         "sync": (1, list(range(sym["BAR_SYNC"], sym["DH_RISE"])), sym["BAR_SYNC"], None),
         "rise": (1, list(range(sym["DH_RISE"], sym["TU_AT"])), sym["DH_RISE"], None),

@@ -760,10 +760,13 @@ def main():
     # ΚΑΙ ΟΙ ΓΡΑΜΜΕΣ ΤΟΥ TUTORIAL (βήμα 199), στις στήλες 48-63 του μπλοκ των
     # δομών: τις βάζει εκεί ο εγκαταστάτης από το τέλος της εικόνας. Το OV_R1
     # έχει πια το bar_sync στη θέση τους.
+    # ΚΑΙ ΤΟ ΔΕΥΤΕΡΟ ΜΕΡΟΣ ΤΟΥ ΚΩΔΙΚΑ ΤΟΥ (βήμα 201, build/ovtb.bin), στις ίδιες
+    # στήλες των γραμμών 32-47· οι γραμμές και αυτό από την αρχή της εικόνας.
     got = {n: (OV.read(m, sym, n), OV.pieces(sym)[n][3])
-           for n in ("dm", "save", "help", "r1", "map", "tutext")}
+           for n in ("dm", "save", "help", "r1", "map", "tutext", "tutb")}
     check(len(got["dm"][1]) > 512 and len(got["save"][1]) > 512 and len(got["help"][1]) > 128
           and len(got["r1"][1]) > 512 and len(got["map"][1]) > 512 and len(got["tutext"][1]) == 512
+          and len(got["tutb"][1]) > 128
           and all(x == y for x, y in got.values()),
           "ο κώδικας της κατεδάφισης, του σωσίματος, της βοήθειας, του tutorial και του "
           "χάρτη ήρθε από τον δίσκο στις τρύπες: "

@@ -98,6 +98,12 @@ DB_STRIDE   equ 64
 ; Τις βάζει εκεί ο εγκαταστάτης των τρυπών (src/ov_inst.asm).
 TX_HOLE     equ DB_ROW + MAX_STRUCT
 TX_UNITS    equ 32
+; ΚΑΙ ΤΟ ΔΕΥΤΕΡΟ ΜΕΡΟΣ ΤΟΥ ΚΩΔΙΚΑ ΤΟΥ (βήμα 201, src/tutor2.asm): στις ίδιες
+; στήλες των γραμμών 32-47, τις τελευταίες του μπλοκ. Τρέχει στο GH_BUF +
+; TU_ALEN, μετά το πρώτο μέρος, που έρχεται από το OV_R1 (tu_run).
+TB_HOLE     equ TX_HOLE + TX_UNITS * DB_STRIDE
+TB_UNITS    equ STRUCT_CAP - TX_UNITS
+TU_ALEN     equ 200
 OV_R1       equ #6000                   ; τράπεζα 1, συνεχές, 1 KB
 OV_R2       equ #4000 + NODE_CAP        ; τράπεζα 1, οι τρύπες των 64 γραμμών θόλων
 OV_R3       equ #4000 + NODE_CAP        ; τράπεζα 5, οι τρύπες των NODE_CAP γραμμών του NEXTHOP

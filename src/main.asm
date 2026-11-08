@@ -306,15 +306,50 @@ zz_music_end:
 ; Κάθε κομμάτι στα 16 του (ή στο byte του, στο OV_R1). Η εικόνα του
 ; εγκαταστάτη, του OV_R2 και του OV_R3 κάθεται μετά το OV_R1, ως τα
 ; εικονίδια: στο μπλοκ των δομών του DIST (DB_ROW), που γεμίζει μόνο μετά,
-; από το rt_flush, και στα λίγα bytes του OV_R1 που περισσεύουν. ---
-OV_LOAD     equ OV_R1                   ; = το OV_LOAD του src/boot.asm (#6400 ως το βήμα 185)
+; από το rt_flush, και στα λίγα bytes του OV_R1 που περισσεύουν.
+;
+; ΚΑΙ ΟΙ ΓΡΑΜΜΕΣ ΤΟΥ TUTORIAL ΜΠΡΟΣΤΑ (βήμα 201): η BANK1.BIN αρχίζει 768 bytes
+; πριν από το OV_R1, στις γραμμές 58-63 των θόλων του DIST, που το επίμετρο
+; του φορτωτή δεν τις σβήνει πια και ο εγκαταστάτης τις σβήνει αφού τις
+; μοιράσει: οι γραμμές του tutorial, και το δεύτερο μέρος του κώδικά του
+; (src/tutor2.asm). Ως το βήμα 200 οι γραμμές ήταν στο τέλος της εικόνας, και
+; η εικόνα έφτανε 15 bytes κάτω από τα εικονίδια: αυτή, και όχι το 1 KB του,
+; όριζε πόσο μεγαλώνει το OV_R1. Τώρα το OV_R1 έχει όλο το 1 KB του. ---
+OV_LOAD     equ OV_R1 - (TX_UNITS + TB_UNITS) * OV_UNIT    ; = το OV_LOAD του src/boot.asm (#6400 ως το βήμα 185, #6000 ως το 200)
 OVI_N       equ 8                       ; τα κομμάτια του OV_R3 στον εγκαταστάτη (πιο κάτω)
 OV_MAX      equ #7000 - OV_LOAD
         assert  OV_UNIT == 16           ; τα >> 4 πιο κάτω (το / του rasm στρογγυλεύει)
         assert  OV_R1 + 1024 == DB_ROW && DB_ROW + STRUCT_CAP * DB_STRIDE == #7000
+; --- οι γραμμές του tutorial (βήμα 199· στην αρχή της εικόνας από το 201) ---
+; Ο εγκαταστάτης τις βάζει στις στήλες 48-63 των γραμμών 0-31 του μπλοκ των
+; δομών (TX_HOLE, src/const.asm), 16 bytes ανά γραμμή του μπλοκ — εκεί το
+; rt_flush δεν γράφει ποτέ: μία γραμμή του μπλοκ έχει τις 48 στήλες των
+; δομών. Ως το βήμα 198 ήταν στο OV_R1, και τα 512 bytes τους τα πήρε το
+; bar_sync.
+        org     OV_LOAD
+TU_TXT:
+        include "tutext.asm"
+zz_tut_end:
+        assert  zz_tut_end - TU_TXT == TX_UNITS * OV_UNIT       ; και (TU_YOURS + 1) * 32, μετά το tutor.asm
+        assert  DB_STRIDE - MAX_STRUCT == OV_UNIT && TX_UNITS <= STRUCT_CAP
+        save    "../build/ovtx.bin", TU_TXT, zz_tut_end - TU_TXT        ; για τις δοκιμές
+; --- και το δεύτερο μέρος του κώδικα του tutorial (βήμα 201) ---
+; Ο εγκαταστάτης το βάζει στις ίδιες στήλες των γραμμών 32-47 του μπλοκ, με
+; το ίδιο ldir των γραμμών (TB_HOLE), και το tuo_go το φέρνει στο GH_BUF +
+; TU_ALEN πριν από οτιδήποτε άλλο. Τα 160 bytes του ήταν ως τότε στο OV_R1.
+TU_B:
+        org     GH_BUF + TU_ALEN, TU_B
+zz_tub:
+        include "tutor2.asm"
+zz_tub_end:
+TB_ROWS     equ (zz_tub_end - zz_tub + 15) >> 4                 ; όσες γραμμές φέρνει το tuo_go
+        assert  TB_ROWS <= TB_UNITS && TU_B + TB_UNITS * OV_UNIT == OV_R1
+        assert  TB_HOLE + (TB_UNITS - 1) * DB_STRIDE + OV_UNIT <= #7000
+        save    "../build/ovtb.bin", TU_B, zz_tub_end - zz_tub          ; για τις δοκιμές
 ; --- OV_R1 ---
         org     OV_R1
         include "dm_hand.asm"
+        include "dirty1.asm"            ; βήμα 201: το dh_crow και το dh_tile, από την τράπεζα 0· τρέχουν εδώ
         include "top.asm"               ; βήμα 157: το όριο σάρωσης, τρέχει εδώ
         include "goals.asm"             ; βήμα 177: το G και το αίτημα σελίδας, τρέχουν εδώ
         include "sync1.asm"             ; βήμα 199: το bar_sync, από την τράπεζα 0· τρέχει εδώ
@@ -325,6 +360,8 @@ zz_ov4:
         include "tutor.asm"
 zz_ov4_end:
         assert  tuo_buf + 32 <= GH_BUF + GH_LOG
+        assert  zz_tut_end - TU_TXT == (TU_YOURS + 1) * 32
+        assert  zz_ov4_end - GH_BUF <= TU_ALEN          ; το πρώτο μέρος, πριν από το δεύτερο (βήμα 201)
 TU_LEN      equ zz_ov4_end - GH_BUF
 R1_LEN      equ TU_AT + TU_LEN - OV_R1
         assert  OV_R1 + R1_LEN <= DB_ROW
@@ -374,6 +411,9 @@ OV3_ROWS    equ (zz_ov3_end - GH_BUF + 15) >> 4
         save    "../build/ovl3.bin", OVI_R2 + OV2_ROWS * OV_UNIT, zz_ov3_end - GH_BUF
 R2_UNITS    equ OV2_ROWS + OV3_ROWS
         assert  R2_UNITS <= MAX_DOME
+        ; ΚΑΙ ΚΑΤΩ ΑΠΟ ΤΗΝ ΕΙΚΟΝΑ (βήμα 201): οι γραμμές του tutorial περιμένουν
+        ; στις γραμμές θόλων του DIST από το OV_LOAD, και το OV_R2 γράφεται πρώτο.
+        assert  OV_R2 + (R2_UNITS - 1) * 128 + OV_UNIT <= OV_LOAD
 OV2_HOLE    equ OV_R2
 OV3_HOLE    equ OV_R2 + OV2_ROWS * 128
 ; --- OV_R3 ---
@@ -406,19 +446,9 @@ R3_ALL      equ R3_UNITS + OV5_ROWS
 ; και οκτώ φορές το κομμάτι δεν πρέπει να περνά τις 112 γραμμές του NEXTHOP.
 OVI_CH      equ floor((R3_ALL + OVI_N - 1) / OVI_N)
         assert  OVI_N * OVI_CH >= R3_ALL && OVI_N * OVI_CH <= NODE_CAP && OVI_R3 + OVI_N * OVI_CH * OV_UNIT <= #7000
-; ΟΙ ΓΡΑΜΜΕΣ ΤΟΥ TUTORIAL (βήμα 199), στο τέλος της εικόνας: ο εγκαταστάτης τις
-; βάζει, τελευταίες, στις στήλες 48-63 των γραμμών 0-31 του μπλοκ των δομών
-; (TX_HOLE, src/const.asm), 16 bytes ανά γραμμή του μπλοκ — εκεί το rt_flush
-; δεν γράφει ποτέ: μία γραμμή του μπλοκ έχει τις 48 στήλες των δομών. Ως το
-; βήμα 198 ήταν στο OV_R1, και τα 512 bytes τους τα πήρε το bar_sync.
-OVI_TU      equ OVI_R3 + OVI_N * OVI_CH * OV_UNIT
-        org     OVI_TU
-TU_TXT:
-        include "tutext.asm"
-zz_tut_end:
-        assert  zz_tut_end - TU_TXT == (TU_YOURS + 1) * 32 && zz_tut_end - TU_TXT == TX_UNITS * OV_UNIT
-        assert  zz_tut_end <= OV_LOAD + OV_MAX && DB_STRIDE - MAX_STRUCT == OV_UNIT && TX_UNITS <= STRUCT_CAP
-        save    "../build/ovtx.bin", TU_TXT, zz_tut_end - TU_TXT        ; για τις δοκιμές
+; Η ΕΙΚΟΝΑ ΤΕΛΕΙΩΝΕΙ ΕΔΩ από το βήμα 201 (οι γραμμές του tutorial πήγαν
+; μπροστά, στο OV_LOAD): ότι το OV_R3 τελειώνει κάτω από τα εικονίδια το λέει
+; το assert του OVI_CH πιο πάνω.
 
         org     BOOT_ORG - 256
 zz_colony:

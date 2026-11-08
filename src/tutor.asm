@@ -2,6 +2,9 @@
 ; tutor.asm — τα βήματα του tutorial (βήμα 149, DESIGN §9.6). ΚΟΜΜΑΤΙ ΤΩΝ
 ; ΤΡΥΠΩΝ, στο OV_R1 από το βήμα 155 (src/main.asm): το φέρνει στο GH_BUF
 ; το tu_run (src/demolish.asm) με το φάντασμα σβηστό, όπως την κατεδάφιση.
+; ΣΕ ΔΥΟ ΜΕΡΗ από το βήμα 201: εδώ το πρώτο, στο OV_R1, και ο έλεγχος των
+; βημάτων με τον πίνακά τους στο src/tutor2.asm, στο μπλοκ των δομών· το
+; φέρνει το ίδιο το tuo_go.
 ;
 ; Ο ΧΡΗΣΤΗΣ: «πρέπει να υπάρχει και ένα tutorial (σε barren moon) για το πως
 ; λειτουργεί το παιχνίδι», με βήματα που οδηγούν. Η έκτη γραμμή του μενού,
@@ -42,21 +45,30 @@
 ; «C=SHIP» στη γραμμή που ήταν (assert στο src/uitext.asm).
 ; ---------------------------------------------------------------------------
 
-TU_N        equ 14                      ; τα βήματα
-TU_YOURS    equ TU_N + 1                ; «THE COLONY IS YOURS», και η γραμμή του ως το LOOK
-TU_STRUCT   equ #80                     ; tuo_tab: δομές αυτού του είδους, όσες λέει το δεύτερο byte
-TU_SHIP     equ #FF                     ; tuo_tab: πλοίο αποίκων στον δρόμο
-TU_ROOM     equ #FF                     ; δεύτερο byte: φτάνει το δωμάτιο
-TU_ANY      equ #FE                     ; δεύτερο byte: ό,τι κι αν μπει σε υποδοχή (φυτά)
-TU_METAL    equ 1                       ; οι μηχανές, με τη σειρά του MACH του tools/pack.py
-TU_MEALS    equ 6
-TU_MEAT     equ 9
+; Οι σταθερές του (TU_N, TU_YOURS, TU_STRUCT ...) στο src/tutor2.asm από το
+; βήμα 201: εκείνο συναρμολογείται πρώτο, στην αρχή της εικόνας (src/main.asm).
         assert  SK_COLONIST == 0 && EC_SHKIND == EC_SHSTATE + 1
         assert  ST_STATE == ST_KIND + 2 && DS_EMPTY == 0     ; και M_OXYGEN == 0 (src/newgame.asm)
         assert  (G_struct_tbl & 7) == 0 && STRUCT_REC == 8
 
 ; tuo_go — από το tu_run, με την 1 στο παράθυρο. Γυρίζει με την 1.
+;
+; ΠΡΩΤΑ ΤΟ ΔΕΥΤΕΡΟ ΜΕΡΟΣ (βήμα 201, src/tutor2.asm): από τις στήλες 48-63
+; των γραμμών 32-47 του μπλοκ των δομών (TB_HOLE), μετά τις γραμμές του
+; κειμένου, στο GH_BUF + TU_ALEN. Το tu_run φέρνει από το OV_R1 μόνο αυτό το
+; μέρος, ως το tuo_i· το OV_R1 κερδίζει 141 bytes για την κορδέλα του
+; εργοταξίου (βήμα 202).
 tuo_go:
+        ld      hl,TB_HOLE
+        ld      de,GH_BUF + TU_ALEN
+        ld      a,TB_ROWS
+tuo_ld:
+        ld      bc,OV_UNIT
+        ldir
+        ld      c,DB_STRIDE - OV_UNIT   ; το B είναι 0 μετά το ldir
+        add     hl,bc
+        dec     a
+        jr      nz,tuo_ld
         call    ob_b6                   ; θόλοι, δομές, EC_TU, worldinfo
         ld      a,(EC_TU)
         ld      (tuo_o),a               ; για τη σελίδα, στο τέλος (βήμα 175)
@@ -158,130 +170,6 @@ tuo_ev:
         jp      tu_page                 ; src/help.asm. ΟΧΙ call: ο τομέας της
                                         ; σελίδας γράφεται εδώ, στο GH_BUF
 
-; tuo_done — A = βήμα 1-14. CY αν έγινε. Η 6 στο παράθυρο.
-tuo_done:
-        add     a,a
-        ld      e,a
-        ld      d,0
-        ld      hl,tuo_tab - 2
-        add     hl,de
-        ld      a,(hl)
-        inc     hl
-        ld      e,(hl)
-        cp      TU_SHIP
-        jr      z,tuo_ship
-        bit     7,a
-        jr      nz,tuo_st
-        ; --- θόλος με δωμάτιο A — εργοτάξιο ή χτισμένος — και μηχανή E ---
-        ld      c,a
-        ld      ix,G_dome_tbl
-        ld      b,MAX_DOME
-tuo_dlp:
-        ld      a,(ix+D_STATE)
-        or      a
-        jr      z,tuo_dnx
-        ld      a,(ix+D_ROOM)
-        cp      c
-        jr      nz,tuo_dnx
-        ld      a,e
-        cp      TU_ROOM
-        scf
-        ret     z
-        push    bc
-        push    ix
-        pop     hl
-        ld      bc,D_MACH
-        add     hl,bc
-        ld      b,8                     ; οι άδειες είναι NO_MACH (bd_commit)
-tuo_mlp:
-        ld      a,(hl)
-        cp      e
-        jr      z,tuo_got
-        inc     a                       ; NO_MACH
-        jr      z,tuo_mnx
-        ld      a,e
-        cp      TU_ANY
-        jr      z,tuo_got
-tuo_mnx:
-        inc     hl
-        djnz    tuo_mlp
-        pop     bc
-tuo_dnx:
-        push    de
-        ld      de,DOME_REC
-        add     ix,de
-        pop     de
-        djnz    tuo_dlp
-        or      a
-        ret
-tuo_got:
-        pop     bc
-        scf
-        ret
-        ; --- E δομές του είδους A & #7F, εργοτάξια ή χτισμένες ---
-tuo_st:
-        and     #7F
-        ld      c,a
-        ld      hl,G_struct_tbl + ST_KIND
-        ld      a,(ST_TOP)              ; ως την ψηλότερη θέση σε χρήση (βήμα 157)
-        ld      b,a
-tuo_slp:
-        ld      a,(hl)
-        cp      c
-        jr      nz,tuo_snx
-        inc     l
-        inc     l
-        ld      a,(hl)                  ; ST_STATE
-        dec     l
-        dec     l
-        or      a
-        jr      z,tuo_snx
-        dec     e
-        scf
-        ret     z
-tuo_snx:
-        ld      a,l
-        add     a,STRUCT_REC
-        ld      l,a
-        jr      c,tuo_pg                ; δύο σελίδες (βήμα 154): 2 us ανά εγγραφή
-tuo_sc:
-        djnz    tuo_slp
-        or      a
-        ret
-tuo_pg:
-        inc     h                       ; μία φορά, στο τέλος της πρώτης σελίδας
-        jr      tuo_sc
-        ; --- πλοίο αποίκων στον δρόμο: το έφερε το C ---
-tuo_ship:
-        ld      hl,(EC_SHSTATE)         ; L = κατάσταση, H = είδος
-        ld      a,l
-        or      a
-        ret     z
-        ld      a,h
-        or      a                       ; SK_COLONIST
-        ret     nz
-        scf
-        ret
-
-; Ενα ζευγάρι ανά βήμα: δωμάτιο και μηχανή, TU_STRUCT | είδος και πόσες, ή
-; TU_SHIP.
-tuo_tab:
-        db      TU_STRUCT | K_SOLAR, 1          ;  1 ηλιακός
-        db      R_OXYGEN, M_OXYGEN              ;  2 θόλος οξυγόνου, με τη μηχανή του
-        db      TU_STRUCT | K_AIRLOCK, 1        ;  3 airlock
-        db      TU_STRUCT | K_EXTRACT, 1        ;  4 αντλία
-        db      R_CANTEEN, TU_MEALS             ;  5 κυλικείο με MEALS
-        db      TU_STRUCT | K_SOLAR, 2          ;  6 δεύτερος ηλιακός
-        db      TU_STRUCT | K_COLLECT, 1        ;  7 συλλέκτης
-        db      TU_STRUCT | K_MINE, 1           ;  8 ορυχείο
-        db      R_FACTORY, TU_METAL             ;  9 εργοστάσιο με METAL
-        db      R_GREENHS, TU_ANY               ; 10 θερμοκήπιο με φυτά
-        db      R_LAB, TU_MEAT                  ; 11 εργαστήριο με MEAT
-        db      R_CONTROL, TU_ROOM              ; 12 έλεγχος
-        db      TU_STRUCT | K_PAD, 1            ; 13 πίστα
-        db      TU_SHIP, 0                      ; 14 πλοίο
-        assert  $ - tuo_tab == 2 * TU_N
 tuo_s:      db 0                        ; το βήμα
 tuo_o:      db 0                        ; το βήμα πριν από αυτό το γεγονός
 tuo_i:      db 0                        ; η γραμμή του κειμένου
-tuo_buf     equ $                       ; 32 bytes, μετά τον κώδικα: δεν γράφονται
